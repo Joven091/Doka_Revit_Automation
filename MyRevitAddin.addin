@@ -8,14 +8,4 @@
     <VendorId>DOKA</VendorId>
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
-</RevitAddIns>In>
-  <AddIn Type="Command">
-    <Text>Isolate Pour Box</Text>
-    <Description>Isolate Pour Box Command</Description>
-    <Assembly>C:\Users\jsazon\OneDrive - Umdasch Group\Documents\GitHub\Doka_Revit_Automation\bin\Debug\net48\MyRevitAddin.dll</Assembly>
-    <FullClassName>MyRevitAddin.Commands.PourBoxIsolator</FullClassName>
-    <ClientId>1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d</ClientId>
-    <VendorId>DOKA</VendorId>
-    <VendorDescription>Doka Designer</VendorDescription>
-  </AddIn>
 </RevitAddIns>
