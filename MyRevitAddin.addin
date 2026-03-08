@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
   <AddIn Type="Command">
     <Text>Isolate Pour Box</Text>
     <Description>Isolate Pour Box Command</Description>
