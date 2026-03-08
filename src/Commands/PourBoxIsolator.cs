@@ -12,12 +12,22 @@ namespace MyRevitAddin.Commands
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
-            var uiapp = commandData.Application;
-            var uidoc = uiapp.ActiveUIDocument;
-            var doc = uidoc.Document;
+            if (commandData == null) return Result.Failed;
 
-            var selectedIds = uidoc.Selection.GetElementIds();
-            if (selectedIds.Count == 0)
+            var uiapp = commandData.Application;
+            if (uiapp == null) return Result.Failed;
+
+            var uidoc = uiapp.ActiveUIDocument;
+            if (uidoc == null) return Result.Failed;
+
+            var doc = uidoc.Document;
+            if (doc == null) return Result.Failed;
+
+            var selection = uidoc.Selection;
+            if (selection == null) return Result.Failed;
+
+            var selectedIds = selection.GetElementIds();
+            if (selectedIds == null || selectedIds.Count == 0)
             {
                 TaskDialog.Show("Error", "Please select at least one element.");
                 return Result.Cancelled;
@@ -73,18 +83,24 @@ namespace MyRevitAddin.Commands
                 // Create 3D View
                 View3D view3D = View3D.CreateIsometric(doc, viewFamilyType.Id);
 
-                string dateStr = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
-                view3D.Name = $"Pour Isolation - {dateStr}";
+                if (view3D != null)
+                {
+                    string dateStr = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
+                    view3D.Name = $"Pour Isolation - {dateStr}";
 
-                // Set Section Box
-                view3D.IsSectionBoxActive = true;
-                view3D.SetSectionBox(sectionBox);
+                    // Set Section Box
+                    view3D.IsSectionBoxActive = true;
+                    view3D.SetSectionBox(sectionBox);
 
-                // Set detail level or other properties if necessary...
+                    // Set detail level or other properties if necessary...
+                }
 
                 t.Commit();
 
-                uidoc.ActiveView = view3D;
+                if (view3D != null)
+                {
+                    uidoc.ActiveView = view3D;
+                }
             }
 
             return Result.Succeeded;
@@ -99,6 +115,7 @@ namespace MyRevitAddin.Commands
                 // BoundingBoxXYZ may have a transform applied to it.
                 // We should transform its corners to world coordinates to get the true axis-aligned bounding box.
                 Transform transform = bbox.Transform;
+                if (transform == null) return;
 
                 XYZ[] corners = new XYZ[8];
                 corners[0] = transform.OfPoint(new XYZ(bbox.Min.X, bbox.Min.Y, bbox.Min.Z));
