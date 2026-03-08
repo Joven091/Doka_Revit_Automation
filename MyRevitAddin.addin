@@ -3,7 +3,7 @@
   <AddIn Type="Command">
     <Text>My First .NET 10 Addin</Text>
     <Description>Testing Jules and .NET 10</Description>
-    <Assembly>MyRevitAddin.dll</Assembly>
+    <Assembly><Assembly>C:\Users\jsazon\OneDrive - Umdasch Group\Documents\GitHub\Doka_Revit_Automation\bin\Debug\net48\MyRevitAddin.dll</Assembly>
     <FullClassName>MyRevitAddin.Commands.HelloCommand</FullClassName>
     <ClientId>502896da-6003-455b-a37a-4284d7a8d876</ClientId>
     <VendorId>DOKA</VendorId>
