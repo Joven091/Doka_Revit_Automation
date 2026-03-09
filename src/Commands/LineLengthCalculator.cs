@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
@@ -28,6 +29,7 @@ namespace MyRevitAddin.Commands
 
                 double totalLengthInternal = 0.0;
                 int lineCount = 0;
+                List<Curve> curves = new List<Curve>();
 
                 foreach (ElementId id in selectedIds)
                 {
@@ -36,7 +38,9 @@ namespace MyRevitAddin.Commands
                     {
                         if (curveElement.GeometryCurve != null)
                         {
-                            totalLengthInternal += curveElement.GeometryCurve.Length;
+                            Curve c = curveElement.GeometryCurve;
+                            curves.Add(c);
+                            totalLengthInternal += c.Length;
                             lineCount++;
                         }
                     }
@@ -48,11 +52,54 @@ namespace MyRevitAddin.Commands
                     return Result.Succeeded;
                 }
 
-                // Convert from internal units (feet) to millimeters
-                double totalLengthMm = UnitUtils.ConvertFromInternalUnits(totalLengthInternal, UnitTypeId.Millimeters);
+                // Convert from internal units (feet) to meters
+                double totalLengthM = UnitUtils.ConvertFromInternalUnits(totalLengthInternal, UnitTypeId.Meters);
 
-                TaskDialog.Show("Line Length Calculator",
-                    $"Selected Lines: {lineCount}\nTotal Length: {totalLengthMm:F2} mm");
+                string dialogMessage = $"Selected Lines: {lineCount}\nTotal Length: {totalLengthM:F2} m";
+
+                bool isClosed = false;
+                double areaInternal = 0.0;
+
+                try
+                {
+                    // Attempt to create a curve loop. If they form a continuous loop, this might succeed.
+                    // Often curves need to be ordered.
+                    CurveLoop loop = CurveLoop.Create(curves);
+                    if (!loop.IsOpen() && loop.HasPlane())
+                    {
+                        isClosed = true;
+
+                        // We can calculate area via Green's Theorem for a planar loop
+                        // Need the normal of the plane to ensure correct sign or just take absolute value.
+                        XYZ normal = loop.GetPlane().Normal;
+
+                        double area = 0.0;
+                        foreach (Curve curve in loop)
+                        {
+                            IList<XYZ> pts = curve.Tessellate();
+                            for (int i = 0; i < pts.Count - 1; i++)
+                            {
+                                XYZ p1 = pts[i];
+                                XYZ p2 = pts[i + 1];
+                                XYZ cross = p1.CrossProduct(p2);
+                                area += cross.DotProduct(normal);
+                            }
+                        }
+                        areaInternal = Math.Abs(area) / 2.0;
+                    }
+                }
+                catch
+                {
+                    // Catch exception if curves do not form a loop
+                }
+
+                if (isClosed)
+                {
+                    double areaM2 = UnitUtils.ConvertFromInternalUnits(areaInternal, UnitTypeId.SquareMeters);
+                    dialogMessage += $"\nArea: {areaM2:F2} m²";
+                }
+
+                TaskDialog.Show("Line Length Calculator", dialogMessage);
 
                 return Result.Succeeded;
             }
