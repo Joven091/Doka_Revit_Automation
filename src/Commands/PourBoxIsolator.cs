@@ -80,13 +80,35 @@ namespace MyRevitAddin.Commands
                     return Result.Failed;
                 }
 
-                // Create 3D View
-                View3D view3D = View3D.CreateIsometric(doc, viewFamilyType.Id);
+                // Create or Duplicate 3D View
+                View3D view3D = null;
+                if (uidoc.ActiveView is View3D active3D && active3D.CanViewBeDuplicated(ViewDuplicateOption.Duplicate))
+                {
+                    ElementId duplicatedId = active3D.Duplicate(ViewDuplicateOption.Duplicate);
+                    view3D = doc.GetElement(duplicatedId) as View3D;
+                }
+                else
+                {
+                    view3D = View3D.CreateIsometric(doc, viewFamilyType.Id);
+                }
 
                 if (view3D != null)
                 {
-                    string dateStr = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
-                    view3D.Name = $"Pour Isolation - {dateStr}";
+                    var existingViewNames = new FilteredElementCollector(doc)
+                        .OfClass(typeof(View))
+                        .Cast<View>()
+                        .Select(v => v.Name)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                    int viewNumber = 1;
+                    string newViewName = $"3D View {viewNumber}";
+                    while (existingViewNames.Contains(newViewName))
+                    {
+                        viewNumber++;
+                        newViewName = $"3D View {viewNumber}";
+                    }
+
+                    view3D.Name = newViewName;
 
                     // Set Section Box
                     view3D.IsSectionBoxActive = true;
@@ -97,10 +119,7 @@ namespace MyRevitAddin.Commands
 
                 t.Commit();
 
-                if (view3D != null)
-                {
-                    uidoc.ActiveView = view3D;
-                }
+                // Do not change the active view to allow the user to continue their workflow
             }
 
             return Result.Succeeded;
