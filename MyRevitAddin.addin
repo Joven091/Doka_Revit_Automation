@@ -9,4 +9,13 @@
     <VendorId>DOKA</VendorId>
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
+  <AddIn Type="Command">
+    <Text>Engineering Dashboard</Text>
+    <Description>Engineering Dashboard Command</Description>
+    <Assembly>C:\Users\jsazon\OneDrive - Umdasch Group\Documents\GitHub\Doka_Revit_Automation\src\bin\Debug\net48\MyRevitAddin.dll</Assembly>
+    <FullClassName>EngineeringDashboard.Command</FullClassName>
+    <ClientId>2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e</ClientId>
+    <VendorId>DOKA</VendorId>
+    <VendorDescription>Doka Designer</VendorDescription>
+  </AddIn>
 </RevitAddIns>
