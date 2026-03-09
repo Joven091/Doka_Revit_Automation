@@ -18,4 +18,13 @@
     <VendorId>DOKA</VendorId>
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
+  <AddIn Type="Command">
+    <Text>Calculate Selected Line Length</Text>
+    <Description>Calculates the total length of selected lines in millimeters</Description>
+    <Assembly>C:\Users\jsazon\OneDrive - Umdasch Group\Documents\GitHub\Doka_Revit_Automation\src\bin\Debug\net48\MyRevitAddin.dll</Assembly>
+    <FullClassName>MyRevitAddin.Commands.LineLengthCalculator</FullClassName>
+    <ClientId>3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f</ClientId>
+    <VendorId>DOKA</VendorId>
+    <VendorDescription>Doka Designer</VendorDescription>
+  </AddIn>
 </RevitAddIns>
