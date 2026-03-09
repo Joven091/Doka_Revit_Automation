@@ -64,28 +64,32 @@ namespace MyRevitAddin.Commands
                 {
                     // Attempt to create a curve loop. If they form a continuous loop, this might succeed.
                     // Often curves need to be ordered.
-                    CurveLoop loop = CurveLoop.Create(curves);
-                    if (!loop.IsOpen() && loop.HasPlane())
+                    List<Curve> orderedCurves = OrderCurves(curves);
+                    if (orderedCurves.Count == curves.Count)
                     {
-                        isClosed = true;
-
-                        // We can calculate area via Green's Theorem for a planar loop
-                        // Need the normal of the plane to ensure correct sign or just take absolute value.
-                        XYZ normal = loop.GetPlane().Normal;
-
-                        double area = 0.0;
-                        foreach (Curve curve in loop)
+                        CurveLoop loop = CurveLoop.Create(orderedCurves);
+                        if (!loop.IsOpen() && loop.HasPlane())
                         {
-                            IList<XYZ> pts = curve.Tessellate();
-                            for (int i = 0; i < pts.Count - 1; i++)
+                            isClosed = true;
+
+                            // We can calculate area via Green's Theorem for a planar loop
+                            // Need the normal of the plane to ensure correct sign or just take absolute value.
+                            XYZ normal = loop.GetPlane().Normal;
+
+                            double area = 0.0;
+                            foreach (Curve curve in loop)
                             {
-                                XYZ p1 = pts[i];
-                                XYZ p2 = pts[i + 1];
-                                XYZ cross = p1.CrossProduct(p2);
-                                area += cross.DotProduct(normal);
+                                IList<XYZ> pts = curve.Tessellate();
+                                for (int i = 0; i < pts.Count - 1; i++)
+                                {
+                                    XYZ p1 = pts[i];
+                                    XYZ p2 = pts[i + 1];
+                                    XYZ cross = p1.CrossProduct(p2);
+                                    area += cross.DotProduct(normal);
+                                }
                             }
+                            areaInternal = Math.Abs(area) / 2.0;
                         }
-                        areaInternal = Math.Abs(area) / 2.0;
                     }
                 }
                 catch
@@ -108,6 +112,54 @@ namespace MyRevitAddin.Commands
                 message = ex.Message;
                 return Result.Failed;
             }
+        }
+
+        private List<Curve> OrderCurves(List<Curve> curves)
+        {
+            if (curves == null || curves.Count == 0) return new List<Curve>();
+            if (curves.Count == 1) return new List<Curve>(curves);
+
+            List<Curve> ordered = new List<Curve>();
+            List<Curve> remaining = new List<Curve>(curves);
+
+            Curve current = remaining[0];
+            remaining.RemoveAt(0);
+            ordered.Add(current);
+
+            XYZ endPoint = current.GetEndPoint(1);
+
+            while (remaining.Count > 0)
+            {
+                bool found = false;
+                for (int i = 0; i < remaining.Count; i++)
+                {
+                    Curve candidate = remaining[i];
+                    if (candidate.GetEndPoint(0).IsAlmostEqualTo(endPoint))
+                    {
+                        ordered.Add(candidate);
+                        endPoint = candidate.GetEndPoint(1);
+                        remaining.RemoveAt(i);
+                        found = true;
+                        break;
+                    }
+                    else if (candidate.GetEndPoint(1).IsAlmostEqualTo(endPoint))
+                    {
+                        Curve reversed = candidate.CreateReversed();
+                        ordered.Add(reversed);
+                        endPoint = reversed.GetEndPoint(1);
+                        remaining.RemoveAt(i);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    // Cannot form a continuous chain
+                    break;
+                }
+            }
+
+            return ordered;
         }
     }
 }
