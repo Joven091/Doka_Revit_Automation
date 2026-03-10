@@ -8,7 +8,7 @@ using Autodesk.Revit.UI;
 namespace MyRevitAddin.Commands
 {
     [Transaction(TransactionMode.Manual)]
-    public class LineLengthAndAreaCalculator : IExternalCommand
+    public class LineLengthCalculator : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
