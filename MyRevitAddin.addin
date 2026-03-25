@@ -1,29 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RevitAddIns>
   <AddIn Type="Command">
-    <Text>Isolate Pour Box</Text>
-    <Description>Isolate Pour Box Command</Description>
+    <Text>Generate Concrete from CAD</Text>
+    <Description>Generates structural concrete elements from a linked 2D CAD file.</Description>
     <Assembly>MyRevitAddin.dll</Assembly>
-    <FullClassName>MyRevitAddin.Commands.PourBoxIsolator</FullClassName>
-    <ClientId>1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d</ClientId>
-    <VendorId>DOKA</VendorId>
-    <VendorDescription>Doka Designer</VendorDescription>
-  </AddIn>
-  <AddIn Type="Command">
-    <Text>Engineering Dashboard</Text>
-    <Description>Engineering Dashboard Command</Description>
-    <Assembly>MyRevitAddin.dll</Assembly>
-    <FullClassName>EngineeringDashboard.Command</FullClassName>
-    <ClientId>2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e</ClientId>
-    <VendorId>DOKA</VendorId>
-    <VendorDescription>Doka Designer</VendorDescription>
-  </AddIn>
-  <AddIn Type="Command">
-    <Text>Calculate Selected Line Length</Text>
-    <Description>Calculates the total length of selected lines in millimeters</Description>
-    <Assembly>MyRevitAddin.dll</Assembly>
-    <FullClassName>MyRevitAddin.Commands.LineLengthCalculator</FullClassName>
-    <ClientId>3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f</ClientId>
+    <FullClassName>MyRevitAddin.Commands.GenerateFromCADCommand</FullClassName>
+    <ClientId>1b2c3d4e-5f6a-7b8c-9d0e-1f2a3b4c5d6e</ClientId>
     <VendorId>DOKA</VendorId>
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
