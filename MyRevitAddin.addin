@@ -27,4 +27,13 @@
     <VendorId>DOKA</VendorId>
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
+  <AddIn Type="Command">
+    <Text>Generate Concrete Elements</Text>
+    <Description>Generates concrete structural elements from linked CAD file</Description>
+    <Assembly>MyRevitAddin.dll</Assembly>
+    <FullClassName>MyRevitAddin.Commands.GenerateConcreteElementsCommand</FullClassName>
+    <ClientId>4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a</ClientId>
+    <VendorId>DOKA</VendorId>
+    <VendorDescription>Doka Designer</VendorDescription>
+  </AddIn>
 </RevitAddIns>
