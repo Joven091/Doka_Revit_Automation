@@ -279,6 +279,17 @@ namespace MyRevitAddin.Commands
 
             string layerName = style.GraphicsStyleCategory.Name;
 
+            // Filter out irrelevant layers early
+            if (!layerName.StartsWith("FW_BM") &&
+                !layerName.StartsWith("FW_COL") &&
+                !layerName.StartsWith("FW_WALL") &&
+                !layerName.StartsWith("FW_SLAB"))
+            {
+                return;
+            }
+
+            double tolerance = doc.Application.ShortCurveTolerance;
+
             if (geoObj is Line line)
             {
                 if (!layerLines.ContainsKey(layerName)) layerLines[layerName] = new List<Curve>();
@@ -286,7 +297,7 @@ namespace MyRevitAddin.Commands
                 // Convert to feet
                 XYZ start = ConvertToFeet(line.GetEndPoint(0));
                 XYZ end = ConvertToFeet(line.GetEndPoint(1));
-                if (start.DistanceTo(end) > 0.001) // Prevent zero length lines
+                if (start.DistanceTo(end) > tolerance) // Prevent zero length lines
                 {
                     layerLines[layerName].Add(Line.CreateBound(start, end));
                 }
@@ -301,7 +312,7 @@ namespace MyRevitAddin.Commands
                 {
                     XYZ start = ConvertToFeet(points[i]);
                     XYZ end = ConvertToFeet(points[i + 1]);
-                    if (start.DistanceTo(end) > 0.001)
+                    if (start.DistanceTo(end) > tolerance)
                     {
                         loop.Append(Line.CreateBound(start, end));
                     }
@@ -310,7 +321,7 @@ namespace MyRevitAddin.Commands
                 // Close the loop if necessary
                 XYZ firstPt = ConvertToFeet(points[0]);
                 XYZ lastPt = ConvertToFeet(points[points.Count - 1]);
-                if (firstPt.DistanceTo(lastPt) > 0.001)
+                if (firstPt.DistanceTo(lastPt) > tolerance)
                 {
                     loop.Append(Line.CreateBound(lastPt, firstPt));
                 }
