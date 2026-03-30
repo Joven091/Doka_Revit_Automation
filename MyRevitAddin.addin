@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <RevitAddIns>
   <AddIn Type="Command">
     <Text>Isolate Pour Box</Text>
@@ -45,4 +45,4 @@
     <VendorId>DOKA</VendorId>
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
-</RevitAddIns>
+<AddIn Type="Command"><Text>Area Table Command</Text><Description>Creates a table of Doka_Area values from selected families</Description><Assembly>MyRevitAddin.dll</Assembly><FullClassName>MyRevitAddin.Commands.AreaTableCommand</FullClassName><ClientId>8227cad6-0ab2-4b5b-8764-11005b7f0678</ClientId><VendorId>DOKA</VendorId><VendorDescription>Doka Designer</VendorDescription></AddIn></RevitAddIns>
