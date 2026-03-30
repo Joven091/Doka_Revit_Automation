@@ -47,29 +47,30 @@ namespace MyRevitAddin.Commands
 
                     foreach (var helper in tableHelpers)
                     {
-                        // 2. Get Length and Width parameters
-                        Parameter lengthParam = helper.LookupParameter("Length");
-                        Parameter widthParam = helper.LookupParameter("Width");
+                        // 2. Get Length and Width parameters (Check Instance first, then fallback to Type)
+                        Parameter lengthParam = helper.LookupParameter("Length") ?? helper.Symbol.LookupParameter("Length");
+                        Parameter widthParam = helper.LookupParameter("Width") ?? helper.Symbol.LookupParameter("Width");
 
                         if (lengthParam == null || widthParam == null)
                         {
-                            continue; // Skip if parameters are missing
+                            continue; // Skip if parameters are missing entirely
                         }
 
-                        // Revit internal units are in feet. Convert to millimeters.
-                        // Assuming the parameter is stored as a double (internal unit)
+                        // Revit internal units are in feet. Convert to centimeters.
                         double lengthFt = lengthParam.AsDouble();
                         double widthFt = widthParam.AsDouble();
 
-                        int lengthMm = (int)Math.Round(lengthFt * 304.8);
-                        int widthMm = (int)Math.Round(widthFt * 304.8);
+                        // 1 foot = 30.48 cm
+                        int lengthCm = (int)Math.Round(lengthFt * 30.48);
+                        int widthCm = (int)Math.Round(widthFt * 30.48);
 
-                        // 3. Find matching family named "T-{Length}x{Width}"
-                        string targetFamilyName = $"T-{lengthMm}x{widthMm}";
+                        // 3. Find matching family or type named "T-{Length}x{Width}" in cm
+                        string targetFamilyName = $"T-{lengthCm}x{widthCm}";
 
+                        // Check if either the Type Name (Symbol Name) OR the Family Name matches
                         var matchingSymbol = allFamilySymbols.FirstOrDefault(fs =>
-                            fs.Family != null &&
-                            fs.Family.Name.Equals(targetFamilyName, StringComparison.OrdinalIgnoreCase));
+                            fs.Name.Equals(targetFamilyName, StringComparison.OrdinalIgnoreCase) ||
+                            (fs.Family != null && fs.Family.Name.Equals(targetFamilyName, StringComparison.OrdinalIgnoreCase)));
 
                         if (matchingSymbol != null)
                         {
@@ -77,12 +78,15 @@ namespace MyRevitAddin.Commands
                             if (!matchingSymbol.IsActive)
                             {
                                 matchingSymbol.Activate();
-                                doc.Regenerate(); // Regenerate after activating a symbol
+                                doc.Regenerate(); 
                             }
 
-                            // 4. Replace the symbol
-                            helper.Symbol = matchingSymbol;
-                            replaceCount++;
+                            // 4. Replace using the safer ChangeTypeId method
+                            if (helper.IsValidType(matchingSymbol.Id))
+                            {
+                                helper.ChangeTypeId(matchingSymbol.Id);
+                                replaceCount++;
+                            }
                         }
                     }
 
