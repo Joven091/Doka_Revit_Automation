@@ -111,28 +111,25 @@ namespace MyRevitAddin.Commands
                     return Result.Cancelled;
                 }
 
-                // 2) Create a table with two rows: 1st row is the family name, 2nd row is the value of parameter Doka_Area, with a sum total and the end.
-                StringBuilder row1 = new StringBuilder();
-                StringBuilder row2 = new StringBuilder();
+                // 2) Create a table with two columns: 1st column is the family name, 2nd column is the value of parameter Doka_Area, with a sum total at the end.
+                StringBuilder tableBuilder = new StringBuilder();
 
                 double sumTotal = 0.0;
 
                 // Format with tabs
                 foreach (var kvp in areaPerFamily)
                 {
-                    row1.Append(kvp.Key).Append("\t");
-
                     // Format area with two decimal places
                     double area = kvp.Value;
                     sumTotal += area;
-                    row2.Append(area.ToString("0.##")).Append("\t");
+
+                    tableBuilder.Append(kvp.Key).Append("\t").Append(area.ToString("0.##")).Append("\n");
                 }
 
                 // Add Sum Total at the end
-                row1.Append("Total");
-                row2.Append(sumTotal.ToString("0.##"));
+                tableBuilder.Append("Total").Append("\t").Append(sumTotal.ToString("0.##"));
 
-                string tableText = row1.ToString() + "\n" + row2.ToString();
+                string tableText = tableBuilder.ToString();
 
                 // 3) The output should be in text form that the user can insert on the floor plan view in revit.
                 XYZ insertionPoint = uidoc.Selection.PickPoint("Select insertion point for the text note");
