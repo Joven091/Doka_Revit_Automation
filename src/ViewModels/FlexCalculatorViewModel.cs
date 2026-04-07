@@ -154,7 +154,7 @@ namespace EngineeringDashboard
             }
 
             // Get Slab Load
-            double slabLoad = FormworkLoadCalculator.CalculateTotalLoad((int)SlabThickness);
+            double slabLoad = SlabLoadHelper.CalculateTotalLoad((int)SlabThickness);
 
             var keys = FloorPropData.TableData.Keys.OrderBy(k => k).ToList();
             double x1 = keys.LastOrDefault(k => k <= sT);
