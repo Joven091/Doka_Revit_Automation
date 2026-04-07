@@ -154,14 +154,7 @@ namespace EngineeringDashboard
             }
 
             // Get Slab Load
-            double? slabLoadNullable = SlabLoadHelper.GetSlabLoad((int)SlabThickness);
-            if (!slabLoadNullable.HasValue)
-            {
-                WarningMessage = "Out of bounds";
-                PrimaryBeamSpacing = 0;
-                return;
-            }
-            double slabLoad = slabLoadNullable.Value;
+            double slabLoad = FormworkLoadCalculator.CalculateTotalLoad((int)SlabThickness);
 
             var keys = FloorPropData.TableData.Keys.OrderBy(k => k).ToList();
             double x1 = keys.LastOrDefault(k => k <= sT);
