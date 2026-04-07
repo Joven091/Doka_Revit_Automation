@@ -2,7 +2,7 @@ using System;
 
 namespace EngineeringDashboard
 {
-    public static class FormworkLoadCalculator
+    public static class SlabLoadHelper
     {
         /// <summary>
         /// Calculates the total design load for concrete formwork based on slab thickness.
