@@ -57,8 +57,8 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <Label Content="Safe Primary Beam Spacing (m):" FontWeight="Bold" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                <TextBlock Text="{Binding PrimaryBeamSpacingMeters, StringFormat={}{0:F2}}" FontWeight="Bold" FontSize="16" Foreground="DarkBlue" VerticalAlignment="Center" Margin="10,0,0,0" Grid.Row="0" Grid.Column="1"/>
+                <Label Content="Safe Primary Beam Spacing (mm):" FontWeight="Bold" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding PrimaryBeamSpacing, StringFormat={}{0:F0}}" FontWeight="Bold" FontSize="16" Foreground="DarkBlue" VerticalAlignment="Center" Margin="10,0,0,0" Grid.Row="0" Grid.Column="1"/>
 
                 <Label Content="Actual Prop Load:" FontWeight="Bold" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding ActualPropLoad, StringFormat={}{0:F2} kN}" FontWeight="Bold" FontSize="14" Foreground="DarkBlue" VerticalAlignment="Center" Margin="10,0,0,0" Grid.Row="1" Grid.Column="1"/>
