@@ -81,6 +81,34 @@ namespace EngineeringDashboard
             private set { _primaryBeamSpacing = value; OnPropertyChanged(); }
         }
 
+        private double _primaryBeamSpacingMeters;
+        public double PrimaryBeamSpacingMeters
+        {
+            get => _primaryBeamSpacingMeters;
+            private set { _primaryBeamSpacingMeters = value; OnPropertyChanged(); }
+        }
+
+        private double _actualPropLoad;
+        public double ActualPropLoad
+        {
+            get => _actualPropLoad;
+            private set { _actualPropLoad = value; OnPropertyChanged(); }
+        }
+
+        private double _propCapacityLimit;
+        public double PropCapacityLimit
+        {
+            get => _propCapacityLimit;
+            private set { _propCapacityLimit = value; OnPropertyChanged(); }
+        }
+
+        private double _utilizationRate;
+        public double UtilizationRate
+        {
+            get => _utilizationRate;
+            private set { _utilizationRate = value; OnPropertyChanged(); }
+        }
+
         public string WarningMessage
         {
             get => _warningMessage;
@@ -160,16 +188,30 @@ namespace EngineeringDashboard
                     {
                         WarningMessage = "Cannot find safe primary beam spacing for given load and capacity.";
                         currentBeamSpacing = 0;
+                        ActualPropLoad = 0;
+                        PropCapacityLimit = 0;
+                        UtilizationRate = 0;
                         break;
                     }
                 }
                 else
                 {
+                    ActualPropLoad = Math.Round(propLoad, 2);
+                    PropCapacityLimit = Math.Round(capacity.Value, 2);
+                    if (capacity.Value > 0)
+                    {
+                        UtilizationRate = Math.Round((propLoad / capacity.Value) * 100, 1);
+                    }
+                    else
+                    {
+                        UtilizationRate = 0;
+                    }
                     break;
                 }
             }
 
             PrimaryBeamSpacing = currentBeamSpacing;
+            PrimaryBeamSpacingMeters = currentBeamSpacing / 1000.0;
         }
 
         private double GetInterpolatedBeamSpacing(List<(double Prop, double Beam)> data, double targetProp)
