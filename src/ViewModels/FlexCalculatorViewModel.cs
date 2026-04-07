@@ -17,6 +17,32 @@ namespace EngineeringDashboard
 
         public List<string> H20Options => FloorPropData.H20Data.Keys.ToList();
 
+        private double _floorHeight = 3000;
+        private string _propType = "300";
+        private string _propOrientation = "at bottom";
+
+        public List<string> PropTypeOptions => new List<string> { "250", "300", "350", "400", "550" };
+        public List<string> PropOrientationOptions => new List<string> { "at bottom", "at top" };
+
+        public double FloorHeight
+        {
+            get => _floorHeight;
+            set { _floorHeight = value; OnPropertyChanged(); Calculate(); }
+        }
+
+        public string PropType
+        {
+            get => _propType;
+            set { _propType = value; OnPropertyChanged(); Calculate(); }
+        }
+
+        public string PropOrientation
+        {
+            get => _propOrientation;
+            set { _propOrientation = value; OnPropertyChanged(); Calculate(); }
+        }
+
+
         public double SlabThickness
         {
             get => _slabThickness;
@@ -78,6 +104,16 @@ namespace EngineeringDashboard
                 WarningMessage = $"Slab Thickness adjusted to {sT}mm (Table Limits).";
             }
 
+            // Get Slab Load
+            double? slabLoadNullable = SlabLoadHelper.GetSlabLoad((int)SlabThickness);
+            if (!slabLoadNullable.HasValue)
+            {
+                WarningMessage = "Out of bounds";
+                PrimaryBeamSpacing = 0;
+                return;
+            }
+            double slabLoad = slabLoadNullable.Value;
+
             var keys = FloorPropData.TableData.Keys.OrderBy(k => k).ToList();
             double x1 = keys.LastOrDefault(k => k <= sT);
             double x2 = keys.FirstOrDefault(k => k >= sT);
@@ -104,8 +140,36 @@ namespace EngineeringDashboard
 
             double finalZ = (x1 == x2) ? z1 : z1 + (sT - x1) * ((z2 - z1) / (x2 - x1));
 
-            // Round down to nearest 25mm
-            PrimaryBeamSpacing = Math.Floor(finalZ / 25.0) * 25.0;
+            // Initial safe beam spacing (rounded down to nearest 25mm)
+            double currentBeamSpacing = Math.Floor(finalZ / 25.0) * 25.0;
+
+            // Now perform Capacity Cross-Check
+            double extensionMeters = (FloorHeight / 1000.0) - (SlabThickness / 1000.0) - 0.418;
+            double roundedExtension = Math.Ceiling(extensionMeters * 10) / 10.0;
+            string key = PropType + " " + PropOrientation;
+
+            while (true)
+            {
+                double propLoad = slabLoad * (currentBeamSpacing / 1000.0) * (PropSpacing / 1000.0);
+                double? capacity = PropDataHelper.GetCapacity(roundedExtension, key);
+
+                if (!capacity.HasValue || propLoad > capacity.Value)
+                {
+                    currentBeamSpacing -= 25.0;
+                    if (currentBeamSpacing <= 0)
+                    {
+                        WarningMessage = "Cannot find safe primary beam spacing for given load and capacity.";
+                        currentBeamSpacing = 0;
+                        break;
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            PrimaryBeamSpacing = currentBeamSpacing;
         }
 
         private double GetInterpolatedBeamSpacing(List<(double Prop, double Beam)> data, double targetProp)
