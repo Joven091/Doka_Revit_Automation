@@ -13,6 +13,7 @@ namespace EngineeringDashboard
         private string _selectedH20 = "2.90m";
         private double _recommendedPropSpacing;
         private double _primaryBeamSpacing;
+        private double _secondaryBeamCantilever = 500;
         private string _warningMessage;
 
         public List<string> H20Options => FloorPropData.H20Data.Keys.ToList();
@@ -75,6 +76,12 @@ namespace EngineeringDashboard
             set { _propSpacing = value; OnPropertyChanged(); Calculate(); }
         }
 
+        public double SecondaryBeamCantilever
+        {
+            get => _secondaryBeamCantilever;
+            set { _secondaryBeamCantilever = value; OnPropertyChanged(); Calculate(); }
+        }
+
         public double PrimaryBeamSpacing
         {
             get => _primaryBeamSpacing;
@@ -107,6 +114,20 @@ namespace EngineeringDashboard
         {
             get => _utilizationRate;
             private set { _utilizationRate = value; OnPropertyChanged(); }
+        }
+
+        private double _h20Shear;
+        public double H20Shear
+        {
+            get => _h20Shear;
+            private set { _h20Shear = value; OnPropertyChanged(); }
+        }
+
+        private double _h20Utilization;
+        public double H20Utilization
+        {
+            get => _h20Utilization;
+            private set { _h20Utilization = value; OnPropertyChanged(); }
         }
 
         public string WarningMessage
@@ -175,22 +196,45 @@ namespace EngineeringDashboard
             double extensionMeters = (FloorHeight / 1000.0) - (SlabThickness / 1000.0) - 0.418;
             double roundedExtension = Math.Ceiling(extensionMeters * 10) / 10.0;
             string key = PropType + " " + PropOrientation;
+            double vCap = 11.00; // Maximum allowable H20 shear capacity in kN
 
             while (true)
             {
-                double propLoad = slabLoad * (currentBeamSpacing / 1000.0) * (PropSpacing / 1000.0);
+                double L = currentBeamSpacing / 1000.0;
+                double P_m = PropSpacing / 1000.0;
+                double a = SecondaryBeamCantilever / 1000.0;
+
+                double R_max = 0;
+                if (L > 0)
+                {
+                    double a_over_L = a / L;
+                    if (a_over_L <= 0.4534)
+                    {
+                        R_max = slabLoad * (1.1 * L - 0.6 * (a * a / L));
+                    }
+                    else
+                    {
+                        R_max = slabLoad * (a + 0.4 * L + 0.6 * (a * a / L));
+                    }
+                }
+
+                double propLoad = R_max * P_m;
+                double vMax = 0.5 * R_max * P_m;
+
                 double? capacity = PropDataHelper.GetCapacity(roundedExtension, key);
 
-                if (!capacity.HasValue || propLoad > capacity.Value)
+                if (!capacity.HasValue || propLoad > capacity.Value || vMax > vCap)
                 {
                     currentBeamSpacing -= 25.0;
                     if (currentBeamSpacing <= 0)
                     {
-                        WarningMessage = "Cannot find safe primary beam spacing for given load and capacity.";
+                        WarningMessage = "Cannot find safe primary beam spacing for given load, prop capacity, and H20 shear capacity.";
                         currentBeamSpacing = 0;
                         ActualPropLoad = 0;
                         PropCapacityLimit = 0;
                         UtilizationRate = 0;
+                        H20Shear = 0;
+                        H20Utilization = 0;
                         break;
                     }
                 }
@@ -206,6 +250,8 @@ namespace EngineeringDashboard
                     {
                         UtilizationRate = 0;
                     }
+                    H20Shear = Math.Round(vMax, 2);
+                    H20Utilization = Math.Round((vMax / vCap) * 100, 1);
                     break;
                 }
             }
