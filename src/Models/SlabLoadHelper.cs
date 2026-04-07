@@ -1,61 +1,46 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace EngineeringDashboard
 {
-    public static class SlabLoadHelper
+    public static class FormworkLoadCalculator
     {
         /// <summary>
-        /// Lookup table for Hollow Core Slab Loads.
-        /// Key: Slab Thickness in millimeters (mm)
-        /// Value: Slab Load in kN/m²
+        /// Calculates the total design load for concrete formwork based on slab thickness.
+        /// Uses EN 12812 / BS 5975 standard load assumptions.
         /// </summary>
-        public static readonly Dictionary<int, double> SlabLoads = new Dictionary<int, double>
+        /// <param name="thicknessMm">Slab thickness in millimeters (mm).</param>
+        /// <returns>Total formwork design load in kN/m².</returns>
+        public static double CalculateTotalLoad(int thicknessMm)
         {
-            [100] = 4.25, [120] = 4.74, [140] = 5.23, [160] = 5.72,
-            [180] = 6.21, [200] = 6.71, [220] = 7.20, [240] = 7.69,
-            [260] = 8.18, [280] = 8.67, [300] = 9.16, [350] = 10.49,
-            [400] = 11.84, [450] = 13.19, [500] = 14.54
-        };
-
-        /// <summary>
-        /// Retrieves the slab load. If exact thickness is missing,
-        /// it performs linear interpolation between the nearest values.
-        /// </summary>
-        public static double? GetSlabLoad(int thicknessMm)
-        {
-            // 1. Check for exact match
-            if (SlabLoads.TryGetValue(thicknessMm, out double exactLoad))
+            // Prevent negative or zero thickness inputs
+            if (thicknessMm <= 0)
             {
-                return exactLoad;
+                throw new ArgumentException("Slab thickness must be greater than zero.", nameof(thicknessMm));
             }
 
-            // 2. Check for out of bounds
-            int minThick = SlabLoads.Keys.Min();
-            int maxThick = SlabLoads.Keys.Max();
+            // Convert thickness from mm to meters for the formula
+            double h = thicknessMm / 1000.0;
 
-            if (thicknessMm < minThick || thicknessMm > maxThick)
-            {
-                return null;
-            }
+            // 1. Concrete Dead Load (25 kN/m³ volumetric weight)
+            double concreteLoad = h * 25.0;
 
-            // 3. Perform Linear Interpolation
-            int lowerBound = minThick;
-            int upperBound = maxThick;
+            // 2. Placing/Heaping Live Load (10% of concrete weight)
+            // Clamped between 0.75 and 1.5 kN/m²
+            // Using Math.Max and Math.Min ensures full compatibility across all .NET versions
+            double nominalPlacingLoad = 0.10 * concreteLoad;
+            double placingLoad = Math.Max(0.75, Math.Min(1.5, nominalPlacingLoad));
 
-            foreach (var key in SlabLoads.Keys.OrderBy(k => k))
-            {
-                if (key < thicknessMm) lowerBound = key;
-                if (key > thicknessMm) { upperBound = key; break; }
-            }
+            // 3. Construction Working Area Live Load (constant 0.75 kN/m²)
+            double workingLoad = 0.75;
 
-            double lowerLoad = SlabLoads[lowerBound];
-            double upperLoad = SlabLoads[upperBound];
+            // 4. Formwork Dead Load (constant 0.4 kN/m²)
+            double formworkLoad = 0.4;
 
-            double interpolatedLoad = lowerLoad + (upperLoad - lowerLoad) * (thicknessMm - lowerBound) / (upperBound - lowerBound);
+            // 5. Calculate Total Design Load
+            double totalLoad = concreteLoad + placingLoad + workingLoad + formworkLoad;
 
-            return Math.Round(interpolatedLoad, 2);
+            // Return rounded to 2 decimal places to match your original output style
+            return Math.Round(totalLoad, 2);
         }
     }
 }
