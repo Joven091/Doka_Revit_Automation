@@ -28,15 +28,6 @@
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
   <AddIn Type="Command">
-    <Text>Generate Concrete Elements</Text>
-    <Description>Generates concrete structural elements from linked CAD file</Description>
-    <Assembly>MyRevitAddin.dll</Assembly>
-    <FullClassName>MyRevitAddin.Commands.GenerateConcreteElementsCommand</FullClassName>
-    <ClientId>4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a</ClientId>
-    <VendorId>DOKA</VendorId>
-    <VendorDescription>Doka Designer</VendorDescription>
-  </AddIn>
-  <AddIn Type="Command">
     <Text>Replace Table Helper</Text>
     <Description>Replaces Table Helper families with matching Table families</Description>
     <Assembly>MyRevitAddin.dll</Assembly>
@@ -45,4 +36,4 @@
     <VendorId>DOKA</VendorId>
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
-<AddIn Type="Command"><Text>Area Table Command</Text><Description>Creates a table of Doka_Area values from selected families</Description><Assembly>MyRevitAddin.dll</Assembly><FullClassName>MyRevitAddin.Commands.AreaTableCommand</FullClassName><ClientId>8227cad6-0ab2-4b5b-8764-11005b7f0678</ClientId><VendorId>DOKA</VendorId><VendorDescription>Doka Designer</VendorDescription></AddIn></RevitAddIns>
+</RevitAddIns>
