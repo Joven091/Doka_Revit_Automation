@@ -36,4 +36,13 @@
     <VendorId>DOKA</VendorId>
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
+  <AddIn Type="Command">
+    <Text>Flip Visibility</Text>
+    <Description>Flips the visibility of elements in the Active View</Description>
+    <Assembly>MyRevitAddin.dll</Assembly>
+    <FullClassName>MyRevitAddin.Commands.VisibilityFlipper</FullClassName>
+    <ClientId>98d9c84b-f1c2-4238-b1da-b703b4dbfd0a</ClientId>
+    <VendorId>DOKA</VendorId>
+    <VendorDescription>Doka Designer</VendorDescription>
+  </AddIn>
 </RevitAddIns>
