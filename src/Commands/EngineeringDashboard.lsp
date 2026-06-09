@@ -118,7 +118,6 @@
 
 
 ;; --- Global State for Persistence ---
-(setq *glb_opt* "Flex")
 
 (setq *glb_slab_thk* "300.0")
 (setq *glb_floor_ht* "3000.0")
@@ -126,13 +125,7 @@
 (setq *glb_prop_ori* "bottom")
 (setq *glb_prop_spc* "1000.0")
 (setq *glb_sec_cant* "500.0")
-
-(setq *glb_plt_load* "90.0")
-(setq *glb_plt_span* "100.0")
-(setq *glb_plt_wid* "100.0")
-(setq *glb_plt_hdia* "18.0")
-(setq *glb_plt_ndia* "30.0")
-(setq *glb_plt_yield* "235.0")
+(setq *glb_usr_beam_spc* "")
 
 ;; Variables for Output screens
 (setq *out_flex_beam_spc* "")
@@ -141,25 +134,11 @@
 (setq *out_flex_ut_rt* "")
 (setq *out_flex_h20_shr* "")
 (setq *out_flex_h20_ut* "")
-
-(setq *out_plt_bend_t* "")
-(setq *out_plt_punch_t* "")
-(setq *out_plt_rec_t* "")
+(setq *glb_max_beam_spc_val* 0.0)
 
 (defun WriteDCL ( / dclFile f )
   (setq dclFile (vl-filename-mktemp "EngDash.dcl"))
   (setq f (open dclFile "w"))
-
-  (write-line "EngDashMain : dialog { label = \"Engineering Dashboard\";" f)
-  (write-line "  : column {" f)
-  (write-line "    : text { label = \"Select a Calculator:\"; alignment = centered; }" f)
-  (write-line "    : radio_column {" f)
-  (write-line "      : radio_button { key = \"rb_flex\"; label = \"Flex Calculator (Floor Prop)\"; }" f)
-  (write-line "      : radio_button { key = \"rb_plate\"; label = \"Custom Steel Plate Calculator\"; }" f)
-  (write-line "    }" f)
-  (write-line "    ok_cancel;" f)
-  (write-line "  }" f)
-  (write-line "}" f)
 
   (write-line "EngDashFlexIn : dialog { label = \"Flex Calculator Input\";" f)
   (write-line "  : column {" f)
@@ -186,34 +165,18 @@
   (write-line "    : text { key = \"txt_h20_ut\"; }" f)
   (write-line "    : row {" f)
   (write-line "      : button { key = \"btn_back\"; label = \"Back\"; is_cancel = true; }" f)
-  (write-line "      : button { key = \"accept\"; label = \"Close\"; is_default = true; }" f)
+  (write-line "      : button { key = \"accept\"; label = \"Proceed\"; is_default = true; }" f)
   (write-line "    }" f)
   (write-line "  }" f)
   (write-line "}" f)
 
-  (write-line "EngDashPlateIn : dialog { label = \"Plate Calculator Input\";" f)
+  (write-line "EngDashBeamSpc : dialog { label = \"Beam Array\";" f)
   (write-line "  : column {" f)
-  (write-line "    : edit_box { key = \"eb_plt_load\"; label = \"Load (kN):\"; edit_width = 12; }" f)
-  (write-line "    : edit_box { key = \"eb_plt_span\"; label = \"Span (mm):\"; edit_width = 12; }" f)
-  (write-line "    : edit_box { key = \"eb_plt_wid\"; label = \"Plate Width (mm):\"; edit_width = 12; }" f)
-  (write-line "    : edit_box { key = \"eb_plt_hdia\"; label = \"Hole Diameter (mm):\"; edit_width = 12; }" f)
-  (write-line "    : edit_box { key = \"eb_plt_ndia\"; label = \"Nut Diameter (mm):\"; edit_width = 12; }" f)
-  (write-line "    : popup_list { key = \"pl_plt_yield\"; label = \"Yield Strength (MPa):\"; edit_width = 12; }" f)
-  (write-line "    : row {" f)
-  (write-line "      : button { key = \"btn_calc\"; label = \"Calculate\"; is_default = true; }" f)
-  (write-line "      : button { key = \"cancel\"; label = \"Cancel\"; is_cancel = true; }" f)
-  (write-line "    }" f)
-  (write-line "  }" f)
-  (write-line "}" f)
-
-  (write-line "EngDashPlateOut : dialog { label = \"Plate Calculator Results\";" f)
-  (write-line "  : column {" f)
-  (write-line "    : text { key = \"txt_bend_t\"; }" f)
-  (write-line "    : text { key = \"txt_punch_t\"; }" f)
-  (write-line "    : text { key = \"txt_rec_t\"; }" f)
+  (write-line "    : text { key = \"txt_max_spc\"; }" f)
+  (write-line "    : edit_box { key = \"eb_usr_spc\"; label = \"Primary Beam Spacing (mm):\"; edit_width = 12; }" f)
   (write-line "    : row {" f)
   (write-line "      : button { key = \"btn_back\"; label = \"Back\"; is_cancel = true; }" f)
-  (write-line "      : button { key = \"accept\"; label = \"Close\"; is_default = true; }" f)
+  (write-line "      : button { key = \"accept\"; label = \"Proceed\"; is_default = true; }" f)
   (write-line "    }" f)
   (write-line "  }" f)
   (write-line "}" f)
@@ -222,7 +185,7 @@
   dclFile
 )
 
-(defun c:EngDashboard ( / dclFile dclID ret mainLoop )
+(defun c:EngDashboard ( / dclFile dclID )
   (vl-load-com)
   (setq dclFile (WriteDCL))
   (setq dclID (load_dialog dclFile))
@@ -231,32 +194,7 @@
       (progn (princ "\nError loading DCL file.") (exit))
   )
 
-  (setq mainLoop T)
-  (while mainLoop
-    (if (not (new_dialog "EngDashMain" dclID))
-        (progn (princ "\nError displaying Main Dialog.") (setq mainLoop nil))
-    )
-
-    (if (= *glb_opt* "Flex")
-        (set_tile "rb_flex" "1")
-        (set_tile "rb_plate" "1")
-    )
-
-    (action_tile "rb_flex" "(setq *glb_opt* \"Flex\")")
-    (action_tile "rb_plate" "(setq *glb_opt* \"Plate\")")
-    (action_tile "accept" "(done_dialog 1)")
-    (action_tile "cancel" "(done_dialog 0)")
-
-    (setq ret (start_dialog))
-
-    (if (= ret 1)
-        (if (= *glb_opt* "Flex")
-            (RunFlexDialog dclID)
-            (RunPlateDialog dclID)
-        )
-        (setq mainLoop nil) ;; Cancel clicked
-    )
-  )
+  (RunFlexDialog dclID)
 
   (unload_dialog dclID)
   (vl-file-delete dclFile)
@@ -411,6 +349,9 @@
               (alert warningMsg)
           )
 
+          (setq *glb_max_beam_spc_val* currentBeamSpacing)
+          (if (= *glb_usr_beam_spc* "") (setq *glb_usr_beam_spc* (rtos *glb_max_beam_spc_val* 2 0)))
+
           (setq *out_flex_beam_spc* (strcat "Safe Primary Beam Spacing: " (rtos currentBeamSpacing 2 0) " mm"))
           (setq *out_flex_act_ld* (strcat "Actual Prop Load: " (rtos actualPropLoad 2 2) " kN"))
           (setq *out_flex_cap_lim* (strcat "Prop Capacity limit used: " (rtos propCapLimit 2 2) " kN"))
@@ -436,7 +377,12 @@
 
             (setq out_ret (start_dialog))
             (if (= out_ret 1)
-                (progn (setq outLoop nil) (setq flexLoop nil)) ;; Close everything
+                (progn
+                    (setq outLoop nil)
+                    (setq flexLoop nil)
+                    ;; Proceed to Beam Array Dialog
+                    (RunBeamArrayDialog dclID)
+                )
                 (setq outLoop nil) ;; Back button, loop continues in input
             )
           )
@@ -446,99 +392,124 @@
   )
 )
 
-(defun RunPlateDialog ( dclID / plateLoop ret val_ld val_sp val_wid val_hdia val_ndia val_y calc_success b_eff load_N t_bend tau_allow t_punch max_t std_thks recommendedPlate py_idx)
-  (setq plateLoop T)
-  (while plateLoop
-    (if (not (new_dialog "EngDashPlateIn" dclID))
-        (progn (princ "\nError displaying Plate Input Dialog.") (setq plateLoop nil) (exit))
+(defun RunBeamArrayDialog ( dclID / beamLoop ret usr_spc max_str warningMsg)
+  (setq beamLoop T)
+  (while beamLoop
+    (if (not (new_dialog "EngDashBeamSpc" dclID))
+        (progn (princ "\nError displaying Beam Spacing Dialog.") (setq beamLoop nil) (exit))
     )
 
-    (start_list "pl_plt_yield") (mapcar 'add_list '("235" "275")) (end_list)
-    (setq py_idx "0")
-    (if (= *glb_plt_yield* "275.0") (setq py_idx "1"))
+    (setq max_str (strcat "Max Allowed Primary Beam Spacing: " (rtos *glb_max_beam_spc_val* 2 0) " mm"))
+    (set_tile "txt_max_spc" max_str)
+    (set_tile "eb_usr_spc" *glb_usr_beam_spc*)
 
-    (set_tile "eb_plt_load" *glb_plt_load*)
-    (set_tile "eb_plt_span" *glb_plt_span*)
-    (set_tile "eb_plt_wid" *glb_plt_wid*)
-    (set_tile "eb_plt_hdia" *glb_plt_hdia*)
-    (set_tile "eb_plt_ndia" *glb_plt_ndia*)
-    (set_tile "pl_plt_yield" py_idx)
+    (action_tile "eb_usr_spc" "(setq *glb_usr_beam_spc* $value)")
 
-    (action_tile "eb_plt_load" "(setq *glb_plt_load* $value)")
-    (action_tile "eb_plt_span" "(setq *glb_plt_span* $value)")
-    (action_tile "eb_plt_wid" "(setq *glb_plt_wid* $value)")
-    (action_tile "eb_plt_hdia" "(setq *glb_plt_hdia* $value)")
-    (action_tile "eb_plt_ndia" "(setq *glb_plt_ndia* $value)")
-    (action_tile "pl_plt_yield" "(setq py_idx (atoi $value)) (if (= py_idx 0) (setq *glb_plt_yield* \"235.0\") (setq *glb_plt_yield* \"275.0\"))")
-
-    (action_tile "btn_calc" "(done_dialog 2)")
-    (action_tile "cancel" "(done_dialog 0)")
+    (action_tile "btn_back" "(done_dialog 0)")
+    (action_tile "accept" "(done_dialog 1)")
 
     (setq ret (start_dialog))
 
-    (if (= ret 2)
+    (if (= ret 1)
         (progn
-          ;; PERFORM CALCULATION
-          (setq val_ld (atof *glb_plt_load*))
-          (setq val_sp (atof *glb_plt_span*))
-          (setq val_wid (atof *glb_plt_wid*))
-          (setq val_hdia (atof *glb_plt_hdia*))
-          (setq val_ndia (atof *glb_plt_ndia*))
-          (setq val_y (atof *glb_plt_yield*))
-
-          (if (or (<= val_y 0) (<= val_ndia 0))
-              (alert "Invalid Input.")
+          (setq usr_spc (atof *glb_usr_beam_spc*))
+          (if (> usr_spc *glb_max_beam_spc_val*)
               (progn
-                (setq b_eff (- val_wid val_hdia))
-                (if (<= b_eff 0)
-                    (alert "Error: Tie Hole Diameter must be smaller than Total Plate Width.")
-                    (progn
-                      (setq load_N (* val_ld 1000.0))
-                      (setq t_bend (sqrt (/ (* 1.5 load_N val_sp) (* b_eff val_y))))
-                      (setq tau_allow (* 0.4 val_y))
-                      (setq t_punch (/ load_N (* pi val_ndia tau_allow)))
-                      (setq max_t (max t_bend t_punch))
-
-                      (setq std_thks '(4.0 5.0 6.0 8.0 10.0 12.0 15.0 16.0 20.0 25.0 30.0 40.0 50.0))
-                      (setq recommendedPlate nil)
-                      (foreach t_val std_thks
-                        (if (and (null recommendedPlate) (>= t_val max_t))
-                            (setq recommendedPlate t_val)
-                        )
-                      )
-
-                      (setq *out_plt_bend_t* (strcat "Req Bending Thickness: " (rtos t_bend 2 2) " mm"))
-                      (setq *out_plt_punch_t* (strcat "Req Punching Thickness: " (rtos t_punch 2 2) " mm"))
-                      (if recommendedPlate
-                          (setq *out_plt_rec_t* (strcat "Recommended Thickness: " (rtos recommendedPlate 2 1) " mm"))
-                          (setq *out_plt_rec_t* "Recommended Thickness: Custom (>50mm)")
-                      )
-
-                      ;; SHOW OUTPUT DIALOG
-                      (setq outLoop T)
-                      (while outLoop
-                        (if (not (new_dialog "EngDashPlateOut" dclID))
-                            (progn (princ "\nError displaying Plate Output Dialog.") (setq outLoop nil) (setq plateLoop nil))
-                        )
-                        (set_tile "txt_bend_t" *out_plt_bend_t*)
-                        (set_tile "txt_punch_t" *out_plt_punch_t*)
-                        (set_tile "txt_rec_t" *out_plt_rec_t*)
-
-                        (action_tile "btn_back" "(done_dialog 0)")
-                        (action_tile "accept" "(done_dialog 1)")
-
-                        (setq out_ret (start_dialog))
-                        (if (= out_ret 1)
-                            (progn (setq outLoop nil) (setq plateLoop nil)) ;; Close everything
-                            (setq outLoop nil) ;; Back button
-                        )
-                      )
-                    )
-                )
+                (alert (strcat "Error: Input exceeds maximum allowed spacing (" (rtos *glb_max_beam_spc_val* 2 0) " mm)."))
+              )
+              (progn
+                (setq beamLoop nil)
+                ;; Trigger Array execution
+                (DoBeamArray usr_spc)
               )
           )
         )
-        (setq plateLoop nil) ;; Cancel from input
+        (progn
+          (setq beamLoop nil)
+          ;; Go back to Flex Calculator
+          (RunFlexDialog dclID)
+        )
     )
+  )
+)
+
+(defun DoBeamArray ( S_u / ent startPt endPt D ang lst cur_pt cur_dist obj )
+  (setq ent (entsel "\nSelect line or polyline to array: "))
+  (if (null ent)
+      (progn (princ "\nNo entity selected.") (exit))
+  )
+
+  (setq startPt (getpoint "\nSelect Start Point: "))
+  (if (null startPt) (exit))
+
+  (setq endPt (getpoint startPt "\nSelect End Point: "))
+  (if (null endPt) (exit))
+
+  (setq D (distance startPt endPt))
+  (setq ang (angle startPt endPt))
+
+  (setq lst (ComputeSpacings S_u D))
+
+  (if (null lst)
+      (princ "\nDistance is too short to array.")
+      (progn
+        ;; Create copies
+        (setq cur_dist 0.0)
+        (foreach s lst
+          (setq cur_dist (+ cur_dist s))
+          (setq cur_pt (polar startPt ang cur_dist))
+          (command "_.copy" (car ent) "" startPt cur_pt)
+        )
+        (princ (strcat "\nArray complete. Distance total: " (rtos cur_dist 2 2)))
+      )
+  )
+)
+
+;; The computation logic ensures:
+;; 1. Last point is 500-700mm from endpoint. We choose to make L_last as close to 500 as possible.
+;;    Actually, the easiest way is to leave exactly an integer multiple of 25mm such that the remainder is 500 <= Rem <= 700.
+;;    We'll subtract 500. Then distribute S_u.
+(defun ComputeSpacings ( S_u D / S_u_round L_last n rem total S1 S2 lst )
+  ;; Round S_u to nearest 25mm down
+  (setq S_u_round (* 25.0 (fix (/ (+ S_u 12.5) 25.0))))
+  (if (> S_u_round S_u) (setq S_u_round (- S_u_round 25.0)))
+
+  (if (<= D 500.0)
+      nil
+      (progn
+        ;; Determine allowable length for array lines, leaving at least 500mm spacing.
+        ;; So L_last = distance up to the final line.
+        (setq L_last (* 25.0 (fix (/ (- D 500.0) 25.0))))
+        (if (<= L_last 0.0)
+            nil
+            (progn
+              (setq n (fix (/ (+ L_last 0.1) S_u_round)))
+              (setq rem (- L_last (* n S_u_round)))
+              (setq lst '())
+
+              (if (> rem 1.0)
+                  (if (< rem 1000.0)
+                      (if (> n 0)
+                          (progn
+                            (setq total (+ S_u_round rem))
+                            (setq S1 (* 25.0 (fix (/ (+ (/ total 2.0) 12.5) 25.0))))
+                            (setq S2 (- total S1))
+                            (setq n (- n 1))
+                            (repeat n (setq lst (append lst (list S_u_round))))
+                            (setq lst (append lst (list S1 S2)))
+                          )
+                          (setq lst (list rem))
+                      )
+                      (progn
+                        (repeat n (setq lst (append lst (list S_u_round))))
+                        (setq lst (append lst (list rem)))
+                      )
+                  )
+                  (repeat n (setq lst (append lst (list S_u_round))))
+              )
+              lst
+            )
+        )
+      )
   )
 )
