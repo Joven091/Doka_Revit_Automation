@@ -10,6 +10,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="220"/>
@@ -51,7 +52,15 @@
             </Grid>
         </Border>
 
-        <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+        <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Orientation="Vertical" Margin="0,15,0,5">
+            <TextBlock Text="Notes:" FontWeight="Bold" Margin="0,0,0,5" />
+            <TextBlock Text="- for simple beam (2 supports only) max span is 2000" TextWrapping="Wrap" Margin="10,0,0,2"/>
+            <TextBlock Text="- concrete beam at the center of secondary beam" TextWrapping="Wrap" Margin="10,0,0,2"/>
+            <TextBlock Text="- limiting deflection to 2mm" TextWrapping="Wrap" Margin="10,0,0,2"/>
+            <TextBlock Text="- Primary beam cantilever 500mm" TextWrapping="Wrap" Margin="10,0,0,2"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button Content="Close" Width="80" Padding="5" Click="BtnClose_Click"/>
         </StackPanel>
     </Grid>
