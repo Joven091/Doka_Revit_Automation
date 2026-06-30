@@ -28,7 +28,7 @@
         <Label Content="Floor Height (mm):" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
         <TextBox Text="{Binding FloorHeight, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
 
-        <Label Content="Prop Type:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
+        <Label Content="Prop Type Eurex 20 eco:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
         <ComboBox ItemsSource="{Binding PropTypeOptions}" SelectedItem="{Binding PropType}" Grid.Row="2" Grid.Column="1" Margin="0,5"/>
 
         <Label Content="Prop Orientation:" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
