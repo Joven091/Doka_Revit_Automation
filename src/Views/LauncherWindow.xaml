@@ -12,14 +12,14 @@
 
         <TextBlock Text="Select a Calculator:" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,15" Grid.Row="0"/>
 
-        <Button x:Name="BtnFlexCalculator" Content="Flex Calculator (Floor Prop)" 
+        <Button x:Name="BtnFlexCalculator" Content="Slab Calculator"
                 Grid.Row="1" Margin="10" FontSize="14" FontWeight="SemiBold"
                 Background="#007ACC" Foreground="White" BorderThickness="0"
                 Click="BtnFlexCalculator_Click"/>
 
-        <Button x:Name="BtnPlateCalculator" Content="Custom Steel Plate Calculator" 
+        <Button x:Name="BtnBeamCalculator" Content="Beam Calculator"
                 Grid.Row="2" Margin="10" FontSize="14" FontWeight="SemiBold"
                 Background="#28A745" Foreground="White" BorderThickness="0"
-                Click="BtnPlateCalculator_Click"/>
+                Click="BtnBeamCalculator_Click"/>
     </Grid>
 </Window>
