@@ -22,14 +22,14 @@ namespace EngineeringDashboard
             this.Show();
         }
 
-        private void BtnPlateCalculator_Click(object sender, RoutedEventArgs e)
+        private void BtnBeamCalculator_Click(object sender, RoutedEventArgs e)
         {
             // Hide the launcher
             this.Hide();
 
-            // Instantiate and show the Plate Calculator window
-            PlateCalculatorWindow plateWindow = new PlateCalculatorWindow();
-            plateWindow.ShowDialog();
+            // Instantiate and show the Beam Calculator window
+            BeamCalculatorWindow beamWindow = new BeamCalculatorWindow();
+            beamWindow.ShowDialog();
 
             // Show the launcher again once the calculator is closed
             this.Show();
