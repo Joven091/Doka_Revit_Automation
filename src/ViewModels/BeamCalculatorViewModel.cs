@@ -96,7 +96,7 @@ namespace EngineeringDashboard
                 MaximumPropLoad = matchingRow.MaximumPropLoad;
                 LimitingFactor = matchingRow.LimitingFactor;
 
-                double cantileverCalc = MaximumPropSpacing * 0.3;
+                double cantileverCalc = MaximumPropSpacing * 0.42;
                 if (cantileverCalc > 500)
                 {
                     PrimaryBeamCantilever = 500;

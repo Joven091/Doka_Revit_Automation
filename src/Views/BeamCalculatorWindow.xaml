@@ -61,7 +61,6 @@
             <TextBlock Text="- for simple beam (2 supports only) max span is 2000" TextWrapping="Wrap" Margin="10,0,0,2"/>
             <TextBlock Text="- concrete beam at the center of secondary beam" TextWrapping="Wrap" Margin="10,0,0,2"/>
             <TextBlock Text="- limiting deflection to 2mm" TextWrapping="Wrap" Margin="10,0,0,2"/>
-            <TextBlock Text="- Primary beam cantilever 500mm" TextWrapping="Wrap" Margin="10,0,0,2"/>
         </StackPanel>
 
         <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
