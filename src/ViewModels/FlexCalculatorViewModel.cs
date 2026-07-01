@@ -183,10 +183,13 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         }
         else
         {
-            SuggestedPrimaryBeamSpacing = Math.Round(best_L_s * 1000); 
+            SuggestedPrimaryBeamSpacing = Math.Floor((best_L_s * 1000.0) / 25.0) * 25.0;
             
-            // Resolve actual loads at the exact found span
-            double final_w_pb = w_slab * GetMaxReactionMultiplier(PrimaryBeamCount, best_L_s, a_s);
+            // Convert back to meters for load calculation
+            double final_L_s = SuggestedPrimaryBeamSpacing / 1000.0;
+
+            // Resolve actual loads at the rounded span
+            double final_w_pb = w_slab * GetMaxReactionMultiplier(PrimaryBeamCount, final_L_s, a_s);
             double final_V_prim = final_w_pb * GetMaxShearMultiplier(PropCount, L_p, a_p);
             double final_P_prop = final_w_pb * GetMaxReactionMultiplier(PropCount, L_p, a_p);
             
