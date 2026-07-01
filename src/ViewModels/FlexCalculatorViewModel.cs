@@ -10,6 +10,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
 {
     // --- Constants ---
     private const double MAX_H20_SHEAR_KN = 11.00;
+    private const double MAX_H20_MOMENT_KNM = 5.00;
     private const double SYSTEM_DEPTH_METERS = 0.418; // Depth of H20 beams + plywood
 
     // --- Inputs: Slab & Geometry ---
@@ -18,6 +19,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     
     // --- Inputs: Secondary Beam Layout ---
     private int _primaryBeamCount = 3; // Number of primary beams supporting the secondary beam
+    private double _secondaryBeamSpacing = 500; // Distance between secondary beams
     private double _secondaryBeamCantilever = 500; // a_s
 
     // --- Inputs: Primary Beam & Prop Layout ---
@@ -47,6 +49,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public double SlabThickness { get => _slabThickness; set { _slabThickness = value; OnPropertyChanged(); Calculate(); } }
     public double FloorHeight { get => _floorHeight; set { _floorHeight = value; OnPropertyChanged(); Calculate(); } }
     
+    public double SecondaryBeamSpacing { get => _secondaryBeamSpacing; set { _secondaryBeamSpacing = value; OnPropertyChanged(); Calculate(); } }
     public int PrimaryBeamCount { get => _primaryBeamCount; set { _primaryBeamCount = value; OnPropertyChanged(); Calculate(); } }
     public double SecondaryBeamCantilever { get => _secondaryBeamCantilever; set { _secondaryBeamCantilever = value; OnPropertyChanged(); Calculate(); } }
 
@@ -118,8 +121,51 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         double a_s = SecondaryBeamCantilever / 1000.0;
         double L_p = PropSpacing / 1000.0;
         double a_p = PrimaryBeamCantilever / 1000.0;
+        double c_sec = SecondaryBeamSpacing / 1000.0;
 
-        // 3. Determine maximum allowable w_pb based on prop load and H20 shear
+        // ====================================================================
+        // LIMIT CHECK A: SECONDARY BEAM LIMITS (H20 Timber)
+        // ====================================================================
+        double w_sb = w_slab * c_sec; // Line load on a single secondary beam (kN/m)
+        
+        // A.1: Independent Cantilever Check
+        double v_cantilever_sec = w_sb * a_s;
+        double m_cantilever_sec = (w_sb * Math.Pow(a_s, 2)) / 2.0;
+        
+        double L_s_max_sec_shear = 0;
+        double L_s_max_sec_moment = 0;
+
+        if (v_cantilever_sec > MAX_H20_SHEAR_KN)
+        {
+            warnings.Add($"Secondary beam cantilever shear exceeds limit ({Math.Round(v_cantilever_sec,2)} kN). Reduce a_s.");
+        }
+        else if (m_cantilever_sec > MAX_H20_MOMENT_KNM)
+        {
+            warnings.Add($"Secondary beam cantilever moment exceeds limit ({Math.Round(m_cantilever_sec,2)} kNm). Reduce a_s.");
+        }
+        else
+        {
+            // A.2: Span calculation based on support conditions (PrimaryBeamCount)
+            if (PrimaryBeamCount <= 2)
+            {
+                L_s_max_sec_shear = 2.0 * (MAX_H20_SHEAR_KN / w_sb);
+                L_s_max_sec_moment = Math.Sqrt((8.0 * MAX_H20_MOMENT_KNM) / w_sb);
+            }
+            else if (PrimaryBeamCount == 3)
+            {
+                L_s_max_sec_shear = MAX_H20_SHEAR_KN / (0.625 * w_sb);
+                L_s_max_sec_moment = Math.Sqrt((8.0 * MAX_H20_MOMENT_KNM) / w_sb);
+            }
+            else // 4+ Supports
+            {
+                L_s_max_sec_shear = MAX_H20_SHEAR_KN / (0.6 * w_sb);
+                L_s_max_sec_moment = Math.Sqrt((10.0 * MAX_H20_MOMENT_KNM) / w_sb);
+            }
+        }
+
+        // ====================================================================
+        // LIMIT CHECK B: PRIMARY BEAM & PROP LIMITS
+        // ====================================================================
         double max_w_pb_prop = 0;
         double max_w_pb_shear = 0;
 
@@ -133,43 +179,49 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             max_w_pb_prop = capacity.Value / Math.Max(0.625 * L_p, a_p + 0.4 * L_p);
             max_w_pb_shear = MAX_H20_SHEAR_KN / Math.Max(a_p, 0.625 * L_p);
         }
-        else // 4 or more props
+        else
         {
             max_w_pb_prop = capacity.Value / Math.Max(1.1 * L_p, a_p + 0.4 * L_p);
             max_w_pb_shear = MAX_H20_SHEAR_KN / Math.Max(a_p, 0.6 * L_p);
         }
 
         double w_pb_allowable = Math.Min(max_w_pb_prop, max_w_pb_shear);
+        double L_s_max_primary = 0;
 
-        // 4. Calculate maximum allowable L_s (Primary Beam Spacing)
-        double L_s_max = 0;
         if (PrimaryBeamCount <= 2)
         {
-            // w_pb = w_slab * ((L_s / 2.0) + a_s)  =>  (w_pb / w_slab) - a_s = L_s / 2.0
-            L_s_max = 2.0 * ((w_pb_allowable / w_slab) - a_s);
+            L_s_max_primary = 2.0 * ((w_pb_allowable / w_slab) - a_s);
         }
         else if (PrimaryBeamCount == 3)
         {
-            // w_pb = w_slab * Math.Max(0.625 * L_s, a_s + 0.4 * L_s)
             double L_s_1 = (w_pb_allowable / w_slab) / 0.625;
             double L_s_2 = ((w_pb_allowable / w_slab) - a_s) / 0.4;
-            L_s_max = Math.Min(L_s_1, L_s_2);
+            L_s_max_primary = Math.Min(L_s_1, L_s_2);
         }
-        else // 4 or more supports
+        else 
         {
-            // w_pb = w_slab * Math.Max(1.1 * L_s, a_s + 0.4 * L_s)
             double L_s_1 = (w_pb_allowable / w_slab) / 1.1;
             double L_s_2 = ((w_pb_allowable / w_slab) - a_s) / 0.4;
-            L_s_max = Math.Min(L_s_1, L_s_2);
+            L_s_max_primary = Math.Min(L_s_1, L_s_2);
         }
 
-        if (L_s_max < 0) L_s_max = 0;
+        // ====================================================================
+        // FINAL RESOLUTION: FIND THE WEAKEST LINK
+        // ====================================================================
+        double L_s_max = Math.Min(L_s_max_primary, Math.Min(L_s_max_sec_shear, L_s_max_sec_moment));
+
+        if (L_s_max < 0 || (L_s_max_sec_shear == 0 && L_s_max_sec_moment == 0)) 
+        {
+            L_s_max = 0;
+        }
 
         // Round down to the nearest 10 mm (0.01 m)
         double L_s = Math.Floor(L_s_max * 100) / 100.0;
         SuggestedPrimaryBeamSpacing = Math.Round(L_s * 1000); // in mm
 
-        // 5. Recalculate Actual Load and Shear with Suggested L_s
+        // ====================================================================
+        // RECALCULATE ACTUAL FORCES FOR UI DISPLAY
+        // ====================================================================
         double w_pb = 0;
         if (PrimaryBeamCount <= 2) 
         {
@@ -179,7 +231,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         {
             w_pb = w_slab * Math.Max(0.625 * L_s, a_s + 0.4 * L_s);
         }
-        else // 4 or more supports
+        else 
         {
             w_pb = w_slab * Math.Max(1.1 * L_s, a_s + 0.4 * L_s);
         }
@@ -197,33 +249,22 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             P_max = w_pb * Math.Max(0.625 * L_p, a_p + 0.4 * L_p);
             V_max = w_pb * Math.Max(a_p, 0.625 * L_p);
         }
-        else // 4 or more props
+        else 
         {
             P_max = w_pb * Math.Max(1.1 * L_p, a_p + 0.4 * L_p);
             V_max = w_pb * Math.Max(a_p, 0.6 * L_p);
         }
 
-        // 6. Update Output Properties
         ActualPropLoad = Math.Round(P_max, 2);
         H20Shear = Math.Round(V_max, 2);
         H20Utilization = Math.Round((V_max / MAX_H20_SHEAR_KN) * 100, 1);
         UtilizationRate = Math.Round((P_max / capacity.Value) * 100, 1);
 
-        if (P_max > capacity.Value)
-        {
-            warnings.Add("Prop safe working load exceeded.");
-        }
-
-        if (V_max > MAX_H20_SHEAR_KN)
-        {
-            warnings.Add($"H20 timber shear capacity exceeded ({MAX_H20_SHEAR_KN} kN).");
-        }
-
         if (SuggestedPrimaryBeamSpacing <= 0)
         {
             warnings.Add("Cannot find a valid primary beam spacing for the given parameters.");
         }
-
+        
         if (warnings.Any())
         {
             WarningMessage = string.Join(" | ", warnings);
