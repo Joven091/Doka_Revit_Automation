@@ -12,6 +12,7 @@ namespace EngineeringDashboard
         private double _secondarySpacing;
         private double _maximumPropSpacing;
         private double _maximumPropLoad;
+        private double _primaryBeamCantilever;
         private string _limitingFactor;
         private string _warningMessage;
 
@@ -53,6 +54,12 @@ namespace EngineeringDashboard
             private set { _maximumPropLoad = value; OnPropertyChanged(); }
         }
 
+        public double PrimaryBeamCantilever
+        {
+            get => _primaryBeamCantilever;
+            private set { _primaryBeamCantilever = value; OnPropertyChanged(); }
+        }
+
         public string LimitingFactor
         {
             get => _limitingFactor;
@@ -88,6 +95,16 @@ namespace EngineeringDashboard
                 MaximumPropSpacing = matchingRow.MaximumPropSpacing;
                 MaximumPropLoad = matchingRow.MaximumPropLoad;
                 LimitingFactor = matchingRow.LimitingFactor;
+
+                double cantileverCalc = MaximumPropSpacing * 0.3;
+                if (cantileverCalc > 500)
+                {
+                    PrimaryBeamCantilever = 500;
+                }
+                else
+                {
+                    PrimaryBeamCantilever = System.Math.Floor(cantileverCalc / 25.0) * 25.0;
+                }
             }
             else
             {
@@ -101,6 +118,7 @@ namespace EngineeringDashboard
             SecondarySpacing = 0;
             MaximumPropSpacing = 0;
             MaximumPropLoad = 0;
+            PrimaryBeamCantilever = 0;
             LimitingFactor = string.Empty;
         }
 
