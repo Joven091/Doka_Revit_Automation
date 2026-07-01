@@ -18,7 +18,6 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     
     // --- Inputs: Secondary Beam Layout ---
     private int _primaryBeamCount = 3; // Number of primary beams supporting the secondary beam
-    private double _primaryBeamSpacing = 1000; // L_s
     private double _secondaryBeamCantilever = 500; // a_s
 
     // --- Inputs: Primary Beam & Prop Layout ---
@@ -31,7 +30,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
 
     // --- Outputs ---
     private double _recommendedPropSpacing;
-    private double _primaryBeamSpacingMeters;
+    private double _suggestedPrimaryBeamSpacing;
     private double _actualPropLoad;
     private double _propCapacityLimit;
     private double _utilizationRate;
@@ -49,7 +48,6 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public double FloorHeight { get => _floorHeight; set { _floorHeight = value; OnPropertyChanged(); Calculate(); } }
     
     public int PrimaryBeamCount { get => _primaryBeamCount; set { _primaryBeamCount = value; OnPropertyChanged(); Calculate(); } }
-    public double PrimaryBeamSpacing { get => _primaryBeamSpacing; set { _primaryBeamSpacing = value; OnPropertyChanged(); Calculate(); } }
     public double SecondaryBeamCantilever { get => _secondaryBeamCantilever; set { _secondaryBeamCantilever = value; OnPropertyChanged(); Calculate(); } }
 
     public int PropCount { get => _propCount; set { _propCount = value; OnPropertyChanged(); Calculate(); } }
@@ -75,7 +73,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
 
     // --- Public Output Properties ---
     public double RecommendedPropSpacing { get => _recommendedPropSpacing; set { _recommendedPropSpacing = value; OnPropertyChanged(); } }
-    public double PrimaryBeamSpacingMeters { get => _primaryBeamSpacingMeters; private set { _primaryBeamSpacingMeters = value; OnPropertyChanged(); } }
+    public double SuggestedPrimaryBeamSpacing { get => _suggestedPrimaryBeamSpacing; private set { _suggestedPrimaryBeamSpacing = value; OnPropertyChanged(); } }
     public double ActualPropLoad { get => _actualPropLoad; private set { _actualPropLoad = value; OnPropertyChanged(); } }
     public double PropCapacityLimit { get => _propCapacityLimit; private set { _propCapacityLimit = value; OnPropertyChanged(); } }
     public double UtilizationRate { get => _utilizationRate; private set { _utilizationRate = value; OnPropertyChanged(); } }
@@ -94,16 +92,84 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         WarningMessage = string.Empty;
         List<string> warnings = new();
 
-        // 1. Convert inputs to working units
+        // 1. Get allowable capacities
+        double extensionMeters = (FloorHeight / 1000.0) - (SlabThickness / 1000.0) - SYSTEM_DEPTH_METERS;
+        double roundedExtension = Math.Ceiling(extensionMeters * 10) / 10.0;
+        string propKey = $"{PropType} {PropOrientation}";
+
+        double? capacity = PropDataHelper.GetCapacity(roundedExtension, propKey);
+
+        if (!capacity.HasValue || capacity.Value <= 0)
+        {
+            PropCapacityLimit = 0;
+            UtilizationRate = 0;
+            SuggestedPrimaryBeamSpacing = 0;
+            ActualPropLoad = 0;
+            H20Shear = 0;
+            H20Utilization = 0;
+            WarningMessage = "Prop capacity data not found for this extension height.";
+            return;
+        }
+
+        PropCapacityLimit = Math.Round(capacity.Value, 2);
+
+        // 2. Convert inputs to working units
         double w_slab = SlabLoadHelper.CalculateTotalLoad((int)SlabThickness); // kN/m²
-        double L_s = PrimaryBeamSpacing / 1000.0;
         double a_s = SecondaryBeamCantilever / 1000.0;
         double L_p = PropSpacing / 1000.0;
         double a_p = PrimaryBeamCantilever / 1000.0;
 
-        PrimaryBeamSpacingMeters = L_s;
+        // 3. Determine maximum allowable w_pb based on prop load and H20 shear
+        double max_w_pb_prop = 0;
+        double max_w_pb_shear = 0;
 
-        // 2. Calculate Load on Primary Beam (w_pb) in kN/m
+        if (PropCount <= 2)
+        {
+            max_w_pb_prop = capacity.Value / ((L_p / 2.0) + a_p);
+            max_w_pb_shear = MAX_H20_SHEAR_KN / Math.Max(a_p, L_p / 2.0);
+        }
+        else if (PropCount == 3)
+        {
+            max_w_pb_prop = capacity.Value / Math.Max(0.625 * L_p, a_p + 0.4 * L_p);
+            max_w_pb_shear = MAX_H20_SHEAR_KN / Math.Max(a_p, 0.625 * L_p);
+        }
+        else // 4 or more props
+        {
+            max_w_pb_prop = capacity.Value / Math.Max(1.1 * L_p, a_p + 0.4 * L_p);
+            max_w_pb_shear = MAX_H20_SHEAR_KN / Math.Max(a_p, 0.6 * L_p);
+        }
+
+        double w_pb_allowable = Math.Min(max_w_pb_prop, max_w_pb_shear);
+
+        // 4. Calculate maximum allowable L_s (Primary Beam Spacing)
+        double L_s_max = 0;
+        if (PrimaryBeamCount <= 2)
+        {
+            // w_pb = w_slab * ((L_s / 2.0) + a_s)  =>  (w_pb / w_slab) - a_s = L_s / 2.0
+            L_s_max = 2.0 * ((w_pb_allowable / w_slab) - a_s);
+        }
+        else if (PrimaryBeamCount == 3)
+        {
+            // w_pb = w_slab * Math.Max(0.625 * L_s, a_s + 0.4 * L_s)
+            double L_s_1 = (w_pb_allowable / w_slab) / 0.625;
+            double L_s_2 = ((w_pb_allowable / w_slab) - a_s) / 0.4;
+            L_s_max = Math.Min(L_s_1, L_s_2);
+        }
+        else // 4 or more supports
+        {
+            // w_pb = w_slab * Math.Max(1.1 * L_s, a_s + 0.4 * L_s)
+            double L_s_1 = (w_pb_allowable / w_slab) / 1.1;
+            double L_s_2 = ((w_pb_allowable / w_slab) - a_s) / 0.4;
+            L_s_max = Math.Min(L_s_1, L_s_2);
+        }
+
+        if (L_s_max < 0) L_s_max = 0;
+
+        // Round down to the nearest 10 mm (0.01 m)
+        double L_s = Math.Floor(L_s_max * 100) / 100.0;
+        SuggestedPrimaryBeamSpacing = Math.Round(L_s * 1000); // in mm
+
+        // 5. Recalculate Actual Load and Shear with Suggested L_s
         double w_pb = 0;
         if (PrimaryBeamCount <= 2) 
         {
@@ -118,7 +184,6 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             w_pb = w_slab * Math.Max(1.1 * L_s, a_s + 0.4 * L_s);
         }
 
-        // 3. Calculate Prop Load (P_max) and H20 Shear (V_max)
         double P_max = 0;
         double V_max = 0;
 
@@ -138,38 +203,25 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             V_max = w_pb * Math.Max(a_p, 0.6 * L_p);
         }
 
-        // 4. Capacity Checks
-        double extensionMeters = (FloorHeight / 1000.0) - (SlabThickness / 1000.0) - SYSTEM_DEPTH_METERS;
-        double roundedExtension = Math.Ceiling(extensionMeters * 10) / 10.0;
-        string propKey = $"{PropType} {PropOrientation}";
-        
-        double? capacity = PropDataHelper.GetCapacity(roundedExtension, propKey);
-
-        // 5. Update Output Properties
+        // 6. Update Output Properties
         ActualPropLoad = Math.Round(P_max, 2);
         H20Shear = Math.Round(V_max, 2);
         H20Utilization = Math.Round((V_max / MAX_H20_SHEAR_KN) * 100, 1);
+        UtilizationRate = Math.Round((P_max / capacity.Value) * 100, 1);
 
-        if (capacity.HasValue && capacity.Value > 0)
+        if (P_max > capacity.Value)
         {
-            PropCapacityLimit = Math.Round(capacity.Value, 2);
-            UtilizationRate = Math.Round((P_max / capacity.Value) * 100, 1);
-            
-            if (P_max > capacity.Value)
-            {
-                warnings.Add("Prop safe working load exceeded.");
-            }
-        }
-        else
-        {
-            PropCapacityLimit = 0;
-            UtilizationRate = 0;
-            warnings.Add("Prop capacity data not found for this extension height.");
+            warnings.Add("Prop safe working load exceeded.");
         }
 
         if (V_max > MAX_H20_SHEAR_KN)
         {
             warnings.Add($"H20 timber shear capacity exceeded ({MAX_H20_SHEAR_KN} kN).");
+        }
+
+        if (SuggestedPrimaryBeamSpacing <= 0)
+        {
+            warnings.Add("Cannot find a valid primary beam spacing for the given parameters.");
         }
 
         if (warnings.Any())
