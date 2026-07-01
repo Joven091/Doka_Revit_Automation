@@ -82,7 +82,7 @@
                     <Label Content="Primary Beam Cantilever (mm):" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center"/>
                     <TextBox Text="{Binding PrimaryBeamCantilever, UpdateSourceTrigger=PropertyChanged}" Grid.Row="4" Grid.Column="1" Margin="0,5"/>
 
-                    <Label Content="Prop Type:" Grid.Row="5" Grid.Column="0" VerticalAlignment="Center"/>
+                    <Label Content="Prop Type Eurex eco 20:" Grid.Row="5" Grid.Column="0" VerticalAlignment="Center"/>
                     <ComboBox ItemsSource="{Binding PropTypeOptions}" SelectedItem="{Binding PropType, UpdateSourceTrigger=PropertyChanged}" Grid.Row="5" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Prop Orientation:" Grid.Row="6" Grid.Column="0" VerticalAlignment="Center"/>
@@ -105,10 +105,10 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <Label Content="Suggested Primary Spacing:" FontWeight="Bold" Foreground="#1B5E20" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
+                    <Label Content="Primary Beam Spacing:" FontWeight="Bold" Foreground="#1B5E20" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock Text="{Binding SuggestedPrimaryBeamSpacing, StringFormat={}{0:F0}}" FontWeight="Bold" FontSize="18" Foreground="#2E7D32"/>
-                        <TextBlock Text=" mm" FontWeight="Bold" FontSize="16" Foreground="#2E7D32" VerticalAlignment="Bottom" Margin="2,0,0,1"/>
+                        <TextBlock Text=" mm" FontWeight="Bold" FontSize="14" Foreground="#2E7D32" VerticalAlignment="Bottom" Margin="2,0,0,1"/>
                     </StackPanel>
 
                     <Label Content="Actual Prop Load / Limit:" FontWeight="Bold" Foreground="#1B5E20" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Margin="0,5,0,0"/>
@@ -126,13 +126,7 @@
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Row="5" Orientation="Vertical" Margin="0,5,0,15">
-                <TextBlock Text="Notes:" FontWeight="Bold" Margin="0,0,0,5" />
-                <TextBlock Text="- For simple beam (2 supports only) max span is 2000mm" TextWrapping="Wrap" Margin="10,0,0,2"/>
-                <TextBlock Text="- Ensures both H20 timber limits (11kN Shear, 5kNm Moment) and Prop safe working loads are met." TextWrapping="Wrap" Margin="10,0,0,2"/>
-            </StackPanel>
-
-            <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
+                        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
                 <Button Content="Close" Width="100" Padding="8" Click="BtnClose_Click" Background="#f0f0f0" BorderBrush="#ccc"/>
             </StackPanel>
         </Grid>

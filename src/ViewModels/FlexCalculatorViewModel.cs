@@ -11,21 +11,21 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     // --- Constants ---
     private const double MAX_H20_SHEAR_KN = 11.00;
     private const double MAX_H20_MOMENT_KNM = 5.00;
-    private const double SYSTEM_DEPTH_METERS = 0.418; // Depth of H20 beams + plywood
+    private const double SYSTEM_DEPTH_METERS = 0.418;
 
     // --- Inputs: Slab & Geometry ---
     private double _slabThickness = 300;
     private double _floorHeight = 3000;
     
     // --- Inputs: Secondary Beam Layout ---
-    private int _primaryBeamCount = 3; // Number of primary beams supporting the secondary beam
-    private double _secondaryBeamSpacing = 500; // Distance between secondary beams
-    private double _secondaryBeamCantilever = 500; // a_s
+    private int _primaryBeamCount = 3;
+    private double _secondaryBeamSpacing = 500;
+    private double _secondaryBeamCantilever = 500;
 
     // --- Inputs: Primary Beam & Prop Layout ---
-    private int _propCount = 3; // Number of props supporting the primary beam
-    private double _propSpacing = 1000; // L_p
-    private double _primaryBeamCantilever = 500; // a_p
+    private int _propCount = 3;
+    private double _propSpacing = 1000;
+    private double _primaryBeamCantilever = 500;
     private string _propType = "300";
     private string _propOrientation = "at bottom";
     private string _selectedH20 = "2.90m";
@@ -93,7 +93,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     private void Calculate()
     {
         WarningMessage = string.Empty;
-        List<string> warnings = new();
+        List<string> warnings = [];
 
         // 1. Get allowable capacities
         double extensionMeters = (FloorHeight / 1000.0) - (SlabThickness / 1000.0) - SYSTEM_DEPTH_METERS;
@@ -117,157 +117,165 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         PropCapacityLimit = Math.Round(capacity.Value, 2);
 
         // 2. Convert inputs to working units
-        double w_slab = SlabLoadHelper.CalculateTotalLoad((int)SlabThickness); // kN/m²
+        double w_slab = SlabLoadHelper.CalculateTotalLoad((int)SlabThickness); 
         double a_s = SecondaryBeamCantilever / 1000.0;
         double L_p = PropSpacing / 1000.0;
         double a_p = PrimaryBeamCantilever / 1000.0;
         double c_sec = SecondaryBeamSpacing / 1000.0;
 
-        // ====================================================================
-        // LIMIT CHECK A: SECONDARY BEAM LIMITS (H20 Timber)
-        // ====================================================================
-        double w_sb = w_slab * c_sec; // Line load on a single secondary beam (kN/m)
-        
-        // A.1: Independent Cantilever Check
+        double w_sb = w_slab * c_sec; 
+
+        // 3. Initial Cantilever Absolute Limits
         double v_cantilever_sec = w_sb * a_s;
         double m_cantilever_sec = (w_sb * Math.Pow(a_s, 2)) / 2.0;
         
-        double L_s_max_sec_shear = 0;
-        double L_s_max_sec_moment = 0;
-
         if (v_cantilever_sec > MAX_H20_SHEAR_KN)
         {
             warnings.Add($"Secondary beam cantilever shear exceeds limit ({Math.Round(v_cantilever_sec,2)} kN). Reduce a_s.");
         }
-        else if (m_cantilever_sec > MAX_H20_MOMENT_KNM)
+        if (m_cantilever_sec > MAX_H20_MOMENT_KNM)
         {
             warnings.Add($"Secondary beam cantilever moment exceeds limit ({Math.Round(m_cantilever_sec,2)} kNm). Reduce a_s.");
         }
-        else
+
+        // 4. Numerical Solver for L_s (Continuous Beam Analysis)
+        double best_L_s = 0;
+        
+        if (warnings.Count == 0) 
         {
-            // A.2: Span calculation based on support conditions (PrimaryBeamCount)
-            if (PrimaryBeamCount <= 2)
+            // Iterate from 4.0m down to 0.1m in 10mm increments
+            for (double test_L = 4.00; test_L >= 0.10; test_L -= 0.01) 
             {
-                L_s_max_sec_shear = 2.0 * (MAX_H20_SHEAR_KN / w_sb);
-                L_s_max_sec_moment = Math.Sqrt((8.0 * MAX_H20_MOMENT_KNM) / w_sb);
+                // Secondary Beam Internal Forces
+                double v_sec = w_sb * GetMaxShearMultiplier(PrimaryBeamCount, test_L, a_s);
+                double m_sec = w_sb * GetMaxMomentMultiplier(PrimaryBeamCount, test_L, a_s);
+                
+                // Load transferred to Primary Beam
+                double R_sec_multiplier = GetMaxReactionMultiplier(PrimaryBeamCount, test_L, a_s);
+                double w_pb = w_slab * R_sec_multiplier;
+                
+                // Primary Beam Internal Forces & Prop Reaction
+                double v_prim = w_pb * GetMaxShearMultiplier(PropCount, L_p, a_p);
+                double m_prim = w_pb * GetMaxMomentMultiplier(PropCount, L_p, a_p);
+                double p_prop = w_pb * GetMaxReactionMultiplier(PropCount, L_p, a_p);
+                
+                if (v_sec <= MAX_H20_SHEAR_KN && 
+                    m_sec <= MAX_H20_MOMENT_KNM && 
+                    v_prim <= MAX_H20_SHEAR_KN && 
+                    m_prim <= MAX_H20_MOMENT_KNM && 
+                    p_prop <= capacity.Value)
+                {
+                    best_L_s = test_L;
+                    break; 
+                }
             }
-            else if (PrimaryBeamCount == 3)
-            {
-                L_s_max_sec_shear = MAX_H20_SHEAR_KN / (0.625 * w_sb);
-                L_s_max_sec_moment = Math.Sqrt((8.0 * MAX_H20_MOMENT_KNM) / w_sb);
-            }
-            else // 4+ Supports
-            {
-                L_s_max_sec_shear = MAX_H20_SHEAR_KN / (0.6 * w_sb);
-                L_s_max_sec_moment = Math.Sqrt((10.0 * MAX_H20_MOMENT_KNM) / w_sb);
-            }
         }
 
-        // ====================================================================
-        // LIMIT CHECK B: PRIMARY BEAM & PROP LIMITS
-        // ====================================================================
-        double max_w_pb_prop = 0;
-        double max_w_pb_shear = 0;
-
-        if (PropCount <= 2)
-        {
-            max_w_pb_prop = capacity.Value / ((L_p / 2.0) + a_p);
-            max_w_pb_shear = MAX_H20_SHEAR_KN / Math.Max(a_p, L_p / 2.0);
-        }
-        else if (PropCount == 3)
-        {
-            max_w_pb_prop = capacity.Value / Math.Max(0.625 * L_p, a_p + 0.4 * L_p);
-            max_w_pb_shear = MAX_H20_SHEAR_KN / Math.Max(a_p, 0.625 * L_p);
-        }
-        else
-        {
-            max_w_pb_prop = capacity.Value / Math.Max(1.1 * L_p, a_p + 0.4 * L_p);
-            max_w_pb_shear = MAX_H20_SHEAR_KN / Math.Max(a_p, 0.6 * L_p);
-        }
-
-        double w_pb_allowable = Math.Min(max_w_pb_prop, max_w_pb_shear);
-        double L_s_max_primary = 0;
-
-        if (PrimaryBeamCount <= 2)
-        {
-            L_s_max_primary = 2.0 * ((w_pb_allowable / w_slab) - a_s);
-        }
-        else if (PrimaryBeamCount == 3)
-        {
-            double L_s_1 = (w_pb_allowable / w_slab) / 0.625;
-            double L_s_2 = ((w_pb_allowable / w_slab) - a_s) / 0.4;
-            L_s_max_primary = Math.Min(L_s_1, L_s_2);
-        }
-        else 
-        {
-            double L_s_1 = (w_pb_allowable / w_slab) / 1.1;
-            double L_s_2 = ((w_pb_allowable / w_slab) - a_s) / 0.4;
-            L_s_max_primary = Math.Min(L_s_1, L_s_2);
-        }
-
-        // ====================================================================
-        // FINAL RESOLUTION: FIND THE WEAKEST LINK
-        // ====================================================================
-        double L_s_max = Math.Min(L_s_max_primary, Math.Min(L_s_max_sec_shear, L_s_max_sec_moment));
-
-        if (L_s_max < 0 || (L_s_max_sec_shear == 0 && L_s_max_sec_moment == 0)) 
-        {
-            L_s_max = 0;
-        }
-
-        // Round down to the nearest 10 mm (0.01 m)
-        double L_s = Math.Floor(L_s_max * 100) / 100.0;
-        SuggestedPrimaryBeamSpacing = Math.Round(L_s * 1000); // in mm
-
-        // ====================================================================
-        // RECALCULATE ACTUAL FORCES FOR UI DISPLAY
-        // ====================================================================
-        double w_pb = 0;
-        if (PrimaryBeamCount <= 2) 
-        {
-            w_pb = w_slab * ((L_s / 2.0) + a_s);
-        }
-        else if (PrimaryBeamCount == 3)
-        {
-            w_pb = w_slab * Math.Max(0.625 * L_s, a_s + 0.4 * L_s);
-        }
-        else 
-        {
-            w_pb = w_slab * Math.Max(1.1 * L_s, a_s + 0.4 * L_s);
-        }
-
-        double P_max = 0;
-        double V_max = 0;
-
-        if (PropCount <= 2)
-        {
-            P_max = w_pb * ((L_p / 2.0) + a_p);
-            V_max = w_pb * Math.Max(a_p, L_p / 2.0);
-        }
-        else if (PropCount == 3)
-        {
-            P_max = w_pb * Math.Max(0.625 * L_p, a_p + 0.4 * L_p);
-            V_max = w_pb * Math.Max(a_p, 0.625 * L_p);
-        }
-        else 
-        {
-            P_max = w_pb * Math.Max(1.1 * L_p, a_p + 0.4 * L_p);
-            V_max = w_pb * Math.Max(a_p, 0.6 * L_p);
-        }
-
-        ActualPropLoad = Math.Round(P_max, 2);
-        H20Shear = Math.Round(V_max, 2);
-        H20Utilization = Math.Round((V_max / MAX_H20_SHEAR_KN) * 100, 1);
-        UtilizationRate = Math.Round((P_max / capacity.Value) * 100, 1);
-
-        if (SuggestedPrimaryBeamSpacing <= 0)
+        // 5. Final Output Resolution
+        if (best_L_s <= 0)
         {
             warnings.Add("Cannot find a valid primary beam spacing for the given parameters.");
+            SuggestedPrimaryBeamSpacing = 0;
+            ActualPropLoad = 0;
+            H20Shear = 0;
+            H20Utilization = 0;
+            UtilizationRate = 0;
         }
-        
-        if (warnings.Any())
+        else
+        {
+            SuggestedPrimaryBeamSpacing = Math.Round(best_L_s * 1000); 
+            
+            // Resolve actual loads at the exact found span
+            double final_w_pb = w_slab * GetMaxReactionMultiplier(PrimaryBeamCount, best_L_s, a_s);
+            double final_V_prim = final_w_pb * GetMaxShearMultiplier(PropCount, L_p, a_p);
+            double final_P_prop = final_w_pb * GetMaxReactionMultiplier(PropCount, L_p, a_p);
+            
+            ActualPropLoad = Math.Round(final_P_prop, 2);
+            H20Shear = Math.Round(final_V_prim, 2);
+            H20Utilization = Math.Round((final_V_prim / MAX_H20_SHEAR_KN) * 100, 1);
+            UtilizationRate = Math.Round((final_P_prop / capacity.Value) * 100, 1);
+        }
+
+        if (warnings.Count != 0)
         {
             WarningMessage = string.Join(" | ", warnings);
+        }
+    }
+
+    // ====================================================================
+    // CONTINUOUS BEAM HELPER METHODS (Calculates Multipliers)
+    // ====================================================================
+
+    private double GetMaxReactionMultiplier(int supportCount, double L, double a)
+    {
+        if (supportCount <= 2)
+        {
+            return (L / 2.0) + a; 
+        }
+        else if (supportCount == 3)
+        {
+            double R1 = (3.0 / 8.0) * L + a + (3.0 / 4.0) * (Math.Pow(a, 2) / L);
+            double R2 = (5.0 / 4.0) * L - (3.0 / 2.0) * (Math.Pow(a, 2) / L);
+            return Math.Max(R1, R2);
+        }
+        else 
+        {
+            // Exact continuous boundary envelope for 4+ supports
+            double R1 = 0.4 * L + a + 0.6 * (Math.Pow(a, 2) / L);
+            double R2 = 1.1 * L - 0.6 * (Math.Pow(a, 2) / L);
+            return Math.Max(R1, R2);
+        }
+    }
+
+    private double GetMaxShearMultiplier(int supportCount, double L, double a)
+    {
+        double Va = a; 
+        if (supportCount <= 2)
+        {
+            return Math.Max(Va, L / 2.0);
+        }
+        else if (supportCount == 3)
+        {
+            double V1 = Math.Abs((3.0 / 8.0) * L + (3.0 / 4.0) * (Math.Pow(a, 2) / L));
+            double V2 = Math.Abs((5.0 / 8.0) * L - (3.0 / 4.0) * (Math.Pow(a, 2) / L));
+            return Math.Max(Va, Math.Max(V1, V2));
+        }
+        else 
+        {
+            double V1 = Math.Abs(0.4 * L + 0.6 * (Math.Pow(a, 2) / L));
+            double V2 = Math.Abs(0.6 * L - 0.6 * (Math.Pow(a, 2) / L));
+            return Math.Max(Va, Math.Max(V1, V2));
+        }
+    }
+
+    private double GetMaxMomentMultiplier(int supportCount, double L, double a)
+    {
+        double Ma = Math.Pow(a, 2) / 2.0; 
+        
+        if (supportCount <= 2)
+        {
+            return Math.Max(Ma, Math.Pow(L, 2) / 8.0);
+        }
+        else if (supportCount == 3)
+        {
+            double R1 = (3.0 / 8.0) * L + a + (3.0 / 4.0) * (Math.Pow(a, 2) / L);
+            double x_sup = R1 - a; 
+            
+            double M_span = (x_sup > 0 && x_sup < L) ? (R1 * x_sup - 0.5 * Math.Pow(x_sup + a, 2)) : 0;
+            double M_sup = Math.Abs(Math.Pow(a, 2) / 4.0 - Math.Pow(L, 2) / 8.0);
+            
+            return Math.Max(Ma, Math.Max(M_sup, M_span));
+        }
+        else 
+        {
+            double R1 = 0.4 * L + a + 0.6 * (Math.Pow(a, 2) / L);
+            double x_sup = R1 - a;
+            
+            double M_span = (x_sup > 0 && x_sup < L) ? (R1 * x_sup - 0.5 * Math.Pow(x_sup + a, 2)) : 0;
+            double M_sup = Math.Abs(Math.Pow(a, 2) / 10.0 - Math.Pow(L, 2) / 10.0);
+            double M_int = Math.Pow(L, 2) / 10.0; 
+            
+            return Math.Max(Ma, Math.Max(M_sup, Math.Max(M_span, M_int)));
         }
     }
 
