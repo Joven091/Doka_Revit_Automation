@@ -171,7 +171,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
                 // Secondary Beam Internal Forces & Deflection
                 double v_sec = w_sb * GetMaxShearMultiplier(pbcInt, test_L, a_s);
                 double m_sec = w_sb * GetMaxMomentMultiplier(pbcInt, test_L, a_s);
-                double defl_sec = (w_sb * Math.Pow(test_L, 4)) / H20_EI * GetMaxDeflectionMultiplier(pbcInt);
+                double defl_sec = (w_sb * Math.Pow(test_L, 4)) / H20_EI * GetMaxDeflectionMultiplier(pbcInt, test_L, a_s);
                 
                 // Load transferred to Primary Beam
                 double R_sec_multiplier = GetMaxReactionMultiplier(pbcInt, test_L, a_s);
@@ -233,20 +233,47 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     // CONTINUOUS BEAM HELPER METHODS (Calculates Multipliers)
     // ====================================================================
 
-    private double GetMaxDeflectionMultiplier(int supportCount)
+    private double GetMaxDeflectionMultiplier(int supportCount, double L, double a)
     {
+        double r = a / L;
+        double r2 = r * r;
+        double m1, m2;
+
         if (supportCount <= 2)
         {
-            return 5.0 / 384.0; // 0.01302
+            m1 = 0.5 * r2;
+            m2 = 0.5 * r2;
         }
         else if (supportCount == 3)
         {
-            return 1.0 / 185.0; // 0.0054
+            m1 = 0.5 * r2;
+            m2 = 0.125 - 0.25 * r2;
         }
         else
         {
-            return 0.0069;
+            m1 = 0.5 * r2;
+            m2 = 0.1 - 0.1 * r2;
         }
+
+        double maxAbsDefl = 0;
+        for (double u = 0.1; u <= 0.95; u += 0.05)
+        {
+            double u2 = u * u;
+            double u3 = u2 * u;
+            double u4 = u3 * u;
+
+            double term1 = (u - 2 * u3 + u4) / 24.0;
+            double term2 = m1 * (2 * u - 3 * u2 + u3) / 6.0;
+            double term3 = m2 * (u - u3) / 6.0;
+
+            double defl = Math.Abs(term1 - term2 - term3);
+            if (defl > maxAbsDefl)
+            {
+                maxAbsDefl = defl;
+            }
+        }
+
+        return maxAbsDefl;
     }
 
     private double GetMaxReactionMultiplier(int supportCount, double L, double a)
@@ -297,7 +324,8 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         
         if (supportCount <= 2)
         {
-            return Math.Max(Ma, Math.Pow(L, 2) / 8.0);
+            double M_span = Math.Abs(Math.Pow(L, 2) / 8.0 - Ma);
+            return Math.Max(Ma, M_span);
         }
         else if (supportCount == 3)
         {
