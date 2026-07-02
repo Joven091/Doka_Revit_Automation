@@ -20,6 +20,11 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     private double _slabThickness = 300;
     private double _floorHeight = 3000;
     
+    // --- Custom Loads ---
+    private bool _useCustomLoads = false;
+    private double _customLiveLoad = 2.25; // Default from standard: placing (1.5) + working (0.75)
+    private double _customFormworkLoad = 0.4;
+
     // --- Inputs: Secondary Beam Layout ---
     private string _primaryBeamCount = "3";
     private double _secondaryBeamSpacing = 500;
@@ -56,6 +61,10 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public double SlabThickness { get => _slabThickness; set { _slabThickness = value; OnPropertyChanged(); Calculate(); } }
     public double FloorHeight { get => _floorHeight; set { _floorHeight = value; OnPropertyChanged(); Calculate(); } }
     
+    public bool UseCustomLoads { get => _useCustomLoads; set { _useCustomLoads = value; OnPropertyChanged(); Calculate(); } }
+    public double CustomLiveLoad { get => _customLiveLoad; set { _customLiveLoad = value; OnPropertyChanged(); Calculate(); } }
+    public double CustomFormworkLoad { get => _customFormworkLoad; set { _customFormworkLoad = value; OnPropertyChanged(); Calculate(); } }
+
     public double SecondaryBeamSpacing { get => _secondaryBeamSpacing; set { _secondaryBeamSpacing = value; OnPropertyChanged(); Calculate(); } }
     public string PrimaryBeamCount { get => _primaryBeamCount; set { _primaryBeamCount = value; OnPropertyChanged(); Calculate(); } }
     public double SecondaryBeamCantilever { get => _secondaryBeamCantilever; set { _secondaryBeamCantilever = value; OnPropertyChanged(); Calculate(); } }
@@ -128,7 +137,19 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         int pbcInt = PrimaryBeamCount == "4+" ? 4 : (int.TryParse(PrimaryBeamCount, out int p) ? p : 3);
         int pcInt = PropCount == "4+" ? 4 : (int.TryParse(PropCount, out int c) ? c : 3);
 
-        double w_slab = SlabLoadHelper.CalculateTotalLoad((int)SlabThickness); 
+        double w_slab;
+        if (UseCustomLoads)
+        {
+            double h = SlabThickness / 1000.0;
+            double concreteLoad = h * 25.0;
+            w_slab = concreteLoad + CustomLiveLoad + CustomFormworkLoad;
+            w_slab = Math.Round(w_slab, 2);
+        }
+        else
+        {
+            w_slab = SlabLoadHelper.CalculateTotalLoad((int)SlabThickness);
+        }
+
         double a_s = SecondaryBeamCantilever / 1000.0;
         double L_p = PropSpacing / 1000.0;
         double a_p = PrimaryBeamCantilever / 1000.0;
