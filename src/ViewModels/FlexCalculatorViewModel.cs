@@ -48,7 +48,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public List<string> H20Options => FloorPropData.H20Data.Keys.ToList();
     public List<string> PropTypeOptions => ["250", "300", "350", "400", "550"];
     public List<string> PropOrientationOptions => ["at bottom", "at top"];
-    public List<string> DeflectionLimitOptions => ["L/500", "L/350", "L/270"];
+    public List<string> DeflectionLimitOptions => ["L270", "L/350", "L/500"];
 
     // --- Public Input Properties ---
     public double SlabThickness { get => _slabThickness; set { _slabThickness = value; OnPropertyChanged(); Calculate(); } }
