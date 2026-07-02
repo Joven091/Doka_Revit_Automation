@@ -9,7 +9,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> </Grid.RowDefinitions>
 
-            <GroupBox Header="Slab &amp; System" Grid.Row="0" Margin="0,0,0,10" Padding="10">
+            <GroupBox Header="Slab" Grid.Row="0" Margin="0,0,0,10" Padding="10">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="220"/>
