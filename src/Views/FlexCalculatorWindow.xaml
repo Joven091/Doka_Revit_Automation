@@ -42,7 +42,7 @@
                     </Grid.RowDefinitions>
 
                     <Label Content="Primary Beam Count:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding PrimaryBeamCount, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
+                    <ComboBox ItemsSource="{Binding PrimaryBeamCountOptions}" SelectedItem="{Binding PrimaryBeamCount, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Secondary Beam Spacing (mm):" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
                     <TextBox Text="{Binding SecondaryBeamSpacing, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
@@ -81,7 +81,7 @@
                     <TextBox Text="{Binding PropSpacing, UpdateSourceTrigger=PropertyChanged}" Grid.Row="2" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Prop Count:" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding PropCount, UpdateSourceTrigger=PropertyChanged}" Grid.Row="3" Grid.Column="1" Margin="0,5"/>
+                    <ComboBox ItemsSource="{Binding PropCountOptions}" SelectedItem="{Binding PropCount, UpdateSourceTrigger=PropertyChanged}" Grid.Row="3" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Primary Beam Cantilever (mm):" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center"/>
                     <TextBox Text="{Binding PrimaryBeamCantilever, UpdateSourceTrigger=PropertyChanged}" Grid.Row="4" Grid.Column="1" Margin="0,5"/>
