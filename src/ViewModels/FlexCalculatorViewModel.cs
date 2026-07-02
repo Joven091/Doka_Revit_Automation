@@ -21,13 +21,13 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     private double _floorHeight = 3000;
     
     // --- Inputs: Secondary Beam Layout ---
-    private int _primaryBeamCount = 3;
+    private string _primaryBeamCount = "3";
     private double _secondaryBeamSpacing = 500;
     private double _secondaryBeamCantilever = 500;
     private string _deflectionLimit = "L/500";
 
     // --- Inputs: Primary Beam & Prop Layout ---
-    private int _propCount = 3;
+    private string _propCount = "3";
     private double _propSpacing = 1000;
     private double _primaryBeamCantilever = 500;
     private string _propType = "300";
@@ -49,17 +49,19 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public List<string> PropTypeOptions => ["250", "300", "350", "400", "550"];
     public List<string> PropOrientationOptions => ["at bottom", "at top"];
     public List<string> DeflectionLimitOptions => ["L/500", "L/350", "L/270"];
+    public List<string> PrimaryBeamCountOptions => ["2", "3", "4+"];
+    public List<string> PropCountOptions => ["2", "3", "4+"];
 
     // --- Public Input Properties ---
     public double SlabThickness { get => _slabThickness; set { _slabThickness = value; OnPropertyChanged(); Calculate(); } }
     public double FloorHeight { get => _floorHeight; set { _floorHeight = value; OnPropertyChanged(); Calculate(); } }
     
     public double SecondaryBeamSpacing { get => _secondaryBeamSpacing; set { _secondaryBeamSpacing = value; OnPropertyChanged(); Calculate(); } }
-    public int PrimaryBeamCount { get => _primaryBeamCount; set { _primaryBeamCount = value; OnPropertyChanged(); Calculate(); } }
+    public string PrimaryBeamCount { get => _primaryBeamCount; set { _primaryBeamCount = value; OnPropertyChanged(); Calculate(); } }
     public double SecondaryBeamCantilever { get => _secondaryBeamCantilever; set { _secondaryBeamCantilever = value; OnPropertyChanged(); Calculate(); } }
     public string DeflectionLimit { get => _deflectionLimit; set { _deflectionLimit = value; OnPropertyChanged(); Calculate(); } }
 
-    public int PropCount { get => _propCount; set { _propCount = value; OnPropertyChanged(); Calculate(); } }
+    public string PropCount { get => _propCount; set { _propCount = value; OnPropertyChanged(); Calculate(); } }
     public double PropSpacing { get => _propSpacing; set { _propSpacing = value; OnPropertyChanged(); Calculate(); } }
     public double PrimaryBeamCantilever { get => _primaryBeamCantilever; set { _primaryBeamCantilever = value; OnPropertyChanged(); Calculate(); } }
     
@@ -123,6 +125,9 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         PropCapacityLimit = Math.Round(capacity.Value, 2);
 
         // 2. Convert inputs to working units
+        int pbcInt = PrimaryBeamCount == "4+" ? 4 : (int.TryParse(PrimaryBeamCount, out int p) ? p : 3);
+        int pcInt = PropCount == "4+" ? 4 : (int.TryParse(PropCount, out int c) ? c : 3);
+
         double w_slab = SlabLoadHelper.CalculateTotalLoad((int)SlabThickness); 
         double a_s = SecondaryBeamCantilever / 1000.0;
         double L_p = PropSpacing / 1000.0;
@@ -164,18 +169,18 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             for (double test_L = 4.00; test_L >= 0.10; test_L -= 0.01) 
             {
                 // Secondary Beam Internal Forces & Deflection
-                double v_sec = w_sb * GetMaxShearMultiplier(PrimaryBeamCount, test_L, a_s);
-                double m_sec = w_sb * GetMaxMomentMultiplier(PrimaryBeamCount, test_L, a_s);
-                double defl_sec = (w_sb * Math.Pow(test_L, 4)) / H20_EI * GetMaxDeflectionMultiplier(PrimaryBeamCount);
+                double v_sec = w_sb * GetMaxShearMultiplier(pbcInt, test_L, a_s);
+                double m_sec = w_sb * GetMaxMomentMultiplier(pbcInt, test_L, a_s);
+                double defl_sec = (w_sb * Math.Pow(test_L, 4)) / H20_EI * GetMaxDeflectionMultiplier(pbcInt);
                 
                 // Load transferred to Primary Beam
-                double R_sec_multiplier = GetMaxReactionMultiplier(PrimaryBeamCount, test_L, a_s);
+                double R_sec_multiplier = GetMaxReactionMultiplier(pbcInt, test_L, a_s);
                 double w_pb = w_slab * R_sec_multiplier;
                 
                 // Primary Beam Internal Forces & Prop Reaction
-                double v_prim = w_pb * GetMaxShearMultiplier(PropCount, L_p, a_p);
-                double m_prim = w_pb * GetMaxMomentMultiplier(PropCount, L_p, a_p);
-                double p_prop = w_pb * GetMaxReactionMultiplier(PropCount, L_p, a_p);
+                double v_prim = w_pb * GetMaxShearMultiplier(pcInt, L_p, a_p);
+                double m_prim = w_pb * GetMaxMomentMultiplier(pcInt, L_p, a_p);
+                double p_prop = w_pb * GetMaxReactionMultiplier(pcInt, L_p, a_p);
                 
                 if (v_sec <= MAX_H20_SHEAR_KN && 
                     m_sec <= MAX_H20_MOMENT_KNM && 
@@ -208,9 +213,9 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             double final_L_s = SuggestedPrimaryBeamSpacing / 1000.0;
 
             // Resolve actual loads at the rounded span
-            double final_w_pb = w_slab * GetMaxReactionMultiplier(PrimaryBeamCount, final_L_s, a_s);
-            double final_V_prim = final_w_pb * GetMaxShearMultiplier(PropCount, L_p, a_p);
-            double final_P_prop = final_w_pb * GetMaxReactionMultiplier(PropCount, L_p, a_p);
+            double final_w_pb = w_slab * GetMaxReactionMultiplier(pbcInt, final_L_s, a_s);
+            double final_V_prim = final_w_pb * GetMaxShearMultiplier(pcInt, L_p, a_p);
+            double final_P_prop = final_w_pb * GetMaxReactionMultiplier(pcInt, L_p, a_p);
             
             ActualPropLoad = Math.Round(final_P_prop, 2);
             H20Shear = Math.Round(final_V_prim, 2);
