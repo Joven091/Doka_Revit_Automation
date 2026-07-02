@@ -38,6 +38,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <Label Content="Primary Beam Count:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
@@ -48,6 +49,9 @@
 
                     <Label Content="Secondary Beam Cantilever (mm):" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
                     <TextBox Text="{Binding SecondaryBeamCantilever, UpdateSourceTrigger=PropertyChanged}" Grid.Row="2" Grid.Column="1" Margin="0,5"/>
+
+                    <Label Content="Deflection Limit:" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
+                    <ComboBox ItemsSource="{Binding DeflectionLimitOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged}" Grid.Row="3" Grid.Column="1" Margin="0,5"/>
                 </Grid>
             </GroupBox>
 

@@ -12,6 +12,9 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     private const double MAX_H20_SHEAR_KN = 11.00;
     private const double MAX_H20_MOMENT_KNM = 5.00;
     private const double SYSTEM_DEPTH_METERS = 0.418;
+    private const double H20_E_KN_M2 = 10760000; // 1076 kN/cm2 = 10760000 kN/m2
+    private const double H20_I_M4 = 0.00004181;  // 4181 cm4 = 0.00004181 m4
+    private const double H20_EI = H20_E_KN_M2 * H20_I_M4;
 
     // --- Inputs: Slab & Geometry ---
     private double _slabThickness = 300;
@@ -21,6 +24,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     private int _primaryBeamCount = 3;
     private double _secondaryBeamSpacing = 500;
     private double _secondaryBeamCantilever = 500;
+    private string _deflectionLimit = "L/500";
 
     // --- Inputs: Primary Beam & Prop Layout ---
     private int _propCount = 3;
@@ -44,6 +48,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public List<string> H20Options => FloorPropData.H20Data.Keys.ToList();
     public List<string> PropTypeOptions => ["250", "300", "350", "400", "550"];
     public List<string> PropOrientationOptions => ["at bottom", "at top"];
+    public List<string> DeflectionLimitOptions => ["L/500", "L/350", "L/270"];
 
     // --- Public Input Properties ---
     public double SlabThickness { get => _slabThickness; set { _slabThickness = value; OnPropertyChanged(); Calculate(); } }
@@ -52,6 +57,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public double SecondaryBeamSpacing { get => _secondaryBeamSpacing; set { _secondaryBeamSpacing = value; OnPropertyChanged(); Calculate(); } }
     public int PrimaryBeamCount { get => _primaryBeamCount; set { _primaryBeamCount = value; OnPropertyChanged(); Calculate(); } }
     public double SecondaryBeamCantilever { get => _secondaryBeamCantilever; set { _secondaryBeamCantilever = value; OnPropertyChanged(); Calculate(); } }
+    public string DeflectionLimit { get => _deflectionLimit; set { _deflectionLimit = value; OnPropertyChanged(); Calculate(); } }
 
     public int PropCount { get => _propCount; set { _propCount = value; OnPropertyChanged(); Calculate(); } }
     public double PropSpacing { get => _propSpacing; set { _propSpacing = value; OnPropertyChanged(); Calculate(); } }
@@ -125,9 +131,16 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
 
         double w_sb = w_slab * c_sec; 
 
+        // Deflection Limit parsing
+        double limit_denom = 350.0;
+        if (DeflectionLimit == "L/500") limit_denom = 500.0;
+        else if (DeflectionLimit == "L/270") limit_denom = 270.0;
+
         // 3. Initial Cantilever Absolute Limits
         double v_cantilever_sec = w_sb * a_s;
         double m_cantilever_sec = (w_sb * Math.Pow(a_s, 2)) / 2.0;
+        double defl_cantilever_sec = (w_sb * Math.Pow(a_s, 4)) / (8.0 * H20_EI);
+        double limit_cantilever = a_s / limit_denom;
         
         if (v_cantilever_sec > MAX_H20_SHEAR_KN)
         {
@@ -136,6 +149,10 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         if (m_cantilever_sec > MAX_H20_MOMENT_KNM)
         {
             warnings.Add($"Secondary beam cantilever moment exceeds limit ({Math.Round(m_cantilever_sec,2)} kNm). Reduce a_s.");
+        }
+        if (a_s > 0 && defl_cantilever_sec > limit_cantilever)
+        {
+            warnings.Add($"Secondary beam cantilever deflection ({Math.Round(defl_cantilever_sec * 1000.0, 2)} mm) exceeds limit ({DeflectionLimit}). Reduce a_s.");
         }
 
         // 4. Numerical Solver for L_s (Continuous Beam Analysis)
@@ -146,9 +163,10 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             // Iterate from 4.0m down to 0.1m in 10mm increments
             for (double test_L = 4.00; test_L >= 0.10; test_L -= 0.01) 
             {
-                // Secondary Beam Internal Forces
+                // Secondary Beam Internal Forces & Deflection
                 double v_sec = w_sb * GetMaxShearMultiplier(PrimaryBeamCount, test_L, a_s);
                 double m_sec = w_sb * GetMaxMomentMultiplier(PrimaryBeamCount, test_L, a_s);
+                double defl_sec = (w_sb * Math.Pow(test_L, 4)) / H20_EI * GetMaxDeflectionMultiplier(PrimaryBeamCount);
                 
                 // Load transferred to Primary Beam
                 double R_sec_multiplier = GetMaxReactionMultiplier(PrimaryBeamCount, test_L, a_s);
@@ -161,6 +179,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
                 
                 if (v_sec <= MAX_H20_SHEAR_KN && 
                     m_sec <= MAX_H20_MOMENT_KNM && 
+                    defl_sec <= (test_L / limit_denom) &&
                     v_prim <= MAX_H20_SHEAR_KN && 
                     m_prim <= MAX_H20_MOMENT_KNM && 
                     p_prop <= capacity.Value)
@@ -208,6 +227,22 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     // ====================================================================
     // CONTINUOUS BEAM HELPER METHODS (Calculates Multipliers)
     // ====================================================================
+
+    private double GetMaxDeflectionMultiplier(int supportCount)
+    {
+        if (supportCount <= 2)
+        {
+            return 5.0 / 384.0; // 0.01302
+        }
+        else if (supportCount == 3)
+        {
+            return 1.0 / 185.0; // 0.0054
+        }
+        else
+        {
+            return 0.0069;
+        }
+    }
 
     private double GetMaxReactionMultiplier(int supportCount, double L, double a)
     {
