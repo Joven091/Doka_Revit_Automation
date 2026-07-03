@@ -22,6 +22,10 @@ namespace EngineeringDashboard
         private double _rightSlabThickness = 200;
 
         private string _beamPolygonPoints;
+        private string _widthDimPoints;
+        private string _depthDimPoints;
+        private string _leftSlabDimPoints;
+        private string _rightSlabDimPoints;
         private double _widthLabelLeft;
         private double _widthLabelTop;
         private double _depthLabelLeft;
@@ -79,6 +83,30 @@ namespace EngineeringDashboard
         {
             get => _beamPolygonPoints;
             private set { _beamPolygonPoints = value; OnPropertyChanged(); }
+        }
+
+        public string WidthDimPoints
+        {
+            get => _widthDimPoints;
+            private set { _widthDimPoints = value; OnPropertyChanged(); }
+        }
+
+        public string DepthDimPoints
+        {
+            get => _depthDimPoints;
+            private set { _depthDimPoints = value; OnPropertyChanged(); }
+        }
+
+        public string LeftSlabDimPoints
+        {
+            get => _leftSlabDimPoints;
+            private set { _leftSlabDimPoints = value; OnPropertyChanged(); }
+        }
+
+        public string RightSlabDimPoints
+        {
+            get => _rightSlabDimPoints;
+            private set { _rightSlabDimPoints = value; OnPropertyChanged(); }
         }
 
         public double WidthLabelLeft
@@ -220,8 +248,8 @@ namespace EngineeringDashboard
 
             double totalHeight = d;
 
-            double canvasW = 200;
-            double canvasH = 150;
+            double canvasW = 120;
+            double canvasH = 120;
 
             double scaleX = canvasW / totalWidth;
             double scaleY = canvasH / totalHeight;
@@ -272,17 +300,83 @@ namespace EngineeringDashboard
 
             BeamPolygonPoints = string.Join(" ", pts);
 
-            WidthLabelLeft = startX + sw / 2 - 15;
-            WidthLabelTop = startY - 25;
+            double tick = 5;
 
-            DepthLabelLeft = startX + sw + 10;
+            // Width Dimension (Top)
+            double wDimOffset = 25;
+            double wDimY = startY - wDimOffset;
+            WidthDimPoints =
+                $"{startX},{startY-5} " +
+                $"{startX},{wDimY} " +
+                $"{startX},{wDimY+tick} {startX},{wDimY-tick} {startX},{wDimY} " +
+                $"{startX+sw},{wDimY} " +
+                $"{startX+sw},{wDimY-tick} {startX+sw},{wDimY+tick} {startX+sw},{wDimY} " +
+                $"{startX+sw},{startY-5}";
+
+            WidthLabelLeft = startX + sw / 2 - 10;
+            WidthLabelTop = wDimY - 20;
+
+            // Depth Dimension (Right)
+            double rightEdgeX = HasRightSlab ? startX + sw + sle : startX + sw;
+            double dDimOffset = HasRightSlab ? 45 : 25;
+            double dDimX = rightEdgeX + dDimOffset;
+
+            DepthDimPoints =
+                $"{rightEdgeX+5},{startY} " +
+                $"{dDimX},{startY} " +
+                $"{dDimX-tick},{startY} {dDimX+tick},{startY} {dDimX},{startY} " +
+                $"{dDimX},{startY+sd} " +
+                $"{dDimX+tick},{startY+sd} {dDimX-tick},{startY+sd} {dDimX},{startY+sd} " +
+                $"{startX+sw+5},{startY+sd}";
+
+            DepthLabelLeft = dDimX + 5;
             DepthLabelTop = startY + sd / 2 - 10;
 
-            LeftSlabLabelLeft = startX - sle / 2 - 15;
-            LeftSlabLabelTop = startY + slt + 5;
+            // Left Slab Thickness Dimension (Left)
+            if (HasLeftSlab)
+            {
+                double lsDimOffset = 25;
+                double lsEdgeX = startX - sle;
+                double lsDimX = lsEdgeX - lsDimOffset;
 
-            RightSlabLabelLeft = startX + sw + sle / 2 - 15;
-            RightSlabLabelTop = startY + srt + 5;
+                LeftSlabDimPoints =
+                    $"{lsEdgeX-5},{startY} " +
+                    $"{lsDimX},{startY} " +
+                    $"{lsDimX-tick},{startY} {lsDimX+tick},{startY} {lsDimX},{startY} " +
+                    $"{lsDimX},{startY+slt} " +
+                    $"{lsDimX+tick},{startY+slt} {lsDimX-tick},{startY+slt} {lsDimX},{startY+slt} " +
+                    $"{lsEdgeX-5},{startY+slt}";
+
+                LeftSlabLabelLeft = lsDimX - 28;
+                LeftSlabLabelTop = startY + slt / 2 - 10;
+            }
+            else
+            {
+                LeftSlabDimPoints = string.Empty;
+            }
+
+            // Right Slab Thickness Dimension (Right)
+            if (HasRightSlab)
+            {
+                double rsDimOffset = 20;
+                double rsEdgeX = startX + sw + sle;
+                double rsDimX = rsEdgeX + rsDimOffset;
+
+                RightSlabDimPoints =
+                    $"{rsEdgeX+5},{startY} " +
+                    $"{rsDimX},{startY} " +
+                    $"{rsDimX-tick},{startY} {rsDimX+tick},{startY} {rsDimX},{startY} " +
+                    $"{rsDimX},{startY+srt} " +
+                    $"{rsDimX+tick},{startY+srt} {rsDimX-tick},{startY+srt} {rsDimX},{startY+srt} " +
+                    $"{rsEdgeX+5},{startY+srt}";
+
+                RightSlabLabelLeft = rsDimX + 5;
+                RightSlabLabelTop = startY + srt / 2 - 10;
+            }
+            else
+            {
+                RightSlabDimPoints = string.Empty;
+            }
         }
 
         private void ClearOutputs()

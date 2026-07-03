@@ -91,19 +91,25 @@
         <!-- Right Panel: Visualization -->
         <Border Grid.Column="1" Background="#F0F0F0" CornerRadius="5" Padding="10">
             <Canvas Width="250" Height="250" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Polygon Points="{Binding BeamPolygonPoints}" Fill="LightGray" Stroke="Black" StrokeThickness="1"/>
+                <Polygon Points="{Binding BeamPolygonPoints}" Fill="LightGray" Stroke="Black" StrokeThickness="2"/>
+
+                <!-- Dimension Lines -->
+                <Polyline Points="{Binding WidthDimPoints}" Stroke="#555555" StrokeThickness="1"/>
+                <Polyline Points="{Binding DepthDimPoints}" Stroke="#555555" StrokeThickness="1"/>
+                <Polyline Points="{Binding LeftSlabDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                <Polyline Points="{Binding RightSlabDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
                 <!-- Width Label -->
-                <TextBlock Text="{Binding Width}" Canvas.Left="{Binding WidthLabelLeft}" Canvas.Top="{Binding WidthLabelTop}" Foreground="Blue" FontWeight="Bold"/>
+                <TextBlock Text="{Binding Width}" Canvas.Left="{Binding WidthLabelLeft}" Canvas.Top="{Binding WidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
 
                 <!-- Depth Label -->
-                <TextBlock Text="{Binding Depth}" Canvas.Left="{Binding DepthLabelLeft}" Canvas.Top="{Binding DepthLabelTop}" Foreground="Blue" FontWeight="Bold"/>
+                <TextBlock Text="{Binding Depth}" Canvas.Left="{Binding DepthLabelLeft}" Canvas.Top="{Binding DepthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
 
                 <!-- Left Slab Thickness Label -->
-                <TextBlock Text="{Binding LeftSlabThickness}" Canvas.Left="{Binding LeftSlabLabelLeft}" Canvas.Top="{Binding LeftSlabLabelTop}" Foreground="Blue" FontWeight="Bold" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                <TextBlock Text="{Binding LeftSlabThickness}" Canvas.Left="{Binding LeftSlabLabelLeft}" Canvas.Top="{Binding LeftSlabLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
                 <!-- Right Slab Thickness Label -->
-                <TextBlock Text="{Binding RightSlabThickness}" Canvas.Left="{Binding RightSlabLabelLeft}" Canvas.Top="{Binding RightSlabLabelTop}" Foreground="Blue" FontWeight="Bold" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                <TextBlock Text="{Binding RightSlabThickness}" Canvas.Left="{Binding RightSlabLabelLeft}" Canvas.Top="{Binding RightSlabLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
             </Canvas>
         </Border>
     </Grid>
