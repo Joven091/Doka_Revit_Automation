@@ -98,9 +98,17 @@
                 <Polyline Points="{Binding DepthDimPoints}" Stroke="#555555" StrokeThickness="1"/>
                 <Polyline Points="{Binding LeftSlabDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                 <Polyline Points="{Binding RightSlabDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                <Polyline Points="{Binding LeftSlabWidthDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                <Polyline Points="{Binding RightSlabWidthDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
                 <!-- Width Label -->
                 <TextBlock Text="{Binding Width}" Canvas.Left="{Binding WidthLabelLeft}" Canvas.Top="{Binding WidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
+
+                <!-- Left Slab Width Label -->
+                <TextBlock Text="300" Canvas.Left="{Binding LeftSlabWidthLabelLeft}" Canvas.Top="{Binding LeftSlabWidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                <!-- Right Slab Width Label -->
+                <TextBlock Text="300" Canvas.Left="{Binding RightSlabWidthLabelLeft}" Canvas.Top="{Binding RightSlabWidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
                 <!-- Depth Label -->
                 <TextBlock Text="{Binding Depth}" Canvas.Left="{Binding DepthLabelLeft}" Canvas.Top="{Binding DepthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>

@@ -26,6 +26,8 @@ namespace EngineeringDashboard
         private string _depthDimPoints;
         private string _leftSlabDimPoints;
         private string _rightSlabDimPoints;
+        private string _leftSlabWidthDimPoints;
+        private string _rightSlabWidthDimPoints;
         private double _widthLabelLeft;
         private double _widthLabelTop;
         private double _depthLabelLeft;
@@ -109,6 +111,18 @@ namespace EngineeringDashboard
             private set { _rightSlabDimPoints = value; OnPropertyChanged(); }
         }
 
+        public string LeftSlabWidthDimPoints
+        {
+            get => _leftSlabWidthDimPoints;
+            private set { _leftSlabWidthDimPoints = value; OnPropertyChanged(); }
+        }
+
+        public string RightSlabWidthDimPoints
+        {
+            get => _rightSlabWidthDimPoints;
+            private set { _rightSlabWidthDimPoints = value; OnPropertyChanged(); }
+        }
+
         public double WidthLabelLeft
         {
             get => _widthLabelLeft;
@@ -155,6 +169,35 @@ namespace EngineeringDashboard
         {
             get => _rightSlabLabelTop;
             private set { _rightSlabLabelTop = value; OnPropertyChanged(); }
+        }
+
+        private double _leftSlabWidthLabelLeft;
+        private double _leftSlabWidthLabelTop;
+        private double _rightSlabWidthLabelLeft;
+        private double _rightSlabWidthLabelTop;
+
+        public double LeftSlabWidthLabelLeft
+        {
+            get => _leftSlabWidthLabelLeft;
+            private set { _leftSlabWidthLabelLeft = value; OnPropertyChanged(); }
+        }
+
+        public double LeftSlabWidthLabelTop
+        {
+            get => _leftSlabWidthLabelTop;
+            private set { _leftSlabWidthLabelTop = value; OnPropertyChanged(); }
+        }
+
+        public double RightSlabWidthLabelLeft
+        {
+            get => _rightSlabWidthLabelLeft;
+            private set { _rightSlabWidthLabelLeft = value; OnPropertyChanged(); }
+        }
+
+        public double RightSlabWidthLabelTop
+        {
+            get => _rightSlabWidthLabelTop;
+            private set { _rightSlabWidthLabelTop = value; OnPropertyChanged(); }
         }
 
         public double SecondarySpacing
@@ -240,7 +283,7 @@ namespace EngineeringDashboard
             double w = Width > 0 ? Width : 200;
             double d = Depth > 0 ? Depth : 500;
 
-            double slabExtend = System.Math.Max(w * 0.5, 200);
+            double slabExtend = 300;
 
             double totalWidth = w;
             if (HasLeftSlab) totalWidth += slabExtend;
@@ -318,7 +361,7 @@ namespace EngineeringDashboard
 
             // Depth Dimension (Right)
             double rightEdgeX = HasRightSlab ? startX + sw + sle : startX + sw;
-            double dDimOffset = HasRightSlab ? 45 : 25;
+            double dDimOffset = HasRightSlab ? 65 : 25;
             double dDimX = rightEdgeX + dDimOffset;
 
             DepthDimPoints =
@@ -376,6 +419,51 @@ namespace EngineeringDashboard
             else
             {
                 RightSlabDimPoints = string.Empty;
+            }
+
+            // Left Slab Width Dimension (Top)
+            if (HasLeftSlab)
+            {
+                double lswDimOffset = 25;
+                double lswDimY = startY - lswDimOffset;
+                double lsStartX = startX - sle;
+                LeftSlabWidthDimPoints =
+                    $"{lsStartX},{startY-5} " +
+                    $"{lsStartX},{lswDimY} " +
+                    $"{lsStartX},{lswDimY+tick} {lsStartX},{lswDimY-tick} {lsStartX},{lswDimY} " +
+                    $"{startX},{lswDimY} " +
+                    $"{startX},{lswDimY-tick} {startX},{lswDimY+tick} {startX},{lswDimY} " +
+                    $"{startX},{startY-5}";
+
+                LeftSlabWidthLabelLeft = lsStartX + sle / 2 - 10;
+                LeftSlabWidthLabelTop = lswDimY - 20;
+            }
+            else
+            {
+                LeftSlabWidthDimPoints = string.Empty;
+            }
+
+            // Right Slab Width Dimension (Top)
+            if (HasRightSlab)
+            {
+                double rswDimOffset = 25;
+                double rswDimY = startY - rswDimOffset;
+                double rsStartX = startX + sw;
+                double rsEndX = rsStartX + sle;
+                RightSlabWidthDimPoints =
+                    $"{rsStartX},{startY-5} " +
+                    $"{rsStartX},{rswDimY} " +
+                    $"{rsStartX},{rswDimY+tick} {rsStartX},{rswDimY-tick} {rsStartX},{rswDimY} " +
+                    $"{rsEndX},{rswDimY} " +
+                    $"{rsEndX},{rswDimY-tick} {rsEndX},{rswDimY+tick} {rsEndX},{rswDimY} " +
+                    $"{rsEndX},{startY-5}";
+
+                RightSlabWidthLabelLeft = rsStartX + sle / 2 - 10;
+                RightSlabWidthLabelTop = rswDimY - 20;
+            }
+            else
+            {
+                RightSlabWidthDimPoints = string.Empty;
             }
         }
 
