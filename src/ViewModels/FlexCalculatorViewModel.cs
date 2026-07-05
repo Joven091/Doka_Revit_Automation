@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Windows.Input;
+using OxyPlot;
+using MyRevitAddin.Models;
+using MyRevitAddin.ViewModels;
 
 namespace EngineeringDashboard;
 
@@ -101,8 +105,33 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public double H20Utilization { get => _h20Utilization; private set { _h20Utilization = value; OnPropertyChanged(); } }
     public string WarningMessage { get => _warningMessage; private set { _warningMessage = value; OnPropertyChanged(); } }
 
+    // --- Commands & Diagram Properties ---
+    public ICommand ViewPrimaryBeamDiagramCommand { get; }
+    public ICommand ViewSecondaryBeamDiagramCommand { get; }
+
+    public event EventHandler<EventArgs> PrimaryBeamDiagramRequested;
+    public event EventHandler<EventArgs> SecondaryBeamDiagramRequested;
+
+    private PlotModel _primaryShearPlot;
+    public PlotModel PrimaryShearPlot { get => _primaryShearPlot; set { _primaryShearPlot = value; OnPropertyChanged(); } }
+    private PlotModel _primaryMomentPlot;
+    public PlotModel PrimaryMomentPlot { get => _primaryMomentPlot; set { _primaryMomentPlot = value; OnPropertyChanged(); } }
+    private PlotModel _primaryDeflectionPlot;
+    public PlotModel PrimaryDeflectionPlot { get => _primaryDeflectionPlot; set { _primaryDeflectionPlot = value; OnPropertyChanged(); } }
+
+    private PlotModel _secondaryShearPlot;
+    public PlotModel SecondaryShearPlot { get => _secondaryShearPlot; set { _secondaryShearPlot = value; OnPropertyChanged(); } }
+    private PlotModel _secondaryMomentPlot;
+    public PlotModel SecondaryMomentPlot { get => _secondaryMomentPlot; set { _secondaryMomentPlot = value; OnPropertyChanged(); } }
+    private PlotModel _secondaryDeflectionPlot;
+    public PlotModel SecondaryDeflectionPlot { get => _secondaryDeflectionPlot; set { _secondaryDeflectionPlot = value; OnPropertyChanged(); } }
+
+
     public FlexCalculatorViewModel()
     {
+        ViewPrimaryBeamDiagramCommand = new RelayCommand(_ => PrimaryBeamDiagramRequested?.Invoke(this, EventArgs.Empty));
+        ViewSecondaryBeamDiagramCommand = new RelayCommand(_ => SecondaryBeamDiagramRequested?.Invoke(this, EventArgs.Empty));
+
         SelectedH20 = "2.90m"; 
         Calculate();
     }
@@ -248,6 +277,47 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         {
             WarningMessage = string.Join(" | ", warnings);
         }
+
+        UpdateDiagrams(pbcInt, pcInt, w_sb, w_slab, a_s, a_p, SuggestedPrimaryBeamSpacing / 1000.0, L_p);
+    }
+
+    private void UpdateDiagrams(int pbcInt, int pcInt, double w_sb, double w_slab, double a_s, double a_p, double final_L_s, double L_p)
+    {
+        if (SuggestedPrimaryBeamSpacing <= 0)
+        {
+            PrimaryShearPlot = PrimaryMomentPlot = PrimaryDeflectionPlot = null;
+            SecondaryShearPlot = SecondaryMomentPlot = SecondaryDeflectionPlot = null;
+            return;
+        }
+
+        // Secondary Beam Plots
+        var secPlots = DiagramDataGenerator.GeneratePlots(
+            pbcInt,
+            final_L_s,
+            a_s,
+            w_sb,
+            H20_EI,
+            "Secondary Beam"
+        );
+        SecondaryShearPlot = secPlots.shearPlot;
+        SecondaryMomentPlot = secPlots.momentPlot;
+        SecondaryDeflectionPlot = secPlots.deflectionPlot;
+
+        // Primary Beam Plots
+        double R_sec_multiplier = GetMaxReactionMultiplier(pbcInt, final_L_s, a_s);
+        double final_w_pb = w_slab * R_sec_multiplier;
+
+        var primPlots = DiagramDataGenerator.GeneratePlots(
+            pcInt,
+            L_p,
+            a_p,
+            final_w_pb,
+            H20_EI,
+            "Primary Beam"
+        );
+        PrimaryShearPlot = primPlots.shearPlot;
+        PrimaryMomentPlot = primPlots.momentPlot;
+        PrimaryDeflectionPlot = primPlots.deflectionPlot;
     }
 
     // ====================================================================
