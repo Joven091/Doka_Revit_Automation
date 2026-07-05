@@ -1,5 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
 <RevitAddIns>
+  <AddIn Type="Application">
+    <Name>MyRevitAddinApplication</Name>
+    <Assembly>MyRevitAddin.dll</Assembly>
+    <FullClassName>MyRevitAddin.App</FullClassName>
+    <ClientId>a1b2c3d4-e5f6-4a5b-6c7d-8e9f0a1b2c3d</ClientId>
+    <VendorId>DOKA</VendorId>
+    <VendorDescription>Doka Designer</VendorDescription>
+  </AddIn>
   <AddIn Type="Command">
     <Text>Isolate Pour Box</Text>
     <Description>Isolate Pour Box Command</Description>
