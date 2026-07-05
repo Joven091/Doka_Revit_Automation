@@ -31,12 +31,10 @@ namespace MyRevitAddin.Models
             // Based on the FlexCalculatorViewModel multipliers, it seems we are dealing with a standard
             // envelope analysis for identical continuous spans of length L with one cantilever a.
 
-            // To provide a continuous visual, let's plot a single representative span + cantilever
-            // as this is what is analyzed mathematically in the ViewModel.
-            // X = 0 is the start of the span, X = L is the support, X = L + a is the end of the cantilever.
-
-            double L_total = spanLength + cantileverLength;
-            int numPoints = 200; // Resolution of the graph
+            // Calculate total length based on number of spans + cantilever
+            // numSupports - 1 is the number of spans.
+            double L_total = (numSupports - 1) * spanLength + cantileverLength;
+            int numPoints = 200 * Math.Max(1, numSupports - 1); // Scale resolution of the graph
             double step = L_total / numPoints;
 
             // Simple approximation of continuous beam effects for the plot:
@@ -63,35 +61,42 @@ namespace MyRevitAddin.Models
                 supportPositions[i] = i * spanLength;
             }
 
+            // Integration constants for deflection (Macaulay's method)
+            // Boundary conditions: y(0) = 0, y(L) = 0
+            double C2 = 0;
+            double C1 = (w * Math.Pow(spanLength, 3) / 24.0) - (R[0] * Math.Pow(spanLength, 2) / 6.0);
+
             for (double x = 0; x <= L_total + 0.0001; x += step)
             {
-                double V = 0;
-                double M = 0;
-
-                // V(x) = sum(R_i for pos_i < x) - w * x
-                // M(x) = sum(R_i * (x - pos_i) for pos_i < x) - w * x^2 / 2
-
-                V = -w * x;
-                M = -w * x * x / 2.0;
+                // Initialize uniform load terms
+                double V = -w * x;
+                double M = -w * Math.Pow(x, 2) / 2.0;
+                double EIy_term1 = 0; // Sum of reaction terms for deflection
 
                 for (int i = 0; i < numSupports; i++)
                 {
-                    if (x > supportPositions[i] || Math.Abs(x - supportPositions[i]) < 1e-6) // Include reaction if past or at support
+                    if (x > supportPositions[i] || Math.Abs(x - supportPositions[i]) < 1e-6)
                     {
+                        // Macaulay's method for Shear: <x - a>^0
                         V += R[i];
+
                         if (x > supportPositions[i])
                         {
+                            // Macaulay's method for Moment: <x - a>^1
                             M += R[i] * (x - supportPositions[i]);
+                            // Macaulay's method for Deflection: <x - a>^3
+                            EIy_term1 += (R[i] / 6.0) * Math.Pow(x - supportPositions[i], 3);
                         }
                     }
                 }
 
+                // Macaulay's method for Deflection continued: universal formula
+                double EIy_term2 = -(w / 24.0) * Math.Pow(x, 4);
+                double EIy_term3 = C1 * x + C2;
+                double delta = (EIy_term1 + EIy_term2 + EIy_term3) / EI;
+
                 shearSeries.Points.Add(new DataPoint(x, V));
                 momentSeries.Points.Add(new DataPoint(x, M));
-
-                // Deflection is much more complex for continuous beams (requires integration).
-                // For demonstration, we will use a simplified approximation or just the exact shape for 2-support case.
-                double delta = CalculateDeflection(x, numSupports, spanLength, cantileverLength, w, EI, R, supportPositions);
                 deflectionSeries.Points.Add(new DataPoint(x, delta * 1000)); // mm
             }
 
@@ -174,46 +179,6 @@ namespace MyRevitAddin.Models
             }
 
             return R;
-        }
-
-        private static double CalculateDeflection(double x, int numSupports, double L, double a, double w, double EI, double[] R, double[] supportPositions)
-        {
-            // Macaulay's method for deflection
-            // EI * d2y/dx2 = M(x) = sum(R_i * <x - pos_i>^1) - w/2 * <x>^2
-            // EI * dy/dx = sum(R_i/2 * <x - pos_i>^2) - w/6 * <x>^3 + C1
-            // EI * y = sum(R_i/6 * <x - pos_i>^3) - w/24 * <x>^4 + C1*x + C2
-
-            // Boundary conditions: y(pos_i) = 0
-            // Find C1, C2 using the first span (0 to L)
-            // y(0) = 0 => C2 = 0
-            // y(L) = 0 => R[0]/6 * L^3 - w/24 * L^4 + C1*L = 0
-            // C1 = w*L^3 / 24 - R[0]*L^2 / 6
-
-            double C2 = 0;
-            double C1 = (w * Math.Pow(L, 3) / 24.0) - (R[0] * Math.Pow(L, 2) / 6.0);
-
-            // Now evaluate deflection at x for the entire beam
-            // Note: C1 and C2 only perfectly apply to the first span.
-            // For continuous beams with multiple spans, each span has its own integration constants
-            // if we don't use a continuous Macaulay function.
-            // Actually, Macaulay's method applies to the whole beam if all loads are continuous!
-            // Let's use the universal Macaulay formula:
-
-            double term1 = 0;
-            for (int i = 0; i < numSupports; i++)
-            {
-                if (x > supportPositions[i])
-                {
-                    term1 += (R[i] / 6.0) * Math.Pow(x - supportPositions[i], 3);
-                }
-            }
-
-            double term2 = -(w / 24.0) * Math.Pow(x, 4);
-            double term3 = C1 * x + C2;
-
-            double EIy = term1 + term2 + term3;
-
-            return EIy / EI;
         }
     }
 }
