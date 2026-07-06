@@ -132,26 +132,13 @@ namespace MyRevitAddin.Models
             // Add bearing annotations
             foreach (var pos in supportPositions)
             {
-                // Draw a small triangle for bearing visualization on the zero axis.
-                // We use PolygonAnnotation. The size is arbitrary but can be scaled dynamically or kept small.
-                double bearingSize = Math.Max(0.1, L_total * 0.02);
-
-                var shearBearing = new OxyPlot.Annotations.PolygonAnnotation { Fill = OxyColors.DarkGray, StrokeThickness = 0 };
-                shearBearing.Points.Add(new DataPoint(pos, 0));
-                shearBearing.Points.Add(new DataPoint(pos - bearingSize, -bearingSize * (maxShear - minShear) * 0.05));
-                shearBearing.Points.Add(new DataPoint(pos + bearingSize, -bearingSize * (maxShear - minShear) * 0.05));
+                var shearBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Triangle, Fill = OxyColors.DarkGray, Size = 6 };
                 shearPlot.Annotations.Add(shearBearing);
 
-                var momentBearing = new OxyPlot.Annotations.PolygonAnnotation { Fill = OxyColors.DarkGray, StrokeThickness = 0 };
-                momentBearing.Points.Add(new DataPoint(pos, 0));
-                momentBearing.Points.Add(new DataPoint(pos - bearingSize, -bearingSize * (maxMoment - minMoment) * 0.05));
-                momentBearing.Points.Add(new DataPoint(pos + bearingSize, -bearingSize * (maxMoment - minMoment) * 0.05));
+                var momentBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Triangle, Fill = OxyColors.DarkGray, Size = 6 };
                 momentPlot.Annotations.Add(momentBearing);
 
-                var deflectionBearing = new OxyPlot.Annotations.PolygonAnnotation { Fill = OxyColors.DarkGray, StrokeThickness = 0 };
-                deflectionBearing.Points.Add(new DataPoint(pos, 0));
-                deflectionBearing.Points.Add(new DataPoint(pos - bearingSize, -bearingSize * (maxDeflection - minDeflection) * 0.05));
-                deflectionBearing.Points.Add(new DataPoint(pos + bearingSize, -bearingSize * (maxDeflection - minDeflection) * 0.05));
+                var deflectionBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Triangle, Fill = OxyColors.DarkGray, Size = 6 };
                 deflectionPlot.Annotations.Add(deflectionBearing);
             }
 
