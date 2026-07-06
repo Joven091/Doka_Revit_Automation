@@ -287,6 +287,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             pbcInt,
             final_L_s,
             a_s,
+            a_s,
             w_sb,
             H20_EI,
             "Secondary Beam"
@@ -300,6 +301,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         var primPlots = DiagramDataGenerator.GeneratePlots(
             pcInt,
             L_p,
+            a_p,
             a_p,
             final_w_pb,
             H20_EI,

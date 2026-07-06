@@ -11,7 +11,8 @@ namespace MyRevitAddin.Models
         public static (PlotModel shearPlot, PlotModel momentPlot, PlotModel deflectionPlot, double maxShear, double minShear, double maxMoment, double minMoment, double maxDeflection, double minDeflection) GeneratePlots(
             int numSupports,
             double spanLength,
-            double cantileverLength,
+            double leftCantilever,
+            double rightCantilever,
             double w, // Load in kN/m
             double EI, // Flexural rigidity in kN*m^2
             string titlePrefix)
@@ -33,7 +34,7 @@ namespace MyRevitAddin.Models
 
             // Calculate total length based on number of spans + cantilever
             // numSupports - 1 is the number of spans.
-            double L_total = (numSupports - 1) * spanLength + cantileverLength;
+            double L_total = (numSupports - 1) * spanLength + leftCantilever + rightCantilever;
             int numPoints = 200 * Math.Max(1, numSupports - 1); // Scale resolution of the graph
             double step = L_total / numPoints;
 
@@ -53,18 +54,21 @@ namespace MyRevitAddin.Models
             // A static load case is more intuitive for a single graph.
             // We will plot the static load case of all spans loaded.
 
-            double[] R = CalculateReactions(numSupports, spanLength, cantileverLength, w);
+            double[] R = CalculateReactions(numSupports, spanLength, leftCantilever, rightCantilever, w);
 
             double[] supportPositions = new double[numSupports];
             for (int i = 0; i < numSupports; i++)
             {
-                supportPositions[i] = i * spanLength;
+                supportPositions[i] = leftCantilever + i * spanLength;
             }
 
             // Integration constants for deflection (Macaulay's method)
-            // Boundary conditions: y(0) = 0, y(L) = 0
-            double C2 = 0;
-            double C1 = (w * Math.Pow(spanLength, 3) / 24.0) - (R[0] * Math.Pow(spanLength, 2) / 6.0);
+            // Boundary conditions: y(support[0]) = 0, y(support[1]) = 0
+            double x_0 = supportPositions[0];
+            double x_1 = supportPositions[1];
+
+            double C1 = ((w / 24.0) * (Math.Pow(x_1, 4) - Math.Pow(x_0, 4)) - (R[0] / 6.0) * Math.Pow(spanLength, 3)) / spanLength;
+            double C2 = (w / 24.0) * Math.Pow(x_0, 4) - C1 * x_0;
 
             double maxShear = double.MinValue;
             double minShear = double.MaxValue;
@@ -125,6 +129,32 @@ namespace MyRevitAddin.Models
             momentPlot.Annotations.Add(new OxyPlot.Annotations.LineAnnotation { Type = OxyPlot.Annotations.LineAnnotationType.Horizontal, Y = 0, Color = OxyColors.Gray, LineStyle = LineStyle.Dash });
             deflectionPlot.Annotations.Add(new OxyPlot.Annotations.LineAnnotation { Type = OxyPlot.Annotations.LineAnnotationType.Horizontal, Y = 0, Color = OxyColors.Gray, LineStyle = LineStyle.Dash });
 
+            // Add bearing annotations
+            foreach (var pos in supportPositions)
+            {
+                // Draw a small triangle for bearing visualization on the zero axis.
+                // We use PolygonAnnotation. The size is arbitrary but can be scaled dynamically or kept small.
+                double bearingSize = Math.Max(0.1, L_total * 0.02);
+
+                var shearBearing = new OxyPlot.Annotations.PolygonAnnotation { Fill = OxyColors.DarkGray, StrokeThickness = 0 };
+                shearBearing.Points.Add(new DataPoint(pos, 0));
+                shearBearing.Points.Add(new DataPoint(pos - bearingSize, -bearingSize * (maxShear - minShear) * 0.05));
+                shearBearing.Points.Add(new DataPoint(pos + bearingSize, -bearingSize * (maxShear - minShear) * 0.05));
+                shearPlot.Annotations.Add(shearBearing);
+
+                var momentBearing = new OxyPlot.Annotations.PolygonAnnotation { Fill = OxyColors.DarkGray, StrokeThickness = 0 };
+                momentBearing.Points.Add(new DataPoint(pos, 0));
+                momentBearing.Points.Add(new DataPoint(pos - bearingSize, -bearingSize * (maxMoment - minMoment) * 0.05));
+                momentBearing.Points.Add(new DataPoint(pos + bearingSize, -bearingSize * (maxMoment - minMoment) * 0.05));
+                momentPlot.Annotations.Add(momentBearing);
+
+                var deflectionBearing = new OxyPlot.Annotations.PolygonAnnotation { Fill = OxyColors.DarkGray, StrokeThickness = 0 };
+                deflectionBearing.Points.Add(new DataPoint(pos, 0));
+                deflectionBearing.Points.Add(new DataPoint(pos - bearingSize, -bearingSize * (maxDeflection - minDeflection) * 0.05));
+                deflectionBearing.Points.Add(new DataPoint(pos + bearingSize, -bearingSize * (maxDeflection - minDeflection) * 0.05));
+                deflectionPlot.Annotations.Add(deflectionBearing);
+            }
+
             // Setup Axes
             shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
             shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Shear (kN)" });
@@ -138,60 +168,48 @@ namespace MyRevitAddin.Models
             return (shearPlot, momentPlot, deflectionPlot, maxShear, minShear, maxMoment, minMoment, maxDeflection, minDeflection);
         }
 
-        private static double[] CalculateReactions(int numSupports, double L, double a, double w)
+        private static double[] CalculateReactions(int numSupports, double L, double aL, double aR, double w)
         {
             double[] R = new double[numSupports];
 
             if (numSupports <= 2)
             {
-                // 1 span, 2 supports, 1 cantilever
-                // Sum M at support 0: R[1]*L - w*(L+a)^2 / 2 = 0 => R[1] = w*(L+a)^2 / (2L)
-                R[1] = (w * Math.Pow(L + a, 2) / 2.0) / L;
-                R[0] = w * (L + a) - R[1];
+                double M0 = -w * aL * aL / 2.0;
+                double M1 = -w * aR * aR / 2.0;
+                R[0] = w * L / 2.0 + (M1 - M0) / L + w * aL;
+                R[1] = w * L / 2.0 - (M1 - M0) / L + w * aR;
             }
             else if (numSupports == 3)
             {
-                // 2 spans, 3 supports, 1 cantilever
-                // Using three-moment equation or standard continuous beam tables for all spans loaded
-                // M0 = 0
-                // M2 = -w*a^2 / 2 (moment at right support due to cantilever)
-                // M0*L + 2*M1*(L+L) + M2*L = -w*L^3/4 - w*L^3/4  (assuming equal I)
-                // 4*L*M1 = -w*L^3/2 - (-w*a^2/2)*L
-                // M1 = -w*L^2/8 + w*a^2/8
-                double M1 = -w * L * L / 8.0 + w * a * a / 8.0;
-                double M2 = -w * a * a / 2.0;
+                double M0 = -w * aL * aL / 2.0;
+                double M2 = -w * aR * aR / 2.0;
+                double M1 = (-w * L * L / 2.0 - M0 - M2) / 4.0;
 
-                // Reactions
-                // Span 0 to 1
-                R[0] = w * L / 2.0 + M1 / L;
-                // Span 1 to 2 + cantilever
-                double R1_left = w * L / 2.0 - M1 / L;
-                double R1_right = w * L / 2.0 + (M2 - M1) / L;
-                R[1] = R1_left + R1_right;
-                R[2] = w * L / 2.0 - (M2 - M1) / L + w * a;
+                R[0] = w * L / 2.0 + (M1 - M0) / L + w * aL;
+                R[1] = (w * L / 2.0 - (M1 - M0) / L) + (w * L / 2.0 + (M2 - M1) / L);
+                R[2] = w * L / 2.0 - (M2 - M1) / L + w * aR;
             }
-            else // 4+ supports (approximate as 4 supports for visual, 3 spans + 1 cantilever)
+            else // 4+ supports (approximate as 4 supports for visual, 3 spans + 2 cantilevers)
             {
-                // 3 spans, 4 supports, 1 cantilever
-                // M0 = 0, M3 = -w*a^2/2
-                // Eq1: 4*L*M1 + L*M2 = -w*L^3/2
-                // Eq2: L*M1 + 4*L*M2 = -w*L^3/2 - (-w*a^2/2)*L
+                double M0 = -w * aL * aL / 2.0;
+                double M3 = -w * aR * aR / 2.0;
 
-                // 4*M1 + M2 = -w*L^2/2
-                // M1 + 4*M2 = -w*L^2/2 + w*a^2/2
+                // Three-moment equations for a 3-span continuous beam
+                // M0*L + 4*M1*L + M2*L = -w*L^3/2
+                // 4*M1 + M2 = -w*L^2/2 - M0
+                // M1*L + 4*M2*L + M3*L = -w*L^3/2
+                // M1 + 4*M2 = -w*L^2/2 - M3
 
-                double C1 = -w * L * L / 2.0;
-                double C2 = -w * L * L / 2.0 + w * a * a / 2.0;
+                double C1 = -w * L * L / 2.0 - M0;
+                double C2 = -w * L * L / 2.0 - M3;
 
-                // 15*M2 = 4*C2 - C1
                 double M2 = (4 * C2 - C1) / 15.0;
                 double M1 = (C1 - M2) / 4.0;
-                double M3 = -w * a * a / 2.0;
 
-                R[0] = w * L / 2.0 + M1 / L;
-                R[1] = (w * L / 2.0 - M1 / L) + (w * L / 2.0 + (M2 - M1) / L);
+                R[0] = w * L / 2.0 + (M1 - M0) / L + w * aL;
+                R[1] = (w * L / 2.0 - (M1 - M0) / L) + (w * L / 2.0 + (M2 - M1) / L);
                 R[2] = (w * L / 2.0 - (M2 - M1) / L) + (w * L / 2.0 + (M3 - M2) / L);
-                R[3] = (w * L / 2.0 - (M3 - M2) / L) + w * a;
+                R[3] = (w * L / 2.0 - (M3 - M2) / L) + w * aR;
             }
 
             return R;
