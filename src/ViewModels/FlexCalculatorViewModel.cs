@@ -112,19 +112,11 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public event EventHandler<EventArgs> PrimaryBeamDiagramRequested;
     public event EventHandler<EventArgs> SecondaryBeamDiagramRequested;
 
-    private PlotModel _primaryShearPlot;
-    public PlotModel PrimaryShearPlot { get => _primaryShearPlot; set { _primaryShearPlot = value; OnPropertyChanged(); } }
-    private PlotModel _primaryMomentPlot;
-    public PlotModel PrimaryMomentPlot { get => _primaryMomentPlot; set { _primaryMomentPlot = value; OnPropertyChanged(); } }
-    private PlotModel _primaryDeflectionPlot;
-    public PlotModel PrimaryDeflectionPlot { get => _primaryDeflectionPlot; set { _primaryDeflectionPlot = value; OnPropertyChanged(); } }
+    private DiagramWindowViewModel _primaryDiagramViewModel;
+    public DiagramWindowViewModel PrimaryDiagramViewModel { get => _primaryDiagramViewModel; set { _primaryDiagramViewModel = value; OnPropertyChanged(); } }
 
-    private PlotModel _secondaryShearPlot;
-    public PlotModel SecondaryShearPlot { get => _secondaryShearPlot; set { _secondaryShearPlot = value; OnPropertyChanged(); } }
-    private PlotModel _secondaryMomentPlot;
-    public PlotModel SecondaryMomentPlot { get => _secondaryMomentPlot; set { _secondaryMomentPlot = value; OnPropertyChanged(); } }
-    private PlotModel _secondaryDeflectionPlot;
-    public PlotModel SecondaryDeflectionPlot { get => _secondaryDeflectionPlot; set { _secondaryDeflectionPlot = value; OnPropertyChanged(); } }
+    private DiagramWindowViewModel _secondaryDiagramViewModel;
+    public DiagramWindowViewModel SecondaryDiagramViewModel { get => _secondaryDiagramViewModel; set { _secondaryDiagramViewModel = value; OnPropertyChanged(); } }
 
 
     public FlexCalculatorViewModel()
@@ -285,8 +277,8 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     {
         if (SuggestedPrimaryBeamSpacing <= 0)
         {
-            PrimaryShearPlot = PrimaryMomentPlot = PrimaryDeflectionPlot = null;
-            SecondaryShearPlot = SecondaryMomentPlot = SecondaryDeflectionPlot = null;
+            PrimaryDiagramViewModel = null;
+            SecondaryDiagramViewModel = null;
             return;
         }
 
@@ -299,9 +291,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             H20_EI,
             "Secondary Beam"
         );
-        SecondaryShearPlot = secPlots.shearPlot;
-        SecondaryMomentPlot = secPlots.momentPlot;
-        SecondaryDeflectionPlot = secPlots.deflectionPlot;
+        SecondaryDiagramViewModel = new DiagramWindowViewModel(secPlots);
 
         // Primary Beam Plots
         double R_sec_multiplier = GetMaxReactionMultiplier(pbcInt, final_L_s, a_s);
@@ -315,9 +305,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             H20_EI,
             "Primary Beam"
         );
-        PrimaryShearPlot = primPlots.shearPlot;
-        PrimaryMomentPlot = primPlots.momentPlot;
-        PrimaryDeflectionPlot = primPlots.deflectionPlot;
+        PrimaryDiagramViewModel = new DiagramWindowViewModel(primPlots);
     }
 
     // ====================================================================
