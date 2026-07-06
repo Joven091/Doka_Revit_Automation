@@ -27,16 +27,14 @@ namespace EngineeringDashboard
         {
             if (_primaryDiagramWindow != null && _primaryDiagramWindow.IsLoaded)
             {
-                if (e.PropertyName == nameof(_viewModel.PrimaryShearPlot)) _primaryDiagramWindow.ShearPlot = _viewModel.PrimaryShearPlot;
-                if (e.PropertyName == nameof(_viewModel.PrimaryMomentPlot)) _primaryDiagramWindow.MomentPlot = _viewModel.PrimaryMomentPlot;
-                if (e.PropertyName == nameof(_viewModel.PrimaryDeflectionPlot)) _primaryDiagramWindow.DeflectionPlot = _viewModel.PrimaryDeflectionPlot;
+                if (e.PropertyName == nameof(_viewModel.PrimaryDiagramViewModel))
+                    _primaryDiagramWindow.DataContext = _viewModel.PrimaryDiagramViewModel;
             }
 
             if (_secondaryDiagramWindow != null && _secondaryDiagramWindow.IsLoaded)
             {
-                if (e.PropertyName == nameof(_viewModel.SecondaryShearPlot)) _secondaryDiagramWindow.ShearPlot = _viewModel.SecondaryShearPlot;
-                if (e.PropertyName == nameof(_viewModel.SecondaryMomentPlot)) _secondaryDiagramWindow.MomentPlot = _viewModel.SecondaryMomentPlot;
-                if (e.PropertyName == nameof(_viewModel.SecondaryDeflectionPlot)) _secondaryDiagramWindow.DeflectionPlot = _viewModel.SecondaryDeflectionPlot;
+                if (e.PropertyName == nameof(_viewModel.SecondaryDiagramViewModel))
+                    _secondaryDiagramWindow.DataContext = _viewModel.SecondaryDiagramViewModel;
             }
         }
 
@@ -47,9 +45,7 @@ namespace EngineeringDashboard
                 _primaryDiagramWindow = new DiagramWindow
                 {
                     WindowTitle = "Primary Beam Diagrams",
-                    ShearPlot = _viewModel.PrimaryShearPlot,
-                    MomentPlot = _viewModel.PrimaryMomentPlot,
-                    DeflectionPlot = _viewModel.PrimaryDeflectionPlot
+                    DataContext = _viewModel.PrimaryDiagramViewModel
                 };
 
                 // Keep it non-modal but owned by the main dashboard if we want it to stay on top,
@@ -70,9 +66,7 @@ namespace EngineeringDashboard
                 _secondaryDiagramWindow = new DiagramWindow
                 {
                     WindowTitle = "Secondary Beam Diagrams",
-                    ShearPlot = _viewModel.SecondaryShearPlot,
-                    MomentPlot = _viewModel.SecondaryMomentPlot,
-                    DeflectionPlot = _viewModel.SecondaryDeflectionPlot
+                    DataContext = _viewModel.SecondaryDiagramViewModel
                 };
 
                 _secondaryDiagramWindow.Owner = this;

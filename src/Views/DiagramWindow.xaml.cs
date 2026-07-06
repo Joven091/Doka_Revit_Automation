@@ -7,34 +7,11 @@ namespace MyRevitAddin.Views
 {
     public partial class DiagramWindow : Window, INotifyPropertyChanged
     {
-        private PlotModel _shearPlot;
-        private PlotModel _momentPlot;
-        private PlotModel _deflectionPlot;
-
         public string WindowTitle { get; set; }
-
-        public PlotModel ShearPlot
-        {
-            get => _shearPlot;
-            set { _shearPlot = value; OnPropertyChanged(nameof(ShearPlot)); }
-        }
-
-        public PlotModel MomentPlot
-        {
-            get => _momentPlot;
-            set { _momentPlot = value; OnPropertyChanged(nameof(MomentPlot)); }
-        }
-
-        public PlotModel DeflectionPlot
-        {
-            get => _deflectionPlot;
-            set { _deflectionPlot = value; OnPropertyChanged(nameof(DeflectionPlot)); }
-        }
 
         public DiagramWindow()
         {
             InitializeComponent();
-            DataContext = this;
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

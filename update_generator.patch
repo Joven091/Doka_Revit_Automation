@@ -1,0 +1,54 @@
+--- src/Models/DiagramDataGenerator.cs
++++ src/Models/DiagramDataGenerator.cs
+@@ -7,7 +7,7 @@
+ {
+     public class DiagramDataGenerator
+     {
+-        public static (PlotModel shearPlot, PlotModel momentPlot, PlotModel deflectionPlot) GeneratePlots(
++        public static (PlotModel shearPlot, PlotModel momentPlot, PlotModel deflectionPlot, double maxShear, double minShear, double maxMoment, double minMoment, double maxDeflection, double minDeflection) GeneratePlots(
+             int numSupports,
+             double spanLength,
+             double cantileverLength,
+@@ -58,6 +58,13 @@
+             double C2 = 0;
+             double C1 = (w * Math.Pow(spanLength, 3) / 24.0) - (R[0] * Math.Pow(spanLength, 2) / 6.0);
+
++            double maxShear = double.MinValue;
++            double minShear = double.MaxValue;
++            double maxMoment = double.MinValue;
++            double minMoment = double.MaxValue;
++            double maxDeflection = double.MinValue;
++            double minDeflection = double.MaxValue;
++
+             for (double x = 0; x <= L_total + 0.0001; x += step)
+             {
+                 // Initialize uniform load terms
+@@ -87,9 +94,18 @@
+                 double EIy_term3 = C1 * x + C2;
+                 double delta = (EIy_term1 + EIy_term2 + EIy_term3) / EI;
+
++                double delta_mm = delta * 1000;
++
+                 shearSeries.Points.Add(new DataPoint(x, V));
+                 momentSeries.Points.Add(new DataPoint(x, M));
+-                deflectionSeries.Points.Add(new DataPoint(x, delta * 1000)); // mm
++                deflectionSeries.Points.Add(new DataPoint(x, delta_mm)); // mm
++
++                maxShear = Math.Max(maxShear, V);
++                minShear = Math.Min(minShear, V);
++                maxMoment = Math.Max(maxMoment, M);
++                minMoment = Math.Min(minMoment, M);
++                maxDeflection = Math.Max(maxDeflection, delta_mm);
++                minDeflection = Math.Min(minDeflection, delta_mm);
+             }
+
+             shearPlot.Series.Add(shearSeries);
+@@ -111,7 +127,7 @@
+             deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
+             deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Deflection (mm)" });
+
+-            return (shearPlot, momentPlot, deflectionPlot);
++            return (shearPlot, momentPlot, deflectionPlot, maxShear, minShear, maxMoment, minMoment, maxDeflection, minDeflection);
+         }
+
+         private static double[] CalculateReactions(int numSupports, double L, double a, double w)
