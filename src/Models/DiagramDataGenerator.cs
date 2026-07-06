@@ -131,15 +131,16 @@ namespace MyRevitAddin.Models
             deflectionPlot.Annotations.Add(new OxyPlot.Annotations.LineAnnotation { Type = OxyPlot.Annotations.LineAnnotationType.Horizontal, Y = 0, Color = OxyColors.Gray, LineStyle = LineStyle.Dash });
 
             // Add bearing annotations
+            var supportOutline = new ScreenPoint[] { new ScreenPoint(0, 0), new ScreenPoint(-1, 1.732), new ScreenPoint(1, 1.732) };
             foreach (var pos in supportPositions)
             {
-                var shearBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Triangle, Fill = OxyColors.DarkGray, Size = 6 };
+                var shearBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Custom, CustomOutline = supportOutline, Fill = OxyColors.DarkGray, Size = 6 };
                 shearPlot.Annotations.Add(shearBearing);
 
-                var momentBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Triangle, Fill = OxyColors.DarkGray, Size = 6 };
+                var momentBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Custom, CustomOutline = supportOutline, Fill = OxyColors.DarkGray, Size = 6 };
                 momentPlot.Annotations.Add(momentBearing);
 
-                var deflectionBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Triangle, Fill = OxyColors.DarkGray, Size = 6 };
+                var deflectionBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Custom, CustomOutline = supportOutline, Fill = OxyColors.DarkGray, Size = 6 };
                 deflectionPlot.Annotations.Add(deflectionBearing);
             }
 
@@ -235,11 +236,24 @@ namespace MyRevitAddin.Models
                     {
                         X = currentPos,
                         Y = 0,
-                        Shape = MarkerType.Triangle,
+                        Shape = MarkerType.Custom,
+                        CustomOutline = supportOutline,
                         Fill = OxyColors.Blue,
                         Size = 8
                     };
                     loadPlot.Annotations.Add(supportAnnotation);
+
+                    // Reaction Text (below vertical tick line)
+                    var reactionLabel = new OxyPlot.Annotations.TextAnnotation
+                    {
+                        Text = $"{Math.Round(R[i], 2)} kN",
+                        TextPosition = new DataPoint(currentPos, -1.8),
+                        TextHorizontalAlignment = OxyPlot.HorizontalAlignment.Center,
+                        TextVerticalAlignment = OxyPlot.VerticalAlignment.Top,
+                        FontSize = 11,
+                        TextColor = OxyColors.Black
+                    };
+                    loadPlot.Annotations.Add(reactionLabel);
                 }
 
                 lastPos = currentPos;
