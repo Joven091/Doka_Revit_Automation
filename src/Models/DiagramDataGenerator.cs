@@ -132,24 +132,13 @@ namespace MyRevitAddin.Models
 
             // Add bearing annotations
             var supportOutline = new ScreenPoint[] { new ScreenPoint(0, 0), new ScreenPoint(-1, 1.732), new ScreenPoint(1, 1.732) };
-            foreach (var pos in supportPositions)
-            {
-                var shearBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Custom, CustomOutline = supportOutline, Fill = OxyColors.DarkGray, Size = 6 };
-                shearPlot.Annotations.Add(shearBearing);
-
-                var momentBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Custom, CustomOutline = supportOutline, Fill = OxyColors.DarkGray, Size = 6 };
-                momentPlot.Annotations.Add(momentBearing);
-
-                var deflectionBearing = new OxyPlot.Annotations.PointAnnotation { X = pos, Y = 0, Shape = MarkerType.Custom, CustomOutline = supportOutline, Fill = OxyColors.DarkGray, Size = 6 };
-                deflectionPlot.Annotations.Add(deflectionBearing);
-            }
 
 
 
             // --- LOADING DIAGRAM ---
             // Hide axes on the loading diagram
             loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Minimum = 0, Maximum = L_total, IsAxisVisible = false });
-            loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Minimum = -2, Maximum = 3, IsAxisVisible = false });
+            loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Minimum = -3, Maximum = 3, IsAxisVisible = false });
 
             // Beam line
             var beamSeries = new LineSeries { Color = OxyColors.Black, StrokeThickness = 3 };
