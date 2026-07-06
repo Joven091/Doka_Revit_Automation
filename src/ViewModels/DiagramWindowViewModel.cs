@@ -10,13 +10,22 @@ namespace MyRevitAddin.ViewModels
         public ObservableCollection<DiagramRowItem> DiagramRows { get; set; }
 
         public DiagramWindowViewModel(
-            (PlotModel shear, PlotModel moment, PlotModel deflection,
+            (PlotModel load, PlotModel shear, PlotModel moment, PlotModel deflection,
              double maxShear, double minShear,
              double maxMoment, double minMoment,
              double maxDeflection, double minDeflection) backendData)
         {
             DiagramRows = new ObservableCollection<DiagramRowItem>
             {
+                // 0. Loading Diagram Data
+                new DiagramRowItem
+                {
+                    Title = "Loading Diagram",
+                    ChartModel = backendData.load,
+                    MaxValueText = "", // No max/min text for loading diagram
+                    MinValueText = ""
+                },
+
                 // 1. Shear Data
                 new DiagramRowItem
                 {
