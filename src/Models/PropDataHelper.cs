@@ -55,19 +55,59 @@ namespace EngineeringDashboard
             [1.5] = new Dictionary<string, double?> { ["250 at bottom"] = 31.8, ["250 at top"] = 36.7, ["300 at bottom"] = null, ["300 at top"] = null, ["350 at bottom"] = null, ["350 at top"] = null, ["400 at bottom"] = null, ["400 at top"] = null, ["550 at bottom"] = null, ["550 at top"] = null }
         };
 
+        public static readonly Dictionary<double, Dictionary<string, double?>> DokaFitPropCapacities = new Dictionary<double, Dictionary<string, double?>>
+        {
+            [4.0] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = null, ["DokaFit Prop 300 at top"] = null, ["DokaFit Prop 300 at fixed"] = null, ["DokaFit Prop 350 at bottom"] = null, ["DokaFit Prop 350 at top"] = null, ["DokaFit Prop 350 at fixed"] = null, ["DokaFit Prop 400 at bottom"] = 16.0, ["DokaFit Prop 400 at top"] = 23.3, ["DokaFit Prop 400 at fixed"] = 30.0 },
+            [3.9] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = null, ["DokaFit Prop 300 at top"] = null, ["DokaFit Prop 300 at fixed"] = null, ["DokaFit Prop 350 at bottom"] = null, ["DokaFit Prop 350 at top"] = null, ["DokaFit Prop 350 at fixed"] = null, ["DokaFit Prop 400 at bottom"] = 17.3, ["DokaFit Prop 400 at top"] = 25.8, ["DokaFit Prop 400 at fixed"] = 31.5 },
+            [3.8] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = null, ["DokaFit Prop 300 at top"] = null, ["DokaFit Prop 300 at fixed"] = null, ["DokaFit Prop 350 at bottom"] = null, ["DokaFit Prop 350 at top"] = null, ["DokaFit Prop 350 at fixed"] = null, ["DokaFit Prop 400 at bottom"] = 18.5, ["DokaFit Prop 400 at top"] = 28.7, ["DokaFit Prop 400 at fixed"] = 34.0 },
+            [3.7] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = null, ["DokaFit Prop 300 at top"] = null, ["DokaFit Prop 300 at fixed"] = null, ["DokaFit Prop 350 at bottom"] = null, ["DokaFit Prop 350 at top"] = null, ["DokaFit Prop 350 at fixed"] = null, ["DokaFit Prop 400 at bottom"] = 20.0, ["DokaFit Prop 400 at top"] = 32.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [3.6] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = null, ["DokaFit Prop 300 at top"] = null, ["DokaFit Prop 300 at fixed"] = null, ["DokaFit Prop 350 at bottom"] = null, ["DokaFit Prop 350 at top"] = null, ["DokaFit Prop 350 at fixed"] = null, ["DokaFit Prop 400 at bottom"] = 21.3, ["DokaFit Prop 400 at top"] = 33.5, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [3.5] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = null, ["DokaFit Prop 300 at top"] = null, ["DokaFit Prop 300 at fixed"] = null, ["DokaFit Prop 350 at bottom"] = 16.5, ["DokaFit Prop 350 at top"] = 21.7, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 23.0, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [3.4] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = null, ["DokaFit Prop 300 at top"] = null, ["DokaFit Prop 300 at fixed"] = null, ["DokaFit Prop 350 at bottom"] = 17.9, ["DokaFit Prop 350 at top"] = 24.7, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 24.7, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [3.3] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = null, ["DokaFit Prop 300 at top"] = null, ["DokaFit Prop 300 at fixed"] = null, ["DokaFit Prop 350 at bottom"] = 19.3, ["DokaFit Prop 350 at top"] = 28.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 26.6, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [3.2] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = null, ["DokaFit Prop 300 at top"] = null, ["DokaFit Prop 300 at fixed"] = null, ["DokaFit Prop 350 at bottom"] = 21.0, ["DokaFit Prop 350 at top"] = 32.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 29.0, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [3.1] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = null, ["DokaFit Prop 300 at top"] = null, ["DokaFit Prop 300 at fixed"] = null, ["DokaFit Prop 350 at bottom"] = 22.8, ["DokaFit Prop 350 at top"] = 33.5, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 31.5, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [3.0] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 20.9, ["DokaFit Prop 300 at top"] = 26.2, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 24.6, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 34.0, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [2.9] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 22.8, ["DokaFit Prop 300 at top"] = 28.7, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 26.2, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 35.0, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [2.8] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 24.7, ["DokaFit Prop 300 at top"] = 32.0, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 28.0, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 35.0, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [2.7] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 26.0, ["DokaFit Prop 300 at top"] = 33.0, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 30.0, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 35.0, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [2.6] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 27.3, ["DokaFit Prop 300 at top"] = 34.5, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 32.5, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 35.0, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [2.5] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 28.5, ["DokaFit Prop 300 at top"] = 35.0, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 35.0, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = 35.0, ["DokaFit Prop 400 at top"] = 35.0, ["DokaFit Prop 400 at fixed"] = 35.0 },
+            [2.4] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 30.0, ["DokaFit Prop 300 at top"] = 35.0, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 35.0, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = null, ["DokaFit Prop 400 at top"] = null, ["DokaFit Prop 400 at fixed"] = null },
+            [2.3] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 32.0, ["DokaFit Prop 300 at top"] = 35.0, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 35.0, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = null, ["DokaFit Prop 400 at top"] = null, ["DokaFit Prop 400 at fixed"] = null },
+            [2.2] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 34.5, ["DokaFit Prop 300 at top"] = 35.0, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 35.0, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = null, ["DokaFit Prop 400 at top"] = null, ["DokaFit Prop 400 at fixed"] = null },
+            [2.1] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 35.0, ["DokaFit Prop 300 at top"] = 35.0, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 35.0, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = null, ["DokaFit Prop 400 at top"] = null, ["DokaFit Prop 400 at fixed"] = null },
+            [2.0] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 35.0, ["DokaFit Prop 300 at top"] = 35.0, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = 35.0, ["DokaFit Prop 350 at top"] = 35.0, ["DokaFit Prop 350 at fixed"] = 35.0, ["DokaFit Prop 400 at bottom"] = null, ["DokaFit Prop 400 at top"] = null, ["DokaFit Prop 400 at fixed"] = null },
+            [1.9] = new Dictionary<string, double?> { ["DokaFit Prop 300 at bottom"] = 35.0, ["DokaFit Prop 300 at top"] = 35.0, ["DokaFit Prop 300 at fixed"] = 35.0, ["DokaFit Prop 350 at bottom"] = null, ["DokaFit Prop 350 at top"] = null, ["DokaFit Prop 350 at fixed"] = null, ["DokaFit Prop 400 at bottom"] = null, ["DokaFit Prop 400 at top"] = null, ["DokaFit Prop 400 at fixed"] = null },
+        };
+
         /// <summary>
         /// Safely retrieves the capacity for a given extension and configuration.
         /// Returns null if the configuration is invalid or exceeds safe limits.
         /// </summary>
         public static double? GetCapacity(double extension, string configurationKey)
         {
-            if (PropCapacities.TryGetValue(extension, out var configurations))
+            if (configurationKey.StartsWith("DokaFit Prop"))
             {
-                if (configurations.TryGetValue(configurationKey, out var capacity))
+                if (DokaFitPropCapacities.TryGetValue(extension, out var dokaConfigurations))
                 {
-                    return capacity;
+                    if (dokaConfigurations.TryGetValue(configurationKey, out var capacity))
+                    {
+                        return capacity;
+                    }
                 }
             }
+            else
+            {
+                if (PropCapacities.TryGetValue(extension, out var ecoConfigurations))
+                {
+                    if (ecoConfigurations.TryGetValue(configurationKey, out var capacity))
+                    {
+                        return capacity;
+                    }
+                }
+            }
+
             return null;
         }
     }

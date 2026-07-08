@@ -31,14 +31,15 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
 
     // --- Inputs: Secondary Beam Layout ---
     private string _primaryBeamCount = "3";
-    private double _secondaryBeamSpacing = 500;
+    private double _secondaryBeamSpacing = 488;
     private double _secondaryBeamCantilever = 500;
-    private string _deflectionLimit = "L/500";
+    private string _deflectionLimit = "L/350";
 
     // --- Inputs: Primary Beam & Prop Layout ---
     private string _propCount = "3";
     private double _propSpacing = 1000;
     private double _primaryBeamCantilever = 500;
+    private string _propModel = "Prop Type Eurex eco 20";
     private string _propType = "300";
     private string _propOrientation = "at bottom";
     private string _selectedH20 = "2.90m";
@@ -55,8 +56,14 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
 
     // --- UI Collections ---
     public List<string> H20Options => FloorPropData.H20Data.Keys.ToList();
-    public List<string> PropTypeOptions => ["250", "300", "350", "400", "550"];
-    public List<string> PropOrientationOptions => ["at bottom", "at top"];
+    public List<string> PropModelOptions => ["Prop Type Eurex eco 20", "DokaFit Prop"];
+
+    private List<string> _propTypeOptions;
+    public List<string> PropTypeOptions { get => _propTypeOptions; set { _propTypeOptions = value; OnPropertyChanged(); } }
+
+    private List<string> _propOrientationOptions;
+    public List<string> PropOrientationOptions { get => _propOrientationOptions; set { _propOrientationOptions = value; OnPropertyChanged(); } }
+
     public List<string> DeflectionLimitOptions => ["L/500", "L/350", "L/270"];
     public List<string> PrimaryBeamCountOptions => ["2", "3", "4+"];
     public List<string> PropCountOptions => ["2", "3", "4+"];
@@ -78,6 +85,18 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public double PropSpacing { get => _propSpacing; set { _propSpacing = value; OnPropertyChanged(); Calculate(); } }
     public double PrimaryBeamCantilever { get => _primaryBeamCantilever; set { _primaryBeamCantilever = value; OnPropertyChanged(); Calculate(); } }
     
+    public string PropModel
+    {
+        get => _propModel;
+        set
+        {
+            _propModel = value;
+            OnPropertyChanged();
+            UpdatePropOptions();
+            Calculate();
+        }
+    }
+
     public string PropType { get => _propType; set { _propType = value; OnPropertyChanged(); Calculate(); } }
     public string PropOrientation { get => _propOrientation; set { _propOrientation = value; OnPropertyChanged(); Calculate(); } }
 
@@ -125,7 +144,26 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         ViewSecondaryBeamDiagramCommand = new RelayCommand(_ => SecondaryBeamDiagramRequested?.Invoke(this, EventArgs.Empty));
 
         SelectedH20 = "2.90m"; 
+        UpdatePropOptions();
         Calculate();
+    }
+
+    private void UpdatePropOptions()
+    {
+        if (PropModel == "Prop Type Eurex eco 20")
+        {
+            PropTypeOptions = new List<string> { "250", "300", "350", "400", "550" };
+            PropOrientationOptions = new List<string> { "at bottom", "at top" };
+            if (!PropTypeOptions.Contains(PropType)) PropType = "300";
+            if (!PropOrientationOptions.Contains(PropOrientation)) PropOrientation = "at bottom";
+        }
+        else if (PropModel == "DokaFit Prop")
+        {
+            PropTypeOptions = new List<string> { "300", "350", "400" };
+            PropOrientationOptions = new List<string> { "at bottom", "at top", "at fixed" };
+            if (!PropTypeOptions.Contains(PropType)) PropType = "300";
+            if (!PropOrientationOptions.Contains(PropOrientation)) PropOrientation = "at bottom";
+        }
     }
 
     private void Calculate()
@@ -136,7 +174,10 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         // 1. Get allowable capacities
         double extensionMeters = (FloorHeight / 1000.0) - (SlabThickness / 1000.0) - SYSTEM_DEPTH_METERS;
         double roundedExtension = Math.Ceiling(extensionMeters * 10) / 10.0;
-        string propKey = $"{PropType} {PropOrientation}";
+
+        string propKey = PropModel == "DokaFit Prop"
+            ? $"DokaFit Prop {PropType} {PropOrientation}"
+            : $"{PropType} {PropOrientation}";
 
         double? capacity = PropDataHelper.GetCapacity(roundedExtension, propKey);
 
