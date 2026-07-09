@@ -189,7 +189,26 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             ActualPropLoad = 0;
             H20Shear = 0;
             H20Utilization = 0;
-            WarningMessage = "Prop capacity data not found for this extension height.";
+
+            var capacityTable = propKey.StartsWith("DokaFit Prop")
+                ? PropDataHelper.DokaFitPropCapacities
+                : PropDataHelper.PropCapacities;
+
+            var validExtensions = capacityTable
+                .Where(kvp => kvp.Value.TryGetValue(propKey, out var cap) && cap.HasValue && cap.Value > 0)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            if (validExtensions.Any())
+            {
+                double minExt = validExtensions.Min();
+                double maxExt = validExtensions.Max();
+
+                if (roundedExtension < minExt) WarningMessage = "The chosen prop is too big for the required extension length.";
+                else if (roundedExtension > maxExt) WarningMessage = "The chosen prop is too small for the required extension length.";
+                else WarningMessage = "Prop capacity data not found for this extension height.";
+            }
+            else WarningMessage = "Prop capacity data not found for this extension height.";
             return;
         }
 
