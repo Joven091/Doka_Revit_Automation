@@ -251,14 +251,35 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
 
             // Setup Axes (existing)
 
+            // Dynamic scaling and capacity envelopes
+            double shearCapacity = 5.5;
+            double momentCapacity = 2.5;
+
+            double actualMaxShear = Math.Max(Math.Abs(maxShear), Math.Abs(minShear));
+            double shearLimit = Math.Max(actualMaxShear, shearCapacity) * 1.15;
+
+            double actualMaxMoment = Math.Max(Math.Abs(maxMoment), Math.Abs(minMoment));
+            double momentLimit = Math.Max(actualMaxMoment, momentCapacity) * 1.15;
+
+            double actualMaxDeflection = Math.Max(Math.Abs(maxDeflection), Math.Abs(minDeflection));
+            double deflectionLimit = Math.Max(actualMaxDeflection, 1.0) * 1.15; // Set minimum limit to 1.0 to prevent 0 scale
+
             shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
-            shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Shear (kN)", Minimum = -5.5, Maximum = 5.5 });
+            shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Shear (kN)", Minimum = -shearLimit, Maximum = shearLimit });
+
+            // Shear Capacity Envelopes
+            shearPlot.Annotations.Add(new OxyPlot.Annotations.LineAnnotation { Type = OxyPlot.Annotations.LineAnnotationType.Horizontal, Y = shearCapacity, Color = OxyColors.Red, LineStyle = LineStyle.Dash, Text = $"Capacity: {shearCapacity} kN" });
+            shearPlot.Annotations.Add(new OxyPlot.Annotations.LineAnnotation { Type = OxyPlot.Annotations.LineAnnotationType.Horizontal, Y = -shearCapacity, Color = OxyColors.Red, LineStyle = LineStyle.Dash });
 
             momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
-            momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Moment (kNm)", Minimum = -2.5, Maximum = 2.5 });
+            momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Moment (kNm)", Minimum = -momentLimit, Maximum = momentLimit });
+
+            // Moment Capacity Envelopes
+            momentPlot.Annotations.Add(new OxyPlot.Annotations.LineAnnotation { Type = OxyPlot.Annotations.LineAnnotationType.Horizontal, Y = momentCapacity, Color = OxyColors.Red, LineStyle = LineStyle.Dash, Text = $"Capacity: {momentCapacity} kNm" });
+            momentPlot.Annotations.Add(new OxyPlot.Annotations.LineAnnotation { Type = OxyPlot.Annotations.LineAnnotationType.Horizontal, Y = -momentCapacity, Color = OxyColors.Red, LineStyle = LineStyle.Dash });
 
             deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
-            deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Deflection (mm)" });
+            deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Deflection (mm)", Minimum = -deflectionLimit, Maximum = deflectionLimit });
 
             return (loadPlot, shearPlot, momentPlot, deflectionPlot, maxShear, minShear, maxMoment, minMoment, maxDeflection, minDeflection);
         }
