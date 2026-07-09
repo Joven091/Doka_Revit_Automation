@@ -18,9 +18,9 @@ namespace MyRevitAddin.Models
             string titlePrefix)
         {
             var loadPlot = new PlotModel { Title = $"{titlePrefix} - Loading Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40) };
-            var shearPlot = new PlotModel { Title = $"{titlePrefix} - Shear Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#DFE0BE") };
-            var momentPlot = new PlotModel { Title = $"{titlePrefix} - Moment Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#B7E0B7") };
-            var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#B2D8DD") };
+            var shearPlot = new PlotModel { Title = $"{titlePrefix} - Shear Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#FFFFD9") };
+            var momentPlot = new PlotModel { Title = $"{titlePrefix} - Moment Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#DCFADC") };
+            var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#DAFFFF") };
 
             var lineCol = OxyColor.Parse("#0000FF");
             var shearSeries = new LineSeries { Title = "Shear (V)", Color = lineCol };
