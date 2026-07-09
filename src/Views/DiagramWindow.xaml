@@ -9,42 +9,44 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="True">
     <Grid Margin="20">
         <!-- The ItemsControl iterates over the 3 DiagramRowItems -->
-        <ItemsControl ItemsSource="{Binding DiagramRows}">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <!-- This Grid defines the split-layout for a SINGLE row -->
-                    <Grid Margin="0,0,0,20">
-                        <Grid.ColumnDefinitions>
-                            <!-- Left Panel: Fixed width for neat alignment -->
-                            <ColumnDefinition Width="220" />
-                            <!-- Right Panel: Chart takes up remaining space -->
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding DiagramRows}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <!-- This Grid defines the split-layout for a SINGLE row -->
+                        <Grid Margin="0,0,0,20">
+                            <Grid.ColumnDefinitions>
+                                <!-- Left Panel: Fixed width for neat alignment -->
+                                <ColumnDefinition Width="220" />
+                                <!-- Right Panel: Chart takes up remaining space -->
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                        <!-- LEFT SIDE: Text & Stats Panel -->
-                        <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="15"
-                                Margin="0,0,15,0" BorderBrush="#E0E0E0" BorderThickness="1">
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold"
-                                           Foreground="#333333" Margin="0,0,0,15"/>
+                            <!-- LEFT SIDE: Text & Stats Panel -->
+                            <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="15"
+                                    Margin="0,0,15,0" BorderBrush="#E0E0E0" BorderThickness="1">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold"
+                                               Foreground="#333333" Margin="0,0,0,15"/>
 
-                                <TextBlock Text="{Binding MaxValueText}" FontSize="14" Foreground="#D32F2F"
-                                           FontWeight="Medium" Margin="0,0,0,8"/>
+                                    <TextBlock Text="{Binding MaxValueText}" FontSize="14" Foreground="#D32F2F"
+                                               FontWeight="Medium" Margin="0,0,0,8"/>
 
-                                <TextBlock Text="{Binding MinValueText}" FontSize="14" Foreground="#1976D2"
-                                           FontWeight="Medium"/>
-                            </StackPanel>
-                        </Border>
+                                    <TextBlock Text="{Binding MinValueText}" FontSize="14" Foreground="#1976D2"
+                                               FontWeight="Medium"/>
+                                </StackPanel>
+                            </Border>
 
-                        <!-- RIGHT SIDE: OxyPlot Chart -->
-                        <Border Grid.Column="1" Background="White" CornerRadius="8"
-                                BorderBrush="#E0E0E0" BorderThickness="1" Padding="10">
-                            <!-- Note: Height is fixed here so each chart is uniform, adjust as needed -->
-                            <oxy:PlotView Model="{Binding ChartModel}" Height="200" Width="500" Background="Transparent" />
-                        </Border>
-                    </Grid>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+                            <!-- RIGHT SIDE: OxyPlot Chart -->
+                            <Border Grid.Column="1" Background="White" CornerRadius="8"
+                                    BorderBrush="#E0E0E0" BorderThickness="1" Padding="10">
+                                <!-- Note: Height is fixed here so each chart is uniform, adjust as needed -->
+                                <oxy:PlotView Model="{Binding ChartModel}" Height="200" Background="Transparent" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
     </Grid>
 </Window>
