@@ -87,28 +87,20 @@ namespace EngineeringDashboard
         /// </summary>
         public static double? GetCapacity(double extension, string configurationKey)
         {
-            if (configurationKey.StartsWith("DokaFit Prop"))
+            // 1. Determine which data table to use based on the configuration key.
+            var capacityTable = configurationKey.StartsWith("DokaFit Prop")
+                ? DokaFitPropCapacities
+                : PropCapacities;
+
+            // 2. Safely perform the lookup. This avoids nested if-statements.
+            if (capacityTable.TryGetValue(extension, out var configurations) &&
+                configurations.TryGetValue(configurationKey, out var capacity))
             {
-                if (DokaFitPropCapacities.TryGetValue(extension, out var dokaConfigurations))
-                {
-                    if (dokaConfigurations.TryGetValue(configurationKey, out var capacity))
-                    {
-                        return capacity;
-                    }
-                }
-            }
-            else
-            {
-                if (PropCapacities.TryGetValue(extension, out var ecoConfigurations))
-                {
-                    if (ecoConfigurations.TryGetValue(configurationKey, out var capacity))
-                    {
-                        return capacity;
-                    }
-                }
+                return capacity;
             }
 
-            return null;
+            // 3. Return null if the extension or configuration is not found.
+            return null; 
         }
     }
 }

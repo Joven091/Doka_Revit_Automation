@@ -53,12 +53,6 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="15"/>
-                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <Label Content="Primary Beam Count:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
@@ -91,11 +85,14 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <Label Content="Selected H20 Timber:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
                     <ComboBox ItemsSource="{Binding H20Options}" SelectedItem="{Binding SelectedH20, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
-
+                    
                     <Label Content="Recommended Prop Spacing (m):" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Foreground="Gray"/>
                     <TextBlock Text="{Binding RecommendedPropSpacing, StringFormat={}{0:F2}}" Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="5,5,0,5" Foreground="Gray" FontWeight="SemiBold"/>
 
@@ -117,7 +114,7 @@
                     <Label Content="Prop Orientation:" Grid.Row="7" Grid.Column="0" VerticalAlignment="Center"/>
                     <ComboBox ItemsSource="{Binding PropOrientationOptions}" SelectedItem="{Binding PropOrientation, UpdateSourceTrigger=PropertyChanged}" Grid.Row="7" Grid.Column="1" Margin="0,5"/>
 
-                    <Button Content="View Primary Beam Diagram" Command="{Binding ViewPrimaryBeamDiagramCommand}" Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,10,0,0" Padding="5" />
+                    <Button Content="View Primary Beam Diagram" Command="{Binding ViewPrimaryBeamDiagramCommand}" Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,10,0,0" Padding="5" />
                 </Grid>
             </GroupBox>
 
