@@ -17,10 +17,10 @@ namespace MyRevitAddin.Models
             double EI, // Flexural rigidity in kN*m^2
             string titlePrefix)
         {
-            var loadPlot = new PlotModel { Title = $"{titlePrefix} - Loading Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40) };
-            var shearPlot = new PlotModel { Title = $"{titlePrefix} - Shear Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#FFFFD9") };
-            var momentPlot = new PlotModel { Title = $"{titlePrefix} - Moment Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#DCFADC") };
-            var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#DAFFFF") };
+var loadPlot = new PlotModel { Title = $"{titlePrefix} - Loading Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), PlotAreaBorderThickness = new OxyThickness(0) };
+var shearPlot = new PlotModel { Title = $"{titlePrefix} - Shear Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#DFE0BE") };
+var momentPlot = new PlotModel { Title = $"{titlePrefix} - Moment Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#B7E0B7") };
+var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#B2D8DD") };
 
             var lineCol = OxyColor.Parse("#0000FF");
             var shearSeries = new LineSeries { Title = "Shear (V)", Color = lineCol };
@@ -252,10 +252,10 @@ namespace MyRevitAddin.Models
             // Setup Axes (existing)
 
             shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
-            shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Shear (kN)" });
+            shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Shear (kN)", Minimum = -5.5, Maximum = 5.5 });
 
             momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
-            momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Moment (kNm)" });
+            momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Moment (kNm)", Minimum = -2.5, Maximum = 2.5 });
 
             deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
             deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Deflection (mm)" });

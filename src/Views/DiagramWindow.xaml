@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:oxy="http://oxyplot.org/wpf"
         mc:Ignorable="d"
-        Title="{Binding WindowTitle, RelativeSource={RelativeSource AncestorType=Window}}" Height="800" Width="600"
+        Title="{Binding WindowTitle, RelativeSource={RelativeSource AncestorType=Window}}" Height="800" Width="850"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="True">
     <Grid Margin="20">
         <!-- The ItemsControl iterates over the 3 DiagramRowItems -->
@@ -18,7 +18,7 @@
                             <!-- Left Panel: Fixed width for neat alignment -->
                             <ColumnDefinition Width="220" />
                             <!-- Right Panel: Chart takes up remaining space -->
-                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <!-- LEFT SIDE: Text & Stats Panel -->
@@ -40,7 +40,7 @@
                         <Border Grid.Column="1" Background="White" CornerRadius="8"
                                 BorderBrush="#E0E0E0" BorderThickness="1" Padding="10">
                             <!-- Note: Height is fixed here so each chart is uniform, adjust as needed -->
-                            <oxy:PlotView Model="{Binding ChartModel}" Height="200" Background="Transparent" />
+                            <oxy:PlotView Model="{Binding ChartModel}" Height="200" Width="500" Background="Transparent" />
                         </Border>
                     </Grid>
                 </DataTemplate>
