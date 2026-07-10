@@ -79,8 +79,38 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
             double maxDeflection = double.MinValue;
             double minDeflection = double.MaxValue;
 
+            var evalPoints = new List<Tuple<double, bool>>();
             for (double x = 0; x <= L_total + 0.0001; x += step)
             {
+                evalPoints.Add(new Tuple<double, bool>(x, true));
+            }
+            foreach (var sp in supportPositions)
+            {
+                evalPoints.Add(new Tuple<double, bool>(sp, false));
+                evalPoints.Add(new Tuple<double, bool>(sp, true));
+            }
+
+            evalPoints.Sort((a, b) =>
+            {
+                int cmp = a.Item1.CompareTo(b.Item1);
+                if (cmp == 0) return a.Item2.CompareTo(b.Item2);
+                return cmp;
+            });
+
+            double previousX = -1.0;
+            bool previousBool = false;
+
+            foreach (var ep in evalPoints)
+            {
+                double x = ep.Item1;
+                bool includeAtSupport = ep.Item2;
+
+                if (Math.Abs(x - previousX) < 1e-9 && includeAtSupport == previousBool)
+                    continue;
+
+                previousX = x;
+                previousBool = includeAtSupport;
+
                 // Initialize uniform load terms
                 double V = -w * x;
                 double M = -w * Math.Pow(x, 2) / 2.0;
@@ -88,18 +118,22 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
 
                 for (int i = 0; i < numSupports; i++)
                 {
-                    if (x > supportPositions[i] || Math.Abs(x - supportPositions[i]) < 1e-6)
+                    double sp = supportPositions[i];
+                    bool pastSupport = x > sp + 1e-7;
+                    bool atSupport = Math.Abs(x - sp) <= 1e-7;
+
+                    if (pastSupport || (atSupport && includeAtSupport))
                     {
                         // Macaulay's method for Shear: <x - a>^0
                         V += R[i];
+                    }
 
-                        if (x > supportPositions[i])
-                        {
-                            // Macaulay's method for Moment: <x - a>^1
-                            M += R[i] * (x - supportPositions[i]);
-                            // Macaulay's method for Deflection: <x - a>^3
-                            EIy_term1 += (R[i] / 6.0) * Math.Pow(x - supportPositions[i], 3);
-                        }
+                    if (pastSupport || atSupport)
+                    {
+                        // Macaulay's method for Moment: <x - a>^1
+                        M += R[i] * (x - sp);
+                        // Macaulay's method for Deflection: <x - a>^3
+                        EIy_term1 += (R[i] / 6.0) * Math.Pow(x - sp, 3);
                     }
                 }
 
