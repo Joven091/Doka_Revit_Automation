@@ -139,7 +139,7 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
             // --- LOADING DIAGRAM ---
             // Hide axes on the loading diagram
             loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Minimum = 0, Maximum = L_total, IsAxisVisible = false });
-            loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Minimum = -3, Maximum = 3, IsAxisVisible = false });
+            loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Minimum = -5, Maximum = 5, IsAxisVisible = false });
 
             // Beam line
             var beamSeries = new LineSeries { Color = OxyColors.Black, StrokeThickness = 3 };
@@ -153,7 +153,7 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
                 MinimumX = 0,
                 MaximumX = L_total,
                 MinimumY = 0,
-                MaximumY = 1,
+                MaximumY = 2,
                 Fill = OxyColor.FromAColor(100, OxyColors.Orange),
                 Stroke = OxyColors.Orange,
                 StrokeThickness = 1
@@ -164,7 +164,7 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
             var udlLabel = new OxyPlot.Annotations.TextAnnotation
             {
                 Text = $"{Math.Round(w, 2)} kN/m",
-                TextPosition = new DataPoint(L_total / 2, 1.2),
+                TextPosition = new DataPoint(L_total / 2, 2.7),
                 TextHorizontalAlignment = OxyPlot.HorizontalAlignment.Center,
                 TextVerticalAlignment = OxyPlot.VerticalAlignment.Bottom,
                 FontSize = 12
@@ -237,10 +237,10 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
                     var reactionLabel = new OxyPlot.Annotations.TextAnnotation
                     {
                         Text = $"{Math.Round(R[i], 2)} kN",
-                        TextPosition = new DataPoint(currentPos, -1.8),
+                        TextPosition = new DataPoint(currentPos, -2.5),
                         TextHorizontalAlignment = OxyPlot.HorizontalAlignment.Center,
                         TextVerticalAlignment = OxyPlot.VerticalAlignment.Top,
-                        FontSize = 11,
+                        FontSize = 12,
                         TextColor = OxyColors.Black
                     };
                     loadPlot.Annotations.Add(reactionLabel);
