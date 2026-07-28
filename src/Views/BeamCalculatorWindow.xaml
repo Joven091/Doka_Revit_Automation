@@ -83,7 +83,7 @@
                     <ComboBox SelectedValue="{Binding DeflectionLimit}" SelectedValuePath="Content" Grid.Row="1" Grid.Column="1" Margin="0,5">
                         <ComboBoxItem Content="Class A / Architectural Concrete (3mm limit)"/>
                         <ComboBoxItem Content="Standard / Concealed Concrete (5mm limit)"/>
-                        <ComboBoxItem Content="Rough / Heavy Civil (7mm - 10mm limit)"/>
+                        <ComboBoxItem Content="Rough / Heavy Civil (10mm limit)"/>
                     </ComboBox>
                 </Grid>
             </GroupBox>
