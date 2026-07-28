@@ -6,7 +6,8 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
     </Window.Resources>
-    <Grid Margin="20">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+        <Grid Margin="20">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="1*"/>
             <ColumnDefinition Width="1*"/>
@@ -80,9 +81,9 @@
 
                     <Label Content="Deflection Limit:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
                     <ComboBox SelectedValue="{Binding DeflectionLimit}" SelectedValuePath="Content" Grid.Row="1" Grid.Column="1" Margin="0,5">
-                        <ComboBoxItem Content="L/500"/>
-                        <ComboBoxItem Content="L/350"/>
-                        <ComboBoxItem Content="L/270"/>
+                        <ComboBoxItem Content="Class A / Architectural Concrete (3mm limit)"/>
+                        <ComboBoxItem Content="Standard / Concealed Concrete (5mm limit)"/>
+                        <ComboBoxItem Content="Rough / Heavy Civil (7mm - 10mm limit)"/>
                     </ComboBox>
                 </Grid>
             </GroupBox>
@@ -189,5 +190,6 @@
                 <TextBlock Text="{Binding RightSlabThickness}" Canvas.Left="{Binding RightSlabLabelLeft}" Canvas.Top="{Binding RightSlabLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
             </Canvas>
         </Border>
-    </Grid>
+        </Grid>
+    </ScrollViewer>
 </Window>
