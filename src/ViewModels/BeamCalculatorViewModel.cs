@@ -307,7 +307,7 @@ namespace EngineeringDashboard
             double slabExtend = 300;
 
             double timberH = 200;
-            double timberW = w + 200; // overhang 100 on each side
+            double timberW = w + 500; // overhang 100 on each side
             double propH = 300;
             double propArrowW = 60;
 
