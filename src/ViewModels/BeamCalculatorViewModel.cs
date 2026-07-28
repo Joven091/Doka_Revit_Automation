@@ -36,6 +36,9 @@ namespace EngineeringDashboard
         private double _leftSlabLabelTop;
         private double _rightSlabLabelLeft;
         private double _rightSlabLabelTop;
+        private string _timberPolygonPoints;
+        private string _prop1PolygonPoints;
+        private string _prop2PolygonPoints;
 
         private List<BeamDataRow> _beamData;
 
@@ -85,6 +88,24 @@ namespace EngineeringDashboard
         {
             get => _beamPolygonPoints;
             private set { _beamPolygonPoints = value; OnPropertyChanged(); }
+        }
+
+        public string TimberPolygonPoints
+        {
+            get => _timberPolygonPoints;
+            private set { _timberPolygonPoints = value; OnPropertyChanged(); }
+        }
+
+        public string Prop1PolygonPoints
+        {
+            get => _prop1PolygonPoints;
+            private set { _prop1PolygonPoints = value; OnPropertyChanged(); }
+        }
+
+        public string Prop2PolygonPoints
+        {
+            get => _prop2PolygonPoints;
+            private set { _prop2PolygonPoints = value; OnPropertyChanged(); }
         }
 
         public string WidthDimPoints
@@ -285,11 +306,17 @@ namespace EngineeringDashboard
 
             double slabExtend = 300;
 
+            double timberH = 200;
+            double timberW = w + 200; // overhang 100 on each side
+            double propH = 300;
+            double propArrowW = 60;
+
             double totalWidth = w;
             if (HasLeftSlab) totalWidth += slabExtend;
             if (HasRightSlab) totalWidth += slabExtend;
+            totalWidth = System.Math.Max(totalWidth, timberW);
 
-            double totalHeight = d;
+            double totalHeight = d + timberH + propH;
 
             double canvasW = 120;
             double canvasH = 120;
@@ -304,15 +331,56 @@ namespace EngineeringDashboard
             double slt = (LeftSlabThickness > 0 ? LeftSlabThickness : 200) * scale;
             double srt = (RightSlabThickness > 0 ? RightSlabThickness : 200) * scale;
 
-            double drawW = sw + (HasLeftSlab ? sle : 0) + (HasRightSlab ? sle : 0);
-            double drawH = sd;
+            double stH = timberH * scale;
+            double stW = timberW * scale;
+            double spH = propH * scale;
+            double spAW = propArrowW * scale;
+
+            double leftExtent = HasLeftSlab ? sle : 0;
+            double rightExtent = HasRightSlab ? sle : 0;
+            double timberOverhang = (stW - sw) / 2;
+
+            double maxLeftExtent = System.Math.Max(leftExtent, timberOverhang);
+            double maxRightExtent = System.Math.Max(rightExtent, timberOverhang);
+
+            double drawW = maxLeftExtent + sw + maxRightExtent;
+            double drawH = sd + stH + spH;
 
             // We use a fixed 250x250 canvas area for centering
             double offsetX = (250 - drawW) / 2;
             double offsetY = (250 - drawH) / 2;
 
-            double startX = offsetX + (HasLeftSlab ? sle : 0);
+            double startX = offsetX + maxLeftExtent;
             double startY = offsetY;
+
+            // Timber
+            double tLeft = startX - timberOverhang;
+            double tRight = startX + sw + timberOverhang;
+            double tTop = startY + sd;
+            double tBot = startY + sd + stH;
+
+            TimberPolygonPoints = $"{tLeft},{tTop} {tRight},{tTop} {tRight},{tBot} {tLeft},{tBot}";
+
+            // Props
+            string CreatePropPoints(double px)
+            {
+                double tipY = tBot;
+                double wingY = tBot + spAW;
+                double botY = tBot + spH;
+                double hw = spAW / 2;
+                double shaftW = spAW / 6;
+
+                return $"{px},{tipY} " +
+                       $"{px + hw},{wingY} " +
+                       $"{px + shaftW},{wingY} " +
+                       $"{px + shaftW},{botY} " +
+                       $"{px - shaftW},{botY} " +
+                       $"{px - shaftW},{wingY} " +
+                       $"{px - hw},{wingY}";
+            }
+
+            Prop1PolygonPoints = CreatePropPoints(startX + sw * 0.25);
+            Prop2PolygonPoints = CreatePropPoints(startX + sw * 0.75);
 
             List<string> pts = new List<string>();
 
