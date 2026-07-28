@@ -21,7 +21,7 @@ namespace EngineeringDashboard
         private double _rightSlabThickness = 200;
 
         private string _numberOfProps = "2";
-        private string _deflectionLimit = "L/500";
+        private string _deflectionLimit = "Standard / Concealed Concrete (5mm limit)";
 
         private bool _useCustomLoads;
         private double _customLiveLoad = 2.25;
@@ -492,9 +492,10 @@ namespace EngineeringDashboard
             // I = 0.00004181 m4
             double EI = 10760000.0 * 0.00004181; // 449.8756
 
-            double defLimitValue = 500;
-            if (DeflectionLimit == "L/350") defLimitValue = 350;
-            if (DeflectionLimit == "L/270") defLimitValue = 270;
+            double absoluteDefLimit_mm = 5.0;
+            if (DeflectionLimit == "Class A / Architectural Concrete (3mm limit)") absoluteDefLimit_mm = 3.0;
+            if (DeflectionLimit == "Rough / Heavy Civil (7mm - 10mm limit)") absoluteDefLimit_mm = 10.0;
+            double absoluteDefLimit_m = absoluteDefLimit_mm / 1000.0;
 
             double L_moment = 0;
             double L_shear = 0;
@@ -535,10 +536,10 @@ namespace EngineeringDashboard
             L_shear = 11.0 / (V_coeff * w);
 
             // Deflection: delta = Def_coeff * w * L^4 / EI
-            // Limit: delta_max = L / defLimitValue
-            // L / defLimitValue = Def_coeff * w * L^4 / EI
-            // L^3 = EI / (Def_coeff * w * defLimitValue)
-            L_deflection = System.Math.Pow(EI / (Def_coeff * w * defLimitValue), 1.0 / 3.0);
+            // Limit: delta_max = absoluteDefLimit_m
+            // absoluteDefLimit_m = Def_coeff * w * L^4 / EI
+            // L^4 = (absoluteDefLimit_m * EI) / (Def_coeff * w)
+            L_deflection = System.Math.Pow((absoluteDefLimit_m * EI) / (Def_coeff * w), 1.0 / 4.0);
 
             // Convert to mm
             double L_m_mm = L_moment * 1000.0;
