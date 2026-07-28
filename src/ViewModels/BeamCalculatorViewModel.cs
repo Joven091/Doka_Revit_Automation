@@ -28,6 +28,17 @@ namespace EngineeringDashboard
         private string _rightSlabDimPoints;
         private string _leftSlabWidthDimPoints;
         private string _rightSlabWidthDimPoints;
+        private string _h20DepthDimPoints;
+        private string _edgeToProp1DimPoints;
+        private string _prop1ToProp2DimPoints;
+        private string _prop2ToEdgeDimPoints;
+        private string _h20WidthDimPoints;
+
+        private string _edgeToProp1Text;
+        private string _prop1ToProp2Text;
+        private string _prop2ToEdgeText;
+        private string _h20WidthText;
+
         private double _widthLabelLeft;
         private double _widthLabelTop;
         private double _depthLabelLeft;
@@ -144,6 +155,60 @@ namespace EngineeringDashboard
             private set { _rightSlabWidthDimPoints = value; OnPropertyChanged(); }
         }
 
+        public string H20DepthDimPoints
+        {
+            get => _h20DepthDimPoints;
+            private set { _h20DepthDimPoints = value; OnPropertyChanged(); }
+        }
+
+        public string EdgeToProp1DimPoints
+        {
+            get => _edgeToProp1DimPoints;
+            private set { _edgeToProp1DimPoints = value; OnPropertyChanged(); }
+        }
+
+        public string Prop1ToProp2DimPoints
+        {
+            get => _prop1ToProp2DimPoints;
+            private set { _prop1ToProp2DimPoints = value; OnPropertyChanged(); }
+        }
+
+        public string Prop2ToEdgeDimPoints
+        {
+            get => _prop2ToEdgeDimPoints;
+            private set { _prop2ToEdgeDimPoints = value; OnPropertyChanged(); }
+        }
+
+        public string H20WidthDimPoints
+        {
+            get => _h20WidthDimPoints;
+            private set { _h20WidthDimPoints = value; OnPropertyChanged(); }
+        }
+
+        public string EdgeToProp1Text
+        {
+            get => _edgeToProp1Text;
+            private set { _edgeToProp1Text = value; OnPropertyChanged(); }
+        }
+
+        public string Prop1ToProp2Text
+        {
+            get => _prop1ToProp2Text;
+            private set { _prop1ToProp2Text = value; OnPropertyChanged(); }
+        }
+
+        public string Prop2ToEdgeText
+        {
+            get => _prop2ToEdgeText;
+            private set { _prop2ToEdgeText = value; OnPropertyChanged(); }
+        }
+
+        public string H20WidthText
+        {
+            get => _h20WidthText;
+            private set { _h20WidthText = value; OnPropertyChanged(); }
+        }
+
         public double WidthLabelLeft
         {
             get => _widthLabelLeft;
@@ -197,6 +262,17 @@ namespace EngineeringDashboard
         private double _rightSlabWidthLabelLeft;
         private double _rightSlabWidthLabelTop;
 
+        private double _h20DepthLabelLeft;
+        private double _h20DepthLabelTop;
+        private double _edgeToProp1LabelLeft;
+        private double _edgeToProp1LabelTop;
+        private double _prop1ToProp2LabelLeft;
+        private double _prop1ToProp2LabelTop;
+        private double _prop2ToEdgeLabelLeft;
+        private double _prop2ToEdgeLabelTop;
+        private double _h20WidthLabelLeft;
+        private double _h20WidthLabelTop;
+
         public double LeftSlabWidthLabelLeft
         {
             get => _leftSlabWidthLabelLeft;
@@ -219,6 +295,66 @@ namespace EngineeringDashboard
         {
             get => _rightSlabWidthLabelTop;
             private set { _rightSlabWidthLabelTop = value; OnPropertyChanged(); }
+        }
+
+        public double H20DepthLabelLeft
+        {
+            get => _h20DepthLabelLeft;
+            private set { _h20DepthLabelLeft = value; OnPropertyChanged(); }
+        }
+
+        public double H20DepthLabelTop
+        {
+            get => _h20DepthLabelTop;
+            private set { _h20DepthLabelTop = value; OnPropertyChanged(); }
+        }
+
+        public double EdgeToProp1LabelLeft
+        {
+            get => _edgeToProp1LabelLeft;
+            private set { _edgeToProp1LabelLeft = value; OnPropertyChanged(); }
+        }
+
+        public double EdgeToProp1LabelTop
+        {
+            get => _edgeToProp1LabelTop;
+            private set { _edgeToProp1LabelTop = value; OnPropertyChanged(); }
+        }
+
+        public double Prop1ToProp2LabelLeft
+        {
+            get => _prop1ToProp2LabelLeft;
+            private set { _prop1ToProp2LabelLeft = value; OnPropertyChanged(); }
+        }
+
+        public double Prop1ToProp2LabelTop
+        {
+            get => _prop1ToProp2LabelTop;
+            private set { _prop1ToProp2LabelTop = value; OnPropertyChanged(); }
+        }
+
+        public double Prop2ToEdgeLabelLeft
+        {
+            get => _prop2ToEdgeLabelLeft;
+            private set { _prop2ToEdgeLabelLeft = value; OnPropertyChanged(); }
+        }
+
+        public double Prop2ToEdgeLabelTop
+        {
+            get => _prop2ToEdgeLabelTop;
+            private set { _prop2ToEdgeLabelTop = value; OnPropertyChanged(); }
+        }
+
+        public double H20WidthLabelLeft
+        {
+            get => _h20WidthLabelLeft;
+            private set { _h20WidthLabelLeft = value; OnPropertyChanged(); }
+        }
+
+        public double H20WidthLabelTop
+        {
+            get => _h20WidthLabelTop;
+            private set { _h20WidthLabelTop = value; OnPropertyChanged(); }
         }
 
         public double SecondarySpacing
@@ -306,8 +442,8 @@ namespace EngineeringDashboard
 
             double slabExtend = 300;
 
-            double timberH = 200;
-            double timberW = w + 500; // overhang 100 on each side
+            double timberH = 100;
+            double timberW = w + 1400; // overhang 700 on each side
             double propH = 300;
             double propArrowW = 60;
 
@@ -379,8 +515,8 @@ namespace EngineeringDashboard
                        $"{px - hw},{wingY}";
             }
 
-            Prop1PolygonPoints = CreatePropPoints(startX + sw * 0.25);
-            Prop2PolygonPoints = CreatePropPoints(startX + sw * 0.75);
+            Prop1PolygonPoints = CreatePropPoints(tLeft + stW * 0.25);
+            Prop2PolygonPoints = CreatePropPoints(tLeft + stW * 0.75);
 
             List<string> pts = new List<string>();
 
@@ -533,6 +669,77 @@ namespace EngineeringDashboard
             {
                 RightSlabWidthDimPoints = string.Empty;
             }
+
+            // H20 and Prop Spacing Dimensions (Bottom)
+            double botDimOffset = 25;
+            double h20BotY = tBot;
+            double botDimY = h20BotY + botDimOffset;
+            double botDimY2 = h20BotY + botDimOffset + 20;
+
+            double prop1X = tLeft + stW * 0.25;
+            double prop2X = tLeft + stW * 0.75;
+
+            // Overhang 1
+            EdgeToProp1DimPoints =
+                $"{tLeft},{h20BotY+5} " +
+                $"{tLeft},{botDimY} " +
+                $"{tLeft},{botDimY+tick} {tLeft},{botDimY-tick} {tLeft},{botDimY} " +
+                $"{prop1X},{botDimY} " +
+                $"{prop1X},{botDimY-tick} {prop1X},{botDimY+tick} {prop1X},{botDimY} " +
+                $"{prop1X},{h20BotY+spAW+5}"; // prop wing level
+
+            EdgeToProp1LabelLeft = tLeft + (prop1X - tLeft) / 2 - 10;
+            EdgeToProp1LabelTop = botDimY - 20;
+            EdgeToProp1Text = (timberW * 0.25).ToString("F0");
+
+            // Prop to Prop
+            Prop1ToProp2DimPoints =
+                $"{prop1X},{botDimY} " +
+                $"{prop2X},{botDimY} " +
+                $"{prop2X},{botDimY-tick} {prop2X},{botDimY+tick} {prop2X},{botDimY} " +
+                $"{prop2X},{h20BotY+spAW+5}";
+
+            Prop1ToProp2LabelLeft = prop1X + (prop2X - prop1X) / 2 - 15;
+            Prop1ToProp2LabelTop = botDimY - 20;
+            Prop1ToProp2Text = (timberW * 0.5).ToString("F0");
+
+            // Overhang 2
+            Prop2ToEdgeDimPoints =
+                $"{prop2X},{botDimY} " +
+                $"{tRight},{botDimY} " +
+                $"{tRight},{botDimY-tick} {tRight},{botDimY+tick} {tRight},{botDimY} " +
+                $"{tRight},{h20BotY+5}";
+
+            Prop2ToEdgeLabelLeft = prop2X + (tRight - prop2X) / 2 - 10;
+            Prop2ToEdgeLabelTop = botDimY - 20;
+            Prop2ToEdgeText = (timberW * 0.25).ToString("F0");
+
+            // Total H20 Width
+            H20WidthDimPoints =
+                $"{tLeft},{botDimY} " +
+                $"{tLeft},{botDimY2} " +
+                $"{tLeft},{botDimY2+tick} {tLeft},{botDimY2-tick} {tLeft},{botDimY2} " +
+                $"{tRight},{botDimY2} " +
+                $"{tRight},{botDimY2-tick} {tRight},{botDimY2+tick} {tRight},{botDimY2} " +
+                $"{tRight},{botDimY}";
+
+            H20WidthLabelLeft = tLeft + stW / 2 - 15;
+            H20WidthLabelTop = botDimY2 - 20;
+            H20WidthText = timberW.ToString("F0");
+
+            // H20 Depth Dimension (Left)
+            double hDimX = tLeft - 25;
+            H20DepthDimPoints =
+                $"{tLeft-5},{tTop} " +
+                $"{hDimX},{tTop} " +
+                $"{hDimX-tick},{tTop} {hDimX+tick},{tTop} {hDimX},{tTop} " +
+                $"{hDimX},{tBot} " +
+                $"{hDimX-tick},{tBot} {hDimX+tick},{tBot} {hDimX},{tBot} " +
+                $"{tLeft-5},{tBot}";
+
+            H20DepthLabelLeft = hDimX - 25;
+            H20DepthLabelTop = tTop + stH / 2 - 10;
+
         }
 
         private void ClearOutputs()
