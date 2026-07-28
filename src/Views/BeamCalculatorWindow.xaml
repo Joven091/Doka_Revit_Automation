@@ -104,8 +104,14 @@
                 <Polyline Points="{Binding LeftSlabWidthDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                 <Polyline Points="{Binding RightSlabWidthDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
-                <!-- Width Label -->
-                <TextBlock Text="{Binding Width}" Canvas.Left="{Binding WidthLabelLeft}" Canvas.Top="{Binding WidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
+                <Polyline Points="{Binding H20DepthDimPoints}" Stroke="#555555" StrokeThickness="1"/>
+                <Polyline Points="{Binding EdgeToProp1DimPoints}" Stroke="#555555" StrokeThickness="1"/>
+                <Polyline Points="{Binding Prop1ToProp2DimPoints}" Stroke="#555555" StrokeThickness="1"/>
+                <Polyline Points="{Binding Prop2ToEdgeDimPoints}" Stroke="#555555" StrokeThickness="1"/>
+                <Polyline Points="{Binding H20WidthDimPoints}" Stroke="#555555" StrokeThickness="1"/>
+
+                <!-- Width Label (Interactive) -->
+                <TextBox Text="{Binding Width, UpdateSourceTrigger=PropertyChanged}" Canvas.Left="{Binding WidthLabelLeft}" Canvas.Top="{Binding WidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Background="White" BorderBrush="#CCCCCC" BorderThickness="1" Padding="2,0"/>
 
                 <!-- Left Slab Width Label -->
                 <TextBlock Text="300" Canvas.Left="{Binding LeftSlabWidthLabelLeft}" Canvas.Top="{Binding LeftSlabWidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
@@ -113,8 +119,15 @@
                 <!-- Right Slab Width Label -->
                 <TextBlock Text="300" Canvas.Left="{Binding RightSlabWidthLabelLeft}" Canvas.Top="{Binding RightSlabWidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
-                <!-- Depth Label -->
-                <TextBlock Text="{Binding Depth}" Canvas.Left="{Binding DepthLabelLeft}" Canvas.Top="{Binding DepthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
+                <!-- Depth Label (Interactive) -->
+                <TextBox Text="{Binding Depth, UpdateSourceTrigger=PropertyChanged}" Canvas.Left="{Binding DepthLabelLeft}" Canvas.Top="{Binding DepthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Background="White" BorderBrush="#CCCCCC" BorderThickness="1" Padding="2,0"/>
+
+                <!-- H20 / Prop Spacing Labels -->
+                <TextBlock Text="200" Canvas.Left="{Binding H20DepthLabelLeft}" Canvas.Top="{Binding H20DepthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
+                <TextBlock Text="{Binding EdgeToProp1Text}" Canvas.Left="{Binding EdgeToProp1LabelLeft}" Canvas.Top="{Binding EdgeToProp1LabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
+                <TextBlock Text="{Binding Prop1ToProp2Text}" Canvas.Left="{Binding Prop1ToProp2LabelLeft}" Canvas.Top="{Binding Prop1ToProp2LabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
+                <TextBlock Text="{Binding Prop2ToEdgeText}" Canvas.Left="{Binding Prop2ToEdgeLabelLeft}" Canvas.Top="{Binding Prop2ToEdgeLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
+                <TextBlock Text="{Binding H20WidthText}" Canvas.Left="{Binding H20WidthLabelLeft}" Canvas.Top="{Binding H20WidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
 
                 <!-- Left Slab Thickness Label -->
                 <TextBlock Text="{Binding LeftSlabThickness}" Canvas.Left="{Binding LeftSlabLabelLeft}" Canvas.Top="{Binding LeftSlabLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
