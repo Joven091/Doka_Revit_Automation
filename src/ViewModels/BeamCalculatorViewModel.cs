@@ -21,6 +21,9 @@ namespace EngineeringDashboard
         private double _leftSlabThickness = 200;
         private double _rightSlabThickness = 200;
 
+        private string _numberOfProps = "2";
+        private string _deflectionLimit = "L/500";
+
         private string _beamPolygonPoints;
         private string _widthDimPoints;
         private string _depthDimPoints;
@@ -92,6 +95,18 @@ namespace EngineeringDashboard
         {
             get => _rightSlabThickness;
             set { _rightSlabThickness = value; OnPropertyChanged(); Calculate(); }
+        }
+
+        public string NumberOfProps
+        {
+            get => _numberOfProps;
+            set { _numberOfProps = value; OnPropertyChanged(); Calculate(); }
+        }
+
+        public string DeflectionLimit
+        {
+            get => _deflectionLimit;
+            set { _deflectionLimit = value; OnPropertyChanged(); Calculate(); }
         }
 
         public string BeamPolygonPoints
@@ -387,34 +402,161 @@ namespace EngineeringDashboard
                 return;
             }
 
-            var matchingRow = _beamData
-                .Where(r => r.Depth >= Depth && r.Width >= Width)
-                .OrderBy(r => r.Depth)
-                .ThenBy(r => r.Width)
-                .FirstOrDefault();
+            // Load Calculation
+            double depthM = Depth / 1000.0;
+            double widthM = Width / 1000.0;
 
-            if (matchingRow != null)
+            // Beam Load
+            double beamConcreteLoadArea = 25.0 * depthM;
+            double beamHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * beamConcreteLoadArea));
+            double beamTotalAreaLoad = beamConcreteLoadArea + beamHeapingLoadArea + 0.75 + 0.4;
+            double beamLineLoad = beamTotalAreaLoad * widthM;
+
+            double totalLineLoad = beamLineLoad;
+
+            // Left Slab Load
+            if (HasLeftSlab && LeftSlabThickness > 0)
             {
-                SecondarySpacing = matchingRow.SecondarySpacing;
-                MaximumPropSpacing = matchingRow.MaximumPropSpacing;
-                MaximumPropLoad = matchingRow.MaximumPropLoad;
-                LimitingFactor = matchingRow.LimitingFactor;
+                double lsThicknessM = LeftSlabThickness / 1000.0;
+                // Assuming left slab width is fixed 0.3m as per previous visualizations
+                double lsWidthM = 0.3;
+                double lsConcreteLoadArea = 25.0 * lsThicknessM;
+                double lsHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * lsConcreteLoadArea));
+                double lsTotalAreaLoad = lsConcreteLoadArea + lsHeapingLoadArea + 0.75 + 0.4;
+                totalLineLoad += lsTotalAreaLoad * lsWidthM;
+            }
 
-                double cantileverCalc = MaximumPropSpacing * 0.42;
-                if (cantileverCalc > 500)
-                {
-                    PrimaryBeamCantilever = 500;
-                }
-                else
-                {
-                    PrimaryBeamCantilever = System.Math.Floor(cantileverCalc / 25.0) * 25.0;
-                }
+            // Right Slab Load
+            if (HasRightSlab && RightSlabThickness > 0)
+            {
+                double rsThicknessM = RightSlabThickness / 1000.0;
+                double rsWidthM = 0.3; // Using 0.3m default width
+                double rsConcreteLoadArea = 25.0 * rsThicknessM;
+                double rsHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * rsConcreteLoadArea));
+                double rsTotalAreaLoad = rsConcreteLoadArea + rsHeapingLoadArea + 0.75 + 0.4;
+                totalLineLoad += rsTotalAreaLoad * rsWidthM;
+            }
+
+            // Divide by two lines of props
+            double w = totalLineLoad / 2.0;
+
+            if (w <= 0)
+            {
+                ClearOutputs();
+                return;
+            }
+
+            // Structural Mechanics
+            // M_cap = 5.0 kNm
+            // V_cap = 11.0 kN
+            // E = 10,760,000 kN/m2
+            // I = 0.00004181 m4
+            double EI = 10760000.0 * 0.00004181; // 449.8756
+
+            double defLimitValue = 500;
+            if (DeflectionLimit == "L/350") defLimitValue = 350;
+            if (DeflectionLimit == "L/270") defLimitValue = 270;
+
+            double L_moment = 0;
+            double L_shear = 0;
+            double L_deflection = 0;
+
+            double M_coeff = 0;
+            double V_coeff = 0;
+            double R_coeff = 0;
+            double Def_coeff = 0;
+            double a_coeff = 0;
+
+            if (NumberOfProps == "2") // 1 Span
+            {
+                a_coeff = 0.354;
+                M_coeff = 1.0 / 16.0;
+                V_coeff = 0.5;
+                R_coeff = 1.707;
+                Def_coeff = 1.0 / 192.0;
+            }
+            else if (NumberOfProps == "3") // 2 Spans
+            {
+                a_coeff = 0.25;
+                M_coeff = 0.125;
+                V_coeff = 0.625;
+                R_coeff = 1.25;
+                Def_coeff = 1.0 / 185.0;
+            }
+            else // 4+ Props, 3+ Spans
+            {
+                a_coeff = 0.25;
+                M_coeff = 0.10;
+                V_coeff = 0.60;
+                R_coeff = 1.143;
+                Def_coeff = 1.0 / 145.0;
+            }
+
+            L_moment = System.Math.Sqrt(5.0 / (M_coeff * w));
+            L_shear = 11.0 / (V_coeff * w);
+
+            // Deflection: delta = Def_coeff * w * L^4 / EI
+            // Limit: delta_max = L / defLimitValue
+            // L / defLimitValue = Def_coeff * w * L^4 / EI
+            // L^3 = EI / (Def_coeff * w * defLimitValue)
+            L_deflection = System.Math.Pow(EI / (Def_coeff * w * defLimitValue), 1.0 / 3.0);
+
+            // Convert to mm
+            double L_m_mm = L_moment * 1000.0;
+            double L_v_mm = L_shear * 1000.0;
+            double L_d_mm = L_deflection * 1000.0;
+
+            // The simple beam rule logic applies if span is 2 supports
+            if (NumberOfProps == "2")
+            {
+                L_m_mm = System.Math.Min(L_m_mm, 2000.0);
+                L_v_mm = System.Math.Min(L_v_mm, 2000.0);
+                L_d_mm = System.Math.Min(L_d_mm, 2000.0);
+            }
+
+            double minL = System.Math.Min(L_m_mm, System.Math.Min(L_v_mm, L_d_mm));
+
+            // Determine limiting factor before rounding
+            if (minL == L_m_mm) LimitingFactor = "Moment";
+            else if (minL == L_v_mm) LimitingFactor = "Shear";
+            else LimitingFactor = "Deflection";
+
+            // Round L down to nearest 25mm
+            double optimalL = System.Math.Floor(minL / 25.0) * 25.0;
+
+            // Calculate a based on rounded L
+            double optimalA = optimalL * a_coeff;
+            optimalA = System.Math.Floor(optimalA / 25.0) * 25.0;
+
+            // Now recalculate Exact Max Prop Load (R) using L in meters
+            // R_coeff already accounts for w * (L + something) or w*L
+            // Let's refine R_coeff application.
+            // For 2 props: Reaction = w * (L + 2a)
+            // For 3 props: Reaction = 1.25 * w * L (Middle prop)
+            // For 4+ props: Reaction = 1.143 * w * L (Inner props)
+            double maxPropReaction = 0;
+            double L_meters = optimalL / 1000.0;
+            double A_meters = optimalA / 1000.0;
+
+            if (NumberOfProps == "2")
+            {
+                // Each prop takes half the total load symmetrically
+                maxPropReaction = 0.5 * w * (L_meters + 2 * A_meters);
+            }
+            else if (NumberOfProps == "3")
+            {
+                maxPropReaction = R_coeff * w * L_meters;
             }
             else
             {
-                WarningMessage = "Size exceeds available data table.";
-                ClearOutputs();
+                maxPropReaction = R_coeff * w * L_meters;
             }
+
+            MaximumPropSpacing = optimalL;
+            PrimaryBeamCantilever = optimalA;
+            MaximumPropLoad = maxPropReaction;
+            // SecondarySpacing is obsolete conceptually in this exact frame but keep it 0 or don't show
+            SecondarySpacing = 0;
         }
 
         private void UpdateVisualization()
