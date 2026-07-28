@@ -9,7 +9,6 @@ namespace EngineeringDashboard
     {
         private double _depth = 500;
         private double _width = 200;
-        private double _secondarySpacing;
         private double _maximumPropSpacing;
         private double _maximumPropLoad;
         private double _primaryBeamCantilever;
@@ -23,6 +22,10 @@ namespace EngineeringDashboard
 
         private string _numberOfProps = "2";
         private string _deflectionLimit = "L/500";
+
+        private bool _useCustomLoads;
+        private double _customLiveLoad = 2.25;
+        private double _customFormworkLoad = 0.4;
 
         private string _beamPolygonPoints;
         private string _widthDimPoints;
@@ -107,6 +110,24 @@ namespace EngineeringDashboard
         {
             get => _deflectionLimit;
             set { _deflectionLimit = value; OnPropertyChanged(); Calculate(); }
+        }
+
+        public bool UseCustomLoads
+        {
+            get => _useCustomLoads;
+            set { _useCustomLoads = value; OnPropertyChanged(); Calculate(); }
+        }
+
+        public double CustomLiveLoad
+        {
+            get => _customLiveLoad;
+            set { _customLiveLoad = value; OnPropertyChanged(); Calculate(); }
+        }
+
+        public double CustomFormworkLoad
+        {
+            get => _customFormworkLoad;
+            set { _customFormworkLoad = value; OnPropertyChanged(); Calculate(); }
         }
 
         public string BeamPolygonPoints
@@ -354,12 +375,6 @@ namespace EngineeringDashboard
             private set { _h20WidthLabelTop = value; OnPropertyChanged(); }
         }
 
-        public double SecondarySpacing
-        {
-            get => _secondarySpacing;
-            private set { _secondarySpacing = value; OnPropertyChanged(); }
-        }
-
         public double MaximumPropSpacing
         {
             get => _maximumPropSpacing;
@@ -408,8 +423,16 @@ namespace EngineeringDashboard
 
             // Beam Load
             double beamConcreteLoadArea = 25.0 * depthM;
-            double beamHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * beamConcreteLoadArea));
-            double beamTotalAreaLoad = beamConcreteLoadArea + beamHeapingLoadArea + 0.75 + 0.4;
+            double beamTotalAreaLoad = 0;
+            if (UseCustomLoads)
+            {
+                beamTotalAreaLoad = beamConcreteLoadArea + CustomLiveLoad + CustomFormworkLoad;
+            }
+            else
+            {
+                double beamHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * beamConcreteLoadArea));
+                beamTotalAreaLoad = beamConcreteLoadArea + beamHeapingLoadArea + 0.75 + 0.4;
+            }
             double beamLineLoad = beamTotalAreaLoad * widthM;
 
             double totalLineLoad = beamLineLoad;
@@ -421,8 +444,16 @@ namespace EngineeringDashboard
                 // Assuming left slab width is fixed 0.3m as per previous visualizations
                 double lsWidthM = 0.3;
                 double lsConcreteLoadArea = 25.0 * lsThicknessM;
-                double lsHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * lsConcreteLoadArea));
-                double lsTotalAreaLoad = lsConcreteLoadArea + lsHeapingLoadArea + 0.75 + 0.4;
+                double lsTotalAreaLoad = 0;
+                if (UseCustomLoads)
+                {
+                    lsTotalAreaLoad = lsConcreteLoadArea + CustomLiveLoad + CustomFormworkLoad;
+                }
+                else
+                {
+                    double lsHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * lsConcreteLoadArea));
+                    lsTotalAreaLoad = lsConcreteLoadArea + lsHeapingLoadArea + 0.75 + 0.4;
+                }
                 totalLineLoad += lsTotalAreaLoad * lsWidthM;
             }
 
@@ -432,8 +463,16 @@ namespace EngineeringDashboard
                 double rsThicknessM = RightSlabThickness / 1000.0;
                 double rsWidthM = 0.3; // Using 0.3m default width
                 double rsConcreteLoadArea = 25.0 * rsThicknessM;
-                double rsHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * rsConcreteLoadArea));
-                double rsTotalAreaLoad = rsConcreteLoadArea + rsHeapingLoadArea + 0.75 + 0.4;
+                double rsTotalAreaLoad = 0;
+                if (UseCustomLoads)
+                {
+                    rsTotalAreaLoad = rsConcreteLoadArea + CustomLiveLoad + CustomFormworkLoad;
+                }
+                else
+                {
+                    double rsHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * rsConcreteLoadArea));
+                    rsTotalAreaLoad = rsConcreteLoadArea + rsHeapingLoadArea + 0.75 + 0.4;
+                }
                 totalLineLoad += rsTotalAreaLoad * rsWidthM;
             }
 
@@ -555,8 +594,6 @@ namespace EngineeringDashboard
             MaximumPropSpacing = optimalL;
             PrimaryBeamCantilever = optimalA;
             MaximumPropLoad = maxPropReaction;
-            // SecondarySpacing is obsolete conceptually in this exact frame but keep it 0 or don't show
-            SecondarySpacing = 0;
         }
 
         private void UpdateVisualization()
@@ -856,7 +893,6 @@ namespace EngineeringDashboard
 
         private void ClearOutputs()
         {
-            SecondarySpacing = 0;
             MaximumPropSpacing = 0;
             MaximumPropLoad = 0;
             PrimaryBeamCantilever = 0;
