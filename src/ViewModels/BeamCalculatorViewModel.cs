@@ -28,7 +28,6 @@ namespace EngineeringDashboard
         private string _rightSlabDimPoints;
         private string _leftSlabWidthDimPoints;
         private string _rightSlabWidthDimPoints;
-        private string _h20DepthDimPoints;
         private string _edgeToProp1DimPoints;
         private string _prop1ToProp2DimPoints;
         private string _prop2ToEdgeDimPoints;
@@ -155,11 +154,6 @@ namespace EngineeringDashboard
             private set { _rightSlabWidthDimPoints = value; OnPropertyChanged(); }
         }
 
-        public string H20DepthDimPoints
-        {
-            get => _h20DepthDimPoints;
-            private set { _h20DepthDimPoints = value; OnPropertyChanged(); }
-        }
 
         public string EdgeToProp1DimPoints
         {
@@ -262,8 +256,6 @@ namespace EngineeringDashboard
         private double _rightSlabWidthLabelLeft;
         private double _rightSlabWidthLabelTop;
 
-        private double _h20DepthLabelLeft;
-        private double _h20DepthLabelTop;
         private double _edgeToProp1LabelLeft;
         private double _edgeToProp1LabelTop;
         private double _prop1ToProp2LabelLeft;
@@ -297,17 +289,7 @@ namespace EngineeringDashboard
             private set { _rightSlabWidthLabelTop = value; OnPropertyChanged(); }
         }
 
-        public double H20DepthLabelLeft
-        {
-            get => _h20DepthLabelLeft;
-            private set { _h20DepthLabelLeft = value; OnPropertyChanged(); }
-        }
 
-        public double H20DepthLabelTop
-        {
-            get => _h20DepthLabelTop;
-            private set { _h20DepthLabelTop = value; OnPropertyChanged(); }
-        }
 
         public double EdgeToProp1LabelLeft
         {
@@ -454,8 +436,8 @@ namespace EngineeringDashboard
 
             double totalHeight = d + timberH + propH;
 
-            double canvasW = 120;
-            double canvasH = 120;
+            double canvasW = 180;
+            double canvasH = 180;
 
             double scaleX = canvasW / totalWidth;
             double scaleY = canvasH / totalHeight;
@@ -727,18 +709,6 @@ namespace EngineeringDashboard
             H20WidthLabelTop = botDimY2 - 20;
             H20WidthText = timberW.ToString("F0");
 
-            // H20 Depth Dimension (Left)
-            double hDimX = tLeft - 25;
-            H20DepthDimPoints =
-                $"{tLeft-5},{tTop} " +
-                $"{hDimX},{tTop} " +
-                $"{hDimX-tick},{tTop} {hDimX+tick},{tTop} {hDimX},{tTop} " +
-                $"{hDimX},{tBot} " +
-                $"{hDimX-tick},{tBot} {hDimX+tick},{tBot} {hDimX},{tBot} " +
-                $"{tLeft-5},{tBot}";
-
-            H20DepthLabelLeft = hDimX - 25;
-            H20DepthLabelTop = tTop + stH / 2 - 10;
 
         }
 

@@ -104,7 +104,6 @@
                 <Polyline Points="{Binding LeftSlabWidthDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                 <Polyline Points="{Binding RightSlabWidthDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
-                <Polyline Points="{Binding H20DepthDimPoints}" Stroke="#555555" StrokeThickness="1"/>
                 <Polyline Points="{Binding EdgeToProp1DimPoints}" Stroke="#555555" StrokeThickness="1"/>
                 <Polyline Points="{Binding Prop1ToProp2DimPoints}" Stroke="#555555" StrokeThickness="1"/>
                 <Polyline Points="{Binding Prop2ToEdgeDimPoints}" Stroke="#555555" StrokeThickness="1"/>
@@ -123,7 +122,6 @@
                 <TextBox Text="{Binding Depth, UpdateSourceTrigger=PropertyChanged}" Canvas.Left="{Binding DepthLabelLeft}" Canvas.Top="{Binding DepthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Background="White" BorderBrush="#CCCCCC" BorderThickness="1" Padding="2,0"/>
 
                 <!-- H20 / Prop Spacing Labels -->
-                <TextBlock Text="200" Canvas.Left="{Binding H20DepthLabelLeft}" Canvas.Top="{Binding H20DepthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
                 <TextBlock Text="{Binding EdgeToProp1Text}" Canvas.Left="{Binding EdgeToProp1LabelLeft}" Canvas.Top="{Binding EdgeToProp1LabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
                 <TextBlock Text="{Binding Prop1ToProp2Text}" Canvas.Left="{Binding Prop1ToProp2LabelLeft}" Canvas.Top="{Binding Prop1ToProp2LabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
                 <TextBlock Text="{Binding Prop2ToEdgeText}" Canvas.Left="{Binding Prop2ToEdgeLabelLeft}" Canvas.Top="{Binding Prop2ToEdgeLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
