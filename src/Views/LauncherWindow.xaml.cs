@@ -1,9 +1,15 @@
 using System.Windows;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 
 namespace EngineeringDashboard
 {
     public partial class LauncherWindow : Window
     {
+        // Static ViewModels to persist state across command executions
+        private static FlexCalculatorViewModel _flexViewModel;
+        private static BeamCalculatorViewModel _beamViewModel;
+
         public LauncherWindow()
         {
             InitializeComponent();
@@ -14,8 +20,14 @@ namespace EngineeringDashboard
             // Hide the launcher
             this.Hide();
 
-            // Instantiate and show the Flex Calculator window
+            if (_flexViewModel == null)
+            {
+                _flexViewModel = new FlexCalculatorViewModel();
+            }
+
             FlexCalculatorWindow flexWindow = new FlexCalculatorWindow();
+            flexWindow.ViewModel = _flexViewModel;
+
             flexWindow.ShowDialog();
 
             // Show the launcher again once the calculator is closed
@@ -27,8 +39,14 @@ namespace EngineeringDashboard
             // Hide the launcher
             this.Hide();
 
-            // Instantiate and show the Beam Calculator window
+            if (_beamViewModel == null)
+            {
+                _beamViewModel = new BeamCalculatorViewModel();
+            }
+
             BeamCalculatorWindow beamWindow = new BeamCalculatorWindow();
+            beamWindow.DataContext = _beamViewModel;
+
             beamWindow.ShowDialog();
 
             // Show the launcher again once the calculator is closed

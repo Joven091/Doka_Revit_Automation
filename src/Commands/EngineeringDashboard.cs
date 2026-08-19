@@ -8,10 +8,14 @@ namespace EngineeringDashboard
     [Transaction(TransactionMode.Manual)]
     public class Command : IExternalCommand
     {
+        public static UIApplication App;
+
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
             try
             {
+                App = commandData.Application;
+
                 // Instantiate the Launcher Window
                 LauncherWindow launcher = new LauncherWindow();
                 
