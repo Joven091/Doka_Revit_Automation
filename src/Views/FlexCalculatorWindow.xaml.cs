@@ -1,10 +1,35 @@
 using System;
 using System.Windows;
-using System.Windows.Interop;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Selection;
 using MyRevitAddin.Views;
 
 namespace EngineeringDashboard
 {
+    public class PrimaryBeamSelectionFilter : ISelectionFilter
+    {
+        public bool AllowElement(Element elem)
+        {
+            if (elem is FamilyInstance fi)
+            {
+                if (fi.Category != null && fi.Category.Name == "Specialty Equipment")
+                {
+                    if (fi.Symbol != null && fi.Symbol.FamilyName == "PrimaryBeam")
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        public bool AllowReference(Reference reference, XYZ position)
+        {
+            return false;
+        }
+    }
+
     public partial class FlexCalculatorWindow : Window
     {
         private DiagramWindow _primaryDiagramWindow;
@@ -97,6 +122,76 @@ namespace EngineeringDashboard
                           "a = Secondary Beam Cantilever (m)";
 
             MessageBox.Show(info, "Formulas", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        public FlexCalculatorViewModel ViewModel
+        {
+            get => _viewModel;
+            set
+            {
+                // Unsubscribe from old viewmodel if exists
+                if (_viewModel != null)
+                {
+                    _viewModel.PrimaryBeamDiagramRequested -= OnPrimaryBeamDiagramRequested;
+                    _viewModel.SecondaryBeamDiagramRequested -= OnSecondaryBeamDiagramRequested;
+                    _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+                }
+
+                _viewModel = value;
+                this.DataContext = _viewModel;
+
+                if (_viewModel != null)
+                {
+                    _viewModel.PrimaryBeamDiagramRequested += OnPrimaryBeamDiagramRequested;
+                    _viewModel.SecondaryBeamDiagramRequested += OnSecondaryBeamDiagramRequested;
+                    _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+                }
+            }
+        }
+
+        private void BtnSelectPrimaryBeam_Click(object sender, RoutedEventArgs e)
+        {
+            this.Hide();
+
+            UIDocument uidoc = Command.App.ActiveUIDocument;
+
+            try
+            {
+                Reference pick = uidoc.Selection.PickObject(ObjectType.Element, new PrimaryBeamSelectionFilter(), "Select a Primary Beam");
+                if (pick != null)
+                {
+                    Element elem = uidoc.Document.GetElement(pick);
+                    if (elem is FamilyInstance fi)
+                    {
+                        using (Transaction t = new Transaction(uidoc.Document, "Apply Primary Beam Parameters"))
+                        {
+                            t.Start();
+
+                            Parameter pProp = fi.LookupParameter("Max Prop spacing");
+                            Parameter pBeam = fi.LookupParameter("Max Beam Spacing");
+                            Parameter pStart = fi.LookupParameter("Start Cantilever");
+                            Parameter pEnd = fi.LookupParameter("End Cantilever");
+
+                            double propSpacingMm = _viewModel.PropSpacing;
+                            double suggestedBeamSpacingMm = _viewModel.SuggestedPrimaryBeamSpacing;
+                            double cantileverMm = _viewModel.PrimaryBeamCantilever;
+
+                            if (pProp != null) pProp.Set(propSpacingMm / 304.8);
+                            if (pBeam != null) pBeam.Set(suggestedBeamSpacingMm / 304.8);
+                            if (pStart != null) pStart.Set(cantileverMm / 304.8);
+                            if (pEnd != null) pEnd.Set(cantileverMm / 304.8);
+
+                            t.Commit();
+                        }
+                    }
+                }
+            }
+            catch (Autodesk.Revit.Exceptions.OperationCanceledException)
+            {
+                // User cancelled selection
+            }
+
+            this.Show();
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)

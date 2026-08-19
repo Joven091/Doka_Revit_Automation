@@ -175,7 +175,8 @@
                 </Grid>
             </Border>
 
-                        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
+            <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
+                <Button Content="Select Primary Beam" Padding="8" Click="BtnSelectPrimaryBeam_Click" Margin="0,0,10,0"/>
                 <Button Content="Close" Width="100" Padding="8" Click="BtnClose_Click" Background="#f0f0f0" BorderBrush="#ccc"/>
             </StackPanel>
         </Grid>
