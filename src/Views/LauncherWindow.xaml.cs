@@ -28,10 +28,18 @@ namespace EngineeringDashboard
             FlexCalculatorWindow flexWindow = new FlexCalculatorWindow();
             flexWindow.ViewModel = _flexViewModel;
 
-            flexWindow.ShowDialog();
+            bool? result = flexWindow.ShowDialog();
 
-            // Show the launcher again once the calculator is closed
-            this.Show();
+            if (result == true)
+            {
+                // Operation completed successfully and user wants to stop, close launcher
+                this.Close();
+            }
+            else
+            {
+                // Show the launcher again once the calculator is closed normally
+                this.Show();
+            }
         }
 
         private void BtnBeamCalculator_Click(object sender, RoutedEventArgs e)

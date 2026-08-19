@@ -157,31 +157,45 @@ namespace EngineeringDashboard
 
             try
             {
-                Reference pick = uidoc.Selection.PickObject(ObjectType.Element, new PrimaryBeamSelectionFilter(), "Select a Primary Beam");
-                if (pick != null)
+                System.Collections.Generic.IList<Reference> picks = uidoc.Selection.PickObjects(ObjectType.Element, new PrimaryBeamSelectionFilter(), "Select Primary Beams");
+                if (picks != null && picks.Count > 0)
                 {
-                    Element elem = uidoc.Document.GetElement(pick);
-                    if (elem is FamilyInstance fi)
+                    using (Transaction t = new Transaction(uidoc.Document, "Apply Primary Beam Parameters"))
                     {
-                        using (Transaction t = new Transaction(uidoc.Document, "Apply Primary Beam Parameters"))
+                        t.Start();
+                        int successCount = 0;
+
+                        foreach (Reference pick in picks)
                         {
-                            t.Start();
+                            Element elem = uidoc.Document.GetElement(pick);
+                            if (elem is FamilyInstance fi)
+                            {
+                                Parameter pProp = fi.LookupParameter("Max Prop spacing");
+                                Parameter pBeam = fi.LookupParameter("Max Beam Spacing");
+                                Parameter pStart = fi.LookupParameter("Start Cantilever");
+                                Parameter pEnd = fi.LookupParameter("End Cantilever");
 
-                            Parameter pProp = fi.LookupParameter("Max Prop spacing");
-                            Parameter pBeam = fi.LookupParameter("Max Beam Spacing");
-                            Parameter pStart = fi.LookupParameter("Start Cantilever");
-                            Parameter pEnd = fi.LookupParameter("End Cantilever");
+                                double propSpacingMm = _viewModel.PropSpacing;
+                                double suggestedBeamSpacingMm = _viewModel.SuggestedPrimaryBeamSpacing;
+                                double cantileverMm = _viewModel.PrimaryBeamCantilever;
 
-                            double propSpacingMm = _viewModel.PropSpacing;
-                            double suggestedBeamSpacingMm = _viewModel.SuggestedPrimaryBeamSpacing;
-                            double cantileverMm = _viewModel.PrimaryBeamCantilever;
+                                if (pProp != null) pProp.Set(propSpacingMm / 304.8);
+                                if (pBeam != null) pBeam.Set(suggestedBeamSpacingMm / 304.8);
+                                if (pStart != null) pStart.Set(cantileverMm / 304.8);
+                                if (pEnd != null) pEnd.Set(cantileverMm / 304.8);
 
-                            if (pProp != null) pProp.Set(propSpacingMm / 304.8);
-                            if (pBeam != null) pBeam.Set(suggestedBeamSpacingMm / 304.8);
-                            if (pStart != null) pStart.Set(cantileverMm / 304.8);
-                            if (pEnd != null) pEnd.Set(cantileverMm / 304.8);
+                                successCount++;
+                            }
+                        }
 
-                            t.Commit();
+                        t.Commit();
+
+                        if (successCount > 0)
+                        {
+                            MessageBox.Show($"Successfully applied parameters to {successCount} primary beam(s).", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                            this.DialogResult = true;
+                            this.Close();
+                            return; // Don't show again
                         }
                     }
                 }
