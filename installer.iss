@@ -1,7 +1,7 @@
 ; Define your application details here
 #define MyAppName "Doka Revit Automation"
 #define MyAppVersion "1.0.0"
-#define MyAppPublisher "Doka"
+#define MyAppPublisher "Joven091"
 #define RevitAddinPath "{userappdata}\Autodesk\Revit\Addins\2024"
 
 ; Your exact local build output directory
