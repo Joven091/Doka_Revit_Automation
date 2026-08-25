@@ -171,7 +171,7 @@ namespace EngineeringDashboard
                             if (elem is FamilyInstance fi)
                             {
                                 Parameter pProp = fi.LookupParameter("Max Prop spacing") ?? fi.LookupParameter("Max Prop Spacing");
-                                Parameter pBeam = fi.LookupParameter("Max Beam Spacing") ?? fi.LookupParameter("Max Beam spacing");
+                                Parameter pBeam = fi.LookupParameter("Primary Beam Spacing") ?? fi.LookupParameter("Primary Beam spacing") ?? fi.LookupParameter("Max Beam Spacing") ?? fi.LookupParameter("Max Beam spacing");
                                 Parameter pStart = fi.LookupParameter("Start Cantilever");
                                 Parameter pEnd = fi.LookupParameter("End Cantilever");
 
@@ -193,8 +193,6 @@ namespace EngineeringDashboard
                         if (successCount > 0)
                         {
                             MessageBox.Show($"Successfully applied parameters to {successCount} primary beam(s).", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                            this.Show();
-                            this.DialogResult = true;
                             this.Close();
                             return; // Don't show again
                         }
