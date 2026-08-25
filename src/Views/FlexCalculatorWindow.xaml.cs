@@ -7,29 +7,6 @@ using MyRevitAddin.Views;
 
 namespace EngineeringDashboard
 {
-    public class PrimaryBeamSelectionFilter : ISelectionFilter
-    {
-        public bool AllowElement(Element elem)
-        {
-            if (elem is FamilyInstance fi)
-            {
-                if (fi.Category != null && fi.Category.Name == "Specialty Equipment")
-                {
-                    if (fi.Symbol != null && fi.Symbol.FamilyName == "PrimaryBeam")
-                    {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        public bool AllowReference(Reference reference, XYZ position)
-        {
-            return false;
-        }
-    }
-
     public partial class FlexCalculatorWindow : Window
     {
         private DiagramWindow _primaryDiagramWindow;
@@ -149,43 +126,65 @@ namespace EngineeringDashboard
             }
         }
 
-        private void BtnSelectPrimaryBeam_Click(object sender, RoutedEventArgs e)
+        private void BtnImportValues_Click(object sender, RoutedEventArgs e)
         {
-            this.Hide();
-
             UIDocument uidoc = Command.App.ActiveUIDocument;
+            Document doc = uidoc.Document;
+            View activeView = doc.ActiveView;
 
             try
             {
-                System.Collections.Generic.IList<Reference> picks = uidoc.Selection.PickObjects(ObjectType.Element, new PrimaryBeamSelectionFilter(), "Select Primary Beams");
-                if (picks != null && picks.Count > 0)
+                // Find all FamilyInstances in the active view
+                FilteredElementCollector collector = new FilteredElementCollector(doc, activeView.Id)
+                    .OfClass(typeof(FamilyInstance));
+
+                System.Collections.Generic.List<FamilyInstance> matchedBeams = new System.Collections.Generic.List<FamilyInstance>();
+
+                foreach (Element elem in collector)
                 {
-                    using (Transaction t = new Transaction(uidoc.Document, "Apply Primary Beam Parameters"))
+                    if (elem is FamilyInstance fi && fi.Symbol != null && fi.Symbol.FamilyName == "PrimaryBeam")
+                    {
+                        Parameter pSlabH = fi.LookupParameter("H");
+                        Parameter pType = fi.LookupParameter("Structural Element Type");
+
+                        if (pSlabH != null && pType != null)
+                        {
+                            // Convert H from feet to mm
+                            double hMm = pSlabH.AsDouble() * 304.8;
+                            string elemType = pType.AsString();
+
+                            if (elemType == "Slab" && Math.Abs(hMm - _viewModel.SlabThickness) <= 0.1)
+                            {
+                                matchedBeams.Add(fi);
+                            }
+                        }
+                    }
+                }
+
+                if (matchedBeams.Count > 0)
+                {
+                    using (Transaction t = new Transaction(doc, "Apply Primary Beam Parameters"))
                     {
                         t.Start();
                         int successCount = 0;
 
-                        foreach (Reference pick in picks)
+                        foreach (FamilyInstance fi in matchedBeams)
                         {
-                            Element elem = uidoc.Document.GetElement(pick);
-                            if (elem is FamilyInstance fi)
-                            {
-                                Parameter pProp = fi.LookupParameter("Max Prop spacing") ?? fi.LookupParameter("Max Prop Spacing");
-                                Parameter pBeam = fi.LookupParameter("Primary Beam Spacing") ?? fi.LookupParameter("Primary Beam spacing") ?? fi.LookupParameter("Max Beam Spacing") ?? fi.LookupParameter("Max Beam spacing");
-                                Parameter pStart = fi.LookupParameter("Start Cantilever");
-                                Parameter pEnd = fi.LookupParameter("End Cantilever");
+                            Parameter pProp = fi.LookupParameter("Max Prop spacing") ?? fi.LookupParameter("Max Prop Spacing");
+                            Parameter pBeam = fi.LookupParameter("Primary Beam Spacing") ?? fi.LookupParameter("Primary Beam spacing") ?? fi.LookupParameter("Max Beam Spacing") ?? fi.LookupParameter("Max Beam spacing");
+                            Parameter pStart = fi.LookupParameter("Start Cantilever");
+                            Parameter pEnd = fi.LookupParameter("End Cantilever");
 
-                                double propSpacingMm = _viewModel.PropSpacing;
-                                double suggestedBeamSpacingMm = _viewModel.SuggestedPrimaryBeamSpacing;
-                                double cantileverMm = _viewModel.PrimaryBeamCantilever;
+                            double propSpacingMm = _viewModel.PropSpacing;
+                            double suggestedBeamSpacingMm = _viewModel.SuggestedPrimaryBeamSpacing;
+                            double cantileverMm = _viewModel.PrimaryBeamCantilever;
 
-                                if (pProp != null) pProp.Set(propSpacingMm / 304.8);
-                                if (pBeam != null) pBeam.Set(suggestedBeamSpacingMm / 304.8);
-                                if (pStart != null) pStart.Set(cantileverMm / 304.8);
-                                if (pEnd != null) pEnd.Set(cantileverMm / 304.8);
+                            if (pProp != null) pProp.Set(propSpacingMm / 304.8);
+                            if (pBeam != null) pBeam.Set(suggestedBeamSpacingMm / 304.8);
+                            if (pStart != null) pStart.Set(cantileverMm / 304.8);
+                            if (pEnd != null) pEnd.Set(cantileverMm / 304.8);
 
-                                successCount++;
-                            }
+                            successCount++;
                         }
 
                         t.Commit();
@@ -194,17 +193,19 @@ namespace EngineeringDashboard
                         {
                             MessageBox.Show($"Successfully applied parameters to {successCount} primary beam(s).", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                             this.Close();
-                            return; // Don't show again
+                            return;
                         }
                     }
                 }
+                else
+                {
+                    MessageBox.Show("No matching PrimaryBeam elements found in the active view.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
             }
-            catch (Autodesk.Revit.Exceptions.OperationCanceledException)
+            catch (Exception ex)
             {
-                // User cancelled selection
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-
-            this.Show();
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)
