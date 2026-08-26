@@ -35,10 +35,16 @@ namespace EngineeringDashboard
                     Parameter hParam = instance.LookupParameter("H") ?? instance.Symbol.LookupParameter("H");
                     if (hParam == null) continue;
 
+                    Parameter bParam = instance.LookupParameter("B") ?? instance.Symbol.LookupParameter("B");
+                    if (bParam == null) continue;
+
                     double hFeet = hParam.AsDouble();
                     double hMm = hFeet * 304.8;
 
-                    if (Math.Abs(hMm - vm.Depth) <= 0.1)
+                    double bFeet = bParam.AsDouble();
+                    double bMm = bFeet * 304.8;
+
+                    if (Math.Abs(hMm - vm.Depth) <= 0.1 && Math.Abs(bMm - vm.Width) <= 0.1)
                     {
                         Parameter strTypeParam = instance.LookupParameter("Structural Element Type");
                         if (strTypeParam != null && strTypeParam.AsString() == "Beam")
