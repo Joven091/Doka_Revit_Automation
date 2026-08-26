@@ -561,6 +561,13 @@ namespace EngineeringDashboard
             else if (minL == L_v_mm) LimitingFactor = "Shear";
             else LimitingFactor = "Deflection";
 
+            // Cap the maximum prop spacing at 3000mm
+            if (minL > 3000.0)
+            {
+                minL = 3000.0;
+                LimitingFactor = "Max Spacing Limit";
+            }
+
             // Round L down to nearest 25mm
             double optimalL = System.Math.Floor(minL / 25.0) * 25.0;
 
