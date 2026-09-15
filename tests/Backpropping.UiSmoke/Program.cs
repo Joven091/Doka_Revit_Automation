@@ -70,6 +70,20 @@ internal static class Program
   Click("RemoveLowest");Assert(Get<DataGrid>("SlabGrid").Items.Count==3);Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Visible);
   CheckPropBearing();
   Click("RemoveLowest");Click("RemoveLowest");Click("RemoveLowest");Assert(Get<DataGrid>("SlabGrid").Items.Count==0);
+  window.Close();
+  window=new BackproppingWindow();
+  Get<ComboBox>("Temperature").SelectedIndex=1;
+  Get<TextBox>("FloorName").Text="Level 5";Get<TextBox>("Thickness").Text="200";
+  Get<TextBox>("FloorHeight").Text="3200";Get<TextBox>("Sidl").Text="6";Get<TextBox>("LiveLoad").Text="6";Click("SaveSlab");
+  Get<TextBox>("Age").Text="10";Click("SaveSlab");
+  Get<TextBox>("FloorName").Text="Unfinished floor";
+  Get<ComboBox>("Temperature").SelectedIndex=0;
+  Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Visible);
+  Assert(Get<Button>("CancelEdit").Visibility==Visibility.Visible);
+  Assert(Get<TextBox>("FloorName").Text=="Unfinished floor");
+  Click("CancelEdit");Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Collapsed);
+  Click("CalculateButton");Assert(Get<TextBlock>("ErrorText").Text=="");
+  Assert(Get<DataGrid>("SlabGrid").Items.Count==2);
   window.Close();Console.WriteLine($"Passed {checks} WPF workflow checks.");
  }
 }
