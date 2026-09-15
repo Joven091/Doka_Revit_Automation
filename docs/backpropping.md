@@ -51,7 +51,7 @@ Changing the global curve recalculates all slabs. At and above 28 days, strength
 
 ### Square-grid spacing
 
-Select a prop for each required storey. Effective extension defaults to the clear height below its upper slab; deduct packers as appropriate. Extension cannot exceed clear height. The lookup rounds extension **up** to the next 100 mm table row, never extrapolates outside the transcribed range, and does not interpolate prop capacities.
+Select a prop for each required storey. Enter **floor-to-floor height below** for the upper slab: the vertical distance between its top surface and the top surface of the slab below. Prop extension is calculated automatically as that height minus the **upper slab's thickness**. For example, 3200 − 200 = 3000 mm. It is shown as read-only text, with no extension override. This geometry assumes direct slab contact without packers. Floor height must exceed slab thickness. The lookup rounds the calculated extension **up** to the next 100 mm table row, never extrapolates outside the transcribed range, and does not interpolate prop capacities.
 
 ```
 capacitySpacing_mm = 1000 × sqrt(propCapacity_kN / downward_kN_m2)
@@ -60,7 +60,7 @@ spacing_mm = floor(min(capacitySpacing_mm, limit) / 25) × 25
 propForce_kN = downward_kN_m2 × (spacing_mm / 1000)²
 ```
 
-If neither maximum is supplied, use the capacity spacing and label it **capacity-based spacing only — slab support limit not checked**. A storey maximum overrides the project maximum. Results emphasize the spacing, with governing limit, lookup extension, force and utilization beneath it. Changing inputs clears old results. Incomplete stacks and invalid storey inputs cannot produce a final spacing for that storey.
+If neither maximum is supplied, use the capacity spacing; the calculation assumptions explain that slab support limits are not checked. A storey maximum overrides the project maximum. Each result identifies its storey and shows only the prominent **spacing**, **load per prop**, and **utilization**. Changing inputs clears old results. Incomplete stacks and invalid storey inputs cannot produce a final spacing for that storey.
 
 No area input is needed for this uniform square-grid calculation. It does not calculate total prop quantities, edge tributary areas, openings, offset grids, concentrated loads, slab punching/local bearing, settlement, stiffness-based load sharing, lateral stability or the stripping/repropping sequence. The strength-times-design-load approximation itself requires project engineering acceptance; reaching zero residual is a stopping rule for this model, not proof that the actual structure needs no support.
 

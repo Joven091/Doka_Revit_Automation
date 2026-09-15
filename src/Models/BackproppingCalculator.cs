@@ -10,13 +10,13 @@ namespace EngineeringDashboard.Backpropping
     {
         public string Name { get; set; }
         public double ThicknessMm { get; set; }
-        public double ClearHeightBelowMm { get; set; }
+        public double FloorHeightBelowMm { get; set; }
         public double AgeDays { get; set; }
         public double Sidl { get; set; }
         public double FinalLiveLoad { get; set; }
         // Configuration belongs to the storey BELOW this slab; index 0 is never sized.
         public string PropId { get; set; }
-        public double? PropExtensionMm { get; set; }
+        public double PropExtensionMm => FloorHeightBelowMm - ThicknessMm;
         public double? MaximumSpacingMm { get; set; }
         public SlabInput Copy() => (SlabInput)MemberwiseClone();
     }
@@ -100,7 +100,8 @@ namespace EngineeringDashboard.Backpropping
                 var s = slabs[i];
                 if (s == null || string.IsNullOrWhiteSpace(s.Name)) throw new ArgumentException("Every slab needs a name.");
                 RequireNumber(s.ThicknessMm, s.Name + " thickness", true);
-                RequireNumber(s.ClearHeightBelowMm, s.Name + " clear height", true);
+                RequireNumber(s.FloorHeightBelowMm, s.Name + " floor-to-floor height", true);
+                RequireNumber(s.PropExtensionMm, s.Name + " floor height minus slab thickness", true);
                 RequireNumber(s.AgeDays, s.Name + " age");
                 RequireNumber(s.Sidl, s.Name + " SIDL");
                 RequireNumber(s.FinalLiveLoad, s.Name + " final live load");
