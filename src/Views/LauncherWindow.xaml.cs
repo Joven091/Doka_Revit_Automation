@@ -15,6 +15,13 @@ namespace EngineeringDashboard
             InitializeComponent();
         }
 
+        private void BtnBackpropping_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+            try { new BackproppingWindow { Owner = this }.ShowDialog(); }
+            finally { Show(); }
+        }
+
         private void BtnFlexCalculator_Click(object sender, RoutedEventArgs e)
         {
             // Hide the launcher
