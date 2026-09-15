@@ -153,7 +153,8 @@ namespace EngineeringDashboard
             var loads = BackproppingCalculator.CalculateLoads(slabs, Curve);
             bool complete = loads.Complete;
             EntryTitle.Text = editing >= 0 ? "2  Editing " + slabs[editing].Name : complete ? "2  Slab stack complete" : slabs.Count == 0 ? "2  Slab being cast" : "2  Add supporting slab below";
-            EntryForm.Visibility = complete && editing < 0 ? Visibility.Collapsed : Visibility.Visible;
+            // Keep an unfinished entry and its cancel action accessible after a curve change.
+            EntryForm.Visibility = complete && editing < 0 && !draftDirty ? Visibility.Collapsed : Visibility.Visible;
             SaveSlab.Content = editing >= 0 ? "Save changes" : slabs.Count == 0 ? "Add slab being cast" : "Add supporting slab";
             CancelEdit.Visibility = editing >= 0 || draftDirty ? Visibility.Visible : Visibility.Collapsed;
             Age.IsReadOnly = editing == 0 || editing < 0 && slabs.Count == 0;
