@@ -24,3 +24,10 @@ Production WPF views are rendered in the existing smoke-test hosts at normal and
 
 This change does not modify the backpropping calculator or its pending entry-point work. The deferred sheeting/full-load-path scope remains unchanged.
 
+
+
+## Slab force and deflection diagrams
+
+The 5+ selector continues to use the five/six-support envelope. The diagram window displays both complete internal cases, with governing reaction or magnitude labels on the relevant rows. Each case keeps its own aligned loading, shear, moment and deflection plots. Analysis remains one continuous beam, including where the schematic illustrates overlapping H20 members.
+
+Wrapping headings and full-width charts prevent title clipping. Loading dimensions are listed in mm below the loading chart; reactions are labelled by support. Vertical dashed support guides align the response charts. Deflection summaries explicitly state maximum downward and upward displacement; negative plotted displacement is downward. Existing plot colours are retained.

@@ -394,34 +394,8 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         }
 
         var secondaryEnvelope = SlabSupportEnvelope.ForSelection(pbcInt, final_L_s, a_s, 1, H20_EI);
-        var primaryEnvelope = pcInt == 5 ? SlabSupportEnvelope.Calculate(L_p, a_p, 1, H20_EI) : null;
-        // Five-support illustrations fit the minimum count; results use the 5/6 envelope.
-        // Secondary Beam Plots
-        var secPlots = DiagramDataGenerator.GeneratePlots(
-            pbcInt,
-            final_L_s,
-            a_s,
-            a_s,
-            w_sb,
-            H20_EI,
-            pbcInt != 5 ? "Secondary Beam" : "Secondary Beam · 5+ envelope (5-support illustration)"
-        );
-        SecondaryDiagramViewModel = new DiagramWindowViewModel(secPlots);
-
-        // Primary Beam Plots
-        double R_sec_multiplier = secondaryEnvelope.Reaction;
-        double final_w_pb = w_slab * R_sec_multiplier;
-
-        var primPlots = DiagramDataGenerator.GeneratePlots(
-            pcInt,
-            L_p,
-            a_p,
-            a_p,
-            final_w_pb,
-            H20_EI,
-            pcInt != 5 ? "Primary Beam" : "Primary Beam · 5+ envelope (5-support illustration)"
-        );
-        PrimaryDiagramViewModel = new DiagramWindowViewModel(primPlots);
+        SecondaryDiagramViewModel = DiagramWindowViewModel.ForSelection(pbcInt, final_L_s, a_s, w_sb, H20_EI, "Secondary beam");
+        PrimaryDiagramViewModel = DiagramWindowViewModel.ForSelection(pcInt, L_p, a_p, w_slab * secondaryEnvelope.Reaction, H20_EI, "Primary beam");
     }
 
     public event PropertyChangedEventHandler PropertyChanged;

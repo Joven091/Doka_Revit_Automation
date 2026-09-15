@@ -1,52 +1,28 @@
 <Window x:Class="MyRevitAddin.Views.DiagramWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:oxy="http://oxyplot.org/wpf"
-        mc:Ignorable="d"
-        Title="{Binding WindowTitle, RelativeSource={RelativeSource AncestorType=Window}}" Height="800" Width="850"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="True">
-    <Grid Margin="20">
-        <!-- The ItemsControl iterates over the 3 DiagramRowItems -->
-        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding DiagramRows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <!-- This Grid defines the split-layout for a SINGLE row -->
-                        <Grid Margin="0,0,0,20">
-                            <Grid.ColumnDefinitions>
-                                <!-- Left Panel: Fixed width for neat alignment -->
-                                <ColumnDefinition Width="220" />
-                                <!-- Right Panel: Chart takes up remaining space -->
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-
-                            <!-- LEFT SIDE: Text & Stats Panel -->
-                            <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="15"
-                                    Margin="0,0,15,0" BorderBrush="#E0E0E0" BorderThickness="1">
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold"
-                                               Foreground="#333333" Margin="0,0,0,15"/>
-
-                                    <TextBlock Text="{Binding MaxValueText}" FontSize="14" Foreground="#D32F2F"
-                                               FontWeight="Medium" Margin="0,0,0,8"/>
-
-                                    <TextBlock Text="{Binding MinValueText}" FontSize="14" Foreground="#1976D2"
-                                               FontWeight="Medium"/>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- RIGHT SIDE: OxyPlot Chart -->
-                            <Border Grid.Column="1" Background="White" CornerRadius="8"
-                                    BorderBrush="#E0E0E0" BorderThickness="1" Padding="10">
-                                <!-- Note: Height is fixed here so each chart is uniform, adjust as needed -->
-                                <oxy:PlotView Model="{Binding ChartModel}" Height="200" Background="Transparent" />
-                            </Border>
-                        </Grid>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
-    </Grid>
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:oxy="http://oxyplot.org/wpf"
+ Title="{Binding WindowTitle, RelativeSource={RelativeSource AncestorType=Window}}"
+ Height="800" Width="900" MinWidth="850" MinHeight="500"
+ WindowStartupLocation="CenterOwner" ShowInTaskbar="True">
+ <ScrollViewer Margin="16" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+  <ItemsControl ItemsSource="{Binding DiagramRows}">
+   <ItemsControl.ItemTemplate>
+    <DataTemplate>
+     <Border Background="White" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,16">
+      <StackPanel>
+       <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Foreground="#333333" TextWrapping="Wrap"/>
+       <TextBlock Text="{Binding CaseText}" FontSize="13" Foreground="#333333" TextWrapping="Wrap" Margin="0,4,0,6"/>
+       <WrapPanel>
+        <TextBlock Text="{Binding MaxValueText}" FontSize="14" Foreground="#D32F2F" Margin="0,0,24,4"/>
+        <TextBlock Text="{Binding MinValueText}" FontSize="14" Foreground="#1976D2" Margin="0,0,0,4"/>
+       </WrapPanel>
+       <oxy:PlotView Model="{Binding ChartModel}" Height="250" Background="Transparent"/>
+       <TextBlock Text="{Binding GeometryText}" FontSize="12" Foreground="#555555" TextWrapping="Wrap" Margin="0,6,0,0"/>
+      </StackPanel>
+     </Border>
+    </DataTemplate>
+   </ItemsControl.ItemTemplate>
+  </ItemsControl>
+ </ScrollViewer>
 </Window>

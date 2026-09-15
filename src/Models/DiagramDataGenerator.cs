@@ -17,10 +17,10 @@ namespace MyRevitAddin.Models
             double EI, // Flexural rigidity in kN*m^2
             string titlePrefix)
         {
-var loadPlot = new PlotModel { Title = $"{titlePrefix} - Loading Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), PlotAreaBorderThickness = new OxyThickness(0) };
-var shearPlot = new PlotModel { Title = $"{titlePrefix} - Shear Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#FFFFD9") };
-var momentPlot = new PlotModel { Title = $"{titlePrefix} - Moment Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#DCFADC") };
-var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagram", PlotMargins = new OxyThickness(70, 30, 20, 40), Background = OxyColor.Parse("#DAFFFF") };
+var loadPlot = new PlotModel { Title = $"{titlePrefix} - Loading Diagram", PlotMargins = new OxyThickness(85, 20, 35, 55), PlotAreaBorderThickness = new OxyThickness(0) };
+var shearPlot = new PlotModel { Title = $"{titlePrefix} - Shear Diagram", PlotMargins = new OxyThickness(85, 20, 35, 55), Background = OxyColor.Parse("#FFFFD9") };
+var momentPlot = new PlotModel { Title = $"{titlePrefix} - Moment Diagram", PlotMargins = new OxyThickness(85, 20, 35, 55), Background = OxyColor.Parse("#DCFADC") };
+var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagram", PlotMargins = new OxyThickness(85, 20, 35, 55), Background = OxyColor.Parse("#DAFFFF") };
 
             var lineCol = OxyColor.Parse("#0000FF");
             var shearSeries = new LineSeries { Title = "Shear (V)", Color = lineCol };
@@ -57,9 +57,9 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
             double minDeflection = double.MaxValue;
 
             var evalPoints = new List<Tuple<double, bool>>();
-            for (double x = 0; x <= L_total + 0.0001; x += step)
+            for (int sample = 0; sample <= numPoints; sample++)
             {
-                evalPoints.Add(new Tuple<double, bool>(x, true));
+                evalPoints.Add(new Tuple<double, bool>(L_total * sample / numPoints, true));
             }
             foreach (var sp in supportPositions)
             {
@@ -137,6 +137,13 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
             momentPlot.Series.Add(momentSeries);
             deflectionPlot.Series.Add(deflectionSeries);
 
+            foreach (var plot in new[] { shearPlot, momentPlot, deflectionPlot })
+                foreach (double position in supportPositions)
+                    plot.Annotations.Add(new OxyPlot.Annotations.LineAnnotation {
+                        Type = OxyPlot.Annotations.LineAnnotationType.Vertical, X = position,
+                        Color = OxyColors.Gray, LineStyle = LineStyle.Dash, StrokeThickness = 1,
+                        Layer = OxyPlot.Annotations.AnnotationLayer.BelowSeries });
+
             // Add zero lines
             shearPlot.Annotations.Add(new OxyPlot.Annotations.LineAnnotation { Type = OxyPlot.Annotations.LineAnnotationType.Horizontal, Y = 0, Color = OxyColors.Gray, LineStyle = LineStyle.Dash });
             momentPlot.Annotations.Add(new OxyPlot.Annotations.LineAnnotation { Type = OxyPlot.Annotations.LineAnnotationType.Horizontal, Y = 0, Color = OxyColors.Gray, LineStyle = LineStyle.Dash });
@@ -149,8 +156,8 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
 
             // --- LOADING DIAGRAM ---
             // Hide axes on the loading diagram
-            loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Minimum = 0, Maximum = L_total, IsAxisVisible = false });
-            loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Minimum = -5, Maximum = 5, IsAxisVisible = false });
+            loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Minimum = -0.06 * L_total, Maximum = 1.06 * L_total, IsAxisVisible = false });
+            loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Minimum = -6, Maximum = 5, IsAxisVisible = false });
 
             // Beam line
             var beamSeries = new LineSeries { Color = OxyColors.Black, StrokeThickness = 3 };
@@ -192,16 +199,6 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
                 double spanDist = currentPos - lastPos;
                 if (spanDist > 1e-6)
                 {
-                    var spanLabel = new OxyPlot.Annotations.TextAnnotation
-                    {
-                        Text = $"{Math.Round(spanDist * 1000)}",
-                        TextPosition = new DataPoint(lastPos + spanDist / 2, -1.0),
-                        TextHorizontalAlignment = OxyPlot.HorizontalAlignment.Center,
-                        TextVerticalAlignment = OxyPlot.VerticalAlignment.Top,
-                        FontSize = 11
-                    };
-                    loadPlot.Annotations.Add(spanLabel);
-
                     // Tick line at end of span (if not the very end, or if we want one at the end)
                     if (i < supportPositions.Length)
                     {
@@ -247,12 +244,12 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
                     // Reaction Text (below vertical tick line)
                     var reactionLabel = new OxyPlot.Annotations.TextAnnotation
                     {
-                        Text = $"{Math.Round(R[i], 2)} kN",
-                        TextPosition = new DataPoint(currentPos, -2.5),
+                        Text = $"S{i + 1}\n{R[i]:0.00} kN",
+                        TextPosition = new DataPoint(currentPos, -1.5),
                         TextHorizontalAlignment = OxyPlot.HorizontalAlignment.Center,
                         TextVerticalAlignment = OxyPlot.VerticalAlignment.Top,
                         FontSize = 12,
-                        TextColor = OxyColors.Black
+                        TextColor = OxyColors.Black, Stroke = OxyColors.Transparent
                     };
                     loadPlot.Annotations.Add(reactionLabel);
                 }
@@ -275,13 +272,13 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
             double actualMaxDeflection = Math.Max(Math.Abs(maxDeflection), Math.Abs(minDeflection));
             double deflectionLimit = Math.Max(actualMaxDeflection, 1.0); // Set minimum limit to 1.0 to prevent 0 scale
 
-            shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
+            shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = -0.06 * L_total, Maximum = 1.06 * L_total });
             shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Shear (kN)", Minimum = -shearLimit, Maximum = shearLimit });
 
-            momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
+            momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = -0.06 * L_total, Maximum = 1.06 * L_total });
             momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Moment (kNm)", Minimum = -momentLimit, Maximum = momentLimit });
 
-            deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total });
+            deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = -0.06 * L_total, Maximum = 1.06 * L_total });
             deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Deflection (mm)", Minimum = -deflectionLimit, Maximum = deflectionLimit });
 
             return (loadPlot, shearPlot, momentPlot, deflectionPlot, maxShear, minShear, maxMoment, minMoment, maxDeflection, minDeflection);

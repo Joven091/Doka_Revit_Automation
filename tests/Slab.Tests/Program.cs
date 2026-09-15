@@ -56,7 +56,14 @@ class Program
   Check(v.IsCalculationValid,"5+ overload regression valid revised layout");Check(v.SuggestedPrimaryBeamSpacing<3100,"5+ formerly overloaded spacing reduced");
   double secondaryReaction=ContinuousBeamResponse.Analyze(5,v.SuggestedPrimaryBeamSpacing/1000,0,4.4,449.8756).Reaction;
   Check(ContinuousBeamResponse.Analyze(5,1,.25,secondaryReaction,449.8756).Reaction<=16,"independent five-support load within prop capacity");
-  Check(v.PrimaryDiagramViewModel.DiagramRows[0].ChartModel.Title.Contains("5+ envelope"),"representative diagram labelled");
+  Check(v.PrimaryDiagramViewModel.DiagramRows.Count == 8,"5+ displays both internal cases");
+  var cases = MyRevitAddin.ViewModels.DiagramWindowViewModel.ForSelection(5,1,0,5,449.8756,"Secondary beam");
+  Check(cases.DiagramRows[0].CaseText.Contains("Governing reaction"),"five governs reaction");
+  Check(!cases.DiagramRows[3].CaseText.Contains("Governing magnitude"),"five does not govern deflection");
+  Check(cases.DiagramRows[7].CaseText.Contains("6 supports � Governing magnitude"),"six governs deflection within 5+");
+  Check(cases.DiagramRows[7].MaxValueText.Contains("Maximum downward: 0.07 mm"),"downward deflection sign and units");
+  Check(cases.DiagramRows[0].GeometryText.Contains("1000 mm"),"dimensions have units");
+  foreach(int j in new[]{1,2,3,5,6,7}) Check(cases.DiagramRows[j].ChartModel.Annotations.OfType<OxyPlot.Annotations.LineAnnotation>().Count(a=>a.Type==OxyPlot.Annotations.LineAnnotationType.Vertical)==(j<4?5:6),"support guides match case");
   int accepted=0;
   foreach(int h in new[]{100,150,200,300,400,600})foreach(int lp in new[]{500,750,1000,1250,1500,2000})foreach(string n in new[]{"2","3","4","5+"})foreach(string limit in new[]{"L/500","L/350","L/270"}){
    v=new FlexCalculatorViewModel{SlabThickness=h,FloorHeight=h+2418,PropSpacing=lp,PropCount=n,SelectedH20="4.90m",DeflectionLimit=limit};
