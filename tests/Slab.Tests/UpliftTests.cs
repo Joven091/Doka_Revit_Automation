@@ -23,7 +23,7 @@ internal static class UpliftTests
             for (int n = 5; n <= 100; n++)
                 check(ContinuousBeamResponse.Analyze(n, 1, a, 1, 1).MinimumReaction >= envelope.MinimumReaction - 1e-9, "5+ minimum bounds higher counts");
         }
-        var v = new FlexCalculatorViewModel { SelectedH20 = "4.90m", PrimaryBeamCantilever = 1000 };
+        var v = new FlexCalculatorViewModel { PrimaryBeamCantilever = 1000 };
         check(!v.IsCalculationValid && v.WarningMessage.Contains("Primary H20") && v.WarningMessage.Contains("prop 2"), "primary uplift identifies support");
         equal(0, v.SuggestedPrimaryBeamSpacing, "primary uplift clears spacing");
         equal(2300, v.PropLookupExtensionMm, "uplift retains valid extension lookup");

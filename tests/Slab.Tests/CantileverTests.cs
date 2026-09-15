@@ -46,7 +46,7 @@ internal static class CantileverTests
         foreach (int a in new[] { 0, 250, 500, 750 })
         foreach (string limit in new[] { "L/270", "L/350", "L/500" })
         {
-            var v = new FlexCalculatorViewModel { SelectedH20 = "4.90m", PrimaryBeamCount = n, PropCount = n,
+            var v = new FlexCalculatorViewModel { PrimaryBeamCount = n, PropCount = n,
                 PropSpacing = 750, PrimaryBeamCantilever = a, SecondaryBeamCantilever = a, DeflectionLimit = limit };
             if (!v.IsCalculationValid) continue;
             int count = n == "5+" ? 5 : int.Parse(n);

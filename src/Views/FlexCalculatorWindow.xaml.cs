@@ -138,26 +138,35 @@ namespace EngineeringDashboard
             }
             var app = EngineeringDashboard.Command.App;
             if (app?.ActiveUIDocument == null) return;
-            var doc = app.ActiveUIDocument.Document;
-            var matchingBeams = new List<FamilyInstance>();
-            // Preserve existing targeting: same family, dimensions and element type in active view.
-            foreach (FamilyInstance instance in new FilteredElementCollector(doc, doc.ActiveView.Id).OfClass(typeof(FamilyInstance)))
+            var uiDocument = app.ActiveUIDocument;
+            var doc = uiDocument.Document;
+            List<FamilyInstance> matchingBeams;
+            // Selection finishes before any transaction starts. Esc changes nothing.
+            Hide();
+            try
             {
-                if (instance.Symbol == null || instance.Symbol.FamilyName != "PrimaryBeam") continue;
-                Parameter h = instance.LookupParameter("H");
-                if (!IsLength(h)) continue;
-                Parameter kind = instance.LookupParameter("Structural Element Type");
-                if (Math.Abs(h.AsDouble()*304.8-vm.SlabThickness) <= 0.1
-                    && kind?.StorageType == StorageType.String && kind.AsString() == "Slab") matchingBeams.Add(instance);
+                matchingBeams = uiDocument.Selection.PickElementsByRectangle(
+                    new SlabHelperSelectionFilter(vm.SlabThickness),
+                    "Drag a window around slab helper lines to apply this calculation. Esc cancels.")
+                    .OfType<FamilyInstance>().GroupBy(instance => instance.Id).Select(group => group.First()).ToList();
             }
+            catch (Autodesk.Revit.Exceptions.OperationCanceledException) { return; }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Helper-line selection did not complete. No values were changed.\n" + ex.Message,"Selection failed",MessageBoxButton.OK,MessageBoxImage.Warning);
+                return;
+            }
+            finally { Show(); Activate(); }
             if (matchingBeams.Count == 0)
             {
-                MessageBox.Show("No matching primary beams found in the active view.", "Info", MessageBoxButton.OK, MessageBoxImage.Information); return;
+                MessageBox.Show("No slab helper lines matching this slab thickness were selected. No values were changed.", "Selection empty", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
             }
             int updated = 0, skipped = 0, failed = 0;
             var reasons = new List<string>();
             try
             {
+                uiDocument.Selection.SetElementIds(matchingBeams.Select(instance => instance.Id).ToList());
                 using (var transaction = new Transaction(doc, "Apply Slab Calculator Values"))
                 {
                     transaction.Start();
@@ -207,6 +216,21 @@ namespace EngineeringDashboard
             {
                 MessageBox.Show("Import did not complete. No successful updates are reported.\n" + ex.Message, "Import failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+        private sealed class SlabHelperSelectionFilter : ISelectionFilter
+        {
+            private readonly double thicknessMm;
+            public SlabHelperSelectionFilter(double thicknessMm) { this.thicknessMm = thicknessMm; }
+            public bool AllowElement(Element element)
+            {
+                var instance = element as FamilyInstance;
+                if(instance?.Symbol == null || instance.Symbol.FamilyName != "PrimaryBeam") return false;
+                var kind = instance.LookupParameter("Structural Element Type");
+                var thickness = instance.LookupParameter("H");
+                return kind?.StorageType == StorageType.String && kind.AsString() == "Slab"
+                    && IsLength(thickness) && Math.Abs(thickness.AsDouble()*304.8-thicknessMm) <= 0.1;
+            }
+            public bool AllowReference(Reference reference, XYZ position) => false;
         }
         private static bool IsLength(Parameter p) => p != null && p.StorageType == StorageType.Double && p.Definition.GetDataType() == SpecTypeId.Length;
         private void BtnClose_Click(object sender, RoutedEventArgs e)

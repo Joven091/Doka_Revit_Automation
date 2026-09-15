@@ -72,7 +72,7 @@ namespace EngineeringDashboard
             RefreshInputValidity();
             return vm != null && vm.IsCalculationValid && !TextInputs(this).Any(t => t.IsEnabled && Validation.GetHasError(t));
         }
-        private const string FileInputs = "SlabThickness,FloorHeight,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad,SecondaryBeamSpacing,PrimaryBeamCount,SecondaryBeamCantilever,DeflectionLimit,PropCount,PropSpacing,PrimaryBeamCantilever,PropModel,PropType,PropOrientation,SelectedH20";
+        private const string FileInputs = "SlabThickness,FloorHeight,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad,SecondaryBeamSpacing,PrimaryBeamCount,SecondaryBeamCantilever,DeflectionLimit,PropCount,PropSpacing,PrimaryBeamCantilever,PropModel,PropType,PropOrientation";
         internal CalculationRecord CaptureCalculation()
         {
             if(!TryGetValidCalculation(out var vm)) throw new ArgumentException("Correct the inputs before saving or exporting.");
@@ -92,7 +92,7 @@ namespace EngineeringDashboard
         internal string BuildReport()
         {
             var record=CaptureCalculation(); var vm=(FlexCalculatorViewModel)DataContext;
-            var results=CalculationFiles.Capture("Slab",vm,"SuggestedPrimaryBeamSpacing,ActualPropLoad,PropCapacityLimit,UtilizationRate,PropExtensionMm,PropLookupExtensionMm,PrimaryDeflectionMm,H20Shear,H20Utilization,MemberFitHint,IsCalculationValid");
+            var results=CalculationFiles.Capture("Slab",vm,"SuggestedPrimaryBeamSpacing,ActualPropLoad,PropCapacityLimit,UtilizationRate,PropExtensionMm,PropLookupExtensionMm,PrimaryDeflectionMm,H20Shear,H20Utilization,IsCalculationValid");
             double area=vm.UseCustomLoads ? 25*vm.SlabThickness/1000+vm.CustomLiveLoad+vm.CustomFormworkLoad : SlabLoadHelper.CalculateTotalLoad(vm.SlabThickness);
             int secondaryCount=vm.PrimaryBeamCount=="5+"?5:int.Parse(vm.PrimaryBeamCount), primaryCount=vm.PropCount=="5+"?5:int.Parse(vm.PropCount);
             double secondarySpan=vm.SuggestedPrimaryBeamSpacing/1000, primarySpan=vm.PropSpacing/1000;
@@ -107,10 +107,10 @@ namespace EngineeringDashboard
                     $"Line load {layer.Load:0.000} kN/m; moment {response.Moment:0.000}/5 kNm; shear {response.Shear:0.000}/11 kN; span deflection {response.SpanDeflection*1000:0.000}/{layer.Span*1000/divisor:0.000} mm; end deflection {response.CantileverDeflection*1000:0.000}/{layer.End*1000/divisor:0.000} mm; minimum reaction {response.MinimumReaction:0.000} kN; uplift check {(response.HasUplift?"Fail":"Pass")}"));
             }
             return CalculationFiles.Report("Slab",record.Inputs,results.Inputs,
-                "Geometry and spacing: mm, except selected H20 length in m. Area loads: kN/m²; prop loads/capacity and H20 shear: kN. Utilizations: %. Deflection: mm.\n"+
+                "Geometry and spacing: mm. Area loads: kN/m²; prop loads/capacity and H20 shear: kN. Utilizations: %. Deflection: mm.\n"+
                 "Concrete 25 kN/m³; default heaping min(1.75,max(0.75,10% of concrete weight)), working 0.75 and formwork 0.40 kN/m². Custom live replaces placing + working load.\n"+
                 "Equal spans, full uniform load, equal end overhangs and constant EI. H20 moment 5 kNm, shear 11 kN, EI 449.8756 kNm². 5+ uses the component-wise five/six-support envelope. Continuous analysis applies across illustrated overlaps.\n"+
-                "The spacing search checks both H20 layers for moment, shear, span deflection, end deflection including support rotation, and uplift; primary member fit and selected prop capacity are checked. End deflection uses overhang length / selected divisor. Spacing rounds down to 25 mm.\n"+
+                "The spacing search checks both H20 layers for moment, shear, span deflection, end deflection including support rotation, and uplift; selected prop capacity is checked. Member length is not a calculator input. End deflection uses overhang length / selected divisor. Spacing rounds down to 25 mm.\n"+
                 "Prop extension = floor height - slab thickness - 418 mm. Sheeting and the remaining complete load path are excluded. Results are recalculated from inputs; this is not a complete formwork verification.");
         }
     }
