@@ -42,8 +42,10 @@ internal static class Program
    vm.HasLeftSlab=true;Pump();Enter("LeftSlabThickness","0");Check(!vm.IsCalculationValid,"zero checked slab");Enter("LeftSlabThickness","200");vm.HasRightSlab=true;vm.NumberOfProps="3";Render();
    Check(diagram.DrawnPropCount==6,"three props per line");Check(diagram.DrawnSlabCount==2,"both slabs shown");
    vm.HasLeftSlab=false;Render();Check(diagram.DrawnSlabCount==1,"unchecked slab removed");vm.HasRightSlab=false;
-   vm.NumberOfProps="4+";var combo=Find<ComboBox>(window).Single(c=>c.DisplayMemberPath=="Label");Check(combo.Items.Count==3,"typed deflection options loaded");combo.SelectedIndex=2;Pump();Check(vm.DeflectionLimit.Millimetres==10,"10mm selection maps numerically");Check(vm.MaximumPropSpacing==3000,"10mm spacing");
+   vm.NumberOfProps="4+";var combo=Find<ComboBox>(window).Single(c=>c.SelectedItem is BeamDeflectionOption);Check(combo.Items.Count==3,"typed deflection options loaded");combo.SelectedIndex=2;Pump();Check(vm.DeflectionLimit.Millimetres==10,"10mm selection maps numerically");Check(vm.MaximumPropSpacing==3000,"10mm spacing");
    Thread.CurrentThread.CurrentCulture=CultureInfo.GetCultureInfo("de-DE");vm.Width=701;Render();Check(diagram.DrawnPropCount==8,"decimal comma vector diagram");Check(vm.IsCalculationValid,"decimal comma calculation");
+   var props=Find<ComboBox>(window).Single(c=>c.SelectedItem is BeamPropOption);Check(props.Items.Count==BeamPropOption.All.Count,"prop dropdown shares catalog");props.SelectedItem=BeamPropOption.All.First(p=>p.CapacityKey=="DokaFit Prop 300 at fixed");Pump();Check(vm.SelectedProp.CapacityKey=="DokaFit Prop 300 at fixed","prop selection binding");Enter("FloorHeight","9999");Check(!vm.IsCalculationValid&&!import.IsEnabled,"unsupported extension blocks import");Enter("FloorHeight","3000");Check(vm.IsCalculationValid,"floor height recovery");
+   Thread.CurrentThread.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
    vm.Width=200;vm.HasLeftSlab=true;vm.HasRightSlab=true;vm.NumberOfProps="3";var picture=Render();
    if(args.Length>0){var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(picture));using(var output=File.Create(args[0]))encoder.Save(output);}
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
@@ -51,3 +53,4 @@ internal static class Program
   catch(Exception ex){Console.Error.WriteLine(ex);window?.Close();return 1;}
  }
 }
+

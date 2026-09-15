@@ -39,7 +39,15 @@ Examples:
 - 800 × 600 mm, three props per line, no side slabs: corrected default spacing 2400 mm.
 - 500 × 700 mm, four-plus props per line, no side slabs: 5 mm deflection choice gives 2800 mm; 10 mm gives 3000 mm.
 
-This remains a uniform-load/equal-span primary-beam calculation. Actual installed prop capacity, plywood, secondary beams, beam lengths/joints, restraint and local bearing require separate checks. The fixed strip and support-line geometry must match the actual load path.
+This remains a uniform-load/equal-span primary-beam calculation. Plywood, secondary beams, beam lengths/joints, restraint and local bearing require separate checks. The fixed strip and support-line geometry must match the actual load path.
+
+## Selected prop capacity
+
+The prop dropdown references the same PropDataHelper tables used by the slab calculator: Eurex eco 20 and DokaFit, including size and orientation. Capacity data is not duplicated. Automatic extension in mm = floor height − total beam depth − 418 (two 200 mm H20 layers plus 18 mm sheeting). This assumes the base is at the supporting floor surface and the floor height is measured to the top of the concrete beam. Different build-ups require an adjusted model.
+
+Actual extension must lie within the selected configuration's supported table range. Lookup rounds upward to a 100 mm row, matching the slab calculator; missing/nonpositive capacity blocks results and import. After primary-beam and spacing limits, the solver reduces spacing in 25 mm increments until the maximum prop load is within capacity, recomputing the rounded cantilever each time. Utilization is maximum prop load / permitted capacity × 100. This is the largest permitted grid increment under the adopted coefficient model, not a general optimization of arbitrary support layouts.
+
+Example: 500 × 1000 mm beam, three props per line, DokaFit 400 at bottom, floor height 4918 mm gives 4000 mm extension and 16 kN capacity. Spacing becomes 1700 mm, prop load 15.83125 kN; the next 25 mm increment exceeds capacity.
 
 ## Import behavior
 
@@ -51,7 +59,7 @@ All three output parameters must exist, be writable, have Double storage and Len
 
 The old string-coordinate section has been replaced by a typed vector axonometric diagram:
 
-- Concrete beam and optional left/right slab wings.
+- Concrete beam and optional left/right slab wings, without a legend.
 - Secondary H20s crossing the primary H20s at right angles in plan.
 - Two primary H20 lines running along the concrete beam.
 - Two, three, or four representative props per primary line, according to the support setting.
@@ -70,3 +78,7 @@ dotnet run --project tests/Beam.UiSmoke
 Beam.Tests checks load equilibrium/mirroring, numerical rejection, 3/5/10 mm limits, heaping, span limits and 648 geometry/support combinations. Beam.UiSmoke loads the production XAML and shared UI behavior using a non-Revit host: conversion-error retention, import blocking/recovery, optional input activation, numeric option selection, slab visibility, support counts and decimal-comma rendering. Passing a PNG path as its argument exports a preview of the actual WPF content.
 
 The full add-in compiles against the Revit 2024 API. Parameter writes and rollback behavior still need testing in Revit with representative families: all writable parameters, a missing parameter, read-only parameter, non-length parameter and a rejected write. The WPF test host does not simulate or claim to validate actual Revit transactions.
+
+### Latest verification
+
+4,414 calculation assertions and 26 WPF assertions pass; the add-in builds with zero warnings/errors. All positive shared capacity rows and every configuration’s extension boundaries are checked. An independent three-moment beam solution integrates displacement from bending moments and checks equilibrium, maximum reaction, bending, shear and displacement for the 648 geometry/support inputs (4+ tested with 4 through 12 supports). The retained three/four-plus reaction factors are conservative estimates, not exact reactions. Verification covers the adopted full uniform-load/equal-span model; partial loading, flexible/settling supports, secondary-beam and sheeting design are outside this calculation. WPF tests additionally verify dropdown selection, automatic extension and unsupported-extension import blocking.

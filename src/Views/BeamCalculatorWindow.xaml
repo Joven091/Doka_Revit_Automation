@@ -69,6 +69,7 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
+<RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
@@ -82,7 +83,10 @@
 
                     <Label Content="Deflection Limit:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
                     <ComboBox ItemsSource="{Binding DeflectionOptions}" SelectedItem="{Binding DeflectionLimit}" DisplayMemberPath="Label" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
-                </Grid>
+                <Label Content="Floor height (mm):" Grid.Row="2"/><TextBox Grid.Row="2" Grid.Column="1" Margin="0,5" Text="{Binding FloorHeight, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+<Label Content="Prop type / orientation:" Grid.Row="3"/><ComboBox Grid.Row="3" Grid.Column="1" Margin="0,5" ItemsSource="{Binding PropOptions}" SelectedItem="{Binding SelectedProp}" DisplayMemberPath="Label"/>
+<StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="5,4"><TextBlock Text="{Binding PropExtensionMm, StringFormat='Automatic extension: {0:F0} mm'}"/><TextBlock Text="{Binding PropCapacityKn, StringFormat='Permitted prop load: {0:F2} kN'}"/></StackPanel>
+</Grid>
             </GroupBox>
 
             <TextBlock Text="{Binding WarningMessage}" Grid.Row="2" Grid.ColumnSpan="2" Foreground="Red" TextWrapping="Wrap" Margin="0,2" MinHeight="30"/>
@@ -131,7 +135,8 @@
                     <Label Content="Maximum Prop Load (kN):" FontWeight="Bold" Foreground="#1B5E20" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding MaximumPropLoad, StringFormat={}{0:F2}}" FontWeight="Bold" FontSize="14" Foreground="#2E7D32" VerticalAlignment="Center" Margin="10,0,0,0" Grid.Row="2" Grid.Column="1"/>
 
-                    <Label Content="Limiting Factor:" FontWeight="Bold" Foreground="#1B5E20" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
+                    <Label Content="Prop utilization:" Grid.Row="4" FontWeight="Bold" Foreground="#1B5E20"/><TextBlock Grid.Row="4" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" Text="{Binding PropUtilizationPercent, StringFormat='{}{0:F1}%'}"/>
+<Label Content="Limiting Factor:" FontWeight="Bold" Foreground="#1B5E20" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding LimitingFactor}" FontWeight="Bold" FontSize="14" Foreground="#2E7D32" VerticalAlignment="Center" Margin="10,0,0,0" Grid.Row="3" Grid.Column="1"/>
                 </Grid>
             </Border>
@@ -152,7 +157,7 @@
                 <Expander Header="Layout and calculation basis">
                     <StackPanel Margin="0,8">
                         <TextBlock Text="Two primary lines support transverse secondary beams. Each checked slab contributes a 300 mm strip. Primary-line spacing = (beam width + 1400) ÷ 2. Eccentric loads are distributed by equilibrium; the heavier line governs." TextWrapping="Wrap"/>
-                        <TextBlock Margin="0,8,0,0" Text="Uniform loading and equal longitudinal spans are assumed. Actual prop capacity, sheeting, secondary beams, joints and restraint require separate checks. The drawn secondary-beam quantity is illustrative." TextWrapping="Wrap"/>
+                        <TextBlock Margin="0,8,0,0" Text="Uniform loading and equal longitudinal spans are assumed. Selected prop capacity uses the slab calculator table, rounded up to the next 100 mm extension. Extension = floor height − beam depth − 418 mm. Sheeting, secondary beams, joints and restraint require separate checks. The drawn secondary-beam quantity is illustrative." TextWrapping="Wrap"/>
                         <TextBlock Text="{Binding LeftLineLoad, StringFormat='Left primary line: {0:F2} kN/m'}" Margin="0,8,0,0"/>
                         <TextBlock Text="{Binding RightLineLoad, StringFormat='Right primary line: {0:F2} kN/m'}"/>
                     </StackPanel>
@@ -162,3 +167,4 @@
         </Grid>
     </ScrollViewer>
 </Window>
+

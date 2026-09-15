@@ -5,4 +5,4 @@
 <Compile Include="../../src/Views/BeamCalculatorWindow.ui.cs" Link="BeamCalculatorWindow.ui.cs"/>
 <Compile Include="../../src/Views/BeamSupportDiagram.cs" Link="BeamSupportDiagram.cs"/>
 <Page Include="../../src/Views/BeamCalculatorWindow.xaml" Link="BeamCalculatorWindow.xaml"/>
-</ItemGroup></Project>
+<Compile Include="../../src/Models/BeamPropOption.cs" Link="BeamPropOption.cs"/><Compile Include="../../src/Models/PropDataHelper.cs" Link="PropDataHelper.cs"/></ItemGroup></Project>

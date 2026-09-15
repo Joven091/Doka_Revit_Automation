@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -21,6 +22,16 @@ namespace EngineeringDashboard
         });
         public IReadOnlyList<BeamDeflectionOption> DeflectionOptions => AvailableDeflectionOptions;
         private double depth = 500, width = 200, leftThickness = 200, rightThickness = 200;
+        private double floorHeight = 3000;
+        private BeamPropOption selectedProp = BeamPropOption.All.First(p => p.CapacityKey == "300 at bottom");
+        public IReadOnlyList<BeamPropOption> PropOptions => BeamPropOption.All;
+        public BeamPropOption SelectedProp { get => selectedProp; set { selectedProp = value; Changed(); } }
+        public double FloorHeight { get => floorHeight; set { floorHeight = value; Changed(); } }
+        public const double FormworkDepthMm = 418;
+        public double PropExtensionMm => FloorHeight - Depth - FormworkDepthMm;
+        public double PropCapacityKn { get; private set; }
+        public double PropLookupExtensionMm { get; private set; }
+        public double PropUtilizationPercent { get; private set; }
         private bool hasLeft, hasRight, customLoads, textErrors;
         private double customLive = 2.25, customFormwork = 0.4;
         private string numberOfProps = "2";
@@ -78,11 +89,15 @@ namespace EngineeringDashboard
             IsCalculationValid = false;
             MaximumPropSpacing = MaximumPropLoad = PrimaryBeamCantilever = 0;
             LeftLineLoad = RightLineLoad = TotalLineLoad = 0;
+            PropCapacityKn = PropLookupExtensionMm = PropUtilizationPercent = 0;
             LimitingFactor = string.Empty; WarningMessage = string.Empty;
             try
             {
                 if (textErrors) throw new ArgumentException("Correct the highlighted input before calculating or importing.");
                 Check(Depth, "Beam depth", true); Check(Width, "Beam width", true);
+                Check(FloorHeight, "Floor height", true); Check(PropExtensionMm, "Prop extension (floor height minus beam depth and 418 mm formwork)", true);
+                if (SelectedProp == null || !BeamPropOption.All.Contains(SelectedProp)) throw new ArgumentException("Select a prop type and orientation.");
+                double capacity = SelectedProp.Capacity(PropExtensionMm, out double lookupMeters);
                 if (HasLeftSlab) ValidateSlab(LeftSlabThickness, "Left slab thickness");
                 if (HasRightSlab) ValidateSlab(RightSlabThickness, "Right slab thickness");
                 if (UseCustomLoads) { Check(CustomLiveLoad, "Placing + working live load"); Check(CustomFormworkLoad, "Formwork load"); }
@@ -114,15 +129,25 @@ namespace EngineeringDashboard
                 Check(limit, "Calculated span", true);
                 double span = Math.Floor(limit / 25) * 25;
                 if (span < 25) throw new ArgumentException("No spacing of at least 25 mm satisfies these inputs.");
-                double cantilever = Math.Floor(span * a / 25) * 25;
-                double prop = NumberOfProps == "2" ? 0.5 * w * (span + 2 * cantilever) / 1000 : r * w * span / 1000;
+                double cantilever = 0, prop = 0;
+                // Test the actual rounded layout, so prop capacity cannot be exceeded by rounding.
+                for (; span >= 25; span -= 25)
+                {
+                    cantilever = Math.Floor(span * a / 25) * 25;
+                    prop = NumberOfProps == "2" ? 0.5 * w * (span + 2 * cantilever) / 1000 : r * w * span / 1000;
+                    if (prop <= capacity) break;
+                    governing = "Prop Capacity";
+                }
+                if (span < 25) throw new ArgumentException("No spacing of at least 25 mm satisfies the selected prop capacity.");
                 Check(prop, "Calculated prop reaction", true);
                 MaximumPropSpacing = span; PrimaryBeamCantilever = cantilever; MaximumPropLoad = prop;
                 LeftLineLoad = leftReaction; RightLineLoad = rightReaction; TotalLineLoad = total;
+                PropCapacityKn = capacity; PropLookupExtensionMm = lookupMeters * 1000;
+                PropUtilizationPercent = prop / capacity * 100;
                 LimitingFactor = governing; IsCalculationValid = true;
             }
             catch (ArgumentException ex) { WarningMessage = ex.Message; }
-            foreach (string name in new[] { nameof(MaximumPropSpacing), nameof(MaximumPropLoad), nameof(PrimaryBeamCantilever), nameof(LimitingFactor), nameof(WarningMessage), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(PrimaryLineSpacingMm), nameof(IsCalculationValid) }) OnPropertyChanged(name);
+            foreach (string name in new[] { nameof(MaximumPropSpacing), nameof(MaximumPropLoad), nameof(PrimaryBeamCantilever), nameof(LimitingFactor), nameof(WarningMessage), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(PrimaryLineSpacingMm), nameof(PropExtensionMm), nameof(PropCapacityKn), nameof(PropLookupExtensionMm), nameof(PropUtilizationPercent), nameof(IsCalculationValid) }) OnPropertyChanged(name);
         }
         private void Changed([CallerMemberName] string property = null) { Calculate(); OnPropertyChanged(property); }
         private void ValidateSlab(double thickness, string label)

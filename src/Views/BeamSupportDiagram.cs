@@ -73,20 +73,7 @@ namespace EngineeringDashboard
             if(model.HasLeftSlab) { double h=depth*model.LeftSlabThickness/model.Depth; Box(dc,-bw/2-strip,0,topZ-h,strip,length,h,Concrete,ConcreteTop,ConcreteSide); DrawnSlabCount++; }
             Box(dc,-bw/2,0,193,bw,length,depth,Concrete,ConcreteTop,ConcreteSide);
             if(model.HasRightSlab) { double h=depth*model.RightSlabThickness/model.Depth; Box(dc,bw/2,0,topZ-h,strip,length,h,Concrete,ConcreteTop,ConcreteSide); DrawnSlabCount++; }
-            Label(dc,"Concrete beam",new Point(15,18),ConcreteSide);
-            Label(dc,"Secondary H20",new Point(15,385),GoldSide);
-            Label(dc,"Primary H20",new Point(180,385),GoldSide);
-            Label(dc,"Props",new Point(340,385),Steel);
-            // Direction keys use the same projected axes as the physical members.
-            dc.DrawLine(new Pen(GoldSide,3),new Point(20,411),new Point(85,430));
-            dc.DrawLine(new Pen(GoldSide,3),new Point(185,430),new Point(230,404));
-            dc.DrawLine(new Pen(Steel,5),new Point(345,407),new Point(345,432));
             dc.Pop(); dc.Pop();
-        }
-        private static void Label(DrawingContext dc,string text,Point p,Brush brush)
-        {
-            dc.DrawText(new FormattedText(text,System.Globalization.CultureInfo.CurrentUICulture,FlowDirection.LeftToRight,
-                new Typeface("Segoe UI"),13,brush,1),p);
         }
     }
 }
