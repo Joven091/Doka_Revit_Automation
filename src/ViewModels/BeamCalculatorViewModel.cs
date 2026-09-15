@@ -1,916 +1,141 @@
-using System.ComponentModel;
-using System.Linq;
-using System.Runtime.CompilerServices;
+using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace EngineeringDashboard
 {
+    public sealed class BeamDeflectionOption
+    {
+        public string Label { get; }
+        public double Millimetres { get; }
+        public BeamDeflectionOption(string label, double millimetres) { Label = label; Millimetres = millimetres; }
+    }
+
     public class BeamCalculatorViewModel : INotifyPropertyChanged
     {
-        private double _depth = 500;
-        private double _width = 200;
-        private double _maximumPropSpacing;
-        private double _maximumPropLoad;
-        private double _primaryBeamCantilever;
-        private string _limitingFactor;
-        private string _warningMessage;
+        public static IReadOnlyList<BeamDeflectionOption> AvailableDeflectionOptions { get; } = Array.AsReadOnly(new[] {
+            new BeamDeflectionOption("Class A / Architectural Concrete (3mm limit)", 3),
+            new BeamDeflectionOption("Standard / Concealed Concrete (5mm limit)", 5),
+            new BeamDeflectionOption("Rough / Heavy Civil (10mm limit)", 10)
+        });
+        public IReadOnlyList<BeamDeflectionOption> DeflectionOptions => AvailableDeflectionOptions;
+        private double depth = 500, width = 200, leftThickness = 200, rightThickness = 200;
+        private bool hasLeft, hasRight, customLoads, textErrors;
+        private double customLive = 2.25, customFormwork = 0.4;
+        private string numberOfProps = "2";
+        private BeamDeflectionOption deflection = AvailableDeflectionOptions[1];
 
-        private bool _hasLeftSlab;
-        private bool _hasRightSlab;
-        private double _leftSlabThickness = 200;
-        private double _rightSlabThickness = 200;
+        public BeamCalculatorViewModel() { Calculate(); }
+        public double Depth { get => depth; set { depth = value; Changed(); } }
+        public double Width { get => width; set { width = value; Changed(); } }
+        public bool HasLeftSlab { get => hasLeft; set { hasLeft = value; Changed(); } }
+        public bool HasRightSlab { get => hasRight; set { hasRight = value; Changed(); } }
+        public double LeftSlabThickness { get => leftThickness; set { leftThickness = value; Changed(); } }
+        public double RightSlabThickness { get => rightThickness; set { rightThickness = value; Changed(); } }
+        public bool UseCustomLoads { get => customLoads; set { customLoads = value; Changed(); } }
+        public double CustomLiveLoad { get => customLive; set { customLive = value; Changed(); } }
+        public double CustomFormworkLoad { get => customFormwork; set { customFormwork = value; Changed(); } }
+        public string NumberOfProps { get => numberOfProps; set { numberOfProps = value; Changed(); } }
+        public BeamDeflectionOption DeflectionLimit { get => deflection; set { deflection = value; Changed(); } }
+        public bool IsCalculationValid { get; private set; }
+        public string WarningMessage { get; private set; }
+        public double MaximumPropSpacing { get; private set; }
+        public double MaximumPropLoad { get; private set; }
+        public double PrimaryBeamCantilever { get; private set; }
+        public string LimitingFactor { get; private set; }
+        public double LeftLineLoad { get; private set; }
+        public double RightLineLoad { get; private set; }
+        public double TotalLineLoad { get; private set; }
+        // Existing transverse arrangement: primary lines at the quarter points of
+        // the secondary member, whose overall length is beam width + 1400 mm.
+        public double PrimaryLineSpacingMm => (Width + 1400) / 2;
+        public const double SlabStripWidthMm = 300;
 
-        private string _numberOfProps = "2";
-        private string _deflectionLimit = "Standard / Concealed Concrete (5mm limit)";
-
-        private bool _useCustomLoads;
-        private double _customLiveLoad = 2.25;
-        private double _customFormworkLoad = 0.4;
-
-        private string _beamPolygonPoints;
-        private string _widthDimPoints;
-        private string _depthDimPoints;
-        private string _leftSlabDimPoints;
-        private string _rightSlabDimPoints;
-        private string _leftSlabWidthDimPoints;
-        private string _rightSlabWidthDimPoints;
-        private string _edgeToProp1DimPoints;
-        private string _prop1ToProp2DimPoints;
-        private string _prop2ToEdgeDimPoints;
-        private string _h20WidthDimPoints;
-
-        private string _edgeToProp1Text;
-        private string _prop1ToProp2Text;
-        private string _prop2ToEdgeText;
-        private string _h20WidthText;
-
-        private double _widthLabelLeft;
-        private double _widthLabelTop;
-        private double _depthLabelLeft;
-        private double _depthLabelTop;
-        private double _leftSlabLabelLeft;
-        private double _leftSlabLabelTop;
-        private double _rightSlabLabelLeft;
-        private double _rightSlabLabelTop;
-        private string _timberPolygonPoints;
-        private string _prop1PolygonPoints;
-        private string _prop2PolygonPoints;
-
-        private List<BeamDataRow> _beamData;
-
-        public BeamCalculatorViewModel()
+        public void SetTextInputErrors(bool value)
         {
-            _beamData = BeamData.GetData();
-            Calculate();
+            if (textErrors == value) return;
+            textErrors = value; Calculate();
         }
-
-        public double Depth
+        private static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
+        private static void Check(double value, string label, bool positive = false)
         {
-            get => _depth;
-            set { _depth = value; OnPropertyChanged(); Calculate(); }
+            if (!Finite(value) || value < 0 || positive && value == 0)
+                throw new ArgumentException(label + (positive ? " must be a finite number greater than zero." : " must be a finite number zero or greater."));
         }
-
-        public double Width
+        public static double HeapingLoad(double selfWeight)
         {
-            get => _width;
-            set { _width = value; OnPropertyChanged(); Calculate(); }
+            Check(selfWeight, "Concrete self-weight");
+            return Math.Max(0.75, Math.Min(1.75, 0.10 * selfWeight));
         }
-
-        public bool HasLeftSlab
+        private double AreaLoad(double thickness)
         {
-            get => _hasLeftSlab;
-            set { _hasLeftSlab = value; OnPropertyChanged(); Calculate(); }
+            double concrete = 25 * thickness / 1000;
+            return concrete + (UseCustomLoads ? CustomLiveLoad + CustomFormworkLoad : HeapingLoad(concrete) + 0.75 + 0.40);
         }
-
-        public bool HasRightSlab
-        {
-            get => _hasRightSlab;
-            set { _hasRightSlab = value; OnPropertyChanged(); Calculate(); }
-        }
-
-        public double LeftSlabThickness
-        {
-            get => _leftSlabThickness;
-            set { _leftSlabThickness = value; OnPropertyChanged(); Calculate(); }
-        }
-
-        public double RightSlabThickness
-        {
-            get => _rightSlabThickness;
-            set { _rightSlabThickness = value; OnPropertyChanged(); Calculate(); }
-        }
-
-        public string NumberOfProps
-        {
-            get => _numberOfProps;
-            set { _numberOfProps = value; OnPropertyChanged(); Calculate(); }
-        }
-
-        public string DeflectionLimit
-        {
-            get => _deflectionLimit;
-            set { _deflectionLimit = value; OnPropertyChanged(); Calculate(); }
-        }
-
-        public bool UseCustomLoads
-        {
-            get => _useCustomLoads;
-            set { _useCustomLoads = value; OnPropertyChanged(); Calculate(); }
-        }
-
-        public double CustomLiveLoad
-        {
-            get => _customLiveLoad;
-            set { _customLiveLoad = value; OnPropertyChanged(); Calculate(); }
-        }
-
-        public double CustomFormworkLoad
-        {
-            get => _customFormworkLoad;
-            set { _customFormworkLoad = value; OnPropertyChanged(); Calculate(); }
-        }
-
-        public string BeamPolygonPoints
-        {
-            get => _beamPolygonPoints;
-            private set { _beamPolygonPoints = value; OnPropertyChanged(); }
-        }
-
-        public string TimberPolygonPoints
-        {
-            get => _timberPolygonPoints;
-            private set { _timberPolygonPoints = value; OnPropertyChanged(); }
-        }
-
-        public string Prop1PolygonPoints
-        {
-            get => _prop1PolygonPoints;
-            private set { _prop1PolygonPoints = value; OnPropertyChanged(); }
-        }
-
-        public string Prop2PolygonPoints
-        {
-            get => _prop2PolygonPoints;
-            private set { _prop2PolygonPoints = value; OnPropertyChanged(); }
-        }
-
-        public string WidthDimPoints
-        {
-            get => _widthDimPoints;
-            private set { _widthDimPoints = value; OnPropertyChanged(); }
-        }
-
-        public string DepthDimPoints
-        {
-            get => _depthDimPoints;
-            private set { _depthDimPoints = value; OnPropertyChanged(); }
-        }
-
-        public string LeftSlabDimPoints
-        {
-            get => _leftSlabDimPoints;
-            private set { _leftSlabDimPoints = value; OnPropertyChanged(); }
-        }
-
-        public string RightSlabDimPoints
-        {
-            get => _rightSlabDimPoints;
-            private set { _rightSlabDimPoints = value; OnPropertyChanged(); }
-        }
-
-        public string LeftSlabWidthDimPoints
-        {
-            get => _leftSlabWidthDimPoints;
-            private set { _leftSlabWidthDimPoints = value; OnPropertyChanged(); }
-        }
-
-        public string RightSlabWidthDimPoints
-        {
-            get => _rightSlabWidthDimPoints;
-            private set { _rightSlabWidthDimPoints = value; OnPropertyChanged(); }
-        }
-
-
-        public string EdgeToProp1DimPoints
-        {
-            get => _edgeToProp1DimPoints;
-            private set { _edgeToProp1DimPoints = value; OnPropertyChanged(); }
-        }
-
-        public string Prop1ToProp2DimPoints
-        {
-            get => _prop1ToProp2DimPoints;
-            private set { _prop1ToProp2DimPoints = value; OnPropertyChanged(); }
-        }
-
-        public string Prop2ToEdgeDimPoints
-        {
-            get => _prop2ToEdgeDimPoints;
-            private set { _prop2ToEdgeDimPoints = value; OnPropertyChanged(); }
-        }
-
-        public string H20WidthDimPoints
-        {
-            get => _h20WidthDimPoints;
-            private set { _h20WidthDimPoints = value; OnPropertyChanged(); }
-        }
-
-        public string EdgeToProp1Text
-        {
-            get => _edgeToProp1Text;
-            private set { _edgeToProp1Text = value; OnPropertyChanged(); }
-        }
-
-        public string Prop1ToProp2Text
-        {
-            get => _prop1ToProp2Text;
-            private set { _prop1ToProp2Text = value; OnPropertyChanged(); }
-        }
-
-        public string Prop2ToEdgeText
-        {
-            get => _prop2ToEdgeText;
-            private set { _prop2ToEdgeText = value; OnPropertyChanged(); }
-        }
-
-        public string H20WidthText
-        {
-            get => _h20WidthText;
-            private set { _h20WidthText = value; OnPropertyChanged(); }
-        }
-
-        public double WidthLabelLeft
-        {
-            get => _widthLabelLeft;
-            private set { _widthLabelLeft = value; OnPropertyChanged(); }
-        }
-
-        public double WidthLabelTop
-        {
-            get => _widthLabelTop;
-            private set { _widthLabelTop = value; OnPropertyChanged(); }
-        }
-
-        public double DepthLabelLeft
-        {
-            get => _depthLabelLeft;
-            private set { _depthLabelLeft = value; OnPropertyChanged(); }
-        }
-
-        public double DepthLabelTop
-        {
-            get => _depthLabelTop;
-            private set { _depthLabelTop = value; OnPropertyChanged(); }
-        }
-
-        public double LeftSlabLabelLeft
-        {
-            get => _leftSlabLabelLeft;
-            private set { _leftSlabLabelLeft = value; OnPropertyChanged(); }
-        }
-
-        public double LeftSlabLabelTop
-        {
-            get => _leftSlabLabelTop;
-            private set { _leftSlabLabelTop = value; OnPropertyChanged(); }
-        }
-
-        public double RightSlabLabelLeft
-        {
-            get => _rightSlabLabelLeft;
-            private set { _rightSlabLabelLeft = value; OnPropertyChanged(); }
-        }
-
-        public double RightSlabLabelTop
-        {
-            get => _rightSlabLabelTop;
-            private set { _rightSlabLabelTop = value; OnPropertyChanged(); }
-        }
-
-        private double _leftSlabWidthLabelLeft;
-        private double _leftSlabWidthLabelTop;
-        private double _rightSlabWidthLabelLeft;
-        private double _rightSlabWidthLabelTop;
-
-        private double _edgeToProp1LabelLeft;
-        private double _edgeToProp1LabelTop;
-        private double _prop1ToProp2LabelLeft;
-        private double _prop1ToProp2LabelTop;
-        private double _prop2ToEdgeLabelLeft;
-        private double _prop2ToEdgeLabelTop;
-        private double _h20WidthLabelLeft;
-        private double _h20WidthLabelTop;
-
-        public double LeftSlabWidthLabelLeft
-        {
-            get => _leftSlabWidthLabelLeft;
-            private set { _leftSlabWidthLabelLeft = value; OnPropertyChanged(); }
-        }
-
-        public double LeftSlabWidthLabelTop
-        {
-            get => _leftSlabWidthLabelTop;
-            private set { _leftSlabWidthLabelTop = value; OnPropertyChanged(); }
-        }
-
-        public double RightSlabWidthLabelLeft
-        {
-            get => _rightSlabWidthLabelLeft;
-            private set { _rightSlabWidthLabelLeft = value; OnPropertyChanged(); }
-        }
-
-        public double RightSlabWidthLabelTop
-        {
-            get => _rightSlabWidthLabelTop;
-            private set { _rightSlabWidthLabelTop = value; OnPropertyChanged(); }
-        }
-
-
-
-        public double EdgeToProp1LabelLeft
-        {
-            get => _edgeToProp1LabelLeft;
-            private set { _edgeToProp1LabelLeft = value; OnPropertyChanged(); }
-        }
-
-        public double EdgeToProp1LabelTop
-        {
-            get => _edgeToProp1LabelTop;
-            private set { _edgeToProp1LabelTop = value; OnPropertyChanged(); }
-        }
-
-        public double Prop1ToProp2LabelLeft
-        {
-            get => _prop1ToProp2LabelLeft;
-            private set { _prop1ToProp2LabelLeft = value; OnPropertyChanged(); }
-        }
-
-        public double Prop1ToProp2LabelTop
-        {
-            get => _prop1ToProp2LabelTop;
-            private set { _prop1ToProp2LabelTop = value; OnPropertyChanged(); }
-        }
-
-        public double Prop2ToEdgeLabelLeft
-        {
-            get => _prop2ToEdgeLabelLeft;
-            private set { _prop2ToEdgeLabelLeft = value; OnPropertyChanged(); }
-        }
-
-        public double Prop2ToEdgeLabelTop
-        {
-            get => _prop2ToEdgeLabelTop;
-            private set { _prop2ToEdgeLabelTop = value; OnPropertyChanged(); }
-        }
-
-        public double H20WidthLabelLeft
-        {
-            get => _h20WidthLabelLeft;
-            private set { _h20WidthLabelLeft = value; OnPropertyChanged(); }
-        }
-
-        public double H20WidthLabelTop
-        {
-            get => _h20WidthLabelTop;
-            private set { _h20WidthLabelTop = value; OnPropertyChanged(); }
-        }
-
-        public double MaximumPropSpacing
-        {
-            get => _maximumPropSpacing;
-            private set { _maximumPropSpacing = value; OnPropertyChanged(); }
-        }
-
-        public double MaximumPropLoad
-        {
-            get => _maximumPropLoad;
-            private set { _maximumPropLoad = value; OnPropertyChanged(); }
-        }
-
-        public double PrimaryBeamCantilever
-        {
-            get => _primaryBeamCantilever;
-            private set { _primaryBeamCantilever = value; OnPropertyChanged(); }
-        }
-
-        public string LimitingFactor
-        {
-            get => _limitingFactor;
-            private set { _limitingFactor = value; OnPropertyChanged(); }
-        }
-
-        public string WarningMessage
-        {
-            get => _warningMessage;
-            private set { _warningMessage = value; OnPropertyChanged(); }
-        }
-
         private void Calculate()
         {
-            WarningMessage = string.Empty;
-            UpdateVisualization();
-
-            if (Depth <= 0 || Width <= 0)
+            IsCalculationValid = false;
+            MaximumPropSpacing = MaximumPropLoad = PrimaryBeamCantilever = 0;
+            LeftLineLoad = RightLineLoad = TotalLineLoad = 0;
+            LimitingFactor = string.Empty; WarningMessage = string.Empty;
+            try
             {
-                WarningMessage = "Depth and Width must be greater than zero.";
-                ClearOutputs();
-                return;
+                if (textErrors) throw new ArgumentException("Correct the highlighted input before calculating or importing.");
+                Check(Depth, "Beam depth", true); Check(Width, "Beam width", true);
+                if (HasLeftSlab) ValidateSlab(LeftSlabThickness, "Left slab thickness");
+                if (HasRightSlab) ValidateSlab(RightSlabThickness, "Right slab thickness");
+                if (UseCustomLoads) { Check(CustomLiveLoad, "Placing + working live load"); Check(CustomFormworkLoad, "Formwork load"); }
+                if (NumberOfProps != "2" && NumberOfProps != "3" && NumberOfProps != "4+") throw new ArgumentException("Select a supported number of props.");
+                if (DeflectionLimit == null || !ContainsOption(DeflectionLimit)) throw new ArgumentException("Select a deflection limit.");
+
+                double beam = AreaLoad(Depth) * Width / 1000;
+                double left = HasLeftSlab ? AreaLoad(LeftSlabThickness) * SlabStripWidthMm / 1000 : 0;
+                double right = HasRightSlab ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;
+                double total = beam + left + right;
+                Check(total, "Calculated line load", true);
+                double stripCentroid = (Width + SlabStripWidthMm) / 2000;
+                // Sum forces and moments about the beam centre. Use the heavier line.
+                double imbalance = (right - left) * stripCentroid / (PrimaryLineSpacingMm / 1000);
+                double leftReaction = total / 2 - imbalance, rightReaction = total / 2 + imbalance;
+                Check(leftReaction, "Left support-line reaction", true); Check(rightReaction, "Right support-line reaction", true);
+                double w = Math.Max(leftReaction, rightReaction);
+                double a, m, v, r, d;
+                if (NumberOfProps == "2") { a = 0.354; m = 1.0 / 16; v = 0.5; r = 0; d = 1.0 / 192; }
+                else if (NumberOfProps == "3") { a = 0.25; m = 0.125; v = 0.625; r = 1.25; d = 1.0 / 185; }
+                else { a = 0.25; m = 0.10; v = 0.60; r = 1.143; d = 1.0 / 145; }
+                double moment = 1000 * Math.Sqrt(5 / (m * w));
+                double shear = 1000 * 11 / (v * w);
+                double deflect = 1000 * Math.Pow((DeflectionLimit.Millimetres / 1000 * 10760000 * 0.00004181) / (d * w), 0.25);
+                double limit = Math.Min(moment, Math.Min(shear, deflect));
+                string governing = limit == moment ? "Moment" : limit == shear ? "Shear" : "Deflection";
+                double ceiling = NumberOfProps == "2" ? 2000 : 3000;
+                if (ceiling <= limit) { limit = ceiling; governing = "Max Spacing Limit"; }
+                Check(limit, "Calculated span", true);
+                double span = Math.Floor(limit / 25) * 25;
+                if (span < 25) throw new ArgumentException("No spacing of at least 25 mm satisfies these inputs.");
+                double cantilever = Math.Floor(span * a / 25) * 25;
+                double prop = NumberOfProps == "2" ? 0.5 * w * (span + 2 * cantilever) / 1000 : r * w * span / 1000;
+                Check(prop, "Calculated prop reaction", true);
+                MaximumPropSpacing = span; PrimaryBeamCantilever = cantilever; MaximumPropLoad = prop;
+                LeftLineLoad = leftReaction; RightLineLoad = rightReaction; TotalLineLoad = total;
+                LimitingFactor = governing; IsCalculationValid = true;
             }
-
-            // Load Calculation
-            double depthM = Depth / 1000.0;
-            double widthM = Width / 1000.0;
-
-            // Beam Load
-            double beamConcreteLoadArea = 25.0 * depthM;
-            double beamTotalAreaLoad = 0;
-            if (UseCustomLoads)
-            {
-                beamTotalAreaLoad = beamConcreteLoadArea + CustomLiveLoad + CustomFormworkLoad;
-            }
-            else
-            {
-                double beamHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * beamConcreteLoadArea));
-                beamTotalAreaLoad = beamConcreteLoadArea + beamHeapingLoadArea + 0.75 + 0.4;
-            }
-            double beamLineLoad = beamTotalAreaLoad * widthM;
-
-            double totalLineLoad = beamLineLoad;
-
-            // Left Slab Load
-            if (HasLeftSlab && LeftSlabThickness > 0)
-            {
-                double lsThicknessM = LeftSlabThickness / 1000.0;
-                // Assuming left slab width is fixed 0.3m as per previous visualizations
-                double lsWidthM = 0.3;
-                double lsConcreteLoadArea = 25.0 * lsThicknessM;
-                double lsTotalAreaLoad = 0;
-                if (UseCustomLoads)
-                {
-                    lsTotalAreaLoad = lsConcreteLoadArea + CustomLiveLoad + CustomFormworkLoad;
-                }
-                else
-                {
-                    double lsHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * lsConcreteLoadArea));
-                    lsTotalAreaLoad = lsConcreteLoadArea + lsHeapingLoadArea + 0.75 + 0.4;
-                }
-                totalLineLoad += lsTotalAreaLoad * lsWidthM;
-            }
-
-            // Right Slab Load
-            if (HasRightSlab && RightSlabThickness > 0)
-            {
-                double rsThicknessM = RightSlabThickness / 1000.0;
-                double rsWidthM = 0.3; // Using 0.3m default width
-                double rsConcreteLoadArea = 25.0 * rsThicknessM;
-                double rsTotalAreaLoad = 0;
-                if (UseCustomLoads)
-                {
-                    rsTotalAreaLoad = rsConcreteLoadArea + CustomLiveLoad + CustomFormworkLoad;
-                }
-                else
-                {
-                    double rsHeapingLoadArea = System.Math.Max(0.75, System.Math.Min(1.5, 0.10 * rsConcreteLoadArea));
-                    rsTotalAreaLoad = rsConcreteLoadArea + rsHeapingLoadArea + 0.75 + 0.4;
-                }
-                totalLineLoad += rsTotalAreaLoad * rsWidthM;
-            }
-
-            // Divide by two lines of props
-            double w = totalLineLoad / 2.0;
-
-            if (w <= 0)
-            {
-                ClearOutputs();
-                return;
-            }
-
-            // Structural Mechanics
-            // M_cap = 5.0 kNm
-            // V_cap = 11.0 kN
-            // E = 10,760,000 kN/m2
-            // I = 0.00004181 m4
-            double EI = 10760000.0 * 0.00004181; // 449.8756
-
-            double absoluteDefLimit_mm = 5.0;
-            if (DeflectionLimit == "Class A / Architectural Concrete (3mm limit)") absoluteDefLimit_mm = 3.0;
-            if (DeflectionLimit == "Rough / Heavy Civil (7mm - 10mm limit)") absoluteDefLimit_mm = 10.0;
-            double absoluteDefLimit_m = absoluteDefLimit_mm / 1000.0;
-
-            double L_moment = 0;
-            double L_shear = 0;
-            double L_deflection = 0;
-
-            double M_coeff = 0;
-            double V_coeff = 0;
-            double R_coeff = 0;
-            double Def_coeff = 0;
-            double a_coeff = 0;
-
-            if (NumberOfProps == "2") // 1 Span
-            {
-                a_coeff = 0.354;
-                M_coeff = 1.0 / 16.0;
-                V_coeff = 0.5;
-                R_coeff = 1.707;
-                Def_coeff = 1.0 / 192.0;
-            }
-            else if (NumberOfProps == "3") // 2 Spans
-            {
-                a_coeff = 0.25;
-                M_coeff = 0.125;
-                V_coeff = 0.625;
-                R_coeff = 1.25;
-                Def_coeff = 1.0 / 185.0;
-            }
-            else // 4+ Props, 3+ Spans
-            {
-                a_coeff = 0.25;
-                M_coeff = 0.10;
-                V_coeff = 0.60;
-                R_coeff = 1.143;
-                Def_coeff = 1.0 / 145.0;
-            }
-
-            L_moment = System.Math.Sqrt(5.0 / (M_coeff * w));
-            L_shear = 11.0 / (V_coeff * w);
-
-            // Deflection: delta = Def_coeff * w * L^4 / EI
-            // Limit: delta_max = absoluteDefLimit_m
-            // absoluteDefLimit_m = Def_coeff * w * L^4 / EI
-            // L^4 = (absoluteDefLimit_m * EI) / (Def_coeff * w)
-            L_deflection = System.Math.Pow((absoluteDefLimit_m * EI) / (Def_coeff * w), 1.0 / 4.0);
-
-            // Convert to mm
-            double L_m_mm = L_moment * 1000.0;
-            double L_v_mm = L_shear * 1000.0;
-            double L_d_mm = L_deflection * 1000.0;
-
-            // The simple beam rule logic applies if span is 2 supports
-            if (NumberOfProps == "2")
-            {
-                L_m_mm = System.Math.Min(L_m_mm, 2000.0);
-                L_v_mm = System.Math.Min(L_v_mm, 2000.0);
-                L_d_mm = System.Math.Min(L_d_mm, 2000.0);
-            }
-
-            double minL = System.Math.Min(L_m_mm, System.Math.Min(L_v_mm, L_d_mm));
-
-            // Determine limiting factor before rounding
-            if (minL == L_m_mm) LimitingFactor = "Moment";
-            else if (minL == L_v_mm) LimitingFactor = "Shear";
-            else LimitingFactor = "Deflection";
-
-            // Cap the maximum prop spacing at 3000mm
-            if (minL > 3000.0)
-            {
-                minL = 3000.0;
-                LimitingFactor = "Max Spacing Limit";
-            }
-
-            // Round L down to nearest 25mm
-            double optimalL = System.Math.Floor(minL / 25.0) * 25.0;
-
-            // Calculate a based on rounded L
-            double optimalA = optimalL * a_coeff;
-            optimalA = System.Math.Floor(optimalA / 25.0) * 25.0;
-
-            // Now recalculate Exact Max Prop Load (R) using L in meters
-            // R_coeff already accounts for w * (L + something) or w*L
-            // Let's refine R_coeff application.
-            // For 2 props: Reaction = w * (L + 2a)
-            // For 3 props: Reaction = 1.25 * w * L (Middle prop)
-            // For 4+ props: Reaction = 1.143 * w * L (Inner props)
-            double maxPropReaction = 0;
-            double L_meters = optimalL / 1000.0;
-            double A_meters = optimalA / 1000.0;
-
-            if (NumberOfProps == "2")
-            {
-                // Each prop takes half the total load symmetrically
-                maxPropReaction = 0.5 * w * (L_meters + 2 * A_meters);
-            }
-            else if (NumberOfProps == "3")
-            {
-                maxPropReaction = R_coeff * w * L_meters;
-            }
-            else
-            {
-                maxPropReaction = R_coeff * w * L_meters;
-            }
-
-            MaximumPropSpacing = optimalL;
-            PrimaryBeamCantilever = optimalA;
-            MaximumPropLoad = maxPropReaction;
+            catch (ArgumentException ex) { WarningMessage = ex.Message; }
+            foreach (string name in new[] { nameof(MaximumPropSpacing), nameof(MaximumPropLoad), nameof(PrimaryBeamCantilever), nameof(LimitingFactor), nameof(WarningMessage), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(PrimaryLineSpacingMm), nameof(IsCalculationValid) }) OnPropertyChanged(name);
         }
-
-        private void UpdateVisualization()
+        private void Changed([CallerMemberName] string property = null) { Calculate(); OnPropertyChanged(property); }
+        private void ValidateSlab(double thickness, string label)
         {
-            double w = Width > 0 ? Width : 200;
-            double d = Depth > 0 ? Depth : 500;
-
-            double slabExtend = 300;
-
-            double timberH = 100;
-            double timberW = w + 1400; // overhang 700 on each side
-            double propH = 300;
-            double propArrowW = 60;
-
-            double totalWidth = w;
-            if (HasLeftSlab) totalWidth += slabExtend;
-            if (HasRightSlab) totalWidth += slabExtend;
-            totalWidth = System.Math.Max(totalWidth, timberW);
-
-            double totalHeight = d + timberH + propH;
-
-            double canvasW = 180;
-            double canvasH = 180;
-
-            double scaleX = canvasW / totalWidth;
-            double scaleY = canvasH / totalHeight;
-            double scale = System.Math.Min(scaleX, scaleY);
-
-            double sw = w * scale;
-            double sd = d * scale;
-            double sle = slabExtend * scale;
-            double slt = (LeftSlabThickness > 0 ? LeftSlabThickness : 200) * scale;
-            double srt = (RightSlabThickness > 0 ? RightSlabThickness : 200) * scale;
-
-            double stH = timberH * scale;
-            double stW = timberW * scale;
-            double spH = propH * scale;
-            double spAW = propArrowW * scale;
-
-            double leftExtent = HasLeftSlab ? sle : 0;
-            double rightExtent = HasRightSlab ? sle : 0;
-            double timberOverhang = (stW - sw) / 2;
-
-            double maxLeftExtent = System.Math.Max(leftExtent, timberOverhang);
-            double maxRightExtent = System.Math.Max(rightExtent, timberOverhang);
-
-            double drawW = maxLeftExtent + sw + maxRightExtent;
-            double drawH = sd + stH + spH;
-
-            // We use a fixed 250x250 canvas area for centering
-            double offsetX = (250 - drawW) / 2;
-            double offsetY = (250 - drawH) / 2;
-
-            double startX = offsetX + maxLeftExtent;
-            double startY = offsetY;
-
-            // Timber
-            double tLeft = startX - timberOverhang;
-            double tRight = startX + sw + timberOverhang;
-            double tTop = startY + sd;
-            double tBot = startY + sd + stH;
-
-            TimberPolygonPoints = $"{tLeft},{tTop} {tRight},{tTop} {tRight},{tBot} {tLeft},{tBot}";
-
-            // Props
-            string CreatePropPoints(double px)
-            {
-                double tipY = tBot;
-                double wingY = tBot + spAW;
-                double botY = tBot + spH;
-                double hw = spAW / 2;
-                double shaftW = spAW / 6;
-
-                return $"{px},{tipY} " +
-                       $"{px + hw},{wingY} " +
-                       $"{px + shaftW},{wingY} " +
-                       $"{px + shaftW},{botY} " +
-                       $"{px - shaftW},{botY} " +
-                       $"{px - shaftW},{wingY} " +
-                       $"{px - hw},{wingY}";
-            }
-
-            Prop1PolygonPoints = CreatePropPoints(tLeft + stW * 0.25);
-            Prop2PolygonPoints = CreatePropPoints(tLeft + stW * 0.75);
-
-            List<string> pts = new List<string>();
-
-            if (HasLeftSlab)
-                pts.Add($"{startX - sle},{startY}");
-            else
-                pts.Add($"{startX},{startY}");
-
-            if (HasRightSlab)
-                pts.Add($"{startX + sw + sle},{startY}");
-            else
-                pts.Add($"{startX + sw},{startY}");
-
-            if (HasRightSlab)
-            {
-                pts.Add($"{startX + sw + sle},{startY + srt}");
-                pts.Add($"{startX + sw},{startY + srt}");
-            }
-            pts.Add($"{startX + sw},{startY + sd}");
-
-            pts.Add($"{startX},{startY + sd}");
-
-            if (HasLeftSlab)
-            {
-                pts.Add($"{startX},{startY + slt}");
-                pts.Add($"{startX - sle},{startY + slt}");
-            }
-
-            BeamPolygonPoints = string.Join(" ", pts);
-
-            double tick = 5;
-
-            // Width Dimension (Top)
-            double wDimOffset = 25;
-            double wDimY = startY - wDimOffset;
-            WidthDimPoints =
-                $"{startX},{startY-5} " +
-                $"{startX},{wDimY} " +
-                $"{startX},{wDimY+tick} {startX},{wDimY-tick} {startX},{wDimY} " +
-                $"{startX+sw},{wDimY} " +
-                $"{startX+sw},{wDimY-tick} {startX+sw},{wDimY+tick} {startX+sw},{wDimY} " +
-                $"{startX+sw},{startY-5}";
-
-            WidthLabelLeft = startX + sw / 2 - 10;
-            WidthLabelTop = wDimY - 20;
-
-            // Depth Dimension (Right)
-            double rightEdgeX = HasRightSlab ? startX + sw + sle : startX + sw;
-            double dDimOffset = HasRightSlab ? 65 : 25;
-            double dDimX = rightEdgeX + dDimOffset;
-
-            DepthDimPoints =
-                $"{rightEdgeX+5},{startY} " +
-                $"{dDimX},{startY} " +
-                $"{dDimX-tick},{startY} {dDimX+tick},{startY} {dDimX},{startY} " +
-                $"{dDimX},{startY+sd} " +
-                $"{dDimX+tick},{startY+sd} {dDimX-tick},{startY+sd} {dDimX},{startY+sd} " +
-                $"{startX+sw+5},{startY+sd}";
-
-            DepthLabelLeft = dDimX + 5;
-            DepthLabelTop = startY + sd / 2 - 10;
-
-            // Left Slab Thickness Dimension (Left)
-            if (HasLeftSlab)
-            {
-                double lsDimOffset = 25;
-                double lsEdgeX = startX - sle;
-                double lsDimX = lsEdgeX - lsDimOffset;
-
-                LeftSlabDimPoints =
-                    $"{lsEdgeX-5},{startY} " +
-                    $"{lsDimX},{startY} " +
-                    $"{lsDimX-tick},{startY} {lsDimX+tick},{startY} {lsDimX},{startY} " +
-                    $"{lsDimX},{startY+slt} " +
-                    $"{lsDimX+tick},{startY+slt} {lsDimX-tick},{startY+slt} {lsDimX},{startY+slt} " +
-                    $"{lsEdgeX-5},{startY+slt}";
-
-                LeftSlabLabelLeft = lsDimX - 28;
-                LeftSlabLabelTop = startY + slt / 2 - 10;
-            }
-            else
-            {
-                LeftSlabDimPoints = string.Empty;
-            }
-
-            // Right Slab Thickness Dimension (Right)
-            if (HasRightSlab)
-            {
-                double rsDimOffset = 20;
-                double rsEdgeX = startX + sw + sle;
-                double rsDimX = rsEdgeX + rsDimOffset;
-
-                RightSlabDimPoints =
-                    $"{rsEdgeX+5},{startY} " +
-                    $"{rsDimX},{startY} " +
-                    $"{rsDimX-tick},{startY} {rsDimX+tick},{startY} {rsDimX},{startY} " +
-                    $"{rsDimX},{startY+srt} " +
-                    $"{rsDimX+tick},{startY+srt} {rsDimX-tick},{startY+srt} {rsDimX},{startY+srt} " +
-                    $"{rsEdgeX+5},{startY+srt}";
-
-                RightSlabLabelLeft = rsDimX + 5;
-                RightSlabLabelTop = startY + srt / 2 - 10;
-            }
-            else
-            {
-                RightSlabDimPoints = string.Empty;
-            }
-
-            // Left Slab Width Dimension (Top)
-            if (HasLeftSlab)
-            {
-                double lswDimOffset = 25;
-                double lswDimY = startY - lswDimOffset;
-                double lsStartX = startX - sle;
-                LeftSlabWidthDimPoints =
-                    $"{lsStartX},{startY-5} " +
-                    $"{lsStartX},{lswDimY} " +
-                    $"{lsStartX},{lswDimY+tick} {lsStartX},{lswDimY-tick} {lsStartX},{lswDimY} " +
-                    $"{startX},{lswDimY} " +
-                    $"{startX},{lswDimY-tick} {startX},{lswDimY+tick} {startX},{lswDimY} " +
-                    $"{startX},{startY-5}";
-
-                LeftSlabWidthLabelLeft = lsStartX + sle / 2 - 10;
-                LeftSlabWidthLabelTop = lswDimY - 20;
-            }
-            else
-            {
-                LeftSlabWidthDimPoints = string.Empty;
-            }
-
-            // Right Slab Width Dimension (Top)
-            if (HasRightSlab)
-            {
-                double rswDimOffset = 25;
-                double rswDimY = startY - rswDimOffset;
-                double rsStartX = startX + sw;
-                double rsEndX = rsStartX + sle;
-                RightSlabWidthDimPoints =
-                    $"{rsStartX},{startY-5} " +
-                    $"{rsStartX},{rswDimY} " +
-                    $"{rsStartX},{rswDimY+tick} {rsStartX},{rswDimY-tick} {rsStartX},{rswDimY} " +
-                    $"{rsEndX},{rswDimY} " +
-                    $"{rsEndX},{rswDimY-tick} {rsEndX},{rswDimY+tick} {rsEndX},{rswDimY} " +
-                    $"{rsEndX},{startY-5}";
-
-                RightSlabWidthLabelLeft = rsStartX + sle / 2 - 10;
-                RightSlabWidthLabelTop = rswDimY - 20;
-            }
-            else
-            {
-                RightSlabWidthDimPoints = string.Empty;
-            }
-
-            // H20 and Prop Spacing Dimensions (Bottom)
-            double botDimOffset = 25;
-            double h20BotY = tBot;
-            double botDimY = h20BotY + botDimOffset;
-            double botDimY2 = h20BotY + botDimOffset + 20;
-
-            double prop1X = tLeft + stW * 0.25;
-            double prop2X = tLeft + stW * 0.75;
-
-            // Overhang 1
-            EdgeToProp1DimPoints =
-                $"{tLeft},{h20BotY+5} " +
-                $"{tLeft},{botDimY} " +
-                $"{tLeft},{botDimY+tick} {tLeft},{botDimY-tick} {tLeft},{botDimY} " +
-                $"{prop1X},{botDimY} " +
-                $"{prop1X},{botDimY-tick} {prop1X},{botDimY+tick} {prop1X},{botDimY} " +
-                $"{prop1X},{h20BotY+spAW+5}"; // prop wing level
-
-            EdgeToProp1LabelLeft = tLeft + (prop1X - tLeft) / 2 - 10;
-            EdgeToProp1LabelTop = botDimY - 20;
-            EdgeToProp1Text = (timberW * 0.25).ToString("F0");
-
-            // Prop to Prop
-            Prop1ToProp2DimPoints =
-                $"{prop1X},{botDimY} " +
-                $"{prop2X},{botDimY} " +
-                $"{prop2X},{botDimY-tick} {prop2X},{botDimY+tick} {prop2X},{botDimY} " +
-                $"{prop2X},{h20BotY+spAW+5}";
-
-            Prop1ToProp2LabelLeft = prop1X + (prop2X - prop1X) / 2 - 15;
-            Prop1ToProp2LabelTop = botDimY - 20;
-            Prop1ToProp2Text = (timberW * 0.5).ToString("F0");
-
-            // Overhang 2
-            Prop2ToEdgeDimPoints =
-                $"{prop2X},{botDimY} " +
-                $"{tRight},{botDimY} " +
-                $"{tRight},{botDimY-tick} {tRight},{botDimY+tick} {tRight},{botDimY} " +
-                $"{tRight},{h20BotY+5}";
-
-            Prop2ToEdgeLabelLeft = prop2X + (tRight - prop2X) / 2 - 10;
-            Prop2ToEdgeLabelTop = botDimY - 20;
-            Prop2ToEdgeText = (timberW * 0.25).ToString("F0");
-
-            // Total H20 Width
-            H20WidthDimPoints =
-                $"{tLeft},{botDimY} " +
-                $"{tLeft},{botDimY2} " +
-                $"{tLeft},{botDimY2+tick} {tLeft},{botDimY2-tick} {tLeft},{botDimY2} " +
-                $"{tRight},{botDimY2} " +
-                $"{tRight},{botDimY2-tick} {tRight},{botDimY2+tick} {tRight},{botDimY2} " +
-                $"{tRight},{botDimY}";
-
-            H20WidthLabelLeft = tLeft + stW / 2 - 15;
-            H20WidthLabelTop = botDimY2 - 20;
-            H20WidthText = timberW.ToString("F0");
-
-
+            Check(thickness, label, true);
+            if (thickness > Depth) throw new ArgumentException(label + " cannot exceed the total beam depth.");
         }
-
-        private void ClearOutputs()
+        private static bool ContainsOption(BeamDeflectionOption option)
         {
-            MaximumPropSpacing = 0;
-            MaximumPropLoad = 0;
-            PrimaryBeamCantilever = 0;
-            LimitingFactor = string.Empty;
+            foreach (var item in AvailableDeflectionOptions) if (ReferenceEquals(item, option)) return true;
+            return false;
         }
-
         public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string name = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
+        protected void OnPropertyChanged([CallerMemberName] string name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }

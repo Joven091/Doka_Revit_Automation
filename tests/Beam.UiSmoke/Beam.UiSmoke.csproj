@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net48</TargetFramework><LangVersion>latest</LangVersion><UseWPF>true</UseWPF></PropertyGroup>
+<ItemGroup><PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all"/>
+<Compile Include="../../src/ViewModels/BeamCalculatorViewModel.cs" Link="BeamCalculatorViewModel.cs"/>
+<Compile Include="../../src/Views/BeamCalculatorWindow.ui.cs" Link="BeamCalculatorWindow.ui.cs"/>
+<Compile Include="../../src/Views/BeamSupportDiagram.cs" Link="BeamSupportDiagram.cs"/>
+<Page Include="../../src/Views/BeamCalculatorWindow.xaml" Link="BeamCalculatorWindow.xaml"/>
+</ItemGroup></Project>

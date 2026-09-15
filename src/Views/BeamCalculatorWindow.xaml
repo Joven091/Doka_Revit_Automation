@@ -1,15 +1,16 @@
 <Window x:Class="EngineeringDashboard.BeamCalculatorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Beam Calculator" Height="700" Width="850"
-        WindowStartupLocation="CenterScreen">
+        xmlns:local="clr-namespace:EngineeringDashboard"
+        Title="Beam Calculator" Height="780" Width="1100" MinHeight="640" MinWidth="960"
+        WindowStartupLocation="CenterScreen" Background="White">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
     </Window.Resources>
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+    <ScrollViewer Background="White" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid Margin="20">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="1.5*"/>
+            <ColumnDefinition Width="1.1*"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
@@ -48,16 +49,16 @@
                     </Grid.RowDefinitions>
 
                     <Label Content="Beam Depth (mm):" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding Depth, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding Depth, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Beam Width (mm):" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding Width, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding Width, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
 
                     <CheckBox Content="Left Slab" IsChecked="{Binding HasLeftSlab}" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Margin="0,5"/>
-                    <TextBox Text="{Binding LeftSlabThickness, UpdateSourceTrigger=PropertyChanged}" Grid.Row="2" Grid.Column="1" Margin="0,5" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    <TextBox Text="{Binding LeftSlabThickness, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="2" Grid.Column="1" Margin="0,5" IsEnabled="{Binding HasLeftSlab}" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
                     <CheckBox Content="Right Slab" IsChecked="{Binding HasRightSlab}" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Margin="0,5"/>
-                    <TextBox Text="{Binding RightSlabThickness, UpdateSourceTrigger=PropertyChanged}" Grid.Row="3" Grid.Column="1" Margin="0,5" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    <TextBox Text="{Binding RightSlabThickness, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="3" Grid.Column="1" Margin="0,5" IsEnabled="{Binding HasRightSlab}" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                 </Grid>
             </GroupBox>
 
@@ -72,7 +73,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <Label Content="Number of Props:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
+                    <Label Content="Props per primary line:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
                     <ComboBox SelectedValue="{Binding NumberOfProps}" SelectedValuePath="Content" Grid.Row="0" Grid.Column="1" Margin="0,5">
                         <ComboBoxItem Content="2"/>
                         <ComboBoxItem Content="3"/>
@@ -80,19 +81,15 @@
                     </ComboBox>
 
                     <Label Content="Deflection Limit:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-                    <ComboBox SelectedValue="{Binding DeflectionLimit}" SelectedValuePath="Content" Grid.Row="1" Grid.Column="1" Margin="0,5">
-                        <ComboBoxItem Content="Class A / Architectural Concrete (3mm limit)"/>
-                        <ComboBoxItem Content="Standard / Concealed Concrete (5mm limit)"/>
-                        <ComboBoxItem Content="Rough / Heavy Civil (10mm limit)"/>
-                    </ComboBox>
+                    <ComboBox ItemsSource="{Binding DeflectionOptions}" SelectedItem="{Binding DeflectionLimit}" DisplayMemberPath="Label" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
                 </Grid>
             </GroupBox>
 
-            <TextBlock Text="{Binding WarningMessage}" Grid.Row="2" Grid.ColumnSpan="2" Foreground="Red" TextWrapping="Wrap" Margin="0,2" Height="30"/>
+            <TextBlock Text="{Binding WarningMessage}" Grid.Row="2" Grid.ColumnSpan="2" Foreground="Red" TextWrapping="Wrap" Margin="0,2" MinHeight="30"/>
 
-            <CheckBox Content="Use Custom Load Inputs" Grid.Row="3" Grid.ColumnSpan="2" Margin="0,0,0,10" IsChecked="{Binding UseCustomLoads, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold"/>
+            <CheckBox Content="Use Custom Load Inputs" Grid.Row="3" Grid.ColumnSpan="2" Margin="0,0,0,10" IsChecked="{Binding UseCustomLoads, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" FontWeight="SemiBold"/>
 
-            <GroupBox Header="Custom Loads" Grid.Row="4" Grid.ColumnSpan="2" Margin="0,0,0,10" Padding="10" Visibility="{Binding UseCustomLoads, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <GroupBox Header="Custom Loads" IsEnabled="{Binding UseCustomLoads}" Grid.Row="4" Grid.ColumnSpan="2" Margin="0,0,0,10" Padding="10" Visibility="{Binding UseCustomLoads, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="220"/>
@@ -104,14 +101,14 @@
                     </Grid.RowDefinitions>
 
                     <Label Content="Placing + Working Live Load (kN/m²):" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding CustomLiveLoad, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding CustomLiveLoad, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Formwork Load (kN/m²):" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding CustomFormworkLoad, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding CustomFormworkLoad, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
                 </Grid>
             </GroupBox>
 
-            <Border Grid.Row="7" Grid.ColumnSpan="2" Background="#E8F5E9" Padding="10" Margin="0,5,0,0" CornerRadius="5">
+            <Border x:Name="ResultsBorder" Visibility="{Binding IsCalculationValid, Converter={StaticResource BooleanToVisibilityConverter}}" Grid.Row="7" Grid.ColumnSpan="2" Background="#E8F5E9" Padding="10" Margin="0,5,0,0" CornerRadius="5">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -140,56 +137,27 @@
             </Border>
 
             <StackPanel Grid.Row="9" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                <Button Content="Import Values" Width="100" Padding="5" Margin="0,0,10,0" Click="BtnApplyToBeams_Click"/>
+                <Button x:Name="ImportButton" IsEnabled="{Binding IsCalculationValid}" Content="Import Values" Width="100" Padding="5" Margin="0,0,10,0" Click="BtnApplyToBeams_Click"/>
                 <Button Content="Close" Width="80" Padding="5" Click="BtnClose_Click"/>
             </StackPanel>
         </Grid>
 
-        <!-- Right Panel: Visualization -->
-        <Border Grid.Column="1" Background="#F0F0F0" CornerRadius="5" Padding="10">
-            <Canvas Width="250" Height="250" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Polygon Points="{Binding BeamPolygonPoints}" Fill="LightGray" Stroke="Black" StrokeThickness="2"/>
-                <Polygon Points="{Binding TimberPolygonPoints}" Fill="Yellow" Stroke="Black" StrokeThickness="2"/>
-                <Polygon Points="{Binding Prop1PolygonPoints}" Fill="Black" Stroke="Black" StrokeThickness="1"/>
-                <Polygon Points="{Binding Prop2PolygonPoints}" Fill="Black" Stroke="Black" StrokeThickness="1"/>
-
-                <!-- Dimension Lines -->
-                <Polyline Points="{Binding WidthDimPoints}" Stroke="#555555" StrokeThickness="1"/>
-                <Polyline Points="{Binding DepthDimPoints}" Stroke="#555555" StrokeThickness="1"/>
-                <Polyline Points="{Binding LeftSlabDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                <Polyline Points="{Binding RightSlabDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                <Polyline Points="{Binding LeftSlabWidthDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                <Polyline Points="{Binding RightSlabWidthDimPoints}" Stroke="#555555" StrokeThickness="1" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-
-                <Polyline Points="{Binding EdgeToProp1DimPoints}" Stroke="#555555" StrokeThickness="1"/>
-                <Polyline Points="{Binding Prop1ToProp2DimPoints}" Stroke="#555555" StrokeThickness="1"/>
-                <Polyline Points="{Binding Prop2ToEdgeDimPoints}" Stroke="#555555" StrokeThickness="1"/>
-                <Polyline Points="{Binding H20WidthDimPoints}" Stroke="#555555" StrokeThickness="1"/>
-
-                <!-- Width Label (Interactive) -->
-                <TextBox Text="{Binding Width, UpdateSourceTrigger=PropertyChanged}" Canvas.Left="{Binding WidthLabelLeft}" Canvas.Top="{Binding WidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Background="White" BorderBrush="#CCCCCC" BorderThickness="1" Padding="2,0"/>
-
-                <!-- Left Slab Width Label -->
-                <TextBlock Text="300" Canvas.Left="{Binding LeftSlabWidthLabelLeft}" Canvas.Top="{Binding LeftSlabWidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-
-                <!-- Right Slab Width Label -->
-                <TextBlock Text="300" Canvas.Left="{Binding RightSlabWidthLabelLeft}" Canvas.Top="{Binding RightSlabWidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-
-                <!-- Depth Label (Interactive) -->
-                <TextBox Text="{Binding Depth, UpdateSourceTrigger=PropertyChanged}" Canvas.Left="{Binding DepthLabelLeft}" Canvas.Top="{Binding DepthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Background="White" BorderBrush="#CCCCCC" BorderThickness="1" Padding="2,0"/>
-
-                <!-- H20 / Prop Spacing Labels -->
-                <TextBlock Text="{Binding EdgeToProp1Text}" Canvas.Left="{Binding EdgeToProp1LabelLeft}" Canvas.Top="{Binding EdgeToProp1LabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
-                <TextBlock Text="{Binding Prop1ToProp2Text}" Canvas.Left="{Binding Prop1ToProp2LabelLeft}" Canvas.Top="{Binding Prop1ToProp2LabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
-                <TextBlock Text="{Binding Prop2ToEdgeText}" Canvas.Left="{Binding Prop2ToEdgeLabelLeft}" Canvas.Top="{Binding Prop2ToEdgeLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
-                <TextBlock Text="{Binding H20WidthText}" Canvas.Left="{Binding H20WidthLabelLeft}" Canvas.Top="{Binding H20WidthLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12"/>
-
-                <!-- Left Slab Thickness Label -->
-                <TextBlock Text="{Binding LeftSlabThickness}" Canvas.Left="{Binding LeftSlabLabelLeft}" Canvas.Top="{Binding LeftSlabLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasLeftSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-
-                <!-- Right Slab Thickness Label -->
-                <TextBlock Text="{Binding RightSlabThickness}" Canvas.Left="{Binding RightSlabLabelLeft}" Canvas.Top="{Binding RightSlabLabelTop}" Foreground="DarkBlue" FontWeight="Bold" FontSize="12" Visibility="{Binding HasRightSlab, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-            </Canvas>
+        <!-- Primary beams run along the concrete beam; secondary beams cross them. -->
+        <Border Grid.Column="1" Background="#F0F2F3" CornerRadius="5" Padding="14" VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="Beam and support arrangement" FontSize="17" FontWeight="Bold" Margin="0,0,0,6"/>
+                <TextBlock Text="Schematic · secondary H20 perpendicular to primary H20" TextWrapping="Wrap" Foreground="#52616B"/>
+                <local:BeamSupportDiagram x:Name="SupportDiagram" Height="460" Margin="0,10"/>
+                <TextBlock x:Name="DiagramCaption" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                <Expander Header="Layout and calculation basis">
+                    <StackPanel Margin="0,8">
+                        <TextBlock Text="Two primary lines support transverse secondary beams. Each checked slab contributes a 300 mm strip. Primary-line spacing = (beam width + 1400) ÷ 2. Eccentric loads are distributed by equilibrium; the heavier line governs." TextWrapping="Wrap"/>
+                        <TextBlock Margin="0,8,0,0" Text="Uniform loading and equal longitudinal spans are assumed. Actual prop capacity, sheeting, secondary beams, joints and restraint require separate checks. The drawn secondary-beam quantity is illustrative." TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding LeftLineLoad, StringFormat='Left primary line: {0:F2} kN/m'}" Margin="0,8,0,0"/>
+                        <TextBlock Text="{Binding RightLineLoad, StringFormat='Right primary line: {0:F2} kN/m'}"/>
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
         </Border>
         </Grid>
     </ScrollViewer>
