@@ -1,0 +1,67 @@
+<Window x:Class="EngineeringDashboard.BackproppingWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Backpropping Calculator" Width="940" Height="860" MinWidth="760" MinHeight="620"
+ WindowStartupLocation="CenterOwner" Background="#F5F5F5">
+ <Window.Resources>
+  <Style TargetType="TextBox"><Setter Property="Padding" Value="6,4"/><Setter Property="Margin" Value="0,4,8,8"/></Style>
+  <Style TargetType="ComboBox"><Setter Property="Padding" Value="6,4"/><Setter Property="Margin" Value="0,4,8,8"/></Style>
+  <Style TargetType="Button"><Setter Property="Padding" Value="10,6"/><Setter Property="Margin" Value="0,4,8,4"/></Style>
+  <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+  <Style x:Key="Step" TargetType="Border"><Setter Property="Background" Value="#FFF2BF"/><Setter Property="BorderBrush" Value="#D4AA00"/><Setter Property="BorderThickness" Value="5,0,0,0"/><Setter Property="Padding" Value="10,7"/><Setter Property="Margin" Value="0,0,0,10"/></Style>
+ </Window.Resources>
+ <DockPanel Margin="12">
+  <StackPanel DockPanel.Dock="Bottom">
+   <TextBlock x:Name="ErrorText" Foreground="#B42318" Margin="0,6" AutomationProperties.LiveSetting="Polite"/>
+   <DockPanel><Button Content="Close" Click="Close_Click" DockPanel.Dock="Right"/><Button x:Name="CalculateButton" Content="Calculate spacing" Background="#F2CD24" FontWeight="Bold" Click="Calculate_Click" DockPanel.Dock="Right"/><TextBlock x:Name="ResultState" VerticalAlignment="Center"/></DockPanel>
+  </StackPanel>
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+   <StackPanel Margin="0,0,12,0">
+    <Border Style="{StaticResource Step}"><TextBlock Text="1  Calculation setup" FontWeight="Bold"/></Border>
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+     <StackPanel><TextBlock Text="Curing temperature — all slabs"/><ComboBox x:Name="Temperature" SelectionChanged="Temperature_Changed"><ComboBoxItem Content="A · ≥15°C"/><ComboBoxItem Content="B · ≥10°C"/><ComboBoxItem Content="C · ≥5°C"/></ComboBox></StackPanel>
+     <StackPanel Grid.Column="1"><TextBlock Text="Project maximum spacing (mm) — optional"/><TextBox x:Name="ProjectMaximum" TextChanged="ProjectMaximum_Changed"/></StackPanel>
+    </Grid>
+    <Expander Header="Calculation assumptions" Margin="0,0,0,10"><TextBlock Margin="8" Text="Repeated aligned slab zone. Square grid, rounded down to 25 mm. Concrete: 25 kN/m³. Main formwork: 0.50 kN/m². Working load: 0.75 kN/m². Heaping: 10% of concrete self-weight, min 0.75 / max 1.75 kN/m². Construction live load: 0.75 on the first supporting slab, zero below. Reprop weight: 0.40 kN/m² per required storey. Adopted slab capacity = strength factor × (self-weight + SIDL + final live load). Supplied prop capacities apply to restrained temporary reshoring with direct head/base bearing; effective extension excludes packers. This uniform-area calculation does not check slab punching, local bearing, stiffness-based load sharing or edge layouts."/></Expander>
+    <Border x:Name="ProgressBorder" Background="#FFF6D6" Padding="10" Margin="0,0,0,10"><TextBlock x:Name="ProgressText" AutomationProperties.LiveSetting="Polite"/></Border>
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="1.05*"/><ColumnDefinition Width="1*"/></Grid.ColumnDefinitions>
+     <StackPanel Margin="0,0,14,0">
+      <Border Style="{StaticResource Step}"><TextBlock x:Name="EntryTitle" FontWeight="Bold"/></Border>
+      <StackPanel x:Name="EntryForm">
+       <TextBlock Text="Floor name"/><TextBox x:Name="FloorName" TextChanged="Draft_Changed"/>
+       <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+        <StackPanel><TextBlock Text="Slab thickness (mm)"/><TextBox x:Name="Thickness" TextChanged="Draft_Changed"/></StackPanel>
+        <StackPanel Grid.Column="1"><TextBlock Text="Clear height below (mm)"/><TextBox x:Name="ClearHeight" TextChanged="Draft_Changed"/></StackPanel>
+       </Grid>
+       <TextBlock Text="Concrete age (days)"/><TextBox x:Name="Age" TextChanged="Age_Changed"/>
+       <TextBlock x:Name="StrengthText" Margin="0,0,0,8"/>
+       <GroupBox Header="Slab capacity inputs" Padding="8" Margin="0,0,0,8">
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+         <StackPanel><TextBlock Text="SIDL (kN/m²)"/><TextBox x:Name="Sidl" TextChanged="Draft_Changed"/></StackPanel>
+         <StackPanel Grid.Column="1"><TextBlock Text="Final live load (kN/m²)"/><TextBox x:Name="LiveLoad" TextChanged="Draft_Changed"/></StackPanel>
+        </Grid>
+       </GroupBox>
+       <TextBlock x:Name="EntryHint" FontSize="12" Foreground="#555555"/>
+       <WrapPanel><Button x:Name="SaveSlab" Background="#F2CD24" Click="SaveSlab_Click"/><Button x:Name="CancelEdit" Content="Cancel edit" Click="CancelEdit_Click"/></WrapPanel>
+      </StackPanel>
+     </StackPanel>
+     <StackPanel Grid.Column="1" Background="#ECEFF1" Margin="0,0,0,8">
+      <TextBlock Text="Slab and support section" FontWeight="Bold" Margin="10"/>
+      <TextBlock Text="Top → bottom · Schematic" FontSize="12" Margin="10,0,10,8"/>
+      <StackPanel x:Name="SectionPanel" Margin="10"/>
+     </StackPanel>
+    </Grid>
+    <Border Style="{StaticResource Step}"><TextBlock Text="3  Review slabs" FontWeight="Bold"/></Border>
+    <DataGrid x:Name="SlabGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserSortColumns="False" CanUserReorderColumns="False" SelectionMode="Single" HeadersVisibility="Column" MaxHeight="230" Margin="0,0,0,8">
+     <DataGrid.Columns><DataGridTextColumn Header="Floor" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="SIDL (kN/m²)" Binding="{Binding Sidl}" Width="*"/><DataGridTextColumn Header="Live (kN/m²)" Binding="{Binding FinalLiveLoad}" Width="*"/><DataGridTextColumn Header="Age (days)" Binding="{Binding AgeDays}" Width="*"/></DataGrid.Columns>
+    </DataGrid>
+    <WrapPanel><Button Content="Edit selected slab" Click="EditSelected_Click"/><Button x:Name="RemoveLowest" Content="Remove lowest slab" Click="RemoveLowest_Click"/></WrapPanel>
+    <Border Style="{StaticResource Step}" Margin="0,10,0,10"><TextBlock Text="4  Backpropping storeys" FontWeight="Bold"/></Border>
+    <StackPanel x:Name="StoreyPanel"/>
+    <Expander Header="Load-transfer breakdown · kN/m²" Margin="0,8"><StackPanel x:Name="BreakdownPanel"/></Expander>
+    <TextBlock Text="Recommended spacing" FontSize="18" FontWeight="Bold" Margin="0,12,0,6"/>
+    <StackPanel x:Name="ResultsPanel"/>
+   </StackPanel>
+  </ScrollViewer>
+ </DockPanel>
+</Window>
