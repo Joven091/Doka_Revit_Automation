@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -16,6 +18,7 @@ namespace EngineeringDashboard
         public FlexCalculatorWindow()
         {
             InitializeComponent();
+            InitializeUi();
             
             _viewModel = new FlexCalculatorViewModel();
             this.DataContext = _viewModel;
@@ -128,86 +131,84 @@ namespace EngineeringDashboard
 
         private void BtnImportValues_Click(object sender, RoutedEventArgs e)
         {
-            UIDocument uidoc = Command.App.ActiveUIDocument;
-            Document doc = uidoc.Document;
-            View activeView = doc.ActiveView;
-
+            if (!TryGetValidCalculation(out FlexCalculatorViewModel vm))
+            {
+                MessageBox.Show("Correct the inputs before importing values.", "Invalid calculation", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var app = EngineeringDashboard.Command.App;
+            if (app?.ActiveUIDocument == null) return;
+            var doc = app.ActiveUIDocument.Document;
+            var matchingBeams = new List<FamilyInstance>();
+            // Preserve existing targeting: same family, dimensions and element type in active view.
+            foreach (FamilyInstance instance in new FilteredElementCollector(doc, doc.ActiveView.Id).OfClass(typeof(FamilyInstance)))
+            {
+                if (instance.Symbol == null || instance.Symbol.FamilyName != "PrimaryBeam") continue;
+                Parameter h = instance.LookupParameter("H");
+                if (!IsLength(h)) continue;
+                Parameter kind = instance.LookupParameter("Structural Element Type");
+                if (Math.Abs(h.AsDouble()*304.8-vm.SlabThickness) <= 0.1
+                    && kind?.StorageType == StorageType.String && kind.AsString() == "Slab") matchingBeams.Add(instance);
+            }
+            if (matchingBeams.Count == 0)
+            {
+                MessageBox.Show("No matching primary beams found in the active view.", "Info", MessageBoxButton.OK, MessageBoxImage.Information); return;
+            }
+            int updated = 0, skipped = 0, failed = 0;
+            var reasons = new List<string>();
             try
             {
-                // Find all FamilyInstances in the active view
-                FilteredElementCollector collector = new FilteredElementCollector(doc, activeView.Id)
-                    .OfClass(typeof(FamilyInstance));
-
-                System.Collections.Generic.List<FamilyInstance> matchedBeams = new System.Collections.Generic.List<FamilyInstance>();
-
-                foreach (Element elem in collector)
+                using (var transaction = new Transaction(doc, "Apply Slab Calculator Values"))
                 {
-                    if (elem is FamilyInstance fi && fi.Symbol != null && fi.Symbol.FamilyName == "PrimaryBeam")
+                    transaction.Start();
+                    foreach (var beam in matchingBeams)
                     {
-                        Parameter pSlabH = fi.LookupParameter("H");
-                        Parameter pType = fi.LookupParameter("Structural Element Type");
-
-                        if (pSlabH != null && pType != null)
+                        Parameter[] parameters = {
+                            beam.LookupParameter("Max Prop spacing") ?? beam.LookupParameter("Max Prop Spacing"),
+                            beam.LookupParameter("Start Cantilever"), beam.LookupParameter("End Cantilever"),
+                            beam.LookupParameter("Primary Beam Spacing") ?? beam.LookupParameter("Primary Beam spacing") ?? beam.LookupParameter("Max Beam Spacing") ?? beam.LookupParameter("Max Beam spacing") };
+                        string[] names = { "Max Prop spacing", "Start Cantilever", "End Cantilever", "Primary Beam Spacing" };
+                        var invalid = new List<string>();
+                        for(int i=0;i<parameters.Length;i++)
+                            if(!IsLength(parameters[i]) || parameters[i].IsReadOnly) invalid.Add(names[i]);
+                        if(invalid.Count > 0)
                         {
-                            // Convert H from feet to mm
-                            double hMm = pSlabH.AsDouble() * 304.8;
-                            string elemType = pType.AsString();
-
-                            if (elemType == "Slab" && Math.Abs(hMm - _viewModel.SlabThickness) <= 0.1)
+                            skipped++; reasons.Add($"{beam.Id}: missing, read-only or non-length parameter: {string.Join(", ", invalid)}."); continue;
+                        }
+                        // All four values succeed together; a failed instance cannot be partly updated.
+                        using(var change = new SubTransaction(doc))
+                        {
+                            change.Start();
+                            try
                             {
-                                matchedBeams.Add(fi);
+                                if(!parameters[0].Set(vm.PropSpacing/304.8) || !parameters[1].Set(vm.PrimaryBeamCantilever/304.8)
+                                    || !parameters[2].Set(vm.PrimaryBeamCantilever/304.8) || !parameters[3].Set(vm.SuggestedPrimaryBeamSpacing/304.8)) throw new InvalidOperationException("A parameter rejected its value.");
+                                if(change.Commit() != TransactionStatus.Committed) throw new InvalidOperationException("Instance update was not committed.");
+                                updated++;
+                            }
+                            catch(Exception ex) when(ex is ArgumentException || ex is InvalidOperationException
+                                || ex is Autodesk.Revit.Exceptions.ArgumentException || ex is Autodesk.Revit.Exceptions.InvalidOperationException)
+                            {
+                                if(change.GetStatus() == TransactionStatus.Started) change.RollBack();
+                                failed++; reasons.Add($"{beam.Id}: {ex.Message}");
                             }
                         }
                     }
-                }
-
-                if (matchedBeams.Count > 0)
-                {
-                    using (Transaction t = new Transaction(doc, "Apply Primary Beam Parameters"))
+                    if(transaction.Commit() != TransactionStatus.Committed)
                     {
-                        t.Start();
-                        int successCount = 0;
-
-                        foreach (FamilyInstance fi in matchedBeams)
-                        {
-                            Parameter pProp = fi.LookupParameter("Max Prop spacing") ?? fi.LookupParameter("Max Prop Spacing");
-                            Parameter pBeam = fi.LookupParameter("Primary Beam Spacing") ?? fi.LookupParameter("Primary Beam spacing") ?? fi.LookupParameter("Max Beam Spacing") ?? fi.LookupParameter("Max Beam spacing");
-                            Parameter pStart = fi.LookupParameter("Start Cantilever");
-                            Parameter pEnd = fi.LookupParameter("End Cantilever");
-
-                            double propSpacingMm = _viewModel.PropSpacing;
-                            double suggestedBeamSpacingMm = _viewModel.SuggestedPrimaryBeamSpacing;
-                            double cantileverMm = _viewModel.PrimaryBeamCantilever;
-
-                            if (pProp != null) pProp.Set(propSpacingMm / 304.8);
-                            if (pBeam != null) pBeam.Set(suggestedBeamSpacingMm / 304.8);
-                            if (pStart != null) pStart.Set(cantileverMm / 304.8);
-                            if (pEnd != null) pEnd.Set(cantileverMm / 304.8);
-
-                            successCount++;
-                        }
-
-                        t.Commit();
-
-                        if (successCount > 0)
-                        {
-                            MessageBox.Show($"Successfully applied parameters to {successCount} primary beam(s).", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                            this.Close();
-                            return;
-                        }
+                        MessageBox.Show("The transaction did not commit. No successful updates are reported.", "Import incomplete", MessageBoxButton.OK, MessageBoxImage.Warning); return;
                     }
                 }
-                else
-                {
-                    MessageBox.Show("No matching PrimaryBeam elements found in the active view.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
+                string details = reasons.Count == 0 ? "" : "\n\n" + string.Join("\n", reasons.Take(5)) + (reasons.Count > 5 ? "\nAdditional instances also skipped or failed." : "");
+                MessageBox.Show($"Updated: {updated}\nSkipped: {skipped}\nFailed: {failed}" + details,
+                    updated == matchingBeams.Count ? "Import complete" : "Import summary", MessageBoxButton.OK, MessageBoxImage.Information);
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
-                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Import did not complete. No successful updates are reported.\n" + ex.Message, "Import failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
+        private static bool IsLength(Parameter p) => p != null && p.StorageType == StorageType.Double && p.Definition.GetDataType() == SpecTypeId.Length;
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
             this.Close();
