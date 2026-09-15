@@ -65,7 +65,7 @@
                     <TextBox Text="{Binding SecondaryBeamCantilever, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="2" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Deflection Limit:" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
-                    <ComboBox ItemsSource="{Binding DeflectionLimitOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="3" Grid.Column="1" Margin="0,5"/>
+                    <ComboBox ItemsSource="{Binding DeflectionLimitOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="3" Grid.Column="1" Margin="0,5" ToolTip="Uses span length for span deflection and overhang length for end deflection, with the selected divisor. End deflection includes beam rotation at the support."/>
 
                     <Button Content="View Secondary Beam Diagram" Command="{Binding ViewSecondaryBeamDiagramCommand}" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,10,0,0" Padding="5" />
                 </Grid>

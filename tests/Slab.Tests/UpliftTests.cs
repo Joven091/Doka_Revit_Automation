@@ -41,7 +41,7 @@ internal static class UpliftTests
             PropCount = "2", PropSpacing = 500, PrimaryBeamCantilever = 0,
             SecondaryBeamSpacing = 10, SecondaryBeamCantilever = 3700, PrimaryBeamCount = "3" };
         check(!v.IsCalculationValid && v.WarningMessage.Contains("Secondary H20") && v.WarningMessage.Contains("support 2"), "secondary no-contact solution identifies support");
-        check(v.WarningMessage.Contains("4000 mm") && v.WarningMessage.Contains("other checks pass"), "secondary conflict explains candidate rejection");
+        check(v.WarningMessage.Contains("4000 mm") && v.WarningMessage.Contains("strength and span-deflection checks pass"), "secondary conflict explains candidate rejection");
         equal(0, v.SuggestedPrimaryBeamSpacing, "secondary uplift clears spacing");
         check(v.SecondaryDiagramViewModel == null && !v.ViewSecondaryBeamDiagramCommand.CanExecute(null), "secondary uplift blocks diagrams");
         v.SecondaryBeamCantilever = 500;

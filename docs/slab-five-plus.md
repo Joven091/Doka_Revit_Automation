@@ -41,4 +41,12 @@ Tests compare the solver with closed-form moments, force equilibrium and indepen
 
 Uplift now invalidates the layout: primary geometry is checked once, and secondary contact is checked at each otherwise passing spacing candidate. Reactions below −1e-10 times the maximum absolute reaction are rejected; this tolerance handles numerical cancellation at zero without clipping negative reactions. Tests include the three-support formula R_middle/q=1.25L−1.5a²/L, boundary perturbations, load scaling, higher-count minima and UI invalidation/recovery.
 
-Cantilever-tip deflection including support rotation and the remaining complete formwork load-path checks remain deferred audit items. This change checks span deflection and retains the existing cantilever-tip precheck. Actual Revit transactions were not exercised by the test host.
+## Cantilever tips including support rotation
+
+With moments using the sagging-positive convention above, the left-span integration constant is C=−L(2M_0+M_1)/6−qL³/24. Downward-positive free-tip displacement is (aC+qa⁴/8)/EI. Symmetry gives the same displacement at the right tip. The signed terms are combined before taking the magnitude; a zero overhang gives zero. Support vertical movement is assumed zero.
+
+The tip displacement is affine in the first interior moment, whose extrema are attained with five and six supports. Its absolute maximum over all N≥5 is therefore bounded by the larger absolute tip displacement in those two cases. Both beam layers apply this envelope at each candidate spacing. The retained/adopted limit is a divided by the selected deflection divisor, not a verified Doka cantilever criterion.
+
+For two supports, the closed form is q/EI × (a⁴/8+a³L/4−aL³/24). With a=L=1 m and H20 EI=449.8756 kN·m², the tip displacement is 0.7409456 mm per kN/m, downward. Tests compare both tips with independent Macaulay integration, including upward movement, partial cancellation and counts beyond six.
+
+The remaining complete formwork load-path checks remain deferred. Actual Revit transactions were not exercised by the test host.

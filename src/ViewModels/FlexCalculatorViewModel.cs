@@ -262,8 +262,6 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         // 3. Initial Cantilever Absolute Limits
         double v_cantilever_sec = w_sb * a_s;
         double m_cantilever_sec = (w_sb * Math.Pow(a_s, 2)) / 2.0;
-        double defl_cantilever_sec = (w_sb * Math.Pow(a_s, 4)) / (8.0 * H20_EI);
-        double limit_cantilever = a_s / limit_denom;
         
         if (v_cantilever_sec > MAX_H20_SHEAR_KN)
         {
@@ -272,10 +270,6 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         if (m_cantilever_sec > MAX_H20_MOMENT_KNM)
         {
             warnings.Add($"Secondary beam cantilever moment exceeds limit ({Math.Round(m_cantilever_sec,2)} kNm). Reduce a_s.");
-        }
-        if (a_s > 0 && defl_cantilever_sec > limit_cantilever)
-        {
-            warnings.Add($"Secondary beam cantilever deflection ({Math.Round(defl_cantilever_sec * 1000.0, 2)} mm) exceeds limit ({DeflectionLimit}). Reduce a_s.");
         }
 
         // Primary support response is linear in load; reuse the unit-load envelope for each spacing candidate.
@@ -289,6 +283,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         // 4. Numerical Solver for L_s (Continuous Beam Analysis)
         double best_L_s = 0;
         string secondaryUplift = null;
+        string tipFailure = null;
         
         if (warnings.Count == 0) 
         {
@@ -323,7 +318,19 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
                     {
                         if (secondaryUplift == null)
                             secondaryUplift = UpliftLocation("Secondary H20", "primary beam support", secondaryEnvelope, pbcInt == 5) +
-                                $" At {spacingMm} mm primary beam spacing, the other checks pass but contact is lost. Shorten the secondary overhang or revise the support arrangement.";
+                                $" At {spacingMm} mm primary beam spacing, strength and span-deflection checks pass but contact is lost. Shorten the secondary overhang or revise the support arrangement.";
+                        continue;
+                    }
+                    double secondaryTip = w_sb * secondaryEnvelope.CantileverDeflection;
+                    double primaryTip = w_pb * primaryEnvelope.CantileverDeflection;
+                    if (secondaryTip > a_s / limit_denom || primaryTip > a_p / limit_denom)
+                    {
+                        if (tipFailure == null)
+                        {
+                            bool secondary = secondaryTip > a_s / limit_denom;
+                            tipFailure = $"{(secondary ? "Secondary" : "Primary")} H20 end deflection including support rotation exceeds the overhang limit at {spacingMm} mm primary beam spacing " +
+                                $"({(secondary ? secondaryTip : primaryTip) * 1000:0.00} mm versus {(secondary ? a_s : a_p) * 1000 / limit_denom:0.00} mm). Shorten the overhang or revise the support arrangement.";
+                        }
                         continue;
                     }
                     best_L_s = test_L;
@@ -336,6 +343,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         if (best_L_s <= 0)
         {
             if (secondaryUplift != null) warnings.Add(secondaryUplift);
+            if (tipFailure != null) warnings.Add(tipFailure);
             warnings.Add("Cannot find a valid primary beam spacing for the given parameters.");
             SuggestedPrimaryBeamSpacing = 0;
             ActualPropLoad = 0;

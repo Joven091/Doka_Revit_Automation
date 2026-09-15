@@ -50,6 +50,7 @@ class Program
   Check(v.PrimaryBeamCountOptions.SequenceEqual(new[]{"2","3","4","5+"}),"secondary supports options");Check(v.PropCountOptions.SequenceEqual(v.PrimaryBeamCountOptions),"primary supports options");
   FivePlusTests.Run(Check,Equal);
   UpliftTests.Run(Check,Equal);
+  CantileverTests.Run(Check,Equal);
   v=new FlexCalculatorViewModel{SlabThickness=100,FloorHeight=4518,PropModel="DokaFit Prop",PropType="400",SelectedH20="4.90m",PrimaryBeamCount="5+",PropCount="5+",PrimaryBeamCantilever=250,SecondaryBeamCantilever=0,PropSpacing=1000};
   Check(v.IsCalculationValid,"5+ overload regression valid revised layout");Check(v.SuggestedPrimaryBeamSpacing<3100,"5+ formerly overloaded spacing reduced");
   double secondaryReaction=ContinuousBeamResponse.Analyze(5,v.SuggestedPrimaryBeamSpacing/1000,0,4.4,449.8756).Reaction;
@@ -72,6 +73,7 @@ class Program
   var primaryCount=Find<ComboBox>(window).Single(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="PrimaryBeamCount");primaryCount.SelectedItem="5+";Pump();Check(v.PrimaryBeamCount=="5+"&&v.IsCalculationValid,"UI secondary 5+ selection");
   v.PropModel="DokaFit Prop";Pump();Check(!v.PropOrientationOptions.Contains("at fixed"),"orientation choices");v.PropModel="Prop Type Eurex eco 20";Pump();
   if(args.Length>1 && args[1]=="uplift"){Enter("PrimaryBeamCantilever","900");Invalid(v,"rendered uplift state");}
+  if(args.Length>1 && args[1]=="tip"){v.PropCount="2";v.PropSpacing=1000;v.PrimaryBeamCount="3";Enter("PrimaryBeamCantilever","1000");Invalid(v,"rendered tip state");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var tipIgnored),"tip import blocked");}
   if(args.Length>0){var root=(FrameworkElement)window.Content;root.Measure(new Size(560,1160));root.Arrange(new Rect(0,0,560,1160));root.UpdateLayout();var bitmap=new RenderTargetBitmap(560,1160,96,96,PixelFormats.Pbgra32);bitmap.Render(root);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(args[0]))png.Save(file);}
  }
 }

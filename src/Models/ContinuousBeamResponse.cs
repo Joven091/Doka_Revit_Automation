@@ -10,6 +10,10 @@ namespace EngineeringDashboard
         public double Shear { get; private set; }
         public double Moment { get; private set; }
         public double SpanDeflection { get; private set; }
+        // Positive downward, relative to the level of the non-settling supports.
+        // Equal end cantilevers and symmetric loading give equal tip displacements.
+        public double SignedTipDeflection { get; private set; }
+        public double CantileverDeflection => Math.Abs(SignedTipDeflection);
         public double[] Reactions { get; private set; }
         public double MinimumReaction => Reactions.Min();
         public int MinimumReactionSupport => Array.IndexOf(Reactions, MinimumReaction) + 1;
@@ -54,7 +58,9 @@ namespace EngineeringDashboard
                 }
             }
             return new ContinuousBeamResponse { Count = count, Reaction = reactions.Max(), Reactions = reactions,
-                Shear = shear, Moment = moment, SpanDeflection = ContinuousSpanDeflection.FromMoments(m, length, load, ei) };
+                Shear = shear, Moment = moment, SpanDeflection = ContinuousSpanDeflection.FromMoments(m, length, load, ei),
+                SignedTipDeflection = (cantilever * (-length * (2 * m[0] + m[1]) / 6 - load * Math.Pow(length, 3) / 24)
+                    + load * Math.Pow(cantilever, 4) / 8) / ei };
         }
     }
     /// <summary>Component-wise envelope for all counts >=5 in the adopted model.
@@ -66,6 +72,7 @@ namespace EngineeringDashboard
         public double Moment { get; private set; }
         public double SpanDeflection { get; private set; }
         public int ReactionCount { get; private set; }
+        public double CantileverDeflection { get; private set; }
         public double MinimumReaction { get; private set; }
         public int MinimumReactionSupport { get; private set; }
         public int MinimumReactionCount { get; private set; }
@@ -78,6 +85,7 @@ namespace EngineeringDashboard
             var response = ContinuousBeamResponse.Analyze(count, length, cantilever, load, ei);
             return new SlabSupportEnvelope { Reaction = response.Reaction, Shear = response.Shear, Moment = response.Moment,
                 SpanDeflection = response.SpanDeflection, ReactionCount = count,
+                CantileverDeflection = response.CantileverDeflection,
                 MinimumReaction = response.MinimumReaction, MinimumReactionSupport = response.MinimumReactionSupport, MinimumReactionCount = count };
         }
         public static SlabSupportEnvelope Calculate(double length, double cantilever, double load, double ei)
@@ -88,6 +96,7 @@ namespace EngineeringDashboard
             return new SlabSupportEnvelope { Reaction = Math.Max(five.Reaction, six.Reaction),
                 Shear = Math.Max(five.Shear, six.Shear), Moment = Math.Max(five.Moment, six.Moment),
                 SpanDeflection = Math.Max(five.SpanDeflection, six.SpanDeflection),
+                CantileverDeflection = Math.Max(five.CantileverDeflection, six.CantileverDeflection),
                 ReactionCount = five.Reaction >= six.Reaction ? 5 : 6,
                 MinimumReaction = minimum.MinimumReaction, MinimumReactionSupport = minimum.MinimumReactionSupport, MinimumReactionCount = minimum.Count };
         }
