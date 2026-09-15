@@ -17,6 +17,28 @@ internal static class Program
  { foreach(var item in LogicalTreeHelper.GetChildren(obj)){ if(!(item is DependencyObject c)) continue; if(c is T value) yield return value; foreach(var descendant in Children<T>(c)) yield return descendant;} }
  private static void Layout() { window.Measure(new Size(940,860)); window.Arrange(new Rect(0,0,940,860));window.UpdateLayout(); }
  private static string Section() => string.Join(" ",Children<TextBlock>(Get<StackPanel>("SectionPanel")).Select(t=>t.Text));
+ private static void CheckPropBearing()
+ {
+  var section=Get<StackPanel>("SectionPanel");
+  foreach(double width in new[]{260.0,340.0,460.0})
+  {
+   section.Measure(new Size(width,double.PositiveInfinity));
+   section.Arrange(new Rect(0,0,width,section.DesiredSize.Height)); section.UpdateLayout();
+   var floors=section.Children.Cast<Grid>().ToList();
+   for(int i=0;i<floors.Count-1;i++)
+   {
+    var slab=floors[i+1].Children.OfType<System.Windows.Shapes.Rectangle>().Single();
+    double slabTop=slab.TranslatePoint(new Point(0,0),section).Y;
+    var props=Children<System.Windows.Controls.Primitives.UniformGrid>(floors[i]).Single(g=>g.Columns==3);
+    foreach(Grid prop in props.Children)
+    {
+     var plate=prop.Children.OfType<System.Windows.Shapes.Rectangle>().Single(r=>r.VerticalAlignment==VerticalAlignment.Bottom);
+     double plateBottom=plate.TranslatePoint(new Point(0,plate.ActualHeight),section).Y;
+     Assert(Math.Abs(plateBottom-slabTop)<0.01);
+    }
+   }
+  }
+ }
  [STAThread] private static void Main()
  {
   window=new BackproppingWindow(); Layout();
@@ -29,6 +51,7 @@ internal static class Program
   Get<TextBox>("Age").Text="10";Click("SaveSlab");
   Get<TextBox>("Age").Text="35";Click("SaveSlab");Layout();
   Assert(Get<DataGrid>("SlabGrid").Items.Count==4);Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Collapsed);Assert(Section().Contains("28+ days"));
+  CheckPropBearing();
   var combos=Children<ComboBox>(Get<StackPanel>("StoreyPanel")).ToList();Assert(combos.Count==2);foreach(var combo in combos)combo.SelectedIndex=0;
   Click("CalculateButton");Layout();Assert(Get<TextBlock>("ErrorText").Text=="");Assert(Get<StackPanel>("ResultsPanel").Children.Count==2);
   Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text=="2750 × 2750 mm"&&t.FontSize>=30));
@@ -39,6 +62,7 @@ internal static class Program
   Children<TextBox>(Get<StackPanel>("StoreyPanel")).First().Text="3000";Get<TextBox>("ProjectMaximum").Text="2010";Click("CalculateButton");Layout();
   Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text=="2000 × 2000 mm"));
   Click("RemoveLowest");Assert(Get<DataGrid>("SlabGrid").Items.Count==3);Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Visible);
+  CheckPropBearing();
   Click("RemoveLowest");Click("RemoveLowest");Click("RemoveLowest");Assert(Get<DataGrid>("SlabGrid").Items.Count==0);
   window.Close();Console.WriteLine($"Passed {checks} WPF workflow checks.");
  }

@@ -191,7 +191,10 @@ namespace EngineeringDashboard
                 info.Children.Add(Text($"SIDL {s.Sidl:0.##} · LL {s.FinalLiveLoad:0.##} kN/m²"));
                 info.Children.Add(new Border { Background = Yellow, Padding = new Thickness(5), Margin = new Thickness(0,6,0,0), Child = Text(row == null ? "Outside required support stack" : "↓ " + F(row.DownwardLoad) + " kN/m²") });
                 grid.Children.Add(info);
-                var slab = new Rectangle { Height = 16, Fill = editing == i ? Brushes.Goldenrod : Brushes.DarkGray }; Grid.SetColumn(slab,1); grid.Children.Add(slab);
+                // The final floor's spanning label can enlarge its row. Keep the slab's
+                // top face at the storey boundary instead of centering it below the props.
+                var slab = new Rectangle { Height = 16, VerticalAlignment = VerticalAlignment.Top,
+                    Fill = editing == i ? Brushes.Goldenrod : Brushes.DarkGray }; Grid.SetColumn(slab,1); grid.Children.Add(slab);
                 if (i < slabs.Count-1)
                 {
                     var support = new Grid { MinHeight = 112 }; Grid.SetColumn(support,1); Grid.SetRow(support,1);
