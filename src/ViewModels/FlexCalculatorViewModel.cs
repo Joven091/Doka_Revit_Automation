@@ -46,6 +46,16 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public bool IsCalculationValid { get; private set; }
     private bool textErrors;
     public double PropExtensionMm => FloorHeight - SlabThickness - 418;
+    public string MemberFitHint
+    {
+        get
+        {
+            if (PropCount != "5+" || SelectedH20 == null || !FloorPropData.H20Data.ContainsKey(SelectedH20) || PropSpacing < 1 || double.IsNaN(PropSpacing) || double.IsInfinity(PropSpacing)) return "";
+            double length = double.Parse(SelectedH20.Replace("m", ""), System.Globalization.CultureInfo.InvariantCulture) * 1000;
+            double count = Math.Max(0, Math.Floor((length - 2 * PrimaryBeamCantilever + 1e-7) / PropSpacing) + 1);
+            return $"Selected H20 fits at most {count:0} props at this spacing.";
+        }
+    }
     public double PropLookupExtensionMm { get; private set; }
     public double PrimaryDeflectionMm { get; private set; }
     public void SetTextInputErrors(bool value) { if (textErrors != value) { textErrors = value; Calculate(); } }
@@ -70,8 +80,8 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public List<string> PropOrientationOptions { get => _propOrientationOptions; set { _propOrientationOptions = value; OnPropertyChanged(); } }
 
     public List<string> DeflectionLimitOptions => ["L/500", "L/350", "L/270"];
-    public List<string> PrimaryBeamCountOptions => ["2", "3", "4+"];
-    public List<string> PropCountOptions => ["2", "3", "4+"];
+    public List<string> PrimaryBeamCountOptions => ["2", "3", "4", "5+"];
+    public List<string> PropCountOptions => ["2", "3", "4", "5+"];
 
     // --- Public Input Properties ---
     public double SlabThickness { get => _slabThickness; set { _slabThickness = value; OnPropertyChanged(); Calculate(); } }
@@ -189,7 +199,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         if (!PrimaryBeamCountOptions.Contains(PrimaryBeamCount) || !PropCountOptions.Contains(PropCount) || !DeflectionLimitOptions.Contains(DeflectionLimit)) throw new ArgumentException("Select valid support counts and a deflection limit.");
         if (!PropModelOptions.Contains(PropModel) || PropTypeOptions == null || !PropTypeOptions.Contains(PropType) || PropOrientationOptions == null || !PropOrientationOptions.Contains(PropOrientation)) throw new ArgumentException("Select a supported prop and outer tube orientation.");
         if (SelectedH20 == null || !FloorPropData.H20Data.ContainsKey(SelectedH20)) throw new ArgumentException("Select an H20 length.");
-        int count = PropCount == "4+" ? 4 : int.Parse(PropCount);
+        int count = PropCount == "5+" ? 5 : int.Parse(PropCount);
         double available = double.Parse(SelectedH20.Replace("m", ""), System.Globalization.CultureInfo.InvariantCulture) * 1000;
         if ((count - 1) * PropSpacing + 2 * PrimaryBeamCantilever > available + 1e-7) throw new ArgumentException("The primary spans and cantilevers exceed the selected H20 length. Choose a longer member or reduce the layout.");
     }
@@ -204,7 +214,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         ClearResults();
         try { ValidateInputs(); CalculateValidInputs(); IsCalculationValid = SuggestedPrimaryBeamSpacing > 0 && string.IsNullOrEmpty(WarningMessage); }
         catch (ArgumentException ex) { ClearResults(); WarningMessage = ex.Message; }
-        OnPropertyChanged(nameof(IsCalculationValid)); OnPropertyChanged(nameof(PropExtensionMm)); OnPropertyChanged(nameof(PropLookupExtensionMm)); OnPropertyChanged(nameof(PrimaryDeflectionMm));
+        OnPropertyChanged(nameof(IsCalculationValid)); OnPropertyChanged(nameof(PropExtensionMm)); OnPropertyChanged(nameof(PropLookupExtensionMm)); OnPropertyChanged(nameof(PrimaryDeflectionMm)); OnPropertyChanged(nameof(MemberFitHint));
         CommandManager.InvalidateRequerySuggested();
     }
     private void CalculateValidInputs()
@@ -219,8 +229,8 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         PropCapacityLimit = capacity;
 
         // 2. Convert inputs to working units
-        int pbcInt = PrimaryBeamCount == "4+" ? 4 : (int.TryParse(PrimaryBeamCount, out int p) ? p : 3);
-        int pcInt = PropCount == "4+" ? 4 : (int.TryParse(PropCount, out int c) ? c : 3);
+        int pbcInt = PrimaryBeamCount == "5+" ? 5 : (int.TryParse(PrimaryBeamCount, out int p) ? p : 3);
+        int pcInt = PropCount == "5+" ? 5 : (int.TryParse(PropCount, out int c) ? c : 3);
 
         double w_slab;
         if (UseCustomLoads)
@@ -268,6 +278,8 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             warnings.Add($"Secondary beam cantilever deflection ({Math.Round(defl_cantilever_sec * 1000.0, 2)} mm) exceeds limit ({DeflectionLimit}). Reduce a_s.");
         }
 
+        // Primary support response is linear in load; reuse the unit-load envelope for each spacing candidate.
+        var primaryEnvelope = SlabSupportEnvelope.ForSelection(pcInt, L_p, a_p, 1, H20_EI);
         // 4. Numerical Solver for L_s (Continuous Beam Analysis)
         double best_L_s = 0;
         
@@ -277,20 +289,21 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             for (int spacingMm = 4000; spacingMm >= 100; spacingMm -= 25) 
             {
                 double test_L = spacingMm / 1000.0;
+                var secondaryEnvelope = SlabSupportEnvelope.ForSelection(pbcInt, test_L, a_s, 1, H20_EI);
                 // Secondary Beam Internal Forces & Deflection
-                double v_sec = w_sb * GetMaxShearMultiplier(pbcInt, test_L, a_s);
-                double m_sec = w_sb * GetMaxMomentMultiplier(pbcInt, test_L, a_s);
-                double defl_sec = (w_sb * Math.Pow(test_L, 4)) / H20_EI * GetMaxDeflectionMultiplier(pbcInt, test_L, a_s);
+                double v_sec = w_sb * secondaryEnvelope.Shear;
+                double m_sec = w_sb * secondaryEnvelope.Moment;
+                double defl_sec = w_sb * secondaryEnvelope.SpanDeflection;
                 
                 // Load transferred to Primary Beam
-                double R_sec_multiplier = GetMaxReactionMultiplier(pbcInt, test_L, a_s);
+                double R_sec_multiplier = secondaryEnvelope.Reaction;
                 double w_pb = w_slab * R_sec_multiplier;
                 
                 // Primary Beam Internal Forces & Prop Reaction
-                double v_prim = w_pb * GetMaxShearMultiplier(pcInt, L_p, a_p);
-                double m_prim = w_pb * GetMaxMomentMultiplier(pcInt, L_p, a_p);
-                double defl_prim = ContinuousSpanDeflection.Maximum(pcInt, L_p, a_p, w_pb, H20_EI);
-                double p_prop = w_pb * GetMaxReactionMultiplier(pcInt, L_p, a_p);
+                double v_prim = w_pb * primaryEnvelope.Shear;
+                double m_prim = w_pb * primaryEnvelope.Moment;
+                double defl_prim = w_pb * primaryEnvelope.SpanDeflection;
+                double p_prop = w_pb * primaryEnvelope.Reaction;
                 
                 if (v_sec <= MAX_H20_SHEAR_KN && 
                     m_sec <= MAX_H20_MOMENT_KNM && 
@@ -323,11 +336,11 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             double final_L_s = SuggestedPrimaryBeamSpacing / 1000.0;
 
             // Resolve actual loads at the rounded span
-            double final_w_pb = w_slab * GetMaxReactionMultiplier(pbcInt, final_L_s, a_s);
-            double final_V_prim = final_w_pb * GetMaxShearMultiplier(pcInt, L_p, a_p);
-            double final_P_prop = final_w_pb * GetMaxReactionMultiplier(pcInt, L_p, a_p);
+            double final_w_pb = w_slab * SlabSupportEnvelope.ForSelection(pbcInt, final_L_s, a_s, 1, H20_EI).Reaction;
+            double final_V_prim = final_w_pb * primaryEnvelope.Shear;
+            double final_P_prop = final_w_pb * primaryEnvelope.Reaction;
             
-            PrimaryDeflectionMm = ContinuousSpanDeflection.Maximum(pcInt, L_p, a_p, final_w_pb, H20_EI) * 1000;
+            PrimaryDeflectionMm = final_w_pb * primaryEnvelope.SpanDeflection * 1000;
             ActualPropLoad = Math.Round(final_P_prop, 2);
             H20Shear = Math.Round(final_V_prim, 2);
             H20Utilization = Math.Round((final_V_prim / MAX_H20_SHEAR_KN) * 100, 1);
@@ -351,6 +364,9 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             return;
         }
 
+        var secondaryEnvelope = SlabSupportEnvelope.ForSelection(pbcInt, final_L_s, a_s, 1, H20_EI);
+        var primaryEnvelope = pcInt == 5 ? SlabSupportEnvelope.Calculate(L_p, a_p, 1, H20_EI) : null;
+        // Five-support illustrations fit the minimum count; results use the 5/6 envelope.
         // Secondary Beam Plots
         var secPlots = DiagramDataGenerator.GeneratePlots(
             pbcInt,
@@ -359,12 +375,12 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             a_s,
             w_sb,
             H20_EI,
-            "Secondary Beam"
+            pbcInt != 5 ? "Secondary Beam" : "Secondary Beam · 5+ envelope (5-support illustration)"
         );
         SecondaryDiagramViewModel = new DiagramWindowViewModel(secPlots);
 
         // Primary Beam Plots
-        double R_sec_multiplier = GetMaxReactionMultiplier(pbcInt, final_L_s, a_s);
+        double R_sec_multiplier = secondaryEnvelope.Reaction;
         double final_w_pb = w_slab * R_sec_multiplier;
 
         var primPlots = DiagramDataGenerator.GeneratePlots(
@@ -374,130 +390,9 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             a_p,
             final_w_pb,
             H20_EI,
-            "Primary Beam"
+            pcInt != 5 ? "Primary Beam" : "Primary Beam · 5+ envelope (5-support illustration)"
         );
         PrimaryDiagramViewModel = new DiagramWindowViewModel(primPlots);
-    }
-
-    // ====================================================================
-    // CONTINUOUS BEAM HELPER METHODS (Calculates Multipliers)
-    // ====================================================================
-
-    private double GetMaxDeflectionMultiplier(int supportCount, double L, double a)
-    {
-        double r = a / L;
-        double r2 = r * r;
-        double m1, m2;
-
-        if (supportCount <= 2)
-        {
-            m1 = 0.5 * r2;
-            m2 = 0.5 * r2;
-        }
-        else if (supportCount == 3)
-        {
-            m1 = 0.5 * r2;
-            m2 = 0.125 - 0.25 * r2;
-        }
-        else
-        {
-            m1 = 0.5 * r2;
-            m2 = 0.1 - 0.1 * r2;
-        }
-
-        double maxAbsDefl = 0;
-        for (double u = 0.1; u <= 0.95; u += 0.05)
-        {
-            double u2 = u * u;
-            double u3 = u2 * u;
-            double u4 = u3 * u;
-
-            double term1 = (u - 2 * u3 + u4) / 24.0;
-            double term2 = m1 * (2 * u - 3 * u2 + u3) / 6.0;
-            double term3 = m2 * (u - u3) / 6.0;
-
-            double defl = Math.Abs(term1 - term2 - term3);
-            if (defl > maxAbsDefl)
-            {
-                maxAbsDefl = defl;
-            }
-        }
-
-        return maxAbsDefl;
-    }
-
-    private double GetMaxReactionMultiplier(int supportCount, double L, double a)
-    {
-        if (supportCount <= 2)
-        {
-            return (L / 2.0) + a; 
-        }
-        else if (supportCount == 3)
-        {
-            double R1 = (3.0 / 8.0) * L + a + (3.0 / 4.0) * (Math.Pow(a, 2) / L);
-            double R2 = (5.0 / 4.0) * L - (3.0 / 2.0) * (Math.Pow(a, 2) / L);
-            return Math.Max(R1, R2);
-        }
-        else 
-        {
-            // Exact continuous boundary envelope for 4+ supports
-            double R1 = 0.4 * L + a + 0.6 * (Math.Pow(a, 2) / L);
-            double R2 = 1.1 * L - 0.6 * (Math.Pow(a, 2) / L);
-            return Math.Max(R1, R2);
-        }
-    }
-
-    private double GetMaxShearMultiplier(int supportCount, double L, double a)
-    {
-        double Va = a; 
-        if (supportCount <= 2)
-        {
-            return Math.Max(Va, L / 2.0);
-        }
-        else if (supportCount == 3)
-        {
-            double V1 = Math.Abs((3.0 / 8.0) * L + (3.0 / 4.0) * (Math.Pow(a, 2) / L));
-            double V2 = Math.Abs((5.0 / 8.0) * L - (3.0 / 4.0) * (Math.Pow(a, 2) / L));
-            return Math.Max(Va, Math.Max(V1, V2));
-        }
-        else 
-        {
-            double V1 = Math.Abs(0.4 * L + 0.6 * (Math.Pow(a, 2) / L));
-            double V2 = Math.Abs(0.6 * L - 0.6 * (Math.Pow(a, 2) / L));
-            return Math.Max(Va, Math.Max(V1, V2));
-        }
-    }
-
-    private double GetMaxMomentMultiplier(int supportCount, double L, double a)
-    {
-        double Ma = Math.Pow(a, 2) / 2.0; 
-        
-        if (supportCount <= 2)
-        {
-            double M_span = Math.Abs(Math.Pow(L, 2) / 8.0 - Ma);
-            return Math.Max(Ma, M_span);
-        }
-        else if (supportCount == 3)
-        {
-            double R1 = (3.0 / 8.0) * L + a + (3.0 / 4.0) * (Math.Pow(a, 2) / L);
-            double x_sup = R1 - a; 
-            
-            double M_span = (x_sup > 0 && x_sup < L) ? (R1 * x_sup - 0.5 * Math.Pow(x_sup + a, 2)) : 0;
-            double M_sup = Math.Abs(Math.Pow(a, 2) / 4.0 - Math.Pow(L, 2) / 8.0);
-            
-            return Math.Max(Ma, Math.Max(M_sup, M_span));
-        }
-        else 
-        {
-            double R1 = 0.4 * L + a + 0.6 * (Math.Pow(a, 2) / L);
-            double x_sup = R1 - a;
-            
-            double M_span = (x_sup > 0 && x_sup < L) ? (R1 * x_sup - 0.5 * Math.Pow(x_sup + a, 2)) : 0;
-            double M_sup = Math.Abs(Math.Pow(a, 2) / 10.0 - Math.Pow(L, 2) / 10.0);
-            double M_int = Math.Pow(L, 2) / 10.0; 
-            
-            return Math.Max(Ma, Math.Max(M_sup, Math.Max(M_span, M_int)));
-        }
     }
 
     public event PropertyChangedEventHandler PropertyChanged;

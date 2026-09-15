@@ -27,34 +27,11 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
             var momentSeries = new LineSeries { Title = "Moment (M)", Color = lineCol };
             var deflectionSeries = new LineSeries { Title = "Deflection (Δ)", Color = lineCol };
 
-            // For supports <= 2 (single span + cantilever)
-            // L_total = spanLength + cantileverLength
-            // For continuous beams (numSupports > 2), this gets more complex,
-            // but we can generate an approximate envelope or specific span analysis.
-            // Based on the FlexCalculatorViewModel multipliers, it seems we are dealing with a standard
-            // envelope analysis for identical continuous spans of length L with one cantilever a.
-
-            // Calculate total length based on number of spans + cantilever
-            // numSupports - 1 is the number of spans.
+            // A representative full-UDL equal-span beam with two end cantilevers.
+            // Five-plus design envelopes are computed separately by SlabSupportEnvelope.
             double L_total = (numSupports - 1) * spanLength + leftCantilever + rightCantilever;
-            int numPoints = 200 * Math.Max(1, numSupports - 1); // Scale resolution of the graph
+            int numPoints = 200 * Math.Max(1, numSupports - 1);
             double step = L_total / numPoints;
-
-            // Simple approximation of continuous beam effects for the plot:
-            // We'll compute the reactions first based on the multipliers used in ViewModel.
-            // Let's use the 2-support case as the visual baseline (Span + Cantilever) for simplicity in visualization,
-            // or we could do the exact math for 3 supports.
-            // Since the user is asking for continuous data points, let's implement a robust analysis for a continuous beam
-            // with 2, 3, or 4+ supports.
-
-            // To be precise and match the multipliers, let's calculate exact reactions and moments at supports.
-            // We assume a uniform load w over the entire length.
-
-            // Let's model a beam with 'N' spans and 1 cantilever on the right.
-            // However, the FlexCalculatorViewModel analyzes multipliers (which are envelopes), not a single static load case.
-            // For the sake of the graph, we will plot the *worst-case* envelope or a representative static load case.
-            // A static load case is more intuitive for a single graph.
-            // We will plot the static load case of all spans loaded.
 
             double[] R = CalculateReactions(numSupports, spanLength, leftCantilever, rightCantilever, w);
 
@@ -312,49 +289,8 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
 
         private static double[] CalculateReactions(int numSupports, double L, double aL, double aR, double w)
         {
-            double[] R = new double[numSupports];
-
-            if (numSupports <= 2)
-            {
-                double M0 = -w * aL * aL / 2.0;
-                double M1 = -w * aR * aR / 2.0;
-                R[0] = w * L / 2.0 + (M1 - M0) / L + w * aL;
-                R[1] = w * L / 2.0 - (M1 - M0) / L + w * aR;
-            }
-            else if (numSupports == 3)
-            {
-                double M0 = -w * aL * aL / 2.0;
-                double M2 = -w * aR * aR / 2.0;
-                double M1 = (-w * L * L / 2.0 - M0 - M2) / 4.0;
-
-                R[0] = w * L / 2.0 + (M1 - M0) / L + w * aL;
-                R[1] = (w * L / 2.0 - (M1 - M0) / L) + (w * L / 2.0 + (M2 - M1) / L);
-                R[2] = w * L / 2.0 - (M2 - M1) / L + w * aR;
-            }
-            else // 4+ supports (approximate as 4 supports for visual, 3 spans + 2 cantilevers)
-            {
-                double M0 = -w * aL * aL / 2.0;
-                double M3 = -w * aR * aR / 2.0;
-
-                // Three-moment equations for a 3-span continuous beam
-                // M0*L + 4*M1*L + M2*L = -w*L^3/2
-                // 4*M1 + M2 = -w*L^2/2 - M0
-                // M1*L + 4*M2*L + M3*L = -w*L^3/2
-                // M1 + 4*M2 = -w*L^2/2 - M3
-
-                double C1 = -w * L * L / 2.0 - M0;
-                double C2 = -w * L * L / 2.0 - M3;
-
-                double M2 = (4 * C2 - C1) / 15.0;
-                double M1 = (C1 - M2) / 4.0;
-
-                R[0] = w * L / 2.0 + (M1 - M0) / L + w * aL;
-                R[1] = (w * L / 2.0 - (M1 - M0) / L) + (w * L / 2.0 + (M2 - M1) / L);
-                R[2] = (w * L / 2.0 - (M2 - M1) / L) + (w * L / 2.0 + (M3 - M2) / L);
-                R[3] = (w * L / 2.0 - (M3 - M2) / L) + w * aR;
-            }
-
-            return R;
+            var moments = EngineeringDashboard.ContinuousBeamResponse.SupportMoments(numSupports, L, aL, aR, w);
+            return EngineeringDashboard.ContinuousBeamResponse.SupportReactions(moments, L, aL, aR, w);
         }
     }
 }

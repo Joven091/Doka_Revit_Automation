@@ -8,11 +8,12 @@ namespace EngineeringDashboard
     {
         public static double Maximum(int count, double length, double cantilever, double load, double ei)
         {
-            if (count < 2 || count > 4 || length <= 0 || ei <= 0) throw new ArgumentException("Invalid span model.");
-            double end = -load * cantilever * cantilever / 2;
-            double[] moments = new double[count]; moments[0] = moments[count - 1] = end;
-            if (count == 3) moments[1] = (-load * length * length / 2 - 2 * end) / 4;
-            if (count == 4) moments[1] = moments[2] = (-load * length * length / 2 - end) / 5;
+            return FromMoments(ContinuousBeamResponse.SupportMoments(count, length, cantilever, cantilever, load), length, load, ei);
+        }
+        internal static double FromMoments(double[] moments, double length, double load, double ei)
+        {
+            if (length <= 0 || ei <= 0) throw new ArgumentException("Invalid span model.");
+            int count = moments.Length;
             double maximum = 0;
             for (int i = 0; i < count - 1; i++)
             {
