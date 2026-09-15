@@ -22,7 +22,7 @@
      <StackPanel><TextBlock Text="Curing temperature — all slabs"/><ComboBox x:Name="Temperature" SelectionChanged="Temperature_Changed"><ComboBoxItem Content="A · ≥15°C"/><ComboBoxItem Content="B · ≥10°C"/><ComboBoxItem Content="C · ≥5°C"/></ComboBox></StackPanel>
      <StackPanel Grid.Column="1"><TextBlock Text="Project maximum spacing (mm) — optional"/><TextBox x:Name="ProjectMaximum" TextChanged="ProjectMaximum_Changed"/></StackPanel>
     </Grid>
-    <Expander Header="Calculation assumptions" Margin="0,0,0,10"><TextBlock Margin="8" Text="Repeated aligned slab zone. Square grid, rounded down to 25 mm. Concrete: 25 kN/m³. Main formwork: 0.50 kN/m². Working load: 0.75 kN/m². Heaping: 10% of concrete self-weight, min 0.75 / max 1.75 kN/m². Construction live load: 0.75 on the first supporting slab, zero below. Reprop weight: 0.40 kN/m² per required storey. Adopted slab capacity = strength factor × (self-weight + SIDL + final live load). Supplied prop capacities apply to restrained temporary reshoring with direct head/base bearing; effective extension excludes packers. This uniform-area calculation does not check slab punching, local bearing, stiffness-based load sharing or edge layouts."/></Expander>
+    <Expander Header="Calculation assumptions" Margin="0,0,0,10"><TextBlock Margin="8" Text="Repeated aligned slab zone. Square grid, rounded down to 25 mm. Concrete: 25 kN/m³. Main formwork: 0.50 kN/m². Working load: 0.75 kN/m². Heaping: 10% of concrete self-weight, min 0.75 / max 1.75 kN/m². Construction live load: 0.75 on the first supporting slab, zero below. Reprop weight: 0.40 kN/m² per required storey. Adopted slab capacity = strength factor × (self-weight + SIDL + final live load). Supplied prop capacities apply to restrained temporary reshoring with direct head/base bearing; prop extension is floor-to-floor height below minus upper slab thickness, assuming direct slab contact without packers. A blank maximum spacing gives capacity-based spacing only; slab support limits are not checked. This uniform-area calculation does not check slab punching, local bearing, stiffness-based load sharing or edge layouts."/></Expander>
     <Border x:Name="ProgressBorder" Background="#FFF6D6" Padding="10" Margin="0,0,0,10"><TextBlock x:Name="ProgressText" AutomationProperties.LiveSetting="Polite"/></Border>
     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="1.05*"/><ColumnDefinition Width="1*"/></Grid.ColumnDefinitions>
      <StackPanel Margin="0,0,14,0">
@@ -31,7 +31,7 @@
        <TextBlock Text="Floor name"/><TextBox x:Name="FloorName" TextChanged="Draft_Changed"/>
        <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
         <StackPanel><TextBlock Text="Slab thickness (mm)"/><TextBox x:Name="Thickness" TextChanged="Draft_Changed"/></StackPanel>
-        <StackPanel Grid.Column="1"><TextBlock Text="Clear height below (mm)"/><TextBox x:Name="ClearHeight" TextChanged="Draft_Changed"/></StackPanel>
+        <StackPanel Grid.Column="1"><TextBlock Text="Floor-to-floor height below (mm)"/><TextBox x:Name="FloorHeight" TextChanged="Draft_Changed"/></StackPanel>
        </Grid>
        <TextBlock Text="Concrete age (days)"/><TextBox x:Name="Age" TextChanged="Age_Changed"/>
        <TextBlock x:Name="StrengthText" Margin="0,0,0,8"/>

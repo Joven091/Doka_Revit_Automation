@@ -44,7 +44,7 @@ internal static class Program
   window=new BackproppingWindow(); Layout();
   Assert(Get<DataGrid>("SlabGrid").Items.Count==0); Assert(Get<TextBox>("FloorName").Text==""); Assert(Get<ComboBox>("Temperature").SelectedIndex==0);
   Get<TextBox>("FloorName").Text="Level 5"; Assert(Get<Button>("CancelEdit").Visibility==Visibility.Visible);
-  Get<TextBox>("Thickness").Text="200"; Get<TextBox>("ClearHeight").Text="3000";Get<TextBox>("Sidl").Text="3";Get<TextBox>("LiveLoad").Text="3";Click("SaveSlab");
+  Get<TextBox>("Thickness").Text="200"; Get<TextBox>("FloorHeight").Text="3200";Get<TextBox>("Sidl").Text="3";Get<TextBox>("LiveLoad").Text="3";Click("SaveSlab");
   Assert(Get<TextBox>("FloorName").Text=="Level 4");Assert(Get<TextBox>("Sidl").Text=="3");
   Get<TextBox>("Age").Text="10";Click("SaveSlab");
   Get<TextBox>("Age").Text="9";Click("SaveSlab");Assert(Get<DataGrid>("SlabGrid").Items.Count==2);Assert(Get<TextBlock>("ErrorText").Text.Contains("younger"));
@@ -53,13 +53,19 @@ internal static class Program
   Assert(Get<DataGrid>("SlabGrid").Items.Count==4);Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Collapsed);Assert(Section().Contains("28+ days"));
   CheckPropBearing();
   var combos=Children<ComboBox>(Get<StackPanel>("StoreyPanel")).ToList();Assert(combos.Count==2);foreach(var combo in combos)combo.SelectedIndex=0;
+  Assert(Children<TextBox>(Get<StackPanel>("StoreyPanel")).Count()==2);
+  Assert(Children<TextBlock>(Get<StackPanel>("StoreyPanel")).Count(t=>t.Text.Contains("Prop extension: 3000 mm (automatic)"))==2);
   Click("CalculateButton");Layout();Assert(Get<TextBlock>("ErrorText").Text=="");Assert(Get<StackPanel>("ResultsPanel").Children.Count==2);
   Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text=="2750 × 2750 mm"&&t.FontSize>=30));
+  var firstCard=(StackPanel)((Border)Get<StackPanel>("ResultsPanel").Children[0]).Child;
+  Assert(firstCard.Children.Count==4); // Storey identity plus spacing, force and utilization only.
+  Assert(((TextBlock)firstCard.Children[2]).Text.StartsWith("Load per prop:"));
+  Assert(((TextBlock)firstCard.Children[3]).Text.StartsWith("Utilization:"));
   var input=Children<TextBox>(Get<StackPanel>("StoreyPanel")).First(); input.Text="bad";
   Get<ComboBox>("Temperature").SelectedIndex=1;Layout();Assert(Get<StackPanel>("ResultsPanel").Children.Count==0);
   Assert(Children<TextBox>(Get<StackPanel>("StoreyPanel")).First().Text=="bad");
-  Click("CalculateButton");Layout();Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text.Contains("Enter effective prop extension")));
-  Children<TextBox>(Get<StackPanel>("StoreyPanel")).First().Text="3000";Get<TextBox>("ProjectMaximum").Text="2010";Click("CalculateButton");Layout();
+  Click("CalculateButton");Layout();Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text.Contains("Enter maximum spacing")));
+  Children<TextBox>(Get<StackPanel>("StoreyPanel")).First().Text="";Get<TextBox>("ProjectMaximum").Text="2010";Click("CalculateButton");Layout();
   Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text=="2000 × 2000 mm"));
   Click("RemoveLowest");Assert(Get<DataGrid>("SlabGrid").Items.Count==3);Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Visible);
   CheckPropBearing();

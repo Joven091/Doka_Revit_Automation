@@ -7,9 +7,17 @@ internal static class Program
     private static void Equal(double expected, double actual) { checks++; if (double.IsNaN(actual) || Math.Abs(expected-actual)>1e-8) throw new Exception($"Expected {expected}, got {actual}"); }
     private static void True(bool value) { checks++; if (!value) throw new Exception("Assertion failed"); }
     private static void Reject(Action action) { checks++; try { action(); } catch (ArgumentException) { return; } throw new Exception("Expected invalid input rejection"); }
-    private static SlabInput Slab(double age, double sidl=3, double live=3) => new SlabInput { Name="Level", ThicknessMm=200, ClearHeightBelowMm=3000, AgeDays=age, Sidl=sidl, FinalLiveLoad=live };
+    private static SlabInput Slab(double age, double sidl=3, double live=3) => new SlabInput { Name="Level", ThicknessMm=200, FloorHeightBelowMm=3200, AgeDays=age, Sidl=sidl, FinalLiveLoad=live };
     private static void Main()
     {
+        var geometry=Slab(10);
+        Equal(3000,geometry.PropExtensionMm);
+        geometry.ThicknessMm=250; Equal(2950,geometry.PropExtensionMm);
+        geometry.FloorHeightBelowMm=3400; Equal(3150,geometry.PropExtensionMm);
+        geometry.FloorHeightBelowMm=250;
+        Reject(()=>BackproppingCalculator.CalculateLoads(new[]{Slab(0),geometry},TemperatureCurve.A));
+        geometry.FloorHeightBelowMm=200;
+        Reject(()=>BackproppingCalculator.CalculateLoads(new[]{Slab(0),geometry},TemperatureCurve.A));
         foreach (var curve in new[] { TemperatureCurve.A, TemperatureCurve.B, TemperatureCurve.C })
         { Equal(0,BackproppingCalculator.Strength(0,curve)); Equal(100,BackproppingCalculator.Strength(28,curve)); Equal(100,BackproppingCalculator.Strength(70,curve)); }
         Equal(50,BackproppingCalculator.Strength(2,TemperatureCurve.A)); Equal(70,BackproppingCalculator.Strength(4,TemperatureCurve.A));
