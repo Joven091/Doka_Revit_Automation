@@ -41,7 +41,7 @@ namespace EngineeringDashboard
             DiagramCaption.Text = $"{observedModel.SlabThickness:0.##} mm slab · primary spacing {observedModel.SuggestedPrimaryBeamSpacing:0} mm\n" +
                 $"Prop spacing {observedModel.PropSpacing:0.##} mm · secondary spacing {observedModel.SecondaryBeamSpacing:0.##} mm\n" +
                 (envelope ? "5+ shown with five supports. " : "") + "Secondary members span up to three supports.\n" +
-                "Joints and quantities are illustrative; calculations retain the selected continuous support count.";
+                "Side-by-side overlaps and quantities are illustrative; calculations retain the selected continuous support count.";
         }
         private void InputValidation_Error(object sender, ValidationErrorEventArgs e)
         {

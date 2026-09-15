@@ -22,6 +22,22 @@ namespace EngineeringDashboard
                 ranges.Add(new[] { first, Math.Min(first + 2, supportCount - 1) });
             return ranges.ToArray();
         }
+        internal static Rect[] SecondaryMemberPlans(int supportCount, double span, double overhang, double rowY, double beamWidth)
+        {
+            var ranges = SecondarySupportRanges(supportCount);
+            double axisScale = 240 / ((supportCount - 1) * span + 2 * overhang);
+            // Display lap only: extend both members past the shared support without reaching another support.
+            double halfLap = Math.Min(14, span * axisScale * .2);
+            var plans = new Rect[ranges.Length];
+            for (int i = 0; i < ranges.Length; i++)
+            {
+                double x0 = ranges[i][0] == 0 ? -120 : -120 + (overhang + ranges[i][0] * span) * axisScale - halfLap;
+                double x1 = ranges[i][1] == supportCount - 1 ? 120 : -120 + (overhang + ranges[i][1] * span) * axisScale + halfLap;
+                double offset = ranges.Length == 1 ? 0 : (i % 2 == 0 ? .6 : -.6) * beamWidth;
+                plans[i] = new Rect(x0,rowY+offset-beamWidth/2,x1-x0,beamWidth);
+            }
+            return plans;
+        }
         public void SetModel(FlexCalculatorViewModel value)
         {
             model = value;
@@ -95,17 +111,19 @@ namespace EngineeringDashboard
             int secondaryCount = dense ? 18 : (int)intervals + 1;
             double occupied = dense ? along : intervals * model.SecondaryBeamSpacing;
             double start = (along - occupied) / 2;
-            var memberRanges = SecondarySupportRanges(primaryCount);
+            bool joined = primaryCount > 3;
+            double secondaryWidth = joined ? Math.Min(10,250.0/(secondaryCount+1)/2.4) : 10;
+            double edgeInset = joined ? 1.1 * secondaryWidth : 0;
             for (int i = secondaryCount - 1; i >= 0; i--)
             {
                 double y = (secondaryCount == 1 ? along / 2 : start + occupied * i / (secondaryCount - 1)) * yScale;
-                foreach (var range in memberRanges)
+                y = edgeInset + y * (250 - 2 * edgeInset) / 250;
+                var plans = SecondaryMemberPlans(primaryCount,model.SuggestedPrimaryBeamSpacing,model.SecondaryBeamCantilever,y,secondaryWidth);
+                // Draw the far member first. Overlapping lengths occupy adjacent lanes at the same elevation.
+                for (int member = 0; member < plans.Length; member++)
                 {
-                    // A small visible seam lies within the shared primary bearing, not in the span.
-                    // Joint/bearing dimensions are illustrative and are not used in the calculation.
-                    double x0 = range[0] == 0 ? -120 : -120 + (model.SecondaryBeamCantilever + range[0] * model.SuggestedPrimaryBeamSpacing) * xScale + 1.2;
-                    double x1 = range[1] == primaryCount - 1 ? 120 : -120 + (model.SecondaryBeamCantilever + range[1] * model.SuggestedPrimaryBeamSpacing) * xScale - 1.2;
-                    H20(dc,x0,y-5,propHeight+20,x1-x0,10,false);
+                    var plan = plans[member];
+                    H20(dc,plan.X,plan.Y,propHeight+20,plan.Width,plan.Height,false);
                     DrawnSecondaryMemberCount++;
                 }
                 DrawnSecondaryCount++;

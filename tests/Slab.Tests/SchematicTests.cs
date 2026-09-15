@@ -31,6 +31,13 @@ internal static class SchematicTests
                 if(i>0)check(ranges[i][0]==ranges[i-1][1],"secondary joint shares primary support");
             }
             check(diagram.DrawnSecondaryMemberCount==diagram.DrawnSecondaryCount*ranges.Length,"secondary members rendered separately");
+            var plans=SlabSupportDiagram.SecondaryMemberPlans(lines,2100,500,125,8);
+            for(int i=1;i<plans.Length;i++){
+                double bearing=-120+(500+ranges[i][0]*2100)*240.0/((lines-1)*2100+1000);
+                check(plans[i].Left<bearing && plans[i-1].Right>bearing,"both secondary ends extend beyond shared support");
+                check(plans[i].Left<plans[i-1].Right,"secondary lengths overlap");
+                check(plans[i].Bottom<=plans[i-1].Top || plans[i-1].Bottom<=plans[i].Top,"lapped H20s sit side by side without intersecting");
+            }
         }
         var valid = new FlexCalculatorViewModel(); Draw(diagram,valid); int before=diagram.DrawnSecondaryCount;
         valid.SecondaryBeamSpacing=100; Draw(diagram,valid); check(diagram.DrawnSecondaryCount>before,"secondary pattern responds to spacing");
