@@ -11,6 +11,8 @@ namespace EngineeringDashboard
         public double Moment { get; private set; }
         public double SpanDeflection { get; private set; }
         public double[] Reactions { get; private set; }
+        public double MinimumReaction => Reactions.Min();
+        public int MinimumReactionSupport => Array.IndexOf(Reactions, MinimumReaction) + 1;
         public static double[] SupportMoments(int count, double length, double left, double right, double load)
         {
             if (count < 2 || count > 10000 || length <= 0 || double.IsInfinity(length) || double.IsNaN(length)) throw new ArgumentException("Invalid continuous beam geometry.");
@@ -64,21 +66,30 @@ namespace EngineeringDashboard
         public double Moment { get; private set; }
         public double SpanDeflection { get; private set; }
         public int ReactionCount { get; private set; }
+        public double MinimumReaction { get; private set; }
+        public int MinimumReactionSupport { get; private set; }
+        public int MinimumReactionCount { get; private set; }
+        // Relative tolerance suppresses floating-point cancellation at zero contact only.
+        // Keep the signed reaction unchanged; never replace uplift with a zero reaction.
+        public bool HasUplift => MinimumReaction < -1e-10 * Math.Max(Math.Abs(Reaction), Math.Abs(MinimumReaction));
         public static SlabSupportEnvelope ForSelection(int count, double length, double cantilever, double load, double ei)
         {
             if (count == 5) return Calculate(length, cantilever, load, ei); // Selector value 5 means 5+.
             var response = ContinuousBeamResponse.Analyze(count, length, cantilever, load, ei);
             return new SlabSupportEnvelope { Reaction = response.Reaction, Shear = response.Shear, Moment = response.Moment,
-                SpanDeflection = response.SpanDeflection, ReactionCount = count };
+                SpanDeflection = response.SpanDeflection, ReactionCount = count,
+                MinimumReaction = response.MinimumReaction, MinimumReactionSupport = response.MinimumReactionSupport, MinimumReactionCount = count };
         }
         public static SlabSupportEnvelope Calculate(double length, double cantilever, double load, double ei)
         {
             var five = ContinuousBeamResponse.Analyze(5, length, cantilever, load, ei);
             var six = ContinuousBeamResponse.Analyze(6, length, cantilever, load, ei);
+            var minimum = five.MinimumReaction <= six.MinimumReaction ? five : six;
             return new SlabSupportEnvelope { Reaction = Math.Max(five.Reaction, six.Reaction),
                 Shear = Math.Max(five.Shear, six.Shear), Moment = Math.Max(five.Moment, six.Moment),
                 SpanDeflection = Math.Max(five.SpanDeflection, six.SpanDeflection),
-                ReactionCount = five.Reaction >= six.Reaction ? 5 : 6 };
+                ReactionCount = five.Reaction >= six.Reaction ? 5 : 6,
+                MinimumReaction = minimum.MinimumReaction, MinimumReactionSupport = minimum.MinimumReactionSupport, MinimumReactionCount = minimum.Count };
         }
     }
 }

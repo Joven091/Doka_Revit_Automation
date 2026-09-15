@@ -280,8 +280,15 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
 
         // Primary support response is linear in load; reuse the unit-load envelope for each spacing candidate.
         var primaryEnvelope = SlabSupportEnvelope.ForSelection(pcInt, L_p, a_p, 1, H20_EI);
+        if (primaryEnvelope.HasUplift)
+        {
+            WarningMessage = UpliftLocation("Primary H20", "prop", primaryEnvelope, pcInt == 5) +
+                " Shorten the primary overhang or revise prop spacing. Changing primary beam spacing cannot resolve this geometry.";
+            return;
+        }
         // 4. Numerical Solver for L_s (Continuous Beam Analysis)
         double best_L_s = 0;
+        string secondaryUplift = null;
         
         if (warnings.Count == 0) 
         {
@@ -312,6 +319,13 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
                     m_prim <= MAX_H20_MOMENT_KNM && 
                     p_prop <= capacity && defl_prim <= L_p / limit_denom)
                 {
+                    if (secondaryEnvelope.HasUplift)
+                    {
+                        if (secondaryUplift == null)
+                            secondaryUplift = UpliftLocation("Secondary H20", "primary beam support", secondaryEnvelope, pbcInt == 5) +
+                                $" At {spacingMm} mm primary beam spacing, the other checks pass but contact is lost. Shorten the secondary overhang or revise the support arrangement.";
+                        continue;
+                    }
                     best_L_s = test_L;
                     break; 
                 }
@@ -321,6 +335,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         // 5. Final Output Resolution
         if (best_L_s <= 0)
         {
+            if (secondaryUplift != null) warnings.Add(secondaryUplift);
             warnings.Add("Cannot find a valid primary beam spacing for the given parameters.");
             SuggestedPrimaryBeamSpacing = 0;
             ActualPropLoad = 0;
@@ -353,6 +368,12 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         }
 
         UpdateDiagrams(pbcInt, pcInt, w_sb, w_slab, a_s, a_p, SuggestedPrimaryBeamSpacing / 1000.0, L_p);
+    }
+
+    private static string UpliftLocation(string beam, string support, SlabSupportEnvelope response, bool envelope)
+    {
+        string caseLabel = envelope ? $" in the {response.MinimumReactionCount}-support case of 5+" : "";
+        return $"Uplift: {beam} loses contact at {support} {response.MinimumReactionSupport} (numbered from the left){caseLabel}.";
     }
 
     private void UpdateDiagrams(int pbcInt, int pcInt, double w_sb, double w_slab, double a_s, double a_p, double final_L_s, double L_p)

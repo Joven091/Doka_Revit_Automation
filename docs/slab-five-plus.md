@@ -29,7 +29,7 @@ These bounds follow from the alternating powers of r with |r|<1 and the recurren
 
 At any position in a span, moment, shear and displacement are affine functions of its two end moments. Their maximum absolute values are convex functions, so their maxima over this polygon occur at its vertices. This proves that taking the component-wise maximum from five and six supports bounds those responses for all N≥5.
 
-Interior support reactions are qL/2−6M_i/L; interior f_i ranges from −2/7 to 1/7, both attained with five supports. End reactions are qL/2+(M_1−M_0)/L+qa; the extreme first-interior coefficients −2/7 and −5/19 occur with five and six supports. Thus these cases also cover the maximum reaction. Cantilever shear qa and root moment qa²/2 are independent of support count.
+Interior support reactions are qL/2−6M_i/L; interior f_i ranges from −2/7 to 1/7, both attained with five supports. End reactions are qL/2+(M_1−M_0)/L+qa; the extreme first-interior coefficients −2/7 and −5/19 occur with five and six supports. Thus these cases also cover both the maximum and minimum reaction. The minimum is retained for the uplift check; the warning identifies its support and case count. Cantilever shear qa and root moment qa²/2 are independent of support count.
 
 For zero cantilever, maximum reaction divided by qL is 1.1 for four supports, 8/7 for five and 43/38 for six. Four supports therefore cannot stand in for all higher counts.
 
@@ -39,4 +39,6 @@ ContinuousBeamResponse solves the tridiagonal three-moment system and calculates
 
 Tests compare the solver with closed-form moments, force equilibrium and independent polynomial displacement evaluations through 100 supports over nine cantilever ratios. Polygon inequalities are checked through 256 supports. These numerical checks supplement the envelope derivation; they are not the reason for truncating the calculation to five and six.
 
-Uplift rejection, cantilever-tip deflection including support rotation, and the remaining complete formwork load-path checks remain deferred audit items. This change checks span deflection and retains the existing cantilever-tip precheck. Actual Revit transactions were not exercised by the test host.
+Uplift now invalidates the layout: primary geometry is checked once, and secondary contact is checked at each otherwise passing spacing candidate. Reactions below −1e-10 times the maximum absolute reaction are rejected; this tolerance handles numerical cancellation at zero without clipping negative reactions. Tests include the three-support formula R_middle/q=1.25L−1.5a²/L, boundary perturbations, load scaling, higher-count minima and UI invalidation/recovery.
+
+Cantilever-tip deflection including support rotation and the remaining complete formwork load-path checks remain deferred audit items. This change checks span deflection and retains the existing cantilever-tip precheck. Actual Revit transactions were not exercised by the test host.

@@ -49,6 +49,7 @@ class Program
   v=new FlexCalculatorViewModel{SlabThickness=150,FloorHeight=2568,PropCount="2",PropSpacing=2500,PrimaryBeamCantilever=0,DeflectionLimit="L/500"};Invalid(v,"old over-deflected layout rejected");v.PropSpacing=2000;Check(v.IsCalculationValid,"shorter prop span recovers");Check(v.PrimaryDeflectionMm<=4,"primary deflection enforced");
   Check(v.PrimaryBeamCountOptions.SequenceEqual(new[]{"2","3","4","5+"}),"secondary supports options");Check(v.PropCountOptions.SequenceEqual(v.PrimaryBeamCountOptions),"primary supports options");
   FivePlusTests.Run(Check,Equal);
+  UpliftTests.Run(Check,Equal);
   v=new FlexCalculatorViewModel{SlabThickness=100,FloorHeight=4518,PropModel="DokaFit Prop",PropType="400",SelectedH20="4.90m",PrimaryBeamCount="5+",PropCount="5+",PrimaryBeamCantilever=250,SecondaryBeamCantilever=0,PropSpacing=1000};
   Check(v.IsCalculationValid,"5+ overload regression valid revised layout");Check(v.SuggestedPrimaryBeamSpacing<3100,"5+ formerly overloaded spacing reduced");
   double secondaryReaction=ContinuousBeamResponse.Analyze(5,v.SuggestedPrimaryBeamSpacing/1000,0,4.4,449.8756).Reaction;
@@ -64,11 +65,13 @@ class Program
   RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;window=new FlexCalculatorWindow();var visualRoot=(FrameworkElement)window.Content;visualRoot.Measure(new Size(560,1160));visualRoot.Arrange(new Rect(0,0,560,1160));visualRoot.UpdateLayout();Pump();v=(FlexCalculatorViewModel)window.DataContext;var import=(Button)window.FindName("ImportButton");Check(import.IsEnabled,"initial import");
   Enter("SlabThickness","abc");Invalid(v,"text conversion");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var ignored),"import guard");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"results hidden");
   Enter("SlabThickness","300");Check(v.IsCalculationValid&&import.IsEnabled,"text repair");v.UseCustomLoads=true;Pump();Enter("CustomLiveLoad","bad");Invalid(v,"custom text");v.UseCustomLoads=false;Pump();Check(v.IsCalculationValid,"inactive conversion ignored");v.UseCustomLoads=true;Pump();Invalid(v,"reactivated conversion");Enter("CustomLiveLoad","2.25");v.UseCustomLoads=false;
+  v.SelectedH20="4.90m";Enter("PrimaryBeamCantilever","1000");Invalid(v,"UI uplift");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var upliftIgnored),"uplift import blocked");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"uplift results hidden");Enter("PrimaryBeamCantilever","500");Check(v.IsCalculationValid&&import.IsEnabled,"UI uplift recovery");v.SelectedH20="3.30m";
   Enter("FloorHeight","10000");Invalid(v,"UI extension");Enter("FloorHeight","3000");Check(v.IsCalculationValid,"UI extension repair");
   var choice=Find<ComboBox>(window).Single(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="SelectedH20");choice.SelectedItem="2.90m";Pump();Invalid(v,"UI H20 fit");choice.SelectedItem="3.30m";Pump();Check(v.IsCalculationValid,"UI H20 recovery");
   v.SelectedH20="4.90m";v.PropSpacing=750;var propCount=Find<ComboBox>(window).Single(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="PropCount");propCount.SelectedItem="5+";Pump();Check(v.PropCount=="5+"&&v.IsCalculationValid,"UI 5+ selection");Check(v.MemberFitHint.Contains("at most 6 props"),"5+ member fit hint");
   var primaryCount=Find<ComboBox>(window).Single(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="PrimaryBeamCount");primaryCount.SelectedItem="5+";Pump();Check(v.PrimaryBeamCount=="5+"&&v.IsCalculationValid,"UI secondary 5+ selection");
   v.PropModel="DokaFit Prop";Pump();Check(!v.PropOrientationOptions.Contains("at fixed"),"orientation choices");v.PropModel="Prop Type Eurex eco 20";Pump();
+  if(args.Length>1 && args[1]=="uplift"){Enter("PrimaryBeamCantilever","900");Invalid(v,"rendered uplift state");}
   if(args.Length>0){var root=(FrameworkElement)window.Content;root.Measure(new Size(560,1160));root.Arrange(new Rect(0,0,560,1160));root.UpdateLayout();var bitmap=new RenderTargetBitmap(560,1160,96,96,PixelFormats.Pbgra32);bitmap.Render(root);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(args[0]))png.Save(file);}
  }
 }
