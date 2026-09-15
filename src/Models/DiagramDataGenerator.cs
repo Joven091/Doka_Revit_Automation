@@ -156,7 +156,7 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
 
             // --- LOADING DIAGRAM ---
             // Hide axes on the loading diagram
-            loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Minimum = -0.06 * L_total, Maximum = 1.06 * L_total, IsAxisVisible = false });
+            loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Minimum = 0, Maximum = L_total, MinimumPadding = 0, MaximumPadding = 0, IsAxisVisible = false });
             loadPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Minimum = -6, Maximum = 5, IsAxisVisible = false });
 
             // Beam line
@@ -199,6 +199,22 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
                 double spanDist = currentPos - lastPos;
                 if (spanDist > 1e-6)
                 {
+                    // A separate dimension row keeps lengths clear of support reactions.
+                    var dimension = new LineSeries { Color = OxyColors.Gray, StrokeThickness = 1 };
+                    dimension.Points.Add(new DataPoint(lastPos, -3.5));
+                    dimension.Points.Add(new DataPoint(lastPos, -3.9));
+                    dimension.Points.Add(new DataPoint(currentPos, -3.9));
+                    dimension.Points.Add(new DataPoint(currentPos, -3.5));
+                    loadPlot.Series.Add(dimension);
+                    bool leftEnd = i == 0;
+                    bool rightEnd = i == supportPositions.Length;
+                    loadPlot.Annotations.Add(new OxyPlot.Annotations.TextAnnotation {
+                        Text = $"{spanDist * 1000:0.##} mm",
+                        TextPosition = new DataPoint(leftEnd ? lastPos : rightEnd ? currentPos : (lastPos + currentPos) / 2, -4.1),
+                        TextHorizontalAlignment = leftEnd ? OxyPlot.HorizontalAlignment.Left : rightEnd ? OxyPlot.HorizontalAlignment.Right : OxyPlot.HorizontalAlignment.Center,
+                        TextVerticalAlignment = OxyPlot.VerticalAlignment.Top,
+                        FontSize = 11, Stroke = OxyColors.Transparent
+                    });
                     // Tick line at end of span (if not the very end, or if we want one at the end)
                     if (i < supportPositions.Length)
                     {
@@ -246,7 +262,7 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
                     {
                         Text = $"S{i + 1}\n{R[i]:0.00} kN",
                         TextPosition = new DataPoint(currentPos, -1.5),
-                        TextHorizontalAlignment = OxyPlot.HorizontalAlignment.Center,
+                        TextHorizontalAlignment = currentPos == 0 ? OxyPlot.HorizontalAlignment.Left : currentPos == L_total ? OxyPlot.HorizontalAlignment.Right : OxyPlot.HorizontalAlignment.Center,
                         TextVerticalAlignment = OxyPlot.VerticalAlignment.Top,
                         FontSize = 12,
                         TextColor = OxyColors.Black, Stroke = OxyColors.Transparent
@@ -272,13 +288,13 @@ var deflectionPlot = new PlotModel { Title = $"{titlePrefix} - Deflection Diagra
             double actualMaxDeflection = Math.Max(Math.Abs(maxDeflection), Math.Abs(minDeflection));
             double deflectionLimit = Math.Max(actualMaxDeflection, 1.0); // Set minimum limit to 1.0 to prevent 0 scale
 
-            shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = -0.06 * L_total, Maximum = 1.06 * L_total });
+            shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total, MinimumPadding = 0, MaximumPadding = 0 });
             shearPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Shear (kN)", Minimum = -shearLimit, Maximum = shearLimit });
 
-            momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = -0.06 * L_total, Maximum = 1.06 * L_total });
+            momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total, MinimumPadding = 0, MaximumPadding = 0 });
             momentPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Moment (kNm)", Minimum = -momentLimit, Maximum = momentLimit });
 
-            deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = -0.06 * L_total, Maximum = 1.06 * L_total });
+            deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Distance (m)", Minimum = 0, Maximum = L_total, MinimumPadding = 0, MaximumPadding = 0 });
             deflectionPlot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Title = "Deflection (mm)", Minimum = -deflectionLimit, Maximum = deflectionLimit });
 
             return (loadPlot, shearPlot, momentPlot, deflectionPlot, maxShear, minShear, maxMoment, minMoment, maxDeflection, minDeflection);
