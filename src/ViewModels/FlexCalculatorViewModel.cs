@@ -15,7 +15,6 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     // --- Constants ---
     private const double MAX_H20_SHEAR_KN = 11.00;
     private const double MAX_H20_MOMENT_KNM = 5.00;
-    private const double SYSTEM_DEPTH_METERS = 0.418;
     private const double H20_E_KN_M2 = 10760000; // 1076 kN/cm2 = 10760000 kN/m2
     private const double H20_I_M4 = 0.00004181;  // 4181 cm4 = 0.00004181 m4
     private const double H20_EI = H20_E_KN_M2 * H20_I_M4;
@@ -42,8 +41,14 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     private string _propModel = "Prop Type Eurex eco 20";
     private string _propType = "300";
     private string _propOrientation = "at bottom";
-    private string _selectedH20 = "2.90m";
+    private string _selectedH20 = "3.30m";
 
+    public bool IsCalculationValid { get; private set; }
+    private bool textErrors;
+    public double PropExtensionMm => FloorHeight - SlabThickness - 418;
+    public double PropLookupExtensionMm { get; private set; }
+    public double PrimaryDeflectionMm { get; private set; }
+    public void SetTextInputErrors(bool value) { if (textErrors != value) { textErrors = value; Calculate(); } }
     // --- Outputs ---
     private double _recommendedPropSpacing;
     private double _suggestedPrimaryBeamSpacing;
@@ -107,10 +112,11 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         {
             _selectedH20 = value;
             OnPropertyChanged();
-            if (FloorPropData.H20Data.TryGetValue(value, out double rec))
+            if (value != null && FloorPropData.H20Data.TryGetValue(value, out double rec))
             {
                 RecommendedPropSpacing = rec;
             }
+            Calculate();
         }
     }
 
@@ -140,11 +146,12 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
 
     public FlexCalculatorViewModel()
     {
-        ViewPrimaryBeamDiagramCommand = new RelayCommand(_ => PrimaryBeamDiagramRequested?.Invoke(this, EventArgs.Empty));
-        ViewSecondaryBeamDiagramCommand = new RelayCommand(_ => SecondaryBeamDiagramRequested?.Invoke(this, EventArgs.Empty));
+        ViewPrimaryBeamDiagramCommand = new RelayCommand(_ => PrimaryBeamDiagramRequested?.Invoke(this, EventArgs.Empty), _ => IsCalculationValid);
+        ViewSecondaryBeamDiagramCommand = new RelayCommand(_ => SecondaryBeamDiagramRequested?.Invoke(this, EventArgs.Empty), _ => IsCalculationValid);
 
-        SelectedH20 = "2.90m"; 
+        // The default three-prop layout occupies 3000 mm and fits a 3.30 m member. 
         UpdatePropOptions();
+        RecommendedPropSpacing = FloorPropData.H20Data[SelectedH20];
         Calculate();
     }
 
@@ -160,40 +167,56 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         else if (PropModel == "DokaFit Prop")
         {
             PropTypeOptions = new List<string> { "300", "350", "400" };
-            PropOrientationOptions = new List<string> { "at bottom", "at top", "at fixed" };
+            PropOrientationOptions = new List<string> { "at bottom", "at top" };
             if (!PropTypeOptions.Contains(PropType)) PropType = "300";
             if (!PropOrientationOptions.Contains(PropOrientation)) PropOrientation = "at bottom";
         }
     }
 
+    private static void CheckNumber(double value, string name, bool positive = true)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value) || value < 0 || positive && value == 0)
+            throw new ArgumentException(name + (positive ? " must be finite and greater than zero." : " must be finite and zero or greater."));
+    }
+    private void ValidateInputs()
+    {
+        if (textErrors) throw new ArgumentException("Correct the highlighted input before calculating or importing.");
+        CheckNumber(SlabThickness, "Slab thickness"); CheckNumber(FloorHeight, "Floor height");
+        CheckNumber(SecondaryBeamSpacing, "Secondary spacing"); CheckNumber(PropSpacing, "Prop spacing");
+        if (PropSpacing < 1) throw new ArgumentException("Prop spacing must be at least 1 mm.");
+        CheckNumber(SecondaryBeamCantilever, "Secondary cantilever", false); CheckNumber(PrimaryBeamCantilever, "Primary cantilever", false);
+        if (UseCustomLoads) { CheckNumber(CustomLiveLoad, "Live load", false); CheckNumber(CustomFormworkLoad, "Formwork load", false); }
+        if (!PrimaryBeamCountOptions.Contains(PrimaryBeamCount) || !PropCountOptions.Contains(PropCount) || !DeflectionLimitOptions.Contains(DeflectionLimit)) throw new ArgumentException("Select valid support counts and a deflection limit.");
+        if (!PropModelOptions.Contains(PropModel) || PropTypeOptions == null || !PropTypeOptions.Contains(PropType) || PropOrientationOptions == null || !PropOrientationOptions.Contains(PropOrientation)) throw new ArgumentException("Select a supported prop and outer tube orientation.");
+        if (SelectedH20 == null || !FloorPropData.H20Data.ContainsKey(SelectedH20)) throw new ArgumentException("Select an H20 length.");
+        int count = PropCount == "4+" ? 4 : int.Parse(PropCount);
+        double available = double.Parse(SelectedH20.Replace("m", ""), System.Globalization.CultureInfo.InvariantCulture) * 1000;
+        if ((count - 1) * PropSpacing + 2 * PrimaryBeamCantilever > available + 1e-7) throw new ArgumentException("The primary spans and cantilevers exceed the selected H20 length. Choose a longer member or reduce the layout.");
+    }
+    private void ClearResults()
+    {
+        IsCalculationValid = false; SuggestedPrimaryBeamSpacing = ActualPropLoad = H20Shear = H20Utilization = UtilizationRate = PropCapacityLimit = 0;
+        PrimaryDeflectionMm = PropLookupExtensionMm = 0;
+        PrimaryDiagramViewModel = SecondaryDiagramViewModel = null;
+    }
     private void Calculate()
+    {
+        ClearResults();
+        try { ValidateInputs(); CalculateValidInputs(); IsCalculationValid = SuggestedPrimaryBeamSpacing > 0 && string.IsNullOrEmpty(WarningMessage); }
+        catch (ArgumentException ex) { ClearResults(); WarningMessage = ex.Message; }
+        OnPropertyChanged(nameof(IsCalculationValid)); OnPropertyChanged(nameof(PropExtensionMm)); OnPropertyChanged(nameof(PropLookupExtensionMm)); OnPropertyChanged(nameof(PrimaryDeflectionMm));
+        CommandManager.InvalidateRequerySuggested();
+    }
+    private void CalculateValidInputs()
     {
         WarningMessage = string.Empty;
         List<string> warnings = [];
 
         // 1. Get allowable capacities
-        double extensionMeters = (FloorHeight / 1000.0) - (SlabThickness / 1000.0) - SYSTEM_DEPTH_METERS;
-        double roundedExtension = Math.Ceiling(extensionMeters * 10) / 10.0;
-
-        string propKey = PropModel == "DokaFit Prop"
-            ? $"DokaFit Prop {PropType} {PropOrientation}"
-            : $"{PropType} {PropOrientation}";
-
-        double? capacity = PropDataHelper.GetCapacity(roundedExtension, propKey);
-
-        if (!capacity.HasValue || capacity.Value <= 0)
-        {
-            PropCapacityLimit = 0;
-            UtilizationRate = 0;
-            SuggestedPrimaryBeamSpacing = 0;
-            ActualPropLoad = 0;
-            H20Shear = 0;
-            H20Utilization = 0;
-            WarningMessage = "Prop capacity data not found for this extension height.";
-            return;
-        }
-
-        PropCapacityLimit = Math.Round(capacity.Value, 2);
+        string propKey = PropModel == "DokaFit Prop" ? $"DokaFit Prop {PropType} {PropOrientation}" : $"{PropType} {PropOrientation}";
+        double capacity = PropDataHelper.CapacityAtExtensionMm(PropExtensionMm, propKey, out double lookupMm);
+        PropLookupExtensionMm = lookupMm;
+        PropCapacityLimit = capacity;
 
         // 2. Convert inputs to working units
         int pbcInt = PrimaryBeamCount == "4+" ? 4 : (int.TryParse(PrimaryBeamCount, out int p) ? p : 3);
@@ -205,19 +228,21 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             double h = SlabThickness / 1000.0;
             double concreteLoad = h * 25.0;
             w_slab = concreteLoad + CustomLiveLoad + CustomFormworkLoad;
-            w_slab = Math.Round(w_slab, 2);
+
         }
         else
         {
-            w_slab = SlabLoadHelper.CalculateTotalLoad((int)SlabThickness);
+            w_slab = SlabLoadHelper.CalculateTotalLoad(SlabThickness);
         }
 
+        CheckNumber(w_slab, "Total slab load");
         double a_s = SecondaryBeamCantilever / 1000.0;
         double L_p = PropSpacing / 1000.0;
         double a_p = PrimaryBeamCantilever / 1000.0;
         double c_sec = SecondaryBeamSpacing / 1000.0;
 
-        double w_sb = w_slab * c_sec; 
+        double w_sb = w_slab * c_sec;
+        CheckNumber(w_sb, "Secondary beam line load"); 
 
         // Deflection Limit parsing
         double limit_denom = 350.0;
@@ -248,9 +273,10 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         
         if (warnings.Count == 0) 
         {
-            // Iterate from 4.0m down to 0.1m in 10mm increments
-            for (double test_L = 4.00; test_L >= 0.10; test_L -= 0.01) 
+            // Evaluate the actual 25 mm output grid, including the primary deflection check.
+            for (int spacingMm = 4000; spacingMm >= 100; spacingMm -= 25) 
             {
+                double test_L = spacingMm / 1000.0;
                 // Secondary Beam Internal Forces & Deflection
                 double v_sec = w_sb * GetMaxShearMultiplier(pbcInt, test_L, a_s);
                 double m_sec = w_sb * GetMaxMomentMultiplier(pbcInt, test_L, a_s);
@@ -263,6 +289,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
                 // Primary Beam Internal Forces & Prop Reaction
                 double v_prim = w_pb * GetMaxShearMultiplier(pcInt, L_p, a_p);
                 double m_prim = w_pb * GetMaxMomentMultiplier(pcInt, L_p, a_p);
+                double defl_prim = ContinuousSpanDeflection.Maximum(pcInt, L_p, a_p, w_pb, H20_EI);
                 double p_prop = w_pb * GetMaxReactionMultiplier(pcInt, L_p, a_p);
                 
                 if (v_sec <= MAX_H20_SHEAR_KN && 
@@ -270,7 +297,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
                     defl_sec <= (test_L / limit_denom) &&
                     v_prim <= MAX_H20_SHEAR_KN && 
                     m_prim <= MAX_H20_MOMENT_KNM && 
-                    p_prop <= capacity.Value)
+                    p_prop <= capacity && defl_prim <= L_p / limit_denom)
                 {
                     best_L_s = test_L;
                     break; 
@@ -290,7 +317,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         }
         else
         {
-            SuggestedPrimaryBeamSpacing = Math.Floor((best_L_s * 1000.0) / 25.0) * 25.0;
+            SuggestedPrimaryBeamSpacing = Math.Round(best_L_s * 1000.0 / 25) * 25;
             
             // Convert back to meters for load calculation
             double final_L_s = SuggestedPrimaryBeamSpacing / 1000.0;
@@ -300,10 +327,11 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
             double final_V_prim = final_w_pb * GetMaxShearMultiplier(pcInt, L_p, a_p);
             double final_P_prop = final_w_pb * GetMaxReactionMultiplier(pcInt, L_p, a_p);
             
+            PrimaryDeflectionMm = ContinuousSpanDeflection.Maximum(pcInt, L_p, a_p, final_w_pb, H20_EI) * 1000;
             ActualPropLoad = Math.Round(final_P_prop, 2);
             H20Shear = Math.Round(final_V_prim, 2);
             H20Utilization = Math.Round((final_V_prim / MAX_H20_SHEAR_KN) * 100, 1);
-            UtilizationRate = Math.Round((final_P_prop / capacity.Value) * 100, 1);
+            UtilizationRate = Math.Round((final_P_prop / capacity) * 100, 1);
         }
 
         if (warnings.Count != 0)

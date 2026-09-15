@@ -26,12 +26,9 @@ namespace EngineeringDashboard
         }
         public double Capacity(double extensionMm,out double lookupMeters)
         {
-            if(double.IsNaN(extensionMm)||double.IsInfinity(extensionMm)||extensionMm<MinimumMm||extensionMm>MaximumMm)
-                throw new ArgumentException($"{Label}: prop extension must be within the available table range {MinimumMm:0}–{MaximumMm:0} mm.");
-            lookupMeters=Math.Ceiling(extensionMm/100)/10;
-            double? capacity=PropDataHelper.GetCapacity(lookupMeters,CapacityKey);
-            if(!capacity.HasValue||capacity.Value<=0)throw new ArgumentException("Prop capacity data not found for this extension and configuration.");
-            return capacity.Value;
+            double capacity = PropDataHelper.CapacityAtExtensionMm(extensionMm, CapacityKey, out double lookupMm);
+            lookupMeters = lookupMm / 1000;
+            return capacity;
         }
     }
 }

@@ -2,13 +2,13 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Flex Calculator Dashboard" Height="820" Width="500"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen" Background="White">
     
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
     </Window.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+    <ScrollViewer Background="White" VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
         <Grid Margin="20">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -34,10 +34,10 @@
                     </Grid.RowDefinitions>
 
                     <Label Content="Slab Thickness (mm):" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding SlabThickness, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding SlabThickness, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Floor Height (mm):" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding FloorHeight, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding FloorHeight, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
                 </Grid>
             </GroupBox>
 
@@ -56,16 +56,16 @@
                     </Grid.RowDefinitions>
 
                     <Label Content="Primary Beam Count:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                    <ComboBox ItemsSource="{Binding PrimaryBeamCountOptions}" SelectedItem="{Binding PrimaryBeamCount, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
+                    <ComboBox ItemsSource="{Binding PrimaryBeamCountOptions}" SelectedItem="{Binding PrimaryBeamCount, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Secondary Beam Spacing (mm):" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding SecondaryBeamSpacing, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding SecondaryBeamSpacing, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Secondary Beam Cantilever (mm):" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding SecondaryBeamCantilever, UpdateSourceTrigger=PropertyChanged}" Grid.Row="2" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding SecondaryBeamCantilever, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="2" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Deflection Limit:" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
-                    <ComboBox ItemsSource="{Binding DeflectionLimitOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged}" Grid.Row="3" Grid.Column="1" Margin="0,5"/>
+                    <ComboBox ItemsSource="{Binding DeflectionLimitOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="3" Grid.Column="1" Margin="0,5"/>
 
                     <Button Content="View Secondary Beam Diagram" Command="{Binding ViewSecondaryBeamDiagramCommand}" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,10,0,0" Padding="5" />
                 </Grid>
@@ -91,30 +91,31 @@
                     </Grid.RowDefinitions>
 
                     <Label Content="Selected H20 Timber:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                    <ComboBox ItemsSource="{Binding H20Options}" SelectedItem="{Binding SelectedH20, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
+                    <ComboBox ItemsSource="{Binding H20Options}" SelectedItem="{Binding SelectedH20, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
                     
-                    <Label Content="Recommended Prop Spacing (m):" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Foreground="Gray"/>
+                    <Label Content="Advisory Prop Spacing (mm):" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Foreground="Gray"/>
                     <TextBlock Text="{Binding RecommendedPropSpacing, StringFormat={}{0:F2}}" Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="5,5,0,5" Foreground="Gray" FontWeight="SemiBold"/>
 
                     <Label Content="Actual Prop Spacing (mm):" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding PropSpacing, UpdateSourceTrigger=PropertyChanged}" Grid.Row="2" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding PropSpacing, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="2" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Prop Count:" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
-                    <ComboBox ItemsSource="{Binding PropCountOptions}" SelectedItem="{Binding PropCount, UpdateSourceTrigger=PropertyChanged}" Grid.Row="3" Grid.Column="1" Margin="0,5"/>
+                    <ComboBox ItemsSource="{Binding PropCountOptions}" SelectedItem="{Binding PropCount, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="3" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Primary Beam Cantilever (mm):" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding PrimaryBeamCantilever, UpdateSourceTrigger=PropertyChanged}" Grid.Row="4" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding PrimaryBeamCantilever, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="4" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Prop Type:" Grid.Row="5" Grid.Column="0" VerticalAlignment="Center"/>
-                    <ComboBox ItemsSource="{Binding PropModelOptions}" SelectedItem="{Binding PropModel, UpdateSourceTrigger=PropertyChanged}" Grid.Row="5" Grid.Column="1" Margin="0,5"/>
+                    <ComboBox ItemsSource="{Binding PropModelOptions}" SelectedItem="{Binding PropModel, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="5" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Prop Length:" Grid.Row="6" Grid.Column="0" VerticalAlignment="Center"/>
-                    <ComboBox ItemsSource="{Binding PropTypeOptions}" SelectedItem="{Binding PropType, UpdateSourceTrigger=PropertyChanged}" Grid.Row="6" Grid.Column="1" Margin="0,5"/>
+                    <ComboBox ItemsSource="{Binding PropTypeOptions}" SelectedItem="{Binding PropType, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="6" Grid.Column="1" Margin="0,5"/>
 
-                    <Label Content="Prop Orientation:" Grid.Row="7" Grid.Column="0" VerticalAlignment="Center"/>
-                    <ComboBox ItemsSource="{Binding PropOrientationOptions}" SelectedItem="{Binding PropOrientation, UpdateSourceTrigger=PropertyChanged}" Grid.Row="7" Grid.Column="1" Margin="0,5"/>
+                    <Label Content="Outer Tube Position:" Grid.Row="7" Grid.Column="0" VerticalAlignment="Center"/>
+                    <ComboBox ItemsSource="{Binding PropOrientationOptions}" SelectedItem="{Binding PropOrientation, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="7" Grid.Column="1" Margin="0,5"/>
 
-                    <Button Content="View Primary Beam Diagram" Command="{Binding ViewPrimaryBeamDiagramCommand}" Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,10,0,0" Padding="5" />
+                    <StackPanel Grid.Row="8" Grid.ColumnSpan="2" Margin="5,5"><TextBlock Text="{Binding PropExtensionMm, StringFormat='Automatic extension: {0:F0} mm'}"/><TextBlock Text="{Binding PropLookupExtensionMm, StringFormat='Capacity lookup at: {0:F0} mm'}"/></StackPanel>
+<Button Content="View Primary Beam Diagram" Command="{Binding ViewPrimaryBeamDiagramCommand}" Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,10,0,0" Padding="5" />
                 </Grid>
             </GroupBox>
 
@@ -122,7 +123,7 @@
 
             <CheckBox Content="Use Custom Load Inputs" Grid.Row="4" Margin="0,0,0,10" IsChecked="{Binding UseCustomLoads, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold"/>
 
-            <GroupBox Header="Custom Loads" Grid.Row="5" Margin="0,0,0,10" Padding="10" Visibility="{Binding UseCustomLoads, Converter={StaticResource BoolToVis}}">
+            <GroupBox Header="Custom Loads" IsEnabled="{Binding UseCustomLoads}" Grid.Row="5" Margin="0,0,0,10" Padding="10" Visibility="{Binding UseCustomLoads, Converter={StaticResource BoolToVis}}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="220"/>
@@ -134,14 +135,14 @@
                     </Grid.RowDefinitions>
 
                     <Label Content="Placing + Working Live Load (kN/m²):" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding CustomLiveLoad, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding CustomLiveLoad, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="0" Grid.Column="1" Margin="0,5"/>
 
                     <Label Content="Formwork Load (kN/m²):" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding CustomFormworkLoad, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
+                    <TextBox Text="{Binding CustomFormworkLoad, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" Grid.Row="1" Grid.Column="1" Margin="0,5"/>
                 </Grid>
             </GroupBox>
 
-            <Border Grid.Row="6" Background="#E8F5E9" Padding="15" Margin="0,5,0,10" CornerRadius="5">
+            <Border x:Name="ResultsBorder" Visibility="{Binding IsCalculationValid, Converter={StaticResource BoolToVis}}" Grid.Row="6" Background="#E8F5E9" Padding="15" Margin="0,5,0,10" CornerRadius="5">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -176,7 +177,7 @@
             </Border>
 
             <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
-                <Button Content="Import Values" Padding="8" Click="BtnImportValues_Click" Margin="0,0,10,0"/>
+                <Button x:Name="ImportButton" IsEnabled="{Binding IsCalculationValid}" Content="Import Values" Padding="8" Click="BtnImportValues_Click" Margin="0,0,10,0"/>
                 <Button Content="Close" Width="100" Padding="8" Click="BtnClose_Click" Background="#f0f0f0" BorderBrush="#ccc"/>
             </StackPanel>
         </Grid>
