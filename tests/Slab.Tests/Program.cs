@@ -23,6 +23,22 @@ class Program
  [STAThread] static int Main(string[] args){try{Run(args);Console.WriteLine($"Passed {checks} slab calculation/catalog/WPF checks.");return 0;}catch(Exception ex){Console.Error.WriteLine(ex);return 1;}finally{window?.Close();}}
  static void Run(string[] args)
  {
+  var fileWindow=new FlexCalculatorWindow();
+  var fileVm=(FlexCalculatorViewModel)fileWindow.DataContext;var record=fileWindow.CaptureCalculation();double originalSpacing=fileVm.SuggestedPrimaryBeamSpacing;
+  string recordPath=Path.GetTempFileName();
+  try {
+   CalculationFiles.Write(recordPath,record);fileVm.SlabThickness=400;
+   var culture=CultureInfo.CurrentCulture;CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("de-DE");
+   fileWindow.RestoreCalculation(CalculationFiles.Read<CalculationRecord>(recordPath));CultureInfo.CurrentCulture=culture;
+   Equal(300,fileVm.SlabThickness,"slab file roundtrip thickness");Equal(originalSpacing,fileVm.SuggestedPrimaryBeamSpacing,"slab file roundtrip result");
+   Check(fileWindow.BuildReport().Contains("Secondary H20 checks") && fileWindow.BuildReport().Contains("minimum reaction"),"slab report includes structural checks");
+   if(args.Length>0)File.WriteAllText(Path.ChangeExtension(args[0],"report.html"),fileWindow.BuildReport());
+   record.Version=999;bool rejected=false;try{fileWindow.RestoreCalculation(record);}catch(ArgumentException){rejected=true;}Check(rejected && fileVm.SlabThickness==300,"unsupported record preserves current state");
+   File.WriteAllText(recordPath,"<!DOCTYPE x [<!ENTITY e SYSTEM 'file:///not-read'>]><CalculationRecord>&e;</CalculationRecord>");
+   rejected=false;try{CalculationFiles.Read<CalculationRecord>(recordPath);}catch(InvalidOperationException){rejected=true;}catch(System.Xml.XmlException){rejected=true;}Check(rejected,"external XML entities prohibited");
+   string report=CalculationFiles.Report("Slab",new[]{CalculationFiles.Field("Floor","<script>alert(1)</script>")},new[]{CalculationFiles.Field("Spacing (mm)",originalSpacing)},"Adopted assumptions");
+   Check(!report.Contains("<script>") && report.Contains("&lt;script&gt;") && report.Contains("Spacing (mm)"),"report encodes names and contains results");
+  } finally { File.Delete(recordPath);fileWindow.Close(); }
   // Reference cells were extracted from the cited source PDFs, including merged cells.
   foreach(var line in File.ReadLines(Path.Combine(AppContext.BaseDirectory,"prop-capacity-reference.csv")).Skip(1)){
    var c=line.Split(',');double ext=double.Parse(c[1],CultureInfo.InvariantCulture);double? actual=PropDataHelper.GetCapacity(ext,c[2]);
@@ -60,7 +76,7 @@ class Program
   var cases = MyRevitAddin.ViewModels.DiagramWindowViewModel.ForSelection(5,1,0,5,449.8756,"Secondary beam");
   Check(cases.DiagramRows[0].CaseText.Contains("Governing reaction"),"five governs reaction");
   Check(!cases.DiagramRows[3].CaseText.Contains("Governing magnitude"),"five does not govern deflection");
-  Check(cases.DiagramRows[7].CaseText.Contains("6 supports � Governing magnitude"),"six governs deflection within 5+");
+  Check(cases.DiagramRows[7].CaseText.Contains("6 supports · Governing magnitude"),"six governs deflection within 5+");
   Check(cases.DiagramRows[7].MaxValueText.Contains("Maximum downward: 0.07 mm"),"downward deflection sign and units");
   Check(cases.DiagramRows[0].GeometryText.Contains("1000 mm"),"dimensions have units");
   foreach(int j in new[]{1,2,3,5,6,7}) Check(cases.DiagramRows[j].ChartModel.Annotations.OfType<OxyPlot.Annotations.LineAnnotation>().Count(a=>a.Type==OxyPlot.Annotations.LineAnnotationType.Vertical)==(j<4?5:6),"support guides match case");

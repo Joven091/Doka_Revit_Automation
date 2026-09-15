@@ -45,9 +45,9 @@ namespace EngineeringDashboard
             if (scale <= 0) return;
             dc.PushTransform(new TranslateTransform((ActualWidth-470*scale)/2, (ActualHeight-440*scale)/2));
             dc.PushTransform(new ScaleTransform(scale,scale));
-            double transverseScale = 240 / (model.Width + 1400);
-            double bw = model.Width * transverseScale, strip = 300 * transverseScale;
-            double lineX = 60; // (beam width + 1400) / 4 after scaling.
+            double transverseScale = 240 / (model.Width + Math.Max(1400, model.HasAnySlab ? 2 * model.SlabStripWidthMm : 0));
+            double bw = model.Width * transverseScale, strip = model.SlabStripWidthMm * transverseScale;
+            double lineX = model.PrimaryLineSpacingMm * transverseScale / 2; // (beam width + 1400) / 4 after scaling.
             int count = model.NumberOfProps == "2" ? 2 : model.NumberOfProps == "3" ? 3 : 4;
             // Use the calculated span-to-overhang ratio, including 25 mm rounding.
             double ratio = model.PrimaryBeamCantilever / model.MaximumPropSpacing;
@@ -64,7 +64,7 @@ namespace EngineeringDashboard
             }
             foreach(double x in new[]{-lineX,lineX}) H20(dc,x-7,0,150,14,length,true);
             // Secondary H20s run across the primary lines, perpendicular in plan.
-            for(int i=4;i>=0;i--) H20(dc,-120,8+i*57,170,240,12,false);
+            for(int i=4;i>=0;i--) H20(dc,-(model.Width+1400)*transverseScale/2,8+i*57,170,(model.Width+1400)*transverseScale,12,false);
             // A thin soffit sheet transfers the concrete beam load to the secondaries.
             Box(dc,-bw/2-3,0,190,bw+6,length,3,Brush("#8D6D45"),Brush("#C5A776"),Brush("#6D5131"));
             double depth = Math.Max(35, Math.Min(100, model.Depth * .11));

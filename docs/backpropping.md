@@ -115,3 +115,8 @@ dotnet run --project tests/Backpropping.UiSmoke
 ```
 
 The standalone engine tests cover interpolation, transfer, stopping, invalid inputs, table boundaries and grid rounding. The WPF smoke executable loads the actual calculator XAML/code and checks empty startup, entry/inheritance, age validation, temperature changes, retained invalid inputs, result presentation and deletion without requiring Revit. Revit-hosted launcher interaction remains a manual integration check.
+
+
+## Calculation records and session retention
+
+Closing and reopening retains the slab stack, selected curve, project/storey limits, prop selections and unfinished entry text during this Revit session. New calculation explicitly clears the stack and returns to curve A. Save calculation writes an accepted (possibly incomplete) stack to a versioned .dokacalc file; finish or cancel an active slab edit first. Load validates the document before replacing current inputs and clears previous spacing results. Export report requires a complete stack and valid prop settings for every required storey; it creates a standalone printable HTML report with loads, strength factors, spacing, prop capacities/utilization and assumptions. Open the report in a browser to print to PDF. Saved input files recalculate using the installed calculator; retain the exported report as the record of the original results.

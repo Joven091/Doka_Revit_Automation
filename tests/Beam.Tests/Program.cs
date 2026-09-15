@@ -38,6 +38,16 @@ internal static class Program
   v.SelectedProp=BeamPropOption.All.First(p=>p.CapacityKey=="DokaFit Prop 400 at bottom");v.FloorHeight=4918;v.Width=1000;v.NumberOfProps="3";
   Check(v.IsCalculationValid,"capacity example valid");Equal(16,v.PropCapacityKn,"DokaFit capacity");Equal(1700,v.MaximumPropSpacing,"prop governs spacing");Check(v.LimitingFactor=="Prop Capacity","prop governing label");Equal(15.83125,v.MaximumPropLoad,"capacity example reaction");Check(v.PropUtilizationPercent<=100,"utilization");Check(1.25*Math.Max(v.LeftLineLoad,v.RightLineLoad)*(v.MaximumPropSpacing+25)/1000>v.PropCapacityKn,"next increment exceeds capacity");
   v.FloorHeight++;Invalid(v,"beyond extension");v.SelectedProp=null;Invalid(v,"missing prop");
+  foreach(double strip in new[]{150.0,300.0,450.0,600.0}) {
+   v=new BeamCalculatorViewModel{Width=500,Depth=700,HasLeftSlab=true,SlabStripWidthMm=strip};
+   double side=(5+.75+.75+.4)*strip/1000, beam=(17.5+1.75+.75+.4)*.5;
+   Equal(beam+side,v.TotalLineLoad,"editable strip total");
+   Equal((beam+side)/2+side*((500+strip)/2000)/.95,v.LeftLineLoad,"editable strip eccentric reaction");
+   Check(v.IsCalculationValid,"editable strip layout");ReferenceBeam.Verify(v);
+  }
+  v=new BeamCalculatorViewModel{HasLeftSlab=true,SlabStripWidthMm=0};Invalid(v,"zero active strip");
+  v.HasLeftSlab=false;Check(v.IsCalculationValid,"inactive strip ignored");
+  v.SlabStripWidthMm=double.NaN;Check(v.IsCalculationValid,"inactive nonfinite strip ignored");v.HasRightSlab=true;Invalid(v,"nonfinite active strip");
   int scenarios=0;
   foreach(int depth in new[]{200,400,600,800,1000,1200,1500,1800,2000}) foreach(int width in new[]{200,400,600,800,1000,1200}) foreach(string n in new[]{"2","3","4+"}) foreach(int side in new[]{0,1,2,3})
   {

@@ -12,12 +12,30 @@ using EngineeringDashboard.Backpropping;
 
 namespace EngineeringDashboard
 {
+    public sealed class BackproppingDocument
+    {
+        public int Version { get; set; } = 1;
+        public string Kind { get; set; } = "Backpropping";
+        public TemperatureCurve Curve { get; set; }
+        public double? ProjectMaximumMm { get; set; }
+        public List<SlabInput> Slabs { get; set; } = new List<SlabInput>();
+    }
     public partial class BackproppingWindow : Window
     {
         private readonly List<SlabInput> slabs = new List<SlabInput>();
         private readonly Dictionary<int, StoreyControls> storeyControls = new Dictionary<int, StoreyControls>();
         private readonly Dictionary<int, string> extensionDrafts = new Dictionary<int, string>();
         private readonly Dictionary<int, string> maximumDrafts = new Dictionary<int, string>();
+        private sealed class SessionState
+        {
+            public List<SlabInput> Slabs;
+            public Dictionary<int,string> Maximums;
+            public string ProjectMaximum;
+            public string[] Draft;
+            public int Curve, Editing;
+            public bool Dirty, HadResults;
+        }
+        private static SessionState retained;
         private bool updating;
         private bool ready;
         private bool draftDirty;
@@ -31,6 +49,8 @@ namespace EngineeringDashboard
             InitializeComponent();
             updating = true; Temperature.SelectedIndex = 0; updating = false;
             ready = true; NewDraft(); Refresh();
+            if(retained != null) RestoreSession(retained);
+            Closed += (sender,args) => retained = CaptureSession();
         }
 
         private static TextBlock Text(string value, bool bold = false) => new TextBlock {
@@ -153,7 +173,6 @@ namespace EngineeringDashboard
             var loads = BackproppingCalculator.CalculateLoads(slabs, Curve);
             bool complete = loads.Complete;
             EntryTitle.Text = editing >= 0 ? "2  Editing " + slabs[editing].Name : complete ? "2  Slab stack complete" : slabs.Count == 0 ? "2  Slab being cast" : "2  Add supporting slab below";
-            // Keep an unfinished entry and its cancel action accessible after a curve change.
             EntryForm.Visibility = complete && editing < 0 && !draftDirty ? Visibility.Collapsed : Visibility.Visible;
             SaveSlab.Content = editing >= 0 ? "Save changes" : slabs.Count == 0 ? "Add slab being cast" : "Add supporting slab";
             CancelEdit.Visibility = editing >= 0 || draftDirty ? Visibility.Visible : Visibility.Collapsed;
@@ -288,6 +307,98 @@ namespace EngineeringDashboard
                 ResultsPanel.UpdateLayout(); ResultsPanel.BringIntoView();
             }
             catch (ArgumentException ex) { ErrorText.Text = ex.Message; ResultState.Text = "Calculation incomplete."; }
+        }
+        private SessionState CaptureSession() => new SessionState {
+            Slabs=slabs.Select(s=>s.Copy()).ToList(), Maximums=new Dictionary<int,string>(maximumDrafts),
+            ProjectMaximum=ProjectMaximum.Text, Curve=Temperature.SelectedIndex, Editing=editing, Dirty=draftDirty,
+            HadResults=ResultsPanel.Children.Count>0,
+            Draft=new[]{FloorName.Text,Thickness.Text,FloorHeight.Text,Age.Text,Sidl.Text,LiveLoad.Text}
+        };
+        private void RestoreSession(SessionState state)
+        {
+            updating=true; slabs.Clear(); slabs.AddRange(state.Slabs.Select(s=>s.Copy()));
+            maximumDrafts.Clear(); foreach(var pair in state.Maximums) maximumDrafts[pair.Key]=pair.Value;
+            Temperature.SelectedIndex=state.Curve; ProjectMaximum.Text=state.ProjectMaximum;
+            editing=state.Editing; draftDirty=state.Dirty;
+            TextBox[] boxes={FloorName,Thickness,FloorHeight,Age,Sidl,LiveLoad};
+            for(int i=0;i<boxes.Length;i++) boxes[i].Text=state.Draft[i];
+            updating=false; Refresh();
+            if(state.HadResults && !draftDirty && editing<0) Calculate_Click(this,new RoutedEventArgs());
+        }
+        internal void StartNewCalculation()
+        {
+            slabs.Clear(); maximumDrafts.Clear(); extensionDrafts.Clear(); retained=null;
+            updating=true; Temperature.SelectedIndex=0; ProjectMaximum.Text=""; updating=false;
+            ErrorText.Text=""; NewDraft(); Refresh(); InvalidateResults(); ResultState.Text="New calculation — enter the slab being cast.";
+        }
+        private void NewCalculation_Click(object sender,RoutedEventArgs e) => StartNewCalculation();
+        internal BackproppingDocument CaptureCalculation()
+        {
+            if(editing>=0 || draftDirty) throw new ArgumentException("Save or cancel the current slab entry before saving or exporting the calculation.");
+            var document=new BackproppingDocument { Curve=Curve, ProjectMaximumMm=OptionalMaximum(ProjectMaximum), Slabs=slabs.Select(s=>s.Copy()).ToList() };
+            foreach(var pair in maximumDrafts)
+                if(pair.Key>=0 && pair.Key<document.Slabs.Count)
+                    document.Slabs[pair.Key].MaximumSpacingMm=OptionalMaximum(new TextBox{Text=pair.Value});
+            ValidateDocument(document); return document;
+        }
+        private static void ValidateDocument(BackproppingDocument document)
+        {
+            if(document==null || document.Version!=1 || document.Kind!="Backpropping" || document.Slabs==null) throw new ArgumentException("This is not a supported backpropping calculation file.");
+            if(!Enum.IsDefined(typeof(TemperatureCurve),document.Curve)) throw new ArgumentException("Invalid temperature curve.");
+            Action<double?> validateMaximum = value => { if(value.HasValue) { BackproppingCalculator.RequireNumber(value.Value,"Maximum spacing",true); if(value.Value<25)throw new ArgumentException("Maximum spacing must be at least 25 mm."); } };
+            validateMaximum(document.ProjectMaximumMm);
+            BackproppingCalculator.CalculateLoads(document.Slabs,document.Curve);
+            foreach(var slab in document.Slabs)
+            {
+                validateMaximum(slab.MaximumSpacingMm);
+                if(slab.PropId!=null && !BackproppingPropCatalog.All.Any(p=>p.Name==slab.PropId))throw new ArgumentException("Unknown prop configuration: "+slab.PropId);
+            }
+        }
+        internal void RestoreCalculation(BackproppingDocument document)
+        {
+            ValidateDocument(document); // Preserve the current calculation if the file is invalid.
+            updating=true; slabs.Clear(); slabs.AddRange(document.Slabs.Select(s=>s.Copy()));
+            maximumDrafts.Clear(); extensionDrafts.Clear(); Temperature.SelectedIndex=(int)document.Curve;
+            ProjectMaximum.Text=document.ProjectMaximumMm?.ToString(CultureInfo.CurrentCulture) ?? "";
+            updating=false; ErrorText.Text=""; NewDraft(); Refresh(); InvalidateResults();
+            ResultState.Text="Calculation loaded — calculate spacing to review results.";
+        }
+        private void SaveCalculation_Click(object sender,RoutedEventArgs e) => CalculationFiles.Run(this,()=>CalculationFiles.Save(this,CaptureCalculation(),"Backpropping"));
+        private void LoadCalculation_Click(object sender,RoutedEventArgs e) => CalculationFiles.Run(this,()=> { var path=CalculationFiles.ChooseLoad(this); if(path!=null) RestoreCalculation(CalculationFiles.Read<BackproppingDocument>(path)); });
+        internal List<CalculationField> ReportResults(BackproppingDocument document)
+        {
+            ValidateDocument(document);
+            var loads=BackproppingCalculator.CalculateLoads(document.Slabs,document.Curve);
+            if(!loads.Complete) throw new ArgumentException("Complete the supporting slab stack before exporting a report.");
+            var results=new List<CalculationField>();
+            foreach(var row in loads.Slabs)
+            {
+                var slab=document.Slabs[row.Index];
+                results.Add(CalculationFiles.Field(slab.Name + " · load breakdown (kN/m²)", $"Incoming {row.Incoming:0.000}; self-weight {row.SelfWeight:0.000}; construction live {row.ConstructionLive:0.000}; demand {row.Demand:0.000}; adopted capacity {row.Capacity:0.000}; transfer {row.Transfer:0.000}; downward {row.DownwardLoad:0.000}"));
+                if(row.Index==0) results.Add(CalculationFiles.Field("Pour components (kN/m²)",$"Concrete {row.SelfWeight:0.000} + formwork 0.50 + working 0.75 + heaping {loads.Heaping:0.000} = {loads.PourLoad:0.000}"));
+                else results.Add(CalculationFiles.Field(slab.Name+" · strength (%)",row.StrengthPercent));
+                if(row.Index>0 && row.Transfer>0)
+                {
+                    var spacing=BackproppingCalculator.CalculateSpacing(row.DownwardLoad,slab.PropId,slab.PropExtensionMm,slab.MaximumSpacingMm ?? document.ProjectMaximumMm);
+                    results.Add(CalculationFiles.Field(slab.Name+" → "+document.Slabs[row.Index+1].Name,
+                        $"Spacing {spacing.SpacingMm:0} × {spacing.SpacingMm:0} mm; load/prop {spacing.PropLoadKn:0.000} kN; capacity {spacing.CapacityKn:0.000} kN; utilization {spacing.UtilizationPercent:0.00}%; extension {slab.PropExtensionMm:0.##} mm; table row {spacing.LookupExtensionMm:0} mm; governing: {spacing.GoverningLimit}"));
+                }
+            }
+            results.Add(CalculationFiles.Field("Stack check","Complete under the adopted load-transfer stopping rule.")); return results;
+        }
+        private void ExportReport_Click(object sender,RoutedEventArgs e) => CalculationFiles.Run(this,()=>CalculationFiles.ExportHtml(this,"Backpropping",BuildReport()));
+        internal string BuildReport()
+        {
+            var document=CaptureCalculation(); var results=ReportResults(document);
+            var inputs=new List<CalculationField> { CalculationFiles.Field("Temperature curve",document.Curve), CalculationFiles.Field("Project maximum spacing (mm)",document.ProjectMaximumMm?.ToString(CultureInfo.InvariantCulture) ?? "Not supplied") };
+            foreach(var slab in document.Slabs)
+                inputs.Add(CalculationFiles.Field(slab.Name,$"Thickness {slab.ThicknessMm:0.##} mm; height below {slab.FloorHeightBelowMm:0.##} mm; age {slab.AgeDays:0.##} days; SIDL {slab.Sidl:0.###} kN/m²; final live {slab.FinalLiveLoad:0.###} kN/m²; prop {slab.PropId ?? "Not selected"}; maximum override {slab.MaximumSpacingMm?.ToString(CultureInfo.InvariantCulture) ?? "None"} mm"));
+            return CalculationFiles.Report("Backpropping",inputs,results,
+                "Adopted capacity approximation, not an official Doka load-distribution formula or structural verification. Repeated aligned uniform slab zone. Capacity = strength fraction × (self-weight + SIDL + final live). Transfer = max(0, demand - capacity). Add 0.40 kN/m² per required reprop storey.\n"+
+                "Concrete 25 kN/m³; main formwork 0.50; working 0.75; heaping min(1.75,max(0.75,10% concrete weight)); construction live 0.75 at the first supporting slab and zero below (area loads in kN/m²).\n"+
+                "Strength anchors day/%: A 0/0,2/50,4/70,12/80,20/90,28/100; B 0/0,4/50,8/70,28/100; C 0/0,6/50,12/70,28/100. Linear interpolation, cap 100%.\n"+
+                "Square spacing = floor(min(1000 sqrt(prop capacity/downward load), supplied maximum)/25) × 25 mm. Storey maximum overrides project maximum. Without a maximum, spacing checks prop capacity only.\n"+
+                "Prop extension = height below - upper slab thickness, direct head/base contact and restrained temporary reshoring table conditions. Main shores are not sized. Slab punching, local bearing, edges, offsets, stiffness/settlement, lateral stability and stripping sequence are excluded.");
         }
         private void Close_Click(object sender, RoutedEventArgs e) => Close();
     }
