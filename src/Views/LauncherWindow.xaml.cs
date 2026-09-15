@@ -14,6 +14,7 @@ namespace EngineeringDashboard
         {
             InitializeComponent();
         }
+        private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
 
         private void BtnBackpropping_Click(object sender, RoutedEventArgs e)
         {

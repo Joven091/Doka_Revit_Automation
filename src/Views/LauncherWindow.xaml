@@ -1,29 +1,43 @@
-<Window x:Class="EngineeringDashboard.LauncherWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Engineering Calculators" Height="330" Width="350"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-        <TextBlock Text="Select a Calculator:" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,15" Grid.Row="0"/>
-
-        <Button x:Name="BtnFlexCalculator" Content="Slab Calculator"
-                Grid.Row="1" Margin="10" FontSize="14" FontWeight="SemiBold"
-                Background="#007ACC" Foreground="White" BorderThickness="0"
-                Click="BtnFlexCalculator_Click"/>
-
-        <Button x:Name="BtnBeamCalculator" Content="Beam Calculator"
-                Grid.Row="2" Margin="10" FontSize="14" FontWeight="SemiBold"
-                Background="#28A745" Foreground="White" BorderThickness="0"
-                Click="BtnBeamCalculator_Click"/>
-        <Button Content="Backpropping Calculator" Grid.Row="3" Margin="10"
-                FontSize="14" FontWeight="SemiBold" Background="#F2CD24"
-                BorderThickness="0" Click="BtnBackpropping_Click"/>
-    </Grid>
+<Window x:Class="EngineeringDashboard.LauncherWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Engineering Calculators" Width="620" Height="550" MinWidth="500" MinHeight="480" WindowStartupLocation="CenterScreen" Background="#F5F5F5" FontFamily="Segoe UI" FontSize="13" Foreground="#202A33">
+ <Window.Resources><ResourceDictionary>
+  <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="CalculatorStyles.xaml"/></ResourceDictionary.MergedDictionaries>
+  <Style x:Key="Choice" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+   <Setter Property="Margin" Value="0,0,0,12"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+    <Border x:Name="Card" Background="White" BorderBrush="#DFE3E6" BorderThickness="1"><Border BorderBrush="#D4AA00" BorderThickness="5,0,0,0" Padding="16"><ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/></Border></Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Card" Property="Background" Value="#FFF6D6"/><Setter TargetName="Card" Property="BorderBrush" Value="#D4AA00"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Card" Property="Background" Value="#FFF2BF"/><Setter TargetName="Card" Property="BorderBrush" Value="#806500"/></Trigger>
+     <Trigger Property="IsPressed" Value="True"><Setter TargetName="Card" Property="Background" Value="#F2CD24"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+ </ResourceDictionary></Window.Resources>
+ <Border Background="#F5F5F5" Padding="20"><Grid>
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <StackPanel Margin="0,0,0,16"><TextBlock Text="Engineering calculators" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="Choose the calculation for your formwork layout." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
+  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,8,0">
+   <Border Style="{StaticResource Step}"><TextBlock Text="Select a calculator" FontWeight="SemiBold"/></Border>
+   <Button x:Name="BtnFlexCalculator" Style="{StaticResource Choice}" AutomationProperties.Name="Slab calculator" Click="BtnFlexCalculator_Click"><Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
+    <Border Background="#FFF2BF" Width="48" Height="48"><Canvas Width="40" Height="40"><Rectangle Canvas.Left="3" Canvas.Top="6" Width="34" Height="7" Fill="#AEB9C3"/><Rectangle Canvas.Left="5" Canvas.Top="15" Width="30" Height="4" Fill="#D4AA00"/><Path Data="M10,19 L10,34 M20,19 L20,34 M30,19 L30,34 M6,34 L14,34 M16,34 L24,34 M26,34 L34,34" Stroke="#647B8D" StrokeThickness="2"/></Canvas></Border>
+    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><TextBlock Text="Slab" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="Primary beam spacing for slab formwork." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
+    <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
+   </Grid></Button>
+   <Button x:Name="BtnBeamCalculator" Style="{StaticResource Choice}" AutomationProperties.Name="Beam calculator" Click="BtnBeamCalculator_Click"><Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
+    <Border Background="#FFF2BF" Width="48" Height="48"><Canvas Width="40" Height="40"><Rectangle Canvas.Left="12" Canvas.Top="5" Width="16" Height="15" Fill="#AEB9C3"/><Rectangle Canvas.Left="5" Canvas.Top="21" Width="30" Height="4" Fill="#D4AA00"/><Path Data="M10,25 L10,35 M30,25 L30,35 M6,35 L14,35 M26,35 L34,35" Stroke="#647B8D" StrokeThickness="2"/></Canvas></Border>
+    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><TextBlock Text="Beam" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="Prop spacing for beam formwork, with optional slabs." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
+    <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
+   </Grid></Button>
+   <Button x:Name="BtnBackpropping" Style="{StaticResource Choice}" AutomationProperties.Name="Backpropping calculator" Click="BtnBackpropping_Click"><Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
+    <Border Background="#FFF2BF" Width="48" Height="48"><Canvas Width="40" Height="40"><Path Data="M10,10 L10,34 M30,10 L30,34" Stroke="#647B8D" StrokeThickness="2"/><Rectangle Canvas.Left="3" Canvas.Top="5" Width="34" Height="5" Fill="#AEB9C3"/><Rectangle Canvas.Left="3" Canvas.Top="19" Width="34" Height="5" Fill="#AEB9C3"/><Rectangle Canvas.Left="3" Canvas.Top="33" Width="34" Height="5" Fill="#AEB9C3"/><Path Data="M20,10 L20,17 M17,14 L20,17 L23,14 M20,24 L20,31 M17,28 L20,31 L23,28" Stroke="#B58B00" StrokeThickness="1.5"/></Canvas></Border>
+    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><TextBlock Text="Backpropping" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="Support spacing and load transfer between floors." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
+    <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
+   </Grid></Button>
+  </StackPanel></ScrollViewer>
+  <Border Grid.Row="2" BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,10,0,0"><Button Content="Close" IsCancel="True" MinWidth="80" HorizontalAlignment="Right" Click="BtnClose_Click"/></Border>
+ </Grid></Border>
 </Window>

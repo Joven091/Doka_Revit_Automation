@@ -2,6 +2,8 @@
 
 The slab and beam calculators share CalculatorStyles.xaml, using the backpropping calculator's yellow numbered sections, neutral grey background, labelled fields, grey diagram panels and prominent yellow spacing results.
 
+The launcher uses the same shared styles: Slab, Beam and Backpropping are full-width cards with yellow accents, vector formwork icons and short descriptions. Hover, pressed and keyboard-focus states are visible. The window is resizable with scrolling at smaller sizes and a fixed Close action. Existing calculator click handlers and saved slab/beam state are preserved. The launcher was rendered at 620 × 550 and 500 × 480; its three XAML click bindings were exercised in a preview host, and the production add-in build passed.
+
 ## Flow
 
 1. Calculation setup: geometry, optional slab wings for beams, and expandable load inputs. The load heading indicates default or custom mode even when collapsed.
