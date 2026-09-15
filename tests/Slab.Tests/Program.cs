@@ -51,6 +51,7 @@ class Program
   FivePlusTests.Run(Check,Equal);
   UpliftTests.Run(Check,Equal);
   CantileverTests.Run(Check,Equal);
+  SchematicTests.Run(Check);
   v=new FlexCalculatorViewModel{SlabThickness=100,FloorHeight=4518,PropModel="DokaFit Prop",PropType="400",SelectedH20="4.90m",PrimaryBeamCount="5+",PropCount="5+",PrimaryBeamCantilever=250,SecondaryBeamCantilever=0,PropSpacing=1000};
   Check(v.IsCalculationValid,"5+ overload regression valid revised layout");Check(v.SuggestedPrimaryBeamSpacing<3100,"5+ formerly overloaded spacing reduced");
   double secondaryReaction=ContinuousBeamResponse.Analyze(5,v.SuggestedPrimaryBeamSpacing/1000,0,4.4,449.8756).Reaction;
@@ -76,11 +77,17 @@ class Program
   if(args.Length>1 && args[1]=="tip"){v.PropCount="2";v.PropSpacing=1000;v.PrimaryBeamCount="3";Enter("PrimaryBeamCantilever","1000");Invalid(v,"rendered tip state");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var tipIgnored),"tip import blocked");}
   if(args.Length>0){
    SavePreview(args[0],1040,860);
+   if(v.IsCalculationValid){
+    int lines=v.PrimaryBeamCount=="5+"?5:int.Parse(v.PrimaryBeamCount), supports=v.PropCount=="5+"?5:int.Parse(v.PropCount);
+    Check(((SlabSupportDiagram)window.FindName("SupportDiagram")).DrawnPropCount==lines*supports,"live support schematic");
+    if(v.PrimaryBeamCount=="5+"||v.PropCount=="5+")Check(((TextBlock)window.FindName("DiagramCaption")).Text.Contains("five supports"),"five-plus schematic labelled");
+   }
    ((Expander)window.FindName("LoadInputsExpander")).IsExpanded=true;v.UseCustomLoads=true;Pump();
    SavePreview(Path.ChangeExtension(args[0],"loads.png"),1040,860);
    SavePreview(Path.ChangeExtension(args[0],"compact.png"),900,620);
    Enter("SlabThickness","abc");Invalid(v,"redesign invalid field");Check(!import.IsEnabled,"redesign import blocked");
    SavePreview(Path.ChangeExtension(args[0],"invalid.png"),1040,860);
+   Check(((SlabSupportDiagram)window.FindName("SupportDiagram")).DrawnPropCount==0,"live invalid schematic cleared");
   }
  }
  static void SavePreview(string path,int width,int height){

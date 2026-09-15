@@ -19,14 +19,28 @@ namespace EngineeringDashboard
                 if(observedModel != null) observedModel.PropertyChanged -= ModelChanged;
                 observedModel = DataContext as FlexCalculatorViewModel;
                 if(observedModel != null) observedModel.PropertyChanged += ModelChanged;
-                RefreshInputValidity();
+                RefreshInputValidity(); UpdateSupportDiagram();
             };
             Closed += (s,e) => { if(observedModel != null) observedModel.PropertyChanged -= ModelChanged; };
         }
         private void ModelChanged(object sender, PropertyChangedEventArgs e)
         {
+            if(e.PropertyName == nameof(FlexCalculatorViewModel.IsCalculationValid)) UpdateSupportDiagram();
             if(e.PropertyName == nameof(FlexCalculatorViewModel.UseCustomLoads))
                 Dispatcher.BeginInvoke(new Action(RefreshInputValidity), DispatcherPriority.DataBind);
+        }
+        private void UpdateSupportDiagram()
+        {
+            SupportDiagram.SetModel(observedModel);
+            if (observedModel == null || !observedModel.IsCalculationValid)
+            {
+                DiagramCaption.Text = "Enter valid inputs to show the slab and support arrangement.";
+                return;
+            }
+            bool envelope = observedModel.PrimaryBeamCount == "5+" || observedModel.PropCount == "5+";
+            DiagramCaption.Text = $"{observedModel.SlabThickness:0.##} mm slab · primary spacing {observedModel.SuggestedPrimaryBeamSpacing:0} mm\n" +
+                $"Prop spacing {observedModel.PropSpacing:0.##} mm · secondary spacing {observedModel.SecondaryBeamSpacing:0.##} mm\n" +
+                (envelope ? "5+ shown with five supports. " : "") + "Secondary beam quantity is illustrative.";
         }
         private void InputValidation_Error(object sender, ValidationErrorEventArgs e)
         {

@@ -249,8 +249,17 @@
           </Border>
           <Border Background="#ECEFF1" Padding="14" Margin="0,0,0,12">
             <StackPanel>
-              <TextBlock Style="{StaticResource Subheading}" Text="Beam diagrams"/>
-              <TextBlock Style="{StaticResource Hint}" Text="Review the calculated forces and deflections for each H20 layer."/>
+              <TextBlock Style="{StaticResource Subheading}" Text="Slab and support section"/>
+              <TextBlock Style="{StaticResource Hint}" Text="Slab cutaway · schematic, not to scale"/>
+              <local:SlabSupportDiagram x:Name="SupportDiagram" Margin="0,4" AutomationProperties.Name="Slab over perpendicular secondary and primary H20 beams, supported by props">
+                <local:SlabSupportDiagram.Style>
+                  <Style TargetType="local:SlabSupportDiagram">
+                    <Setter Property="Height" Value="300"/>
+                    <Style.Triggers><DataTrigger Binding="{Binding IsCalculationValid}" Value="False"><Setter Property="Height" Value="0"/></DataTrigger></Style.Triggers>
+                  </Style>
+                </local:SlabSupportDiagram.Style>
+              </local:SlabSupportDiagram>
+              <TextBlock x:Name="DiagramCaption" Style="{StaticResource Hint}"/>
               <Button Content="Secondary H20 diagrams" Command="{Binding ViewSecondaryBeamDiagramCommand}" HorizontalAlignment="Stretch" Margin="0,12,0,8"/>
               <Button Content="Primary H20 diagrams" Command="{Binding ViewPrimaryBeamDiagramCommand}" HorizontalAlignment="Stretch"/>
             </StackPanel>
