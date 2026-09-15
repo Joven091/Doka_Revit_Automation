@@ -63,7 +63,7 @@ class Program
    var row=v.PrimaryDiagramViewModel.DiagramRows[3];var line=(OxyPlot.Series.LineSeries)row.ChartModel.Series[0];double a=v.PrimaryBeamCantilever/1000,last=a+(n=="5+"?4:int.Parse(n)-1)*lp/1000.0;double actual=line.Points.Where(p=>p.X>=a&&p.X<=last).Max(p=>Math.Abs(p.Y));Check(actual<=v.PrimaryDeflectionMm+1e-5,"diagram independently integrated span");
   }
   Console.WriteLine($"Sweep: 432 input combinations; {accepted} valid layouts.");
-  RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;window=new FlexCalculatorWindow();var visualRoot=(FrameworkElement)window.Content;visualRoot.Measure(new Size(560,1160));visualRoot.Arrange(new Rect(0,0,560,1160));visualRoot.UpdateLayout();Pump();v=(FlexCalculatorViewModel)window.DataContext;var import=(Button)window.FindName("ImportButton");Check(import.IsEnabled,"initial import");
+  RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;window=new FlexCalculatorWindow();var visualRoot=(FrameworkElement)window.Content;visualRoot.Measure(new Size(1040,860));visualRoot.Arrange(new Rect(0,0,1040,860));visualRoot.UpdateLayout();Pump();v=(FlexCalculatorViewModel)window.DataContext;var import=(Button)window.FindName("ImportButton");Check(import.IsEnabled,"initial import");
   Enter("SlabThickness","abc");Invalid(v,"text conversion");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var ignored),"import guard");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"results hidden");
   Enter("SlabThickness","300");Check(v.IsCalculationValid&&import.IsEnabled,"text repair");v.UseCustomLoads=true;Pump();Enter("CustomLiveLoad","bad");Invalid(v,"custom text");v.UseCustomLoads=false;Pump();Check(v.IsCalculationValid,"inactive conversion ignored");v.UseCustomLoads=true;Pump();Invalid(v,"reactivated conversion");Enter("CustomLiveLoad","2.25");v.UseCustomLoads=false;
   v.SelectedH20="4.90m";Enter("PrimaryBeamCantilever","1000");Invalid(v,"UI uplift");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var upliftIgnored),"uplift import blocked");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"uplift results hidden");Enter("PrimaryBeamCantilever","500");Check(v.IsCalculationValid&&import.IsEnabled,"UI uplift recovery");v.SelectedH20="3.30m";
@@ -74,6 +74,20 @@ class Program
   v.PropModel="DokaFit Prop";Pump();Check(!v.PropOrientationOptions.Contains("at fixed"),"orientation choices");v.PropModel="Prop Type Eurex eco 20";Pump();
   if(args.Length>1 && args[1]=="uplift"){Enter("PrimaryBeamCantilever","900");Invalid(v,"rendered uplift state");}
   if(args.Length>1 && args[1]=="tip"){v.PropCount="2";v.PropSpacing=1000;v.PrimaryBeamCount="3";Enter("PrimaryBeamCantilever","1000");Invalid(v,"rendered tip state");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var tipIgnored),"tip import blocked");}
-  if(args.Length>0){var root=(FrameworkElement)window.Content;root.Measure(new Size(560,1160));root.Arrange(new Rect(0,0,560,1160));root.UpdateLayout();var bitmap=new RenderTargetBitmap(560,1160,96,96,PixelFormats.Pbgra32);bitmap.Render(root);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(args[0]))png.Save(file);}
+  if(args.Length>0){
+   SavePreview(args[0],1040,860);
+   ((Expander)window.FindName("LoadInputsExpander")).IsExpanded=true;v.UseCustomLoads=true;Pump();
+   SavePreview(Path.ChangeExtension(args[0],"loads.png"),1040,860);
+   SavePreview(Path.ChangeExtension(args[0],"compact.png"),900,620);
+   Enter("SlabThickness","abc");Invalid(v,"redesign invalid field");Check(!import.IsEnabled,"redesign import blocked");
+   SavePreview(Path.ChangeExtension(args[0],"invalid.png"),1040,860);
+  }
  }
+ static void SavePreview(string path,int width,int height){
+  Pump();var root=(FrameworkElement)window.Content;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();
+  var import=(Button)window.FindName("ImportButton");var corner=import.TranslatePoint(new Point(import.ActualWidth,import.ActualHeight),root);
+  Check(corner.X<=width+.1&&corner.Y<=height+.1,"footer stays inside resized window");
+  var bitmap=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);bitmap.Render(root);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))png.Save(file);
+ }
+
 }

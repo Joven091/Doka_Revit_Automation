@@ -21,10 +21,10 @@ internal static class Program
  static void Pump(){Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));}
  static TextBox Input(string name)=>Find<TextBox>(window).Single(t=>t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path==name);
  static void Enter(string name,string text){Input(name).Text=text;Input(name).GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();}
- static RenderTargetBitmap Render()
+ static RenderTargetBitmap Render(int width=1040,int height=860)
  {
-  Pump();var root=(FrameworkElement)window.Content;root.Measure(new Size(1100,780));root.Arrange(new Rect(0,0,1100,780));root.UpdateLayout();
-  var bitmap=new RenderTargetBitmap(1100,780,96,96,PixelFormats.Pbgra32);bitmap.Render(root);return bitmap;
+  Pump();var root=(FrameworkElement)window.Content;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();
+  var bitmap=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);bitmap.Render(root);return bitmap;
  }
  [STAThread] static int Main(string[] args)
  {
@@ -47,10 +47,23 @@ internal static class Program
    var props=Find<ComboBox>(window).Single(c=>c.SelectedItem is BeamPropOption);Check(props.Items.Count==BeamPropOption.All.Count,"prop dropdown shares catalog");props.SelectedItem=BeamPropOption.All.First(p=>p.CapacityKey=="DokaFit Prop 300 at top");Pump();Check(vm.SelectedProp.CapacityKey=="DokaFit Prop 300 at top","prop selection binding");Enter("FloorHeight","9999");Check(!vm.IsCalculationValid&&!import.IsEnabled,"unsupported extension blocks import");Enter("FloorHeight","3000");Check(vm.IsCalculationValid,"floor height recovery");
    Thread.CurrentThread.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
    vm.Width=200;vm.HasLeftSlab=true;vm.HasRightSlab=true;vm.NumberOfProps="3";var picture=Render();
-   if(args.Length>0){var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(picture));using(var output=File.Create(args[0]))encoder.Save(output);}
+   if(args.Length>0){
+    SavePreview(args[0],1040,860);
+    ((Expander)window.FindName("LoadInputsExpander")).IsExpanded=true;vm.UseCustomLoads=true;Pump();
+    SavePreview(Path.ChangeExtension(args[0],"loads.png"),1040,860);
+    SavePreview(Path.ChangeExtension(args[0],"compact.png"),900,620);
+    Enter("Depth","abc");Check(!vm.IsCalculationValid&&!import.IsEnabled,"redesign invalid field blocks import");
+    SavePreview(Path.ChangeExtension(args[0],"invalid.png"),1040,860);
+   }
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }
   catch(Exception ex){Console.Error.WriteLine(ex);window?.Close();return 1;}
  }
+ static void SavePreview(string path,int width,int height){
+  var bitmap=Render(width,height);var root=(FrameworkElement)window.Content;var import=(Button)window.FindName("ImportButton");
+  var corner=import.TranslatePoint(new Point(import.ActualWidth,import.ActualHeight),root);Check(corner.X<=width+.1&&corner.Y<=height+.1,"footer stays inside resized window");
+  var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var output=File.Create(path))encoder.Save(output);
+ }
+
 }
 
