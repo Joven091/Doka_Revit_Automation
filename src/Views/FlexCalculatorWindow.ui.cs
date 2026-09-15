@@ -40,7 +40,8 @@ namespace EngineeringDashboard
             bool envelope = observedModel.PrimaryBeamCount == "5+" || observedModel.PropCount == "5+";
             DiagramCaption.Text = $"{observedModel.SlabThickness:0.##} mm slab · primary spacing {observedModel.SuggestedPrimaryBeamSpacing:0} mm\n" +
                 $"Prop spacing {observedModel.PropSpacing:0.##} mm · secondary spacing {observedModel.SecondaryBeamSpacing:0.##} mm\n" +
-                (envelope ? "5+ shown with five supports. " : "") + "Secondary beam quantity is illustrative.";
+                (envelope ? "5+ shown with five supports. " : "") + "Secondary members span up to three supports.\n" +
+                "Joints and quantities are illustrative; calculations retain the selected continuous support count.";
         }
         private void InputValidation_Error(object sender, ValidationErrorEventArgs e)
         {

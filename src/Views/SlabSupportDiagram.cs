@@ -12,10 +12,20 @@ namespace EngineeringDashboard
         public int DrawnPrimaryCount { get; private set; }
         public int DrawnPropCount { get; private set; }
         public int DrawnSecondaryCount { get; private set; }
+        public int DrawnSecondaryMemberCount { get; private set; }
+        // Zero-based support ranges share a bearing support at each illustrated joint.
+        internal static int[][] SecondarySupportRanges(int supportCount)
+        {
+            if (supportCount < 2) throw new ArgumentOutOfRangeException(nameof(supportCount));
+            var ranges = new System.Collections.Generic.List<int[]>();
+            for (int first = 0; first < supportCount - 1; first += 2)
+                ranges.Add(new[] { first, Math.Min(first + 2, supportCount - 1) });
+            return ranges.ToArray();
+        }
         public void SetModel(FlexCalculatorViewModel value)
         {
             model = value;
-            DrawnPrimaryCount = DrawnPropCount = DrawnSecondaryCount = 0;
+            DrawnPrimaryCount = DrawnPropCount = DrawnSecondaryCount = DrawnSecondaryMemberCount = 0;
             InvalidateVisual();
         }
         private static Brush Color(string hex) { var brush = (Brush)new BrushConverter().ConvertFromString(hex); brush.Freeze(); return brush; }
@@ -46,7 +56,7 @@ namespace EngineeringDashboard
         }
         protected override void OnRender(DrawingContext dc)
         {
-            base.OnRender(dc); DrawnPrimaryCount = DrawnPropCount = DrawnSecondaryCount = 0;
+            base.OnRender(dc); DrawnPrimaryCount = DrawnPropCount = DrawnSecondaryCount = DrawnSecondaryMemberCount = 0;
             if (model == null || !model.IsCalculationValid) return;
             if (ActualWidth <= 0 || ActualHeight <= 0) return;
             int primaryCount = model.PrimaryBeamCount == "5+" ? 5 : int.Parse(model.PrimaryBeamCount);
@@ -85,10 +95,20 @@ namespace EngineeringDashboard
             int secondaryCount = dense ? 18 : (int)intervals + 1;
             double occupied = dense ? along : intervals * model.SecondaryBeamSpacing;
             double start = (along - occupied) / 2;
+            var memberRanges = SecondarySupportRanges(primaryCount);
             for (int i = secondaryCount - 1; i >= 0; i--)
             {
                 double y = (secondaryCount == 1 ? along / 2 : start + occupied * i / (secondaryCount - 1)) * yScale;
-                H20(dc,-120,y-5,propHeight+20,240,10,false); DrawnSecondaryCount++;
+                foreach (var range in memberRanges)
+                {
+                    // A small visible seam lies within the shared primary bearing, not in the span.
+                    // Joint/bearing dimensions are illustrative and are not used in the calculation.
+                    double x0 = range[0] == 0 ? -120 : -120 + (model.SecondaryBeamCantilever + range[0] * model.SuggestedPrimaryBeamSpacing) * xScale + 1.2;
+                    double x1 = range[1] == primaryCount - 1 ? 120 : -120 + (model.SecondaryBeamCantilever + range[1] * model.SuggestedPrimaryBeamSpacing) * xScale - 1.2;
+                    H20(dc,x0,y-5,propHeight+20,x1-x0,10,false);
+                    DrawnSecondaryMemberCount++;
+                }
+                DrawnSecondaryCount++;
             }
             // Front portion removed to expose both H20 layers. The slab and sheet remain in contact.
             Box(dc,-120,95,propHeight+40,240,155,3,Sheet,SheetTop,SheetSide);
