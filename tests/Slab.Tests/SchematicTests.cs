@@ -19,7 +19,7 @@ internal static class SchematicTests
         foreach (string primary in new[] { "2", "3", "4", "5+" })
         foreach (string props in new[] { "2", "3", "4", "5+" })
         {
-            var model = new FlexCalculatorViewModel { SelectedH20="4.90m", PropSpacing=750, PrimaryBeamCount=primary, PropCount=props };
+            var model = new FlexCalculatorViewModel { PropSpacing=750, PrimaryBeamCount=primary, PropCount=props };
             check(model.IsCalculationValid,"schematic fixture valid"); Draw(diagram,model);
             int lines=primary=="5+"?5:int.Parse(primary), perLine=props=="5+"?5:int.Parse(props);
             check(diagram.DrawnPrimaryCount==lines && diagram.DrawnPropCount==lines*perLine,"schematic support counts follow both selectors");

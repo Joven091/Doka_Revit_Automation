@@ -6,4 +6,4 @@
   <Compile Include="../../src/Views/BackproppingWindow.xaml.cs" Link="BackproppingWindow.xaml.cs"/>
   <Page Include="../../src/Views/BackproppingWindow.xaml" Link="BackproppingWindow.xaml"/>
  </ItemGroup>
-</Project>
+<ItemGroup><Compile Include="../../src/Models/CalculationFiles.cs" Link="CalculationFiles.cs"/></ItemGroup></Project>

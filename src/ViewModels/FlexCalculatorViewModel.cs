@@ -41,26 +41,14 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     private string _propModel = "Prop Type Eurex eco 20";
     private string _propType = "300";
     private string _propOrientation = "at bottom";
-    private string _selectedH20 = "3.30m";
 
     public bool IsCalculationValid { get; private set; }
     private bool textErrors;
     public double PropExtensionMm => FloorHeight - SlabThickness - 418;
-    public string MemberFitHint
-    {
-        get
-        {
-            if (PropCount != "5+" || SelectedH20 == null || !FloorPropData.H20Data.ContainsKey(SelectedH20) || PropSpacing < 1 || double.IsNaN(PropSpacing) || double.IsInfinity(PropSpacing)) return "";
-            double length = double.Parse(SelectedH20.Replace("m", ""), System.Globalization.CultureInfo.InvariantCulture) * 1000;
-            double count = Math.Max(0, Math.Floor((length - 2 * PrimaryBeamCantilever + 1e-7) / PropSpacing) + 1);
-            return $"Selected H20 fits at most {count:0} props at this spacing.";
-        }
-    }
     public double PropLookupExtensionMm { get; private set; }
     public double PrimaryDeflectionMm { get; private set; }
     public void SetTextInputErrors(bool value) { if (textErrors != value) { textErrors = value; Calculate(); } }
     // --- Outputs ---
-    private double _recommendedPropSpacing;
     private double _suggestedPrimaryBeamSpacing;
     private double _actualPropLoad;
     private double _propCapacityLimit;
@@ -70,7 +58,6 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     private string _warningMessage = string.Empty;
 
     // --- UI Collections ---
-    public List<string> H20Options => FloorPropData.H20Data.Keys.ToList();
     public List<string> PropModelOptions => ["Prop Type Eurex eco 20", "DokaFit Prop"];
 
     private List<string> _propTypeOptions;
@@ -115,23 +102,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public string PropType { get => _propType; set { _propType = value; OnPropertyChanged(); Calculate(); } }
     public string PropOrientation { get => _propOrientation; set { _propOrientation = value; OnPropertyChanged(); Calculate(); } }
 
-    public string SelectedH20
-    {
-        get => _selectedH20;
-        set
-        {
-            _selectedH20 = value;
-            OnPropertyChanged();
-            if (value != null && FloorPropData.H20Data.TryGetValue(value, out double rec))
-            {
-                RecommendedPropSpacing = rec;
-            }
-            Calculate();
-        }
-    }
-
     // --- Public Output Properties ---
-    public double RecommendedPropSpacing { get => _recommendedPropSpacing; set { _recommendedPropSpacing = value; OnPropertyChanged(); } }
     public double SuggestedPrimaryBeamSpacing { get => _suggestedPrimaryBeamSpacing; private set { _suggestedPrimaryBeamSpacing = value; OnPropertyChanged(); } }
     public double ActualPropLoad { get => _actualPropLoad; private set { _actualPropLoad = value; OnPropertyChanged(); } }
     public double PropCapacityLimit { get => _propCapacityLimit; private set { _propCapacityLimit = value; OnPropertyChanged(); } }
@@ -159,9 +130,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         ViewPrimaryBeamDiagramCommand = new RelayCommand(_ => PrimaryBeamDiagramRequested?.Invoke(this, EventArgs.Empty), _ => IsCalculationValid);
         ViewSecondaryBeamDiagramCommand = new RelayCommand(_ => SecondaryBeamDiagramRequested?.Invoke(this, EventArgs.Empty), _ => IsCalculationValid);
 
-        // The default three-prop layout occupies 3000 mm and fits a 3.30 m member. 
         UpdatePropOptions();
-        RecommendedPropSpacing = FloorPropData.H20Data[SelectedH20];
         Calculate();
     }
 
@@ -198,10 +167,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         if (UseCustomLoads) { CheckNumber(CustomLiveLoad, "Live load", false); CheckNumber(CustomFormworkLoad, "Formwork load", false); }
         if (!PrimaryBeamCountOptions.Contains(PrimaryBeamCount) || !PropCountOptions.Contains(PropCount) || !DeflectionLimitOptions.Contains(DeflectionLimit)) throw new ArgumentException("Select valid support counts and a deflection limit.");
         if (!PropModelOptions.Contains(PropModel) || PropTypeOptions == null || !PropTypeOptions.Contains(PropType) || PropOrientationOptions == null || !PropOrientationOptions.Contains(PropOrientation)) throw new ArgumentException("Select a supported prop and outer tube orientation.");
-        if (SelectedH20 == null || !FloorPropData.H20Data.ContainsKey(SelectedH20)) throw new ArgumentException("Select an H20 length.");
-        int count = PropCount == "5+" ? 5 : int.Parse(PropCount);
-        double available = double.Parse(SelectedH20.Replace("m", ""), System.Globalization.CultureInfo.InvariantCulture) * 1000;
-        if ((count - 1) * PropSpacing + 2 * PrimaryBeamCantilever > available + 1e-7) throw new ArgumentException("The primary spans and cantilevers exceed the selected H20 length. Choose a longer member or reduce the layout.");
+
     }
     private void ClearResults()
     {
@@ -214,7 +180,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         ClearResults();
         try { ValidateInputs(); CalculateValidInputs(); IsCalculationValid = SuggestedPrimaryBeamSpacing > 0 && string.IsNullOrEmpty(WarningMessage); }
         catch (ArgumentException ex) { ClearResults(); WarningMessage = ex.Message; }
-        OnPropertyChanged(nameof(IsCalculationValid)); OnPropertyChanged(nameof(PropExtensionMm)); OnPropertyChanged(nameof(PropLookupExtensionMm)); OnPropertyChanged(nameof(PrimaryDeflectionMm)); OnPropertyChanged(nameof(MemberFitHint));
+        OnPropertyChanged(nameof(IsCalculationValid)); OnPropertyChanged(nameof(PropExtensionMm)); OnPropertyChanged(nameof(PropLookupExtensionMm)); OnPropertyChanged(nameof(PrimaryDeflectionMm));
         CommandManager.InvalidateRequerySuggested();
     }
     private void CalculateValidInputs()

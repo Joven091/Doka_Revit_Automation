@@ -61,7 +61,9 @@ namespace EngineeringDashboard
         // Existing transverse arrangement: primary lines at the quarter points of
         // the secondary member, whose overall length is beam width + 1400 mm.
         public double PrimaryLineSpacingMm => (Width + 1400) / 2;
-        public const double SlabStripWidthMm = 300;
+        private double slabStripWidthMm = 300;
+        public double SlabStripWidthMm { get => slabStripWidthMm; set { slabStripWidthMm = value; Changed(); } }
+        public bool HasAnySlab => HasLeftSlab || HasRightSlab;
 
         public void SetTextInputErrors(bool value)
         {
@@ -98,6 +100,7 @@ namespace EngineeringDashboard
                 Check(FloorHeight, "Floor height", true); Check(PropExtensionMm, "Prop extension (floor height minus beam depth and 418 mm formwork)", true);
                 if (SelectedProp == null || !BeamPropOption.All.Contains(SelectedProp)) throw new ArgumentException("Select a prop type and orientation.");
                 double capacity = SelectedProp.Capacity(PropExtensionMm, out double lookupMeters);
+                if (HasAnySlab) Check(SlabStripWidthMm, "Adjacent slab strip width", true);
                 if (HasLeftSlab) ValidateSlab(LeftSlabThickness, "Left slab thickness");
                 if (HasRightSlab) ValidateSlab(RightSlabThickness, "Right slab thickness");
                 if (UseCustomLoads) { Check(CustomLiveLoad, "Placing + working live load"); Check(CustomFormworkLoad, "Formwork load"); }
@@ -109,7 +112,7 @@ namespace EngineeringDashboard
                 double right = HasRightSlab ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;
                 double total = beam + left + right;
                 Check(total, "Calculated line load", true);
-                double stripCentroid = (Width + SlabStripWidthMm) / 2000;
+                double stripCentroid = (Width + (HasAnySlab ? SlabStripWidthMm : 0)) / 2000;
                 // Sum forces and moments about the beam centre. Use the heavier line.
                 double imbalance = (right - left) * stripCentroid / (PrimaryLineSpacingMm / 1000);
                 double leftReaction = total / 2 - imbalance, rightReaction = total / 2 + imbalance;
@@ -149,7 +152,7 @@ namespace EngineeringDashboard
             catch (ArgumentException ex) { WarningMessage = ex.Message; }
             foreach (string name in new[] { nameof(MaximumPropSpacing), nameof(MaximumPropLoad), nameof(PrimaryBeamCantilever), nameof(LimitingFactor), nameof(WarningMessage), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(PrimaryLineSpacingMm), nameof(PropExtensionMm), nameof(PropCapacityKn), nameof(PropLookupExtensionMm), nameof(PropUtilizationPercent), nameof(IsCalculationValid) }) OnPropertyChanged(name);
         }
-        private void Changed([CallerMemberName] string property = null) { Calculate(); OnPropertyChanged(property); }
+        private void Changed([CallerMemberName] string property = null) { Calculate(); OnPropertyChanged(property); if(property == nameof(HasLeftSlab) || property == nameof(HasRightSlab)) OnPropertyChanged(nameof(HasAnySlab)); }
         private void ValidateSlab(double thickness, string label)
         {
             Check(thickness, label, true);

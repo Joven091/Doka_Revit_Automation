@@ -127,25 +127,10 @@
           <Border Style="{StaticResource Card}">
             <StackPanel>
               <TextBlock Style="{StaticResource Subheading}" Text="Primary H20 and props"/>
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition/>
-                  <ColumnDefinition Width="12"/>
-                  <ColumnDefinition/>
-                </Grid.ColumnDefinitions>
-                <ContentControl Grid.Column="0" IsTabStop="False">
-                  <StackPanel>
-                    <TextBlock Text="H20 member length"/>
-                    <ComboBox AutomationProperties.Name="H20 member length" ItemsSource="{Binding H20Options}" SelectedItem="{Binding SelectedH20, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                  </StackPanel>
-                </ContentControl>
-                <ContentControl Grid.Column="2" IsTabStop="False">
-                  <StackPanel>
-                    <TextBlock Text="Prop count"/>
-                    <ComboBox AutomationProperties.Name="Prop count" ItemsSource="{Binding PropCountOptions}" SelectedItem="{Binding PropCount, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                  </StackPanel>
-                </ContentControl>
-              </Grid>
+                              <StackPanel>
+                  <TextBlock Text="Prop count"/>
+                  <ComboBox AutomationProperties.Name="Prop count" ItemsSource="{Binding PropCountOptions}" SelectedItem="{Binding PropCount, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                </StackPanel>
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition/>
@@ -190,10 +175,8 @@
               </StackPanel>
               <Border Background="#F0F2F3" Padding="10">
                 <StackPanel>
-                  <TextBlock Style="{StaticResource Hint}" Text="{Binding MemberFitHint}"/>
                   <TextBlock Text="{Binding PropExtensionMm, StringFormat='Automatic extension: {0:F0} mm'}"/>
                   <TextBlock Style="{StaticResource Hint}" Text="{Binding PropLookupExtensionMm, StringFormat='Capacity lookup: {0:F0} mm'}"/>
-                  <TextBlock Style="{StaticResource Hint}" Text="{Binding RecommendedPropSpacing, StringFormat='H20 advisory spacing: {0:F0} mm'}"/>
                 </StackPanel>
               </Border>
             </StackPanel>
@@ -299,7 +282,7 @@
           <Border Style="{StaticResource Card}">
             <StackPanel>
               <Expander Header="Calculation assumptions">
-                <TextBlock Style="{StaticResource Hint}" Margin="0,10,0,0" Text="Equal spans, uniform loading and equal end overhangs. The 5+ option uses governing five- and six-support responses; diagrams show five supports. End deflection includes support rotation. The adopted end limit uses overhang length and the selected divisor. Sheeting and the remaining load path require separate checks."/>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,10,0,0" Text="Equal spans, uniform loading and equal end overhangs. The 5+ option uses governing five- and six-support responses; diagrams show both internal cases. End deflection includes support rotation. The adopted end limit uses overhang length and the selected divisor. Sheeting and the remaining load path require separate checks."/>
               </Expander>
             </StackPanel>
           </Border>
@@ -310,9 +293,13 @@
       <DockPanel LastChildFill="True">
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
           <Button Content="Close" MinWidth="80" Click="BtnClose_Click" Margin="0,0,10,0"/>
-          <Button x:Name="ImportButton" IsEnabled="{Binding IsCalculationValid}" Style="{StaticResource PrimaryAction}" Content="Import to Revit" Click="BtnImportValues_Click"/>
+          <Button x:Name="ImportButton" IsEnabled="{Binding IsCalculationValid}" Style="{StaticResource PrimaryAction}" Content="Select helper lines" ToolTip="Drag a selection window in Revit to select one or more slab helper lines matching this slab thickness. Press Esc to cancel." Click="BtnImportValues_Click"/>
         </StackPanel>
-        <TextBlock Text="Results update as you edit." Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+        <WrapPanel VerticalAlignment="Center">
+          <Button Content="Save calculation" Click="SaveCalculation_Click" Margin="0,0,6,0"/>
+          <Button Content="Load calculation" Click="LoadCalculation_Click" Margin="0,0,6,0"/>
+          <Button Content="Export report" Click="ExportReport_Click"/>
+        </WrapPanel>
       </DockPanel>
     </Border>
   </Grid></Border>

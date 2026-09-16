@@ -23,6 +23,25 @@ class Program
  [STAThread] static int Main(string[] args){try{Run(args);Console.WriteLine($"Passed {checks} slab calculation/catalog/WPF checks.");return 0;}catch(Exception ex){Console.Error.WriteLine(ex);return 1;}finally{window?.Close();}}
  static void Run(string[] args)
  {
+  var fileWindow=new FlexCalculatorWindow();
+  Check(!Find<ComboBox>(fileWindow).Any(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="SelectedH20"),"member-length selector removed");
+  var fileVm=(FlexCalculatorViewModel)fileWindow.DataContext;var record=fileWindow.CaptureCalculation();double originalSpacing=fileVm.SuggestedPrimaryBeamSpacing;
+  Check(!record.Inputs.Any(f=>f.Name=="SelectedH20"),"new records omit member length");
+  record.Inputs.Add(CalculationFiles.Field("SelectedH20","2.90m")); // Earlier saved files remain loadable; obsolete length is ignored.
+  string recordPath=Path.GetTempFileName();
+  try {
+   CalculationFiles.Write(recordPath,record);fileVm.SlabThickness=400;
+   var culture=CultureInfo.CurrentCulture;CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("de-DE");
+   fileWindow.RestoreCalculation(CalculationFiles.Read<CalculationRecord>(recordPath));CultureInfo.CurrentCulture=culture;
+   Equal(300,fileVm.SlabThickness,"slab file roundtrip thickness");Equal(originalSpacing,fileVm.SuggestedPrimaryBeamSpacing,"slab file roundtrip result");
+   Check(fileWindow.BuildReport().Contains("Secondary H20 checks") && fileWindow.BuildReport().Contains("minimum reaction"),"slab report includes structural checks");
+   if(args.Length>0)File.WriteAllText(Path.ChangeExtension(args[0],"report.html"),fileWindow.BuildReport());
+   record.Version=999;bool rejected=false;try{fileWindow.RestoreCalculation(record);}catch(ArgumentException){rejected=true;}Check(rejected && fileVm.SlabThickness==300,"unsupported record preserves current state");
+   File.WriteAllText(recordPath,"<!DOCTYPE x [<!ENTITY e SYSTEM 'file:///not-read'>]><CalculationRecord>&e;</CalculationRecord>");
+   rejected=false;try{CalculationFiles.Read<CalculationRecord>(recordPath);}catch(InvalidOperationException){rejected=true;}catch(System.Xml.XmlException){rejected=true;}Check(rejected,"external XML entities prohibited");
+   string report=CalculationFiles.Report("Slab",new[]{CalculationFiles.Field("Floor","<script>alert(1)</script>")},new[]{CalculationFiles.Field("Spacing (mm)",originalSpacing)},"Adopted assumptions");
+   Check(!report.Contains("<script>") && report.Contains("&lt;script&gt;") && report.Contains("Spacing (mm)"),"report encodes names and contains results");
+  } finally { File.Delete(recordPath);fileWindow.Close(); }
   // Reference cells were extracted from the cited source PDFs, including merged cells.
   foreach(var line in File.ReadLines(Path.Combine(AppContext.BaseDirectory,"prop-capacity-reference.csv")).Skip(1)){
    var c=line.Split(',');double ext=double.Parse(c[1],CultureInfo.InvariantCulture);double? actual=PropDataHelper.GetCapacity(ext,c[2]);
@@ -35,8 +54,8 @@ class Program
   }
   Equal(16.8,PropDataHelper.GetCapacity(4,"DokaFit Prop 400 at top").Value,"published DokaFit");Check(!PropDataHelper.GetCapacity(2.1,"DokaFit Prop 350 at top").HasValue,"350 minimum");Check(!PropDataHelper.GetCapacity(3,"DokaFit Prop 300 at fixed").HasValue,"unverified fixed removed");
   Equal(22.9,SlabLoadHelper.CalculateTotalLoad(800),"heaping cap");Equal(9.15,SlabLoadHelper.CalculateTotalLoad(290),"load precision");Equal(5.003125,SlabLoadHelper.CalculateTotalLoad(124.125),"decimal slab thickness");
-  var v=new FlexCalculatorViewModel();Check(v.IsCalculationValid,"default valid");Equal(950,v.RecommendedPropSpacing,"advisory in mm");Equal(2282,v.PropExtensionMm,"automatic extension");
-  v.SelectedH20="2.90m";Invalid(v,"member does not fit");v.SelectedH20="3.30m";Check(v.IsCalculationValid,"longer member recovers");
+  Check(new FlexCalculatorViewModel{PropCount="5+",PropSpacing=1000,PrimaryBeamCantilever=500}.IsCalculationValid,"continuous layout is not restricted to stock H20 length");
+  var v=new FlexCalculatorViewModel();Check(v.IsCalculationValid,"default valid");Equal(2282,v.PropExtensionMm,"automatic extension");
   foreach(string name in new[]{"SlabThickness","FloorHeight","SecondaryBeamSpacing","PropSpacing"})foreach(double bad in new[]{0,-1,double.NaN,double.PositiveInfinity}){v=new FlexCalculatorViewModel();typeof(FlexCalculatorViewModel).GetProperty(name).SetValue(v,bad);Invalid(v,"invalid "+name);}
   foreach(string name in new[]{"SecondaryBeamCantilever","PrimaryBeamCantilever","CustomLiveLoad","CustomFormworkLoad"})foreach(double bad in new[]{-1,double.NaN,double.PositiveInfinity}){v=new FlexCalculatorViewModel{UseCustomLoads=true};typeof(FlexCalculatorViewModel).GetProperty(name).SetValue(v,bad);Invalid(v,"invalid "+name);}
   v=new FlexCalculatorViewModel{CustomLiveLoad=double.NaN};Check(v.IsCalculationValid,"inactive custom ignored");v.UseCustomLoads=true;Invalid(v,"custom activated");
@@ -52,7 +71,7 @@ class Program
   UpliftTests.Run(Check,Equal);
   CantileverTests.Run(Check,Equal);
   SchematicTests.Run(Check);
-  v=new FlexCalculatorViewModel{SlabThickness=100,FloorHeight=4518,PropModel="DokaFit Prop",PropType="400",SelectedH20="4.90m",PrimaryBeamCount="5+",PropCount="5+",PrimaryBeamCantilever=250,SecondaryBeamCantilever=0,PropSpacing=1000};
+  v=new FlexCalculatorViewModel{SlabThickness=100,FloorHeight=4518,PropModel="DokaFit Prop",PropType="400",PrimaryBeamCount="5+",PropCount="5+",PrimaryBeamCantilever=250,SecondaryBeamCantilever=0,PropSpacing=1000};
   Check(v.IsCalculationValid,"5+ overload regression valid revised layout");Check(v.SuggestedPrimaryBeamSpacing<3100,"5+ formerly overloaded spacing reduced");
   double secondaryReaction=ContinuousBeamResponse.Analyze(5,v.SuggestedPrimaryBeamSpacing/1000,0,4.4,449.8756).Reaction;
   Check(ContinuousBeamResponse.Analyze(5,1,.25,secondaryReaction,449.8756).Reaction<=16,"independent five-support load within prop capacity");
@@ -60,13 +79,13 @@ class Program
   var cases = MyRevitAddin.ViewModels.DiagramWindowViewModel.ForSelection(5,1,0,5,449.8756,"Secondary beam");
   Check(cases.DiagramRows[0].CaseText.Contains("Governing reaction"),"five governs reaction");
   Check(!cases.DiagramRows[3].CaseText.Contains("Governing magnitude"),"five does not govern deflection");
-  Check(cases.DiagramRows[7].CaseText.Contains("6 supports � Governing magnitude"),"six governs deflection within 5+");
+  Check(cases.DiagramRows[7].CaseText.Contains("6 supports · Governing magnitude"),"six governs deflection within 5+");
   Check(cases.DiagramRows[7].MaxValueText.Contains("Maximum downward: 0.07 mm"),"downward deflection sign and units");
   Check(cases.DiagramRows[0].GeometryText.Contains("1000 mm"),"dimensions have units");
   foreach(int j in new[]{1,2,3,5,6,7}) Check(cases.DiagramRows[j].ChartModel.Annotations.OfType<OxyPlot.Annotations.LineAnnotation>().Count(a=>a.Type==OxyPlot.Annotations.LineAnnotationType.Vertical)==(j<4?5:6),"support guides match case");
   int accepted=0;
   foreach(int h in new[]{100,150,200,300,400,600})foreach(int lp in new[]{500,750,1000,1250,1500,2000})foreach(string n in new[]{"2","3","4","5+"})foreach(string limit in new[]{"L/500","L/350","L/270"}){
-   v=new FlexCalculatorViewModel{SlabThickness=h,FloorHeight=h+2418,PropSpacing=lp,PropCount=n,SelectedH20="4.90m",DeflectionLimit=limit};
+   v=new FlexCalculatorViewModel{SlabThickness=h,FloorHeight=h+2418,PropSpacing=lp,PropCount=n,DeflectionLimit=limit};
    if(!v.IsCalculationValid){Check(v.SuggestedPrimaryBeamSpacing==0,"invalid clears spacing");continue;}accepted++;Check(v.PrimaryDeflectionMm<=lp/double.Parse(limit.Substring(2))+1e-7,"sweep primary deflection");Check(v.SuggestedPrimaryBeamSpacing%25==0,"output grid");
    var row=v.PrimaryDiagramViewModel.DiagramRows[3];var line=(OxyPlot.Series.LineSeries)row.ChartModel.Series[0];double a=v.PrimaryBeamCantilever/1000,last=a+(n=="5+"?4:int.Parse(n)-1)*lp/1000.0;double actual=line.Points.Where(p=>p.X>=a&&p.X<=last).Max(p=>Math.Abs(p.Y));Check(actual<=v.PrimaryDeflectionMm+1e-5,"diagram independently integrated span");
   }
@@ -74,10 +93,9 @@ class Program
   RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;window=new FlexCalculatorWindow();var visualRoot=(FrameworkElement)window.Content;visualRoot.Measure(new Size(1040,860));visualRoot.Arrange(new Rect(0,0,1040,860));visualRoot.UpdateLayout();Pump();v=(FlexCalculatorViewModel)window.DataContext;var import=(Button)window.FindName("ImportButton");Check(import.IsEnabled,"initial import");
   Enter("SlabThickness","abc");Invalid(v,"text conversion");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var ignored),"import guard");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"results hidden");
   Enter("SlabThickness","300");Check(v.IsCalculationValid&&import.IsEnabled,"text repair");v.UseCustomLoads=true;Pump();Enter("CustomLiveLoad","bad");Invalid(v,"custom text");v.UseCustomLoads=false;Pump();Check(v.IsCalculationValid,"inactive conversion ignored");v.UseCustomLoads=true;Pump();Invalid(v,"reactivated conversion");Enter("CustomLiveLoad","2.25");v.UseCustomLoads=false;
-  v.SelectedH20="4.90m";Enter("PrimaryBeamCantilever","1000");Invalid(v,"UI uplift");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var upliftIgnored),"uplift import blocked");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"uplift results hidden");Enter("PrimaryBeamCantilever","500");Check(v.IsCalculationValid&&import.IsEnabled,"UI uplift recovery");v.SelectedH20="3.30m";
+  Enter("PrimaryBeamCantilever","1000");Invalid(v,"UI uplift");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var upliftIgnored),"uplift import blocked");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"uplift results hidden");Enter("PrimaryBeamCantilever","500");Check(v.IsCalculationValid&&import.IsEnabled,"UI uplift recovery");
   Enter("FloorHeight","10000");Invalid(v,"UI extension");Enter("FloorHeight","3000");Check(v.IsCalculationValid,"UI extension repair");
-  var choice=Find<ComboBox>(window).Single(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="SelectedH20");choice.SelectedItem="2.90m";Pump();Invalid(v,"UI H20 fit");choice.SelectedItem="3.30m";Pump();Check(v.IsCalculationValid,"UI H20 recovery");
-  v.SelectedH20="4.90m";v.PropSpacing=750;var propCount=Find<ComboBox>(window).Single(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="PropCount");propCount.SelectedItem="5+";Pump();Check(v.PropCount=="5+"&&v.IsCalculationValid,"UI 5+ selection");Check(v.MemberFitHint.Contains("at most 6 props"),"5+ member fit hint");
+  v.PropSpacing=750;var propCount=Find<ComboBox>(window).Single(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="PropCount");propCount.SelectedItem="5+";Pump();Check(v.PropCount=="5+"&&v.IsCalculationValid,"UI 5+ selection");
   var primaryCount=Find<ComboBox>(window).Single(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="PrimaryBeamCount");primaryCount.SelectedItem="5+";Pump();Check(v.PrimaryBeamCount=="5+"&&v.IsCalculationValid,"UI secondary 5+ selection");
   v.PropModel="DokaFit Prop";Pump();Check(!v.PropOrientationOptions.Contains("at fixed"),"orientation choices");v.PropModel="Prop Type Eurex eco 20";Pump();
   if(args.Length>1 && args[1]=="uplift"){Enter("PrimaryBeamCantilever","900");Invalid(v,"rendered uplift state");}

@@ -33,3 +33,13 @@ The 5+ selector continues to use the five/six-support envelope. The diagram wind
 Wrapping headings and full-width charts prevent title clipping. Loading dimensions are drawn in mm on a separate dimension row within the loading chart; reactions are labelled by support. Vertical dashed support guides align the response charts. Deflection summaries explicitly state maximum downward and upward displacement; negative plotted displacement is downward. Existing plot colours are retained.
 
 Diagram horizontal axes run exactly from the left beam end (0) to the right beam end, with zero axis padding.
+
+
+## Saved calculations and reports
+
+All three windows have Save calculation, Load calculation and Export report actions. The XML-based .dokacalc format is versioned, uses invariant numeric input values, rejects external XML entities, and validates calculator kind/version before applying inputs. Writes replace the file atomically. Results are recalculated after loading; reports preserve a dated result snapshot and can be printed to PDF in a browser. Backpropping additionally retains unfinished session state and offers New calculation. The beam adjacent slab strip width defaults to 300 mm and is editable for both checked sides.
+
+
+## Slab helper-line import
+
+The slab calculator no longer asks for an H20 member length or limits a continuous layout to a stock member length. Select helper lines hides the calculator and starts Revit rectangle selection. Highlight one or more PrimaryBeam slab helpers matching the calculated slab thickness; only that selection is updated. Esc cancels without writing. Existing per-instance parameter checks and atomic subtransactions remain.

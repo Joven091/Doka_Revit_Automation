@@ -39,7 +39,8 @@ internal static class Program
    }
   }
  }
- [STAThread] private static void Main()
+ [STAThread] private static void Main() { try { Run(); } catch(Exception e) { Console.Error.WriteLine(e); Environment.ExitCode=1; } }
+ private static void Run()
  {
   window=new BackproppingWindow(); Layout();
   Assert(Get<DataGrid>("SlabGrid").Items.Count==0); Assert(Get<TextBox>("FloorName").Text==""); Assert(Get<ComboBox>("Temperature").SelectedIndex==0);
@@ -67,11 +68,23 @@ internal static class Program
   Click("CalculateButton");Layout();Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text.Contains("Enter maximum spacing")));
   Children<TextBox>(Get<StackPanel>("StoreyPanel")).First().Text="";Get<TextBox>("ProjectMaximum").Text="2010";Click("CalculateButton");Layout();
   Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text=="2000 × 2000 mm"));
+  var fullDocument=window.CaptureCalculation();
+  Assert(window.BuildReport().Contains("Load") || window.BuildReport().Contains("load"));
+  var arguments=Environment.GetCommandLineArgs();
+  if(arguments.Length>1) {
+   System.IO.File.WriteAllText(System.IO.Path.ChangeExtension(arguments[1],"report.html"),window.BuildReport());
+   var root=(FrameworkElement)window.Content;var size=new Size(940,860);root.Measure(size);root.Arrange(new Rect(size));root.UpdateLayout();
+   var bmp=new System.Windows.Media.Imaging.RenderTargetBitmap(940,860,96,96,PixelFormats.Pbgra32);var background=new DrawingVisual();using(var dc=background.RenderOpen())dc.DrawRectangle(window.Background,null,new Rect(size));bmp.Render(background);bmp.Render(root);
+   var encoder=new System.Windows.Media.Imaging.PngBitmapEncoder();encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));using(var stream=System.IO.File.Create(arguments[1]))encoder.Save(stream);
+  }
+  Assert(window.ReportResults(fullDocument).Any(f=>f.Value.Contains("2000 × 2000 mm")));
+  string path=System.IO.Path.GetTempFileName();try { CalculationFiles.Write(path,fullDocument);Click("NewCalculation");window.RestoreCalculation(CalculationFiles.Read<BackproppingDocument>(path));Assert(Get<DataGrid>("SlabGrid").Items.Count==4);Assert(Get<TextBox>("ProjectMaximum").Text=="2010"); }finally{System.IO.File.Delete(path);}
   Click("RemoveLowest");Assert(Get<DataGrid>("SlabGrid").Items.Count==3);Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Visible);
   CheckPropBearing();
   Click("RemoveLowest");Click("RemoveLowest");Click("RemoveLowest");Assert(Get<DataGrid>("SlabGrid").Items.Count==0);
   window.Close();
   window=new BackproppingWindow();
+  Click("NewCalculation");
   Get<ComboBox>("Temperature").SelectedIndex=1;
   Get<TextBox>("FloorName").Text="Level 5";Get<TextBox>("Thickness").Text="200";
   Get<TextBox>("FloorHeight").Text="3200";Get<TextBox>("Sidl").Text="6";Get<TextBox>("LiveLoad").Text="6";Click("SaveSlab");
@@ -84,6 +97,14 @@ internal static class Program
   Click("CancelEdit");Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Collapsed);
   Click("CalculateButton");Assert(Get<TextBlock>("ErrorText").Text=="");
   Assert(Get<DataGrid>("SlabGrid").Items.Count==2);
-  window.Close();Console.WriteLine($"Passed {checks} WPF workflow checks.");
+  var accepted=window.CaptureCalculation();
+  Get<DataGrid>("SlabGrid").SelectedIndex=1; // Preserve an unfinished edit across window instances.
+  Get<TextBox>("ProjectMaximum").Text="2100";
+  window.Close();window=new BackproppingWindow();Assert(Get<DataGrid>("SlabGrid").Items.Count==2);Assert(Get<TextBox>("ProjectMaximum").Text=="2100");
+  Click("NewCalculation");Assert(Get<DataGrid>("SlabGrid").Items.Count==0);Assert(Get<TextBox>("FloorName").Text=="");Assert(Get<ComboBox>("Temperature").SelectedIndex==0);
+  window.RestoreCalculation(accepted);accepted.Version=999;bool rejected=false;try{window.RestoreCalculation(accepted);}catch(ArgumentException){rejected=true;}Assert(rejected && Get<DataGrid>("SlabGrid").Items.Count==2);
+  Click("NewCalculation");Get<TextBox>("FloorName").Text="Unfinished <floor>";Get<TextBox>("Thickness").Text="bad";
+  window.Close();window=new BackproppingWindow();Assert(Get<TextBox>("FloorName").Text=="Unfinished <floor>");Assert(Get<TextBox>("Thickness").Text=="bad");Assert(Get<Button>("CancelEdit").Visibility==Visibility.Visible);
+  Click("NewCalculation");window.Close();Console.WriteLine($"Passed {checks} WPF workflow checks.");
  }
 }

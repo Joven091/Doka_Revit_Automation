@@ -10,12 +10,12 @@ Deflection choices carry numeric values (3, 5, 10 mm); display text does not sel
 
 The existing transverse geometry is retained and shown in the layout-basis panel:
 
-- Each checked slab contributes a 300 mm strip.
+- Each checked slab contributes the entered strip width (default 300 mm, shared by checked sides).
 - Secondary member overall transverse length = concrete beam width + 1400 mm.
 - Primary support lines lie at its quarter points, so their separation b = (beam width + 1400) / 2.
 - The concrete beam is centered between the primary lines.
 
-For line loads Qbeam, Qleft, Qright (kN/m), with the slab strip centroids at ±e, where e = (beam width + 300) / 2 in mm:
+For line loads Qbeam, Qleft, Qright (kN/m), with the slab strip centroids at ±e, where e = (beam width + slab strip width) / 2 in mm:
 
 ```
 Qtotal = Qbeam + Qleft + Qright
@@ -39,7 +39,7 @@ Examples:
 - 800 × 600 mm, three props per line, no side slabs: corrected default spacing 2400 mm.
 - 500 × 700 mm, four-plus props per line, no side slabs: 5 mm deflection choice gives 2800 mm; 10 mm gives 3000 mm.
 
-This remains a uniform-load/equal-span primary-beam calculation. Plywood, secondary beams, beam lengths/joints, restraint and local bearing require separate checks. The fixed strip and support-line geometry must match the actual load path.
+This remains a uniform-load/equal-span primary-beam calculation. Plywood, secondary beams, beam lengths/joints, restraint and local bearing require separate checks. The entered strip width and fixed support-line geometry must match the actual load path.
 
 ## Selected prop capacity
 
@@ -84,3 +84,8 @@ The full add-in compiles against the Revit 2024 API. Parameter writes and rollba
 4,352 calculation assertions and 26 WPF assertions pass; the add-in builds with zero warnings/errors. All positive shared capacity rows and every configuration’s extension boundaries are checked. An independent three-moment beam solution integrates displacement from bending moments and checks equilibrium, maximum reaction, bending, shear and displacement for the 648 geometry/support inputs (4+ tested with 4 through 12 supports). The retained three/four-plus reaction factors are conservative estimates, not exact reactions. Verification covers the adopted full uniform-load/equal-span model; partial loading, flexible/settling supports, secondary-beam and sheeting design are outside this calculation. WPF tests additionally verify dropdown selection, automatic extension and unsupported-extension import blocking.
 
 Shared free-prop catalog corrected to the published revisions in [prop-capacity-sources.md](prop-capacity-sources.md). The unsupported DokaFit fixed orientation is removed. The same millimetre-based actual-range and conservative row lookup is now used by both calculators. Beam regression passes after these corrections; this does not address the slab calculator’s explicitly deferred audit items.
+
+
+## Records
+
+Save/load uses versioned .dokacalc input files, with invariant numeric values, prop configuration and numeric deflection selection. Loads are validated on a separate model before the retained model is changed. Export report produces standalone printable HTML containing inputs, results, governing spacing criterion, prop configuration/capacity and the adopted assumptions. Invalid active inputs block saving/report export. The 300 mm adjacent slab strip is editable; its width changes both line load and eccentricity, and the schematic follows it.

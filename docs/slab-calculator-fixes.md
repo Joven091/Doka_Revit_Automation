@@ -10,8 +10,8 @@
 6. Positive finite active dimensions (prop spacing at least 1 mm), nonnegative finite loads/cantilevers and supported selections are required. WPF conversion errors invalidate results and import. Inactive custom-load fields are ignored; reactivating an invalid field blocks again. Conversion text is retained so it can be corrected.
 7. Heaping is 10% of concrete weight, minimum 0.75 and maximum 1.75 kN/m². Slab thickness remains a double; intermediate load rounding is removed. See Dokaflex user information 999776002, August 2024, page 12: https://direct.doka.com/_ext/downloads/downloadcenter/999776002_2024_08_online.pdf.
 8. Extension uses millimetres: floor height minus slab thickness minus 418. Actual range is checked before upward table lookup, with only arithmetic-noise tolerance at boundaries. Actual and lookup extensions are visible.
-9. Import independently checks calculation validity, validates all four length parameters for type and writability, writes an instance in a subtransaction, checks Set/Commit outcomes and reports updated/skipped/failed counts. A failed parent commit cannot report success. Active-view matching by PrimaryBeam/Slab and thickness remains the targeting rule.
-10. The static H20 advisory mapping is labelled in mm. Selected H20 length must accommodate (prop count − 1) × prop spacing + two primary cantilevers for the modeled continuous member. The default is 3.30 m to fit the default 3.00 m layout. A lapped/multiple-member layout needs a separate model. The mapping is advisory, not a capacity calculation.
+9. Import independently checks calculation validity, validates all four length parameters for type and writability, writes an instance in a subtransaction, checks Set/Commit outcomes and reports updated/skipped/failed counts. A failed parent commit cannot report success. Import now prompts for rectangle selection of PrimaryBeam slab helper lines matching the calculated slab thickness. Only selected helpers are updated; Esc or an empty selection writes nothing. The window hides for selection and is restored afterward.
+10. H20 member length, its advisory spacing and the member-fit restriction have been removed at the user’s request. Analysis remains continuous across illustrated overlaps. Stock member lengths are not an input or calculation constraint.
 11. Every invalidation clears both diagrams and results, and disables diagram commands and import. Valid inputs restore them.
 
 Spacing candidates are now evaluated directly in integer 25 mm increments. This ensures the primary deflection check applies to the exact output layout and avoids the prior 10 mm search followed by another rounding step.
@@ -32,3 +32,6 @@ IsCalculationValid means the currently implemented checks pass. These deferred i
 - The 5+ tests check responses through 100 supports and the analytical envelope inequalities through 256 supports, including an overloaded-layout regression. Slab/catalog/WPF checks pass; prior beam regression: 4,352 checks across 648 scenarios plus 26 WPF checks. Full Revit add-in build succeeds without errors/warnings.
 
 Actual model writes, per-instance rollback and parent commit failure still require testing in Revit. No live Revit transactions were executed by the test host.
+
+
+Rectangle helper selection compiles against the Revit 2024 API. Live window selection and transaction behavior require an in-Revit check. Older saved slab files containing SelectedH20 still load; that obsolete field is ignored and omitted from new saves/reports.
