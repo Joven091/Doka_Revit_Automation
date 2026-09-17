@@ -1,0 +1,110 @@
+<Window x:Class="EngineeringDashboard.Dome.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:EngineeringDashboard.Dome"
+        Title="Dome Calculator — Beta" Height="850" Width="680" MinWidth="560" MinHeight="600"
+        WindowStartupLocation="CenterOwner" Background="#F5F5F5" FontFamily="Segoe UI" FontSize="13" Foreground="#202A33">
+    <Window.Resources>
+      <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="../Views/CalculatorStyles.xaml"/></ResourceDictionary.MergedDictionaries>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="2"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="#334155"/>
+        </Style>
+        <Style TargetType="Label"><Setter Property="Padding" Value="0,6,0,3"/></Style>
+      </ResourceDictionary>
+    </Window.Resources>
+    <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="16">
+            <StackPanel>
+                <Border Style="{StaticResource Step}"><StackPanel><TextBlock Text="Dome Calculator" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="BETA · Formwork load and secondary-beam spacing" FontWeight="SemiBold" Margin="0,4,0,0"/></StackPanel></Border>
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="1  Geometry and combined load" FontSize="18" FontWeight="Bold"/>
+                        <Label Content="_Tributary width / primary dimension (m)" Target="{Binding ElementName=PrimaryInput}"/>
+                        <TextBox x:Name="PrimaryInput" AutomationProperties.Name="Tributary width in metres" Text="{Binding PrimaryBeamSize, UpdateSourceTrigger=PropertyChanged}"/>
+                        <Label Content="_Secondary beam length (m)" Target="{Binding ElementName=SecondaryInput}"/>
+                        <TextBox x:Name="SecondaryInput" AutomationProperties.Name="Secondary beam length in metres" Text="{Binding SecondaryBeamSize, UpdateSourceTrigger=PropertyChanged}"/>
+                        <Label Content="_Combined load: heaping + live + formwork (kN/m²)" Target="{Binding ElementName=CombinedInput}"/>
+                        <TextBox x:Name="CombinedInput" AutomationProperties.Name="Combined load in kilonewtons per square metre" Text="{Binding CombinedLoad, UpdateSourceTrigger=PropertyChanged}"/>
+                        <TextBlock Text="Arithmetic expressions are supported. Use a dot for decimals, without thousands separators. Inputs retain their full precision." FontSize="12" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource CardStyle}" Background="#FFF6D6">
+                    <StackPanel>
+                        <TextBlock Text="Load model" FontWeight="Bold"/>
+                        <TextBlock Text="Enter concrete SECTION areas, not plan/surface areas. Slabs and parallel beams are extruded along the secondary length; perpendicular beams use their extrusion width. Concrete unit weight is 25 kN/m³. Contributions are averaged over the tributary width × secondary length." Margin="0,4,0,0"/>
+                        <TextBlock Text="Example: a 0.20 m thick slab across 2 m tributary width uses section area 0.20 × 2 = 0.40 m². Count overlapping concrete only once." Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+                <WrapPanel Margin="0,0,0,12">
+                    <Button Margin="0,0,8,0" Content="+ Add Slab" Command="{Binding AddSlabCommand}"/>
+                    <Button Content="+ Add Beam" Command="{Binding AddBeamCommand}"/>
+                </WrapPanel>
+                <ItemsControl ItemsSource="{Binding Elements}">
+                    <ItemsControl.Resources>
+                        <DataTemplate DataType="{x:Type local:SlabViewModel}">
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="Remove" AutomationProperties.Name="Remove slab" Command="{Binding RemoveCommand}" HorizontalAlignment="Right"/>
+                                        <TextBlock Text="Slab" FontSize="17" FontWeight="Bold"/>
+                                    </DockPanel>
+                                    <Label Content="Concrete section area (m²)" Target="{Binding ElementName=SlabAreaInput}"/>
+                                    <TextBox x:Name="SlabAreaInput" AutomationProperties.Name="Slab concrete section area" Text="{Binding SurfaceArea, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <TextBlock Text="{Binding CalculatedLoad, StringFormat='Contribution: {0:G6} kN/m²', TargetNullValue='Contribution unavailable'}"/>
+                                    <TextBlock Text="{Binding ValidationMessage}" Foreground="#B91C1C"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type local:BeamViewModel}">
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="Remove" AutomationProperties.Name="Remove beam" Command="{Binding RemoveCommand}" HorizontalAlignment="Right"/>
+                                        <TextBlock Text="Beam" FontSize="17" FontWeight="Bold"/>
+                                    </DockPanel>
+                                    <Label Content="Concrete section area (m²)" Target="{Binding ElementName=BeamAreaInput}"/>
+                                    <TextBox x:Name="BeamAreaInput" AutomationProperties.Name="Beam concrete section area" Text="{Binding SurfaceArea, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <TextBlock Text="Direction relative to primary beams" Margin="0,6,0,6"/>
+                                    <WrapPanel Margin="0,0,0,6">
+                                        <RadioButton Content="Parallel" IsChecked="{Binding IsParallel}" Margin="0,0,16,0"/>
+                                        <RadioButton Content="Perpendicular" IsChecked="{Binding IsPerpendicular}"/>
+                                    </WrapPanel>
+                                    <StackPanel Visibility="{Binding IsPerpendicular, Converter={StaticResource BoolToVis}}">
+                                        <Label Content="Extrusion width (m)" Target="{Binding ElementName=WidthInput}"/>
+                                        <TextBox x:Name="WidthInput" AutomationProperties.Name="Perpendicular beam extrusion width" Text="{Binding BeamWidth, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding CalculatedLoad, StringFormat='Contribution: {0:G6} kN/m²', TargetNullValue='Contribution unavailable'}"/>
+                                    <TextBlock Text="{Binding ValidationMessage}" Foreground="#B91C1C"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.Resources>
+                </ItemsControl>
+                <TextBlock Text="{Binding ValidationMessage}" Foreground="#B91C1C" FontWeight="SemiBold" Margin="0,0,0,12"/>
+            </StackPanel>
+        </ScrollViewer>
+        <Border Grid.Row="1" Background="#FFF6D6" Padding="18">
+            <StackPanel>
+                <TextBlock Foreground="#202A33" Text="{Binding SupportArea, StringFormat='Support area: {0:G6} m²', TargetNullValue='Support area: unavailable'}"/>
+                <TextBlock Foreground="#202A33" Text="{Binding LoadTransferredToSecondary, StringFormat='Transferred pressure: {0:G6} kN/m²', TargetNullValue='Transferred pressure: unavailable'}" Margin="0,4"/>
+                <TextBlock Foreground="#202A33" FontSize="21" FontWeight="Bold" Text="{Binding TotalLoad, StringFormat='Total load: {0:G6} kN', TargetNullValue='Total load: unavailable — correct inputs'}"/>
+                <WrapPanel Margin="0,12,0,0">
+                    <Button Margin="0,0,8,0" Style="{StaticResource PrimaryAction}" Content="Review spacings &amp; diagrams" Command="{Binding ShowDiagramCommand}"/>
+                    <Button Content="Copy Load Summary" Command="{Binding CopyResultsCommand}"/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,14 @@
+name: Dome calculator and existing calculator checks
+on: [push, pull_request]
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
+      - run: dotnet run --project tests/Dome.Tests/Dome.Tests.csproj -c Release
+      - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release
+      - run: dotnet run --project tests/Backpropping.Tests/Backpropping.Tests.csproj -c Release
