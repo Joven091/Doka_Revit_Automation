@@ -1,0 +1,121 @@
+<Window x:Class="EngineeringDashboard.Dome.DiagramWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:oxy="http://oxyplot.org/wpf"
+        Title="Dome Calculator — Beta — Recommended Layout" Height="800" Width="1280" MinWidth="1050" MinHeight="640"
+        WindowState="Maximized" Background="#F5F5F5" FontFamily="Segoe UI" FontSize="13" Foreground="#202A33" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+      <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="../Views/CalculatorStyles.xaml"/></ResourceDictionary.MergedDictionaries>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="4"/>
+        </Style>
+        <Style TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="#334155"/>
+        </Style>
+        <Style x:Key="ChartHeading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#0F172A"/>
+        </Style>
+        <Style x:Key="ChartSummary" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,2,0,5"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+          </ResourceDictionary>
+    </Window.Resources>
+    <Grid x:Name="DiagramLayout" Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0" Margin="4,0,4,8">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock Text="Dome Calculator · Beta" FontSize="21" FontWeight="Bold" Margin="0,0,18,0"/>
+            <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" FontWeight="SemiBold">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="TextWrapping" Value="Wrap"/>
+                        <Setter Property="Foreground" Value="#047857"/>
+                        <Style.Triggers><DataTrigger Binding="{Binding IsDesignValid}" Value="False"><Setter Property="Foreground" Value="#B91C1C"/></DataTrigger></Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <Button Grid.Column="2" Content="Model assumptions" Click="ShowModelScope" Padding="10,5" Margin="10,0,0,0" ToolTip="{Binding ScopeText}"/>
+        </Grid>
+        <Border Grid.Row="1" x:Name="SpacingRecommendation" Background="#FFF6D6" CornerRadius="2" Padding="16,8" Margin="4,0,4,8"
+                Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,20,0">
+                    <TextBlock Text="PRIMARY SUPPORT SPACINGS · mm" Foreground="#586772" FontSize="12" FontWeight="SemiBold"/>
+                    <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Height="29" Margin="0,3,0,0">
+                        <TextBlock Text="{Binding OptimalSpacingsText}" Foreground="#202A33" FontWeight="Bold" FontSize="27" TextWrapping="NoWrap"/>
+                    </Viewbox>
+                    <TextBlock Text="Left to right along the beam · (c) = end overhang" Foreground="#586772" FontSize="11" Margin="0,2,0,0"/>
+                </StackPanel>
+                <Border Grid.Column="1" BorderBrush="#D4AA00" BorderThickness="1,0,0,0" Padding="20,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="SECONDARY BEAM SPACING" Foreground="#586772" FontSize="12" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding SecondaryBeamSpacingText}" Foreground="#202A33" FontSize="27" FontWeight="Bold"/>
+                        <TextBlock Text="Centre to centre between secondary beams" Foreground="#586772" FontSize="11"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+        <ItemsControl Grid.Row="2" x:Name="ReactionsStrip" ItemsSource="{Binding SupportReactions}" Margin="0,0,0,4">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Rows="1"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="#ECFDF5" BorderBrush="#A7F3D0" BorderThickness="1" CornerRadius="6" Padding="10,5" Margin="4,0">
+                        <StackPanel ToolTip="{Binding PositionText}">
+                            <TextBlock FontWeight="SemiBold" Foreground="#065F46"><Run Text="Support "/><Run Text="{Binding Name, Mode=OneWay}"/><Run Text="   "/><Run Text="{Binding ForceText, Mode=OneWay}"/></TextBlock>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <DockPanel Grid.Row="3" Margin="4,3,4,4" Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
+            <CheckBox DockPanel.Dock="Right" HorizontalAlignment="Right" Content="Show ± limit lines (full scale)" IsChecked="{Binding ShowCapacityLimits}"
+                      ToolTip="Uncheck to fit the response shape. This changes only the plot scale, not the design checks."/>
+            <TextBlock FontSize="11"><Run Text="Blue: +" Foreground="#2563EB"/><Run Text="    Amber: −" Foreground="#B45309"/><Run Text="    Dashed red: ± limits" Foreground="#BE123C"/><Run Text="    Dotted verticals: supports A–E"/><Run Text="    Markers: exact extrema"/></TextBlock>
+        </DockPanel>
+        <Grid Grid.Row="4" x:Name="ChartsGrid" Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
+            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource Card}">
+                <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel><TextBlock Text="Loading &amp; support reactions" Style="{StaticResource ChartHeading}"/><TextBlock Text="{Binding LoadSummary}" Style="{StaticResource ChartSummary}"/></StackPanel>
+                    <oxy:PlotView x:Name="LoadView" Grid.Row="1" Model="{Binding LoadPlot}"/>
+                </Grid>
+            </Border>
+            <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource Card}">
+                <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel><TextBlock Text="Shear force" Style="{StaticResource ChartHeading}"/><TextBlock Text="{Binding ShearSummary}" Style="{StaticResource ChartSummary}"/></StackPanel>
+                    <oxy:PlotView x:Name="ShearView" Grid.Row="1" Model="{Binding ShearPlot}"/>
+                </Grid>
+            </Border>
+            <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource Card}">
+                <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel><TextBlock Text="Bending moment" Style="{StaticResource ChartHeading}"/><TextBlock Text="{Binding MomentSummary}" Style="{StaticResource ChartSummary}"/></StackPanel>
+                    <oxy:PlotView x:Name="MomentView" Grid.Row="1" Model="{Binding MomentPlot}"/>
+                </Grid>
+            </Border>
+            <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource Card}">
+                <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel><TextBlock Text="Deflection" Style="{StaticResource ChartHeading}"/><TextBlock Text="{Binding DeflectionSummary}" Style="{StaticResource ChartSummary}"/></StackPanel>
+                    <oxy:PlotView x:Name="DeflectionView" Grid.Row="1" Model="{Binding DeflectionPlot}"/>
+                </Grid>
+            </Border>
+        </Grid>
+        <TextBlock Grid.Row="5" Margin="4,5,4,0" FontSize="11"
+                   Text="Moment: + sagging / − hogging. Deflection: − downward. Shear V = upward reactions − downward load to the left of the cut. The 5 mm deflection limit is a legacy assumption."/>
+    </Grid>
+</Window>

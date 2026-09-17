@@ -1,6 +1,6 @@
 using System.Windows;
-using Autodesk.Revit.DB;
-using Autodesk.Revit.UI;
+
+
 
 namespace EngineeringDashboard
 {
@@ -9,12 +9,24 @@ namespace EngineeringDashboard
         // Static ViewModels to persist state across command executions
         private static FlexCalculatorViewModel _flexViewModel;
         private static BeamCalculatorViewModel _beamViewModel;
+        private static Dome.MainViewModel _domeViewModel;
 
         public LauncherWindow()
         {
             InitializeComponent();
         }
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
+
+        private void BtnDomeCalculator_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+            try
+            {
+                if (_domeViewModel == null) _domeViewModel = new Dome.MainViewModel();
+                new Dome.MainWindow(_domeViewModel) { Owner = this }.ShowDialog();
+            }
+            finally { Show(); }
+        }
 
         private void BtnBackpropping_Click(object sender, RoutedEventArgs e)
         {
@@ -70,3 +82,4 @@ namespace EngineeringDashboard
         }
     }
 }
+
