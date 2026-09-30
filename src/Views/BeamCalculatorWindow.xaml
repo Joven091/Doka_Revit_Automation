@@ -340,31 +340,27 @@
       <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
         <TextBlock Text="Choose a support system" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,16"/>
         <StackPanel Orientation="Horizontal">
-          <Button x:Name="PickPropsButton" Style="{StaticResource SupportCard}" Click="PickProps_Click" AutomationProperties.Name="Choose props">
+          <Button x:Name="PickPropsButton" Style="{StaticResource SupportCard}" Click="PickProps_Click" AutomationProperties.Name="Choose Dokaflex">
             <StackPanel>
               <Viewbox Width="220" Height="155" Margin="0,0,0,12"><Canvas Width="220" Height="155">
-                <Rectangle Canvas.Left="15" Canvas.Top="15" Width="190" Height="20" Fill="#AEB9C3"/>
                 <Rectangle Canvas.Left="8" Canvas.Top="38" Width="204" Height="12" Fill="#DCA923"/>
                 <Rectangle Canvas.Left="8" Canvas.Top="53" Width="204" Height="8" Fill="#FFE084"/>
                 <Path Stroke="#647B8D" StrokeThickness="6" Data="M 50,65 L 50,135 M 170,65 L 170,135"/>
                 <Path Stroke="#425764" StrokeThickness="3" Data="M 38,65 L 62,65 M 158,65 L 182,65 M 35,138 L 65,138 M 155,138 L 185,138"/>
                 <Rectangle Canvas.Left="46" Canvas.Top="90" Width="8" Height="10" Fill="#DCA923"/><Rectangle Canvas.Left="166" Canvas.Top="90" Width="8" Height="10" Fill="#DCA923"/>
               </Canvas></Viewbox>
-              <TextBlock Text="Props" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-              <TextBlock Text="Individual adjustable supports" Foreground="#52616B" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+              <TextBlock Text="Dokaflex" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
             </StackPanel>
           </Button>
-          <Button x:Name="PickTowersButton" Style="{StaticResource SupportCard}" Click="PickTowers_Click" AutomationProperties.Name="Choose shoring towers">
+          <Button x:Name="PickTowersButton" Style="{StaticResource SupportCard}" Click="PickTowers_Click" AutomationProperties.Name="Choose D3 Shoring System">
             <StackPanel>
               <Viewbox Width="220" Height="155" Margin="0,0,0,12"><Canvas Width="220" Height="155">
-                <Polygon Points="15,18 170,18 205,3 50,3" Fill="#DAE1E6"/><Polygon Points="15,18 170,18 170,33 15,33" Fill="#AEB9C3"/>
                 <Path Stroke="#DCA923" StrokeThickness="8" Data="M 10,42 L 178,42 M 40,29 L 208,29"/>
                 <Path Stroke="#FFE084" StrokeThickness="3" Data="M 10,49 L 178,49 M 40,36 L 208,36"/>
                 <Path Stroke="#647B8D" StrokeThickness="4" Data="M 45,53 L 45,136 M 145,53 L 145,136 M 75,40 L 75,123 M 175,40 L 175,123 M 45,80 L 145,80 M 45,110 L 145,110 M 75,67 L 175,67 M 75,97 L 175,97"/>
                 <Path Stroke="#425764" StrokeThickness="2" Data="M 45,60 L 75,116 M 75,47 L 45,129 M 145,60 L 175,116 M 175,47 L 145,129 M 36,139 L 54,139 M 136,139 L 154,139 M 66,126 L 84,126 M 166,126 L 184,126"/>
               </Canvas></Viewbox>
-              <TextBlock Text="Shoring towers" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-              <TextBlock Text="Frames, crosses and double H20s" Foreground="#52616B" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+              <TextBlock Text="D3 Shoring System" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
             </StackPanel>
           </Button>
         </StackPanel>
