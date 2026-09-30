@@ -117,6 +117,13 @@ internal static class TowerTests
         var proposed = TowerOptimizer.Evaluate(new TowerInput { LengthMm = 6600, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, StockLengthsMm = new[] { 3300.0 } },
             new[] { 650.0, 2650, 3950, 5950 }, new[] { true, false, true }, 1524, false);
         Check(proposed != null && proposed.LegCount == 8, "two 2000 towers with 3300 stock pass default beam loading");
+        var separate = TowerOptimizer.Optimize(new TowerInput { LengthMm = 10600, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, MaximumConcreteEndOverhangMm = 75 });
+        Check(separate.LegCount == 12 && separate.GroupCount == 3 && separate.BayCount == 3, "10600 uses three independent towers");
+        Check(separate.Joined.SequenceEqual(new[] { true, false, true, false, true }), "no crosses across gaps between independent towers");
+        foreach (var piece in separate.StockPlan.Pieces) Check(piece.LastSupport - piece.FirstSupport + 1 >= 2, "each individual H20 has at least two longitudinal supports");
+        var spaced = TowerOptimizer.Evaluate(new TowerInput { LengthMm = 6600, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, StockLengthsMm = new[] { 3300.0 } },
+            new[] { 600.0, 2600, 4100, 6100 }, new[] { true, true, true }, 1524, false);
+        Check(spaced != null && !spaced.Joined[1] && spaced.GroupCount == 2, "1500 distance stays an unbraced gap when each tower has two frames");
         regression.MaximumConcreteEndOverhangMm = 0;
         Check(TowerStockPlanner.MinimumPieces(6750, regression.StockLengthsMm) == 4, "exact-coverage cause of 16-leg minimum");
         var validation = new BeamCalculatorViewModel { UseTowers = true, MaximumConcreteEndOverhangMm = -1 };
