@@ -46,7 +46,7 @@ namespace EngineeringDashboard
     /// No support at a member break is allowed; support-centre end setback is a planning input, not a bearing check.</summary>
     public static class TowerStockPlanner
     {
-        public const string DefaultLengths = "1200; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900";
+        public const string DefaultLengths = "1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900";
         public static double[] ParseLengths(string text)
         {
             var tokens = (text ?? "").Split(new[] { ';', ',', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);

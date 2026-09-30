@@ -12,6 +12,8 @@ internal static class TowerTests
         var simple = TowerBeamAnalysis.Analyze(2, new[] { 0.0, 2.0 }, 10, 900);
         Near(simple.Moment, 5, 1e-10, "simple-span moment"); Near(simple.Shear, 10, 1e-10, "simple-span shear");
         Near(simple.DeflectionMm, 5 * 10 * 16.0 / (384 * 900) * 1000, 1e-10, "simple-span deflection");
+        Near(simple.Response(1)[1], 5, 1e-10, "diagram sagging moment");
+        Near(simple.Response(1)[2], -simple.DeflectionMm, 1e-10, "diagram downward displacement");
         var continuous = TowerBeamAnalysis.Analyze(4, new[] { 0.0, 2.0, 4.0 }, 10, 900);
         Near(continuous.Reactions[1], 25, 1e-10, "shared frame receives unequal reaction");
         var random = new Random(42);
@@ -28,6 +30,18 @@ internal static class TowerTests
             Near(result.DeflectionMm, reference.DeflectionMm, 2e-4, "independent sampled deflection");
             Near(result.Moment, reference.Moment, 2e-4, "independent sampled moment");
             Near(result.Shear, reference.Shear, 1e-7, "independent shear");
+            foreach (double x in supports)
+            {
+                int i = Array.IndexOf(supports, x);
+                Near(result.Response(x)[0] - result.Response(x, false)[0], reference.Reactions[i], 1e-7, "diagram shear jump equals leg reaction");
+                Near(result.Response(x)[2], 0, 1e-8, "diagram zero support displacement");
+            }
+            Near(result.Response(0, false)[0], 0, 1e-8, "left free-end shear");
+            Near(result.Response(length)[0], 0, 1e-8, "right free-end shear");
+            Near(result.Response(length)[1], 0, 1e-8, "right free-end moment");
+            var curve = Enumerable.Range(0, 2001).Select(i => length * i / 2000).Concat(supports).Select(x => result.Response(x)).ToArray();
+            Near(curve.Max(p => Math.Abs(p[1])), reference.Moment, .006, "diagram moment envelope vs stiffness solution");
+            Near(curve.Max(p => Math.Abs(p[2])), reference.DeflectionMm, .0003, "diagram deflection envelope vs stiffness solution");
         }
         var input = new TowerInput { LengthMm = 3000, StockLengthsMm = new[] { 3000.0 }, LegCapacityKn = 30, TotalLineLoad = 10, DeflectionLimitMm = 5 };
         var joined = TowerOptimizer.Evaluate(input, new[] { 250.0, 1250, 2750 }, new[] { true, true }, 1524, false);
@@ -52,7 +66,7 @@ internal static class TowerTests
         input.LegCapacityKn = 1e-100; bool tooMany = false;
         try { TowerOptimizer.Optimize(input); } catch (ArgumentException) { tooMany = true; }
         Check(tooMany, "extreme capacity lower bound rejected without integer overflow");
-        foreach (double length in new[] { 2450.0, 6000, 9000, 15000 }) foreach (double q in new[] { 5.0, 25.0 })
+        foreach (double length in new[] { 2450.0, 6100, 9000, 15000 }) foreach (double q in new[] { 5.0, 25.0 })
         {
             input = new TowerInput { LengthMm = length, LegCapacityKn = 30, TotalLineLoad = q, DeflectionLimitMm = 5 };
             var layout = TowerOptimizer.Optimize(input);
@@ -62,11 +76,16 @@ internal static class TowerTests
             VerifyStock(input, layout);
             Console.WriteLine($"Tower {length}mm q={q}: {layout.LegCount} legs, {layout.GroupCount} groups, {layout.Tested} tested");
         }
-        input = new TowerInput { LengthMm = 6000, LegCapacityKn = 30, TotalLineLoad = 12, TransverseLoadMoment = 1.5, DeflectionLimitMm = 5 };
+        input = new TowerInput { LengthMm = 6100, LegCapacityKn = 30, TotalLineLoad = 12, TransverseLoadMoment = 1.5, DeflectionLimitMm = 5 };
         var leftHeavy = TowerOptimizer.Optimize(input); input.TransverseLoadMoment *= -1; var rightHeavy = TowerOptimizer.Optimize(input);
         Check(leftHeavy.PositionsMm.SequenceEqual(rightHeavy.PositionsMm), "mirrored loading preserves layout");
         Near(leftHeavy.LeftReactions.Sum(), rightHeavy.RightReactions.Sum(), 1e-9, "mirrored reactions swap");
-        var vm = new BeamCalculatorViewModel { UseTowers = true, FloorHeight = -1, BeamLengthMm = 6000 };
+        input = new TowerInput { LengthMm = 9000, LegCapacityKn = 30, TotalLineLoad = 25, DeflectionLimitMm = 5 };
+        var highCapacity = TowerOptimizer.Optimize(input); input.LegCapacityKn = 15;
+        var lowCapacity = TowerOptimizer.Optimize(input);
+        Check(lowCapacity.LegCount > highCapacity.LegCount && lowCapacity.MaxLegKn <= 15.000001, "lower permissible load requires more legs and passes individual reactions");
+        Near(lowCapacity.LegUtilizationPercent, lowCapacity.MaxLegKn / 15 * 100, 1e-10, "displayed leg utilization uses permissible capacity");
+        var vm = new BeamCalculatorViewModel { UseTowers = true, FloorHeight = -1, BeamLengthMm = 6100 };
         vm.OptimizeTowersAsync().GetAwaiter().GetResult(); Check(vm.IsCalculationValid && !vm.CanImport, "tower does not depend on free-prop configuration; import blocked");
         vm.BeamLengthMm = 6500; Check(!vm.IsCalculationValid && vm.TowerResult == null, "edits clear stale result");
         vm.TowerLegCapacityKn = double.NaN; vm.OptimizeTowersAsync().GetAwaiter().GetResult(); Check(!vm.IsCalculationValid, "NaN rejects");
@@ -99,8 +118,8 @@ internal static class TowerTests
     static void StockChecks()
     {
         var stocks = TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths);
-        Check(stocks.SequenceEqual(new[] { 1200.0, 1800, 2450, 2650, 2900, 3300, 3600, 3900, 4500, 4900 }), "user stock catalogue");
-        Check(TowerStockPlanner.MinimumPieces(6000, stocks) == 3, "6000 needs three stock runs per line");
+        Check(stocks.SequenceEqual(new[] { 1250.0, 1800, 2450, 2650, 2900, 3300, 3600, 3900, 4500, 4900 }), "user stock catalogue");
+        Check(TowerStockPlanner.MinimumPieces(6000, stocks) == int.MaxValue, "6000 has no exact cover with corrected stock");
         Check(TowerStockPlanner.MinimumPieces(5950, stocks) == 2, "5950 can use 2650 + 3300");
         Check(TowerStockPlanner.MinimumPieces(6001, stocks) == int.MaxValue, "uncut stock cannot cover residual length");
         var input = new TowerInput { LengthMm = 3600, StockLengthsMm = new[] { 1800.0 }, TotalLineLoad = 10, LegCapacityKn = 30, DeflectionLimitMm = 5 };
@@ -148,3 +167,4 @@ internal static class TowerTests
         return result;
     }
 }
+

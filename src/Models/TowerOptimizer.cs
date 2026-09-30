@@ -28,6 +28,9 @@ namespace EngineeringDashboard
         public double[] LeftReactions { get; internal set; }
         public double[] RightReactions { get; internal set; }
         public TowerStockPlan StockPlan { get; internal set; }
+        public double LegUtilizationPercent => MaxLegKn / LegCapacityKn * 100;
+        public string LegLoadSummary => $"Peak current leg load: {MaxLegKn:0.00} kN / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
+        public string CapacityBasis => $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then tower groups, H20 quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
         public string StockSchedule => StockPlan.Schedule;
         public int LegCount => PositionsMm.Length * 2;
         public int GroupCount => 1 + Joined.Count(x => !x);
@@ -56,7 +59,7 @@ namespace EngineeringDashboard
                 for (int i = 0; i < PositionsMm.Length; i++)
                 {
                     if (i > 0 && !Joined[i - 1]) group++;
-                    lines.Add(string.Format(CultureInfo.CurrentCulture, "G{0} · x={1:0.###} mm · legs L/R={2:0.00}/{3:0.00} kN", group, PositionsMm[i], LeftReactions[i], RightReactions[i]));
+                    lines.Add(string.Format(CultureInfo.CurrentCulture, "G{0} · x={1:0.###} mm · legs L/R={2:0.00}/{3:0.00} kN · utilization L/R={4:0.0}/{5:0.0}%", group, PositionsMm[i], LeftReactions[i], RightReactions[i], LeftReactions[i] / LegCapacityKn * 100, RightReactions[i] / LegCapacityKn * 100));
                     if (i < Joined.Length) lines.Add(string.Format(CultureInfo.CurrentCulture, "  {0}: {1:0.###} mm", Joined[i] ? (Rotated ? "Frame span" : "Cross bay") : "Clear gap between leg planes", PositionsMm[i + 1] - PositionsMm[i]));
                 }
                 lines.Add(string.Format(CultureInfo.CurrentCulture, "End overhangs: {0:0.###} / {1:0.###} mm", PositionsMm[0], LengthMm - PositionsMm.Last()));

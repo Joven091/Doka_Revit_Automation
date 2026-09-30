@@ -12,20 +12,29 @@ namespace EngineeringDashboard
     {
         private BeamCalculatorViewModel observedModel;
         private bool refreshingValidation;
+        internal TowerDiagramWindow TowerDiagrams { get; private set; }
+        private void CloseTowerDiagrams() { TowerDiagrams?.Close(); TowerDiagrams = null; }
+        private void TowerDiagrams_Click(object sender, RoutedEventArgs e)
+        {
+            if (!TryGetValidCalculation(out var vm) || !vm.UseTowers || vm.TowerResult == null) return;
+            CloseTowerDiagrams(); TowerDiagrams = new TowerDiagramWindow(vm.TowerResult);
+            if (IsVisible) TowerDiagrams.Owner = this;
+            TowerDiagrams.Show();
+        }
         private void InitializeUi()
         {
             AddHandler(Validation.ErrorEvent, new EventHandler<ValidationErrorEventArgs>(InputValidation_Error));
             DataContextChanged += (s,e) => {
-                if(observedModel != null) observedModel.PropertyChanged -= ModelChanged;
+                CloseTowerDiagrams(); if(observedModel != null) observedModel.PropertyChanged -= ModelChanged;
                 observedModel = DataContext as BeamCalculatorViewModel;
                 if(observedModel != null) observedModel.PropertyChanged += ModelChanged;
                 RefreshInputValidity(); UpdateDiagram();
             };
-            Closed += (s,e) => { if(observedModel != null) observedModel.PropertyChanged -= ModelChanged; };
+            Closed += (s,e) => { CloseTowerDiagrams(); if(observedModel != null) observedModel.PropertyChanged -= ModelChanged; };
         }
         private void ModelChanged(object sender, PropertyChangedEventArgs e)
         {
-            if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) UpdateDiagram();
+            if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) { UpdateDiagram(); if (!observedModel.IsCalculationValid) CloseTowerDiagrams(); }
             if(e.PropertyName == nameof(BeamCalculatorViewModel.HasLeftSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.HasRightSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.UseCustomLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseTowers))
                 Dispatcher.BeginInvoke(new Action(RefreshInputValidity), DispatcherPriority.DataBind);
         }
@@ -120,7 +129,7 @@ namespace EngineeringDashboard
             if (vm.UseTowers)
             {
                 var tower = vm.TowerResult;
-                var fields = new[] { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing),
+                var fields = new[] { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis),
                     CalculationFiles.Field("LegUtilizationPercent", tower.MaxLegKn / vm.TowerLegCapacityKn * 100), CalculationFiles.Field("SupportSchedule", tower.Schedule),
                     CalculationFiles.Field("PrimaryStockSchedule", tower.StockSchedule), CalculationFiles.Field("TotalPrimaryH20Count", tower.StockPlan.TotalH20Count),
                     CalculationFiles.Field("SearchStatus", vm.TowerSearchNote), CalculationFiles.Field("TotalLineLoadKnPerM", vm.TotalLineLoad),
@@ -131,7 +140,7 @@ namespace EngineeringDashboard
             return CalculationFiles.Report("Beam",record.Inputs,results.Inputs,
                 "Geometry and spacing: mm. Area loads: kN/m². Line loads: kN/m. Prop loads/capacity: kN. Utilization: %. Deflection limit: mm.\n"+
                 "Each checked side uses the entered slab strip width. Primary lines = (beam width + 1400)/2. Line reactions use force and moment equilibrium; the heavier line governs.\n"+
-                "Concrete 25 kN/m³; default heaping min(1.75,max(0.75,10% of concrete weight)), working 0.75 and formwork 0.40 kN/m². Custom live replaces placing + working load.\n"+
+                "Concrete 25 kN/mÂ³; default heaping min(1.75,max(0.75,10% of concrete weight)), working 0.75 and formwork 0.40 kN/m². Custom live replaces placing + working load.\n"+
                 "Equal spans and full uniform loading. H20 moment 5 kNm, shear 11 kN, EI 449.8756 kNm². Spacing rounds down to 25 mm and checks selected prop capacity; extension = floor height - beam depth - 418 mm.\n"+
                 "2/3/4+ support coefficient model; primary span limits 2000/3000 mm. Sheeting, secondary beams, joints, restraint and local bearing require separate checks. Results recalculated from inputs; this is not a complete formwork verification.");
         }

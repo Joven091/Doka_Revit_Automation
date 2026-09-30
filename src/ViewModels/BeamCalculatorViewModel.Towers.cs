@@ -6,7 +6,7 @@ namespace EngineeringDashboard
     public partial class BeamCalculatorViewModel
     {
         private bool useTowers;
-        private double beamLengthMm = 6000, towerLegCapacityKn = 30;
+        private double beamLengthMm = 6100, towerLegCapacityKn = 30;
         private string stockLengthsText = TowerStockPlanner.DefaultLengths;
         private double stockEndSetbackMm = 150;
         private int towerRevision;
