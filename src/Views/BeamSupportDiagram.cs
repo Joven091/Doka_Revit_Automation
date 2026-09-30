@@ -13,7 +13,16 @@ namespace EngineeringDashboard
         public int DrawnSlabCount { get; private set; }
         public int DrawnTowerLegCount { get; private set; }
         public int DrawnStockPieceCount { get; private set; }
-        public void SetModel(BeamCalculatorViewModel value) { model = value; InvalidateVisual(); }
+        public void SetModel(BeamCalculatorViewModel value)
+        {
+            model = value;
+            double shortest = double.MaxValue;
+            if (model?.UseTowers == true && model.IsCalculationValid && model.TowerResult != null)
+                foreach (var piece in model.TowerResult.StockPlan.Pieces) shortest = Math.Min(shortest, piece.StockLengthMm);
+            // Long plans scroll horizontally so stock length labels remain readable.
+            MinWidth = shortest < double.MaxValue ? 50 + 66 * model.TowerResult.LengthMm / shortest : 0;
+            InvalidateVisual();
+        }
         private static Brush Brush(string hex) => (Brush)new BrushConverter().ConvertFromString(hex);
         private static readonly Brush Concrete = Brush("#AEB9C3"), ConcreteTop = Brush("#DAE1E6"), ConcreteSide = Brush("#85949F");
         private static readonly Brush Gold = Brush("#DCA923"), GoldTop = Brush("#FFE084"), GoldSide = Brush("#9D7015");
@@ -81,8 +90,8 @@ namespace EngineeringDashboard
         private void DrawTowerPlan(DrawingContext dc)
         {
             var layout = model.TowerResult; if (layout == null || ActualWidth < 80 || ActualHeight < 80) return;
-            double scale = Math.Min((ActualWidth - 50) / layout.LengthMm, (ActualHeight - 95) / Math.Max(layout.WidthMm, model.Width));
-            double x0 = (ActualWidth - layout.LengthMm * scale) / 2, cy = ActualHeight / 2 - 15;
+            double scale = Math.Min((ActualWidth - 50) / layout.LengthMm, (ActualHeight - 145) / Math.Max(layout.WidthMm, model.Width));
+            double x0 = (ActualWidth - layout.LengthMm * scale) / 2, cy = ActualHeight / 2 - 25;
             double top = cy - layout.WidthMm * scale / 2, bottom = cy + layout.WidthMm * scale / 2;
             var frame = new Pen(SteelSide, 2); var cross = new Pen(Steel, 1.5) { DashStyle = DashStyles.Dash };
             dc.DrawRectangle(ConcreteTop, null, new Rect(x0, cy - model.Width * scale / 2, layout.LengthMm * scale, model.Width * scale));
@@ -94,7 +103,8 @@ namespace EngineeringDashboard
                     dc.DrawLine(new Pen(i % 2 == 0 ? Gold : GoldSide, 2), new Point(x0 + piece.StartMm * scale, y + offset), new Point(x0 + piece.EndMm * scale, y + offset));
                     DrawnStockPieceCount++;
                 }
-                Label(dc, "P" + (i + 1), x0 + (piece.StartMm + piece.StockLengthMm / 2) * scale - 7, bottom + 5);
+                Label(dc, "P" + (i + 1) + "\n" + piece.StockLengthMm.ToString("0.###") + " mm",
+                    x0 + (piece.StartMm + piece.StockLengthMm / 2) * scale, bottom + 6, true);
                 if (i > 0) dc.DrawLine(new Pen(ConcreteSide, 1) { DashStyle = DashStyles.Dot }, new Point(x0 + piece.StartMm * scale, top - 8), new Point(x0 + piece.StartMm * scale, bottom + 15));
             }
             for (int i = 0; i < layout.PositionsMm.Length; i++)
@@ -109,14 +119,16 @@ namespace EngineeringDashboard
                     foreach (double y in new[] { top, bottom }) dc.DrawLine(layout.Rotated ? frame : cross, new Point(x, y), new Point(next, y));
                 }
             }
-            dc.DrawLine(new Pen(Steel, 1), new Point(x0, bottom + 25), new Point(x0 + layout.LengthMm * scale, bottom + 25));
-            Label(dc, layout.LengthMm.ToString("0.###") + " mm", ActualWidth / 2 - 30, bottom + 30);
+            dc.DrawLine(new Pen(Steel, 1), new Point(x0, bottom + 44), new Point(x0 + layout.LengthMm * scale, bottom + 44));
+            Label(dc, "Concrete beam: " + layout.LengthMm.ToString("0.###") + " mm", ActualWidth / 2, bottom + 49, true);
             Label(dc, layout.WidthMm.ToString("0") + " mm between primary lines", x0, Math.Max(0, top - 45));
         }
-        private void Label(DrawingContext dc, string value, double x, double y)
+        private void Label(DrawingContext dc, string value, double x, double y, bool centered = false)
         {
-            dc.DrawText(new FormattedText(value, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                new Typeface("Segoe UI"), 11, SteelSide, VisualTreeHelper.GetDpi(this).PixelsPerDip), new Point(x, y));
+            var text = new FormattedText(value, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                new Typeface("Segoe UI"), 11, SteelSide, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            if (centered) { text.MaxTextWidth = Math.Max(1, text.Width); text.TextAlignment = TextAlignment.Center; x -= text.MaxTextWidth / 2; }
+            dc.DrawText(text, new Point(x, y));
         }
     }
 }

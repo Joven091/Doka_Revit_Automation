@@ -239,6 +239,7 @@
               <TextBlock Style="{StaticResource Hint}" Text="Schematic · secondary H20 perpendicular to primary H20" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
               <TextBlock Style="{StaticResource Subheading}" Text="Tower layout · plan" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
               <TextBlock Style="{StaticResource Hint}" Text="Station numbers match the position schedule above." Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
+              <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
               <local:BeamSupportDiagram x:Name="SupportDiagram" Margin="0,4">
                 <local:BeamSupportDiagram.Style>
                   <Style TargetType="local:BeamSupportDiagram">
@@ -247,6 +248,7 @@
                   </Style>
                 </local:BeamSupportDiagram.Style>
               </local:BeamSupportDiagram>
+              </ScrollViewer>
               <TextBlock x:Name="DiagramCaption" Style="{StaticResource Hint}"/>
             </StackPanel>
           </Border>
