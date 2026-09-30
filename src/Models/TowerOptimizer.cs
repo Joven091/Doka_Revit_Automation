@@ -15,6 +15,7 @@ namespace EngineeringDashboard
         public double DeflectionLimitMm { get; set; }
         public double[] StockLengthsMm { get; set; } = TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths);
         public double StockEndSetbackMm { get; set; } = 150;
+        public double MaximumConcreteEndOverhangMm { get; set; }
     }
     public sealed class TowerLayout
     {
@@ -23,6 +24,7 @@ namespace EngineeringDashboard
         public double WidthMm { get; internal set; }
         public bool Rotated { get; internal set; }
         public double LengthMm { get; internal set; }
+        public double ConcreteEndOverhangMm { get; internal set; }
         public double LeftLineLoad { get; internal set; }
         public double RightLineLoad { get; internal set; }
         public double[] LeftReactions { get; internal set; }
@@ -31,7 +33,7 @@ namespace EngineeringDashboard
         public double LegUtilizationPercent => MaxLegKn / LegCapacityKn * 100;
         public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {StockPlan.TotalH20Count} H20s";
         public string LegLoadSummary => $"Peak leg: {MaxLegKn:0.00} / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
-        public string CapacityBasis => $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then tower groups, H20 quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
+        public string CapacityBasis => $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then braced bays, H20 quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
         public string StockSchedule => StockPlan.Schedule;
         public int LegCount => PositionsMm.Length * 2;
         public int GroupCount => 1 + Joined.Count(x => !x);
@@ -49,9 +51,9 @@ namespace EngineeringDashboard
         public string SearchNote => MinimumLegCountProven
             ? "Minimum leg count meets the load/stock lower bound. Group count/layout are best found in a bounded search."
             : "Best valid layout found in a bounded search; global minimum leg/group count is not proven.";
-        public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\nMoment {7:0.00}/10 kNm · shear {8:0.00}/22 kN\nDeflection {9:0.00}/{11:0.00} mm (includes end overhangs)",
+        public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\nMoment {7:0.00}/10 kNm · shear {8:0.00}/22 kN\nDeflection {9:0.00}/{11:0.00} mm (includes H20 cantilevers)",
             LegCount, GroupCount, BayCount, Rotated ? "Rotated isolated towers" : "1524 mm frames across beam", WidthMm, MaxLegKn, Utilization * 100, MomentKnM, ShearKn, DeflectionMm, LegCapacityKn, DeflectionLimitMm)
-            + string.Format(CultureInfo.CurrentCulture, "\nPrimary H20s: {0} pieces · no overlaps", StockPlan.TotalH20Count);
+            + string.Format(CultureInfo.CurrentCulture, "\nPrimary H20s: {0} pieces · no overlaps\nConcrete beyond H20: {1:0.###} mm per end", StockPlan.TotalH20Count, ConcreteEndOverhangMm);
         public string Schedule
         {
             get
@@ -68,13 +70,48 @@ namespace EngineeringDashboard
             }
         }
     }
-    /// <summary>Deterministic bounded layout search, ranked legs, groups, then governing utilization.
+    /// <summary>Deterministic bounded layout search, ranked legs, braced bays, then governing utilization.
     /// Two double-H20 lines with independently supported stock members; no secondary, bearing or stability design.</summary>
     public static class TowerOptimizer
     {
         public static readonly double[] BaysMm = { 600, 1000, 1500, 2000 };
         public const double PairEI = 2 * 449.8756, PairMoment = 10, PairShear = 22;
         public static TowerLayout Optimize(TowerInput input)
+        {
+            Validate(input);
+            if (input.MaximumConcreteEndOverhangMm == 0) return OptimizeCovered(input);
+            // Reachable stock totals; allow only symmetric concrete end overhang, never internal stock gaps.
+            int total = (int)Math.Floor(input.LengthMm);
+            var counts = Enumerable.Repeat(int.MaxValue, total + 1).ToArray(); counts[0] = 0;
+            for (int end = 1; end <= total; end++) foreach (double stock in input.StockLengthsMm)
+                if (stock <= end && counts[end - (int)stock] != int.MaxValue) counts[end] = Math.Min(counts[end], counts[end - (int)stock] + 1);
+            var covers = Enumerable.Range(1, total).Where(x => x >= input.LengthMm - 2 * input.MaximumConcreteEndOverhangMm && counts[x] != int.MaxValue)
+                .OrderBy(x => counts[x]).ThenByDescending(x => x).ToArray();
+            TowerLayout best = null; int tested = 0;
+            foreach (int covered in covers)
+            {
+                if (best != null && counts[covered] * 4 > best.LegCount) continue;
+                double overhang = (input.LengthMm - covered) / 2;
+                var candidateInput = new TowerInput { LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
+                    TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm,
+                    StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm };
+                TowerLayout candidate;
+                try { candidate = OptimizeCovered(candidateInput); }
+                catch (ArgumentException) { continue; }
+                tested += candidate.Tested;
+                candidate.PositionsMm = candidate.PositionsMm.Select(x => x + overhang).ToArray();
+                foreach (var piece in candidate.StockPlan.Pieces) piece.StartMm += overhang;
+                candidate.LengthMm = input.LengthMm; candidate.ConcreteEndOverhangMm = overhang;
+                if (best == null || candidate.LegCount < best.LegCount || candidate.LegCount == best.LegCount && (candidate.BayCount < best.BayCount
+                    || candidate.BayCount == best.BayCount && (candidate.StockPlan.TotalH20Count < best.StockPlan.TotalH20Count
+                    || candidate.StockPlan.TotalH20Count == best.StockPlan.TotalH20Count && candidate.Utilization < best.Utilization))) best = candidate;
+            }
+            if (best == null) throw new ArgumentException("No valid layout found within the end-overhang allowance and bounded search. Check stock lengths, loads and end allowance.");
+            int capacityBound = 2 * Math.Max(2, (int)Math.Ceiling((input.TotalLineLoad / 2 + Math.Abs(input.TransverseLoadMoment) / 2) * covers.Min() / 1000 / input.LegCapacityKn - 1e-10));
+            best.MinimumLegCountProven = best.LegCount == Math.Max(capacityBound, covers.Min(x => counts[x]) * 4);
+            best.Tested = tested; return best;
+        }
+        private static TowerLayout OptimizeCovered(TowerInput input)
         {
             Validate(input); var random = new Random(1524); int tested = 0, attempts = 0;
             int minimumPieces = TowerStockPlanner.MinimumPieces(input.LengthMm, input.StockLengthsMm);
@@ -90,8 +127,27 @@ namespace EngineeringDashboard
             double tail = 1000 * Math.Min(Math.Sqrt(2 * PairMoment / w), PairShear / w);
             lower = Math.Max(lower, 1 + (int)Math.Ceiling(Math.Max(0, length - 2 * tail) / longest - 1e-10));
             TowerLayout best = null;
+            // Seed isolated towers directly from stock runs. Random gap placement can miss simple two-tower solutions.
+            if (minimumPieces <= 2)
+            {
+                foreach (double first in input.StockLengthsMm)
+                {
+                    double second = length - first;
+                    if (second < 0 || second > 0 && !input.StockLengthsMm.Contains(second)) continue;
+                    var runs = second == 0 ? new[] { first } : new[] { first, second };
+                    foreach (double bay in BaysMm) foreach (double bay2 in BaysMm)
+                    {
+                        double start = 0; var positions = new List<double>();
+                        for (int i = 0; i < runs.Length; i++) { double span = i == 0 ? bay : bay2; positions.Add(start + (runs[i] - span) / 2); positions.Add(start + (runs[i] + span) / 2); start += runs[i]; }
+                        if (positions.Any(x => x < 0 || x > length) || positions.Skip(1).Where((x,i) => x <= positions[i]).Any()) continue;
+                        var candidate = Evaluate(input, positions.ToArray(), runs.Length == 1 ? new[] { true } : new[] { true, false, true }, 1524, false); tested++;
+                        if (candidate != null && (best == null || candidate.LegCount < best.LegCount || candidate.LegCount == best.LegCount && candidate.Utilization < best.Utilization)) best = candidate;
+                    }
+                }
+            }
             for (int count = lower; count <= 40 && attempts < 200000; count++)
             {
+                if (best != null && count > best.PositionsMm.Length) break;
                 // Rotated groups are isolated: joining across the beam would require more than two primary lines.
                 for (int rotation = 0; rotation < 2; rotation++)
                 {
@@ -99,7 +155,6 @@ namespace EngineeringDashboard
                     int minGroups = rotation == 1 ? count / 2 : 1;
                     for (int groups = minGroups; groups <= count / 2; groups++)
                     {
-                        if (best != null && groups > best.GroupCount) break;
                         int joins = count - groups;
                         if ((rotation == 1 ? joins * 1524 : joins * 600) > length) continue;
                         // Small joined runs enumerate every bay sequence; larger runs use reproducible mixed samples.
@@ -134,12 +189,10 @@ namespace EngineeringDashboard
                             int gap = 1; var positions = new double[count]; positions[0] = spaces[0];
                             for (int j = 0; j < spans.Length; j++) { if (!joined[j]) spans[j] = spaces[gap++]; positions[j + 1] = positions[j] + spans[j]; }
                             if (spans.Any(x => x < 25) || positions.Last() > length) continue;
-                            if (rotation == 0) for (int j = 0; j < joined.Length; j++)
-                                if (!joined[j] && BaysMm.Contains(spans[j])) joined[j] = true;
                             tested++;
                             var candidate = Evaluate(input, positions, joined, width, rotation == 1);
-                            if (candidate != null && (best == null || candidate.GroupCount < best.GroupCount || candidate.GroupCount == best.GroupCount
-                                && (candidate.StockPlan.TotalH20Count < best.StockPlan.TotalH20Count || candidate.StockPlan.TotalH20Count == best.StockPlan.TotalH20Count && candidate.Utilization < best.Utilization))) best = candidate;
+                            if (candidate != null && (best == null || candidate.LegCount < best.LegCount || candidate.LegCount == best.LegCount && (candidate.BayCount < best.BayCount || candidate.BayCount == best.BayCount
+                                && (candidate.StockPlan.TotalH20Count < best.StockPlan.TotalH20Count || candidate.StockPlan.TotalH20Count == best.StockPlan.TotalH20Count && candidate.Utilization < best.Utilization)))) best = candidate;
                         }
                     }
                 }
@@ -172,15 +225,31 @@ namespace EngineeringDashboard
             if (response.Reactions.Min() < -1e-9 * maxLeg) return null;
             var utilization = new[] { maxLeg / input.LegCapacityKn, response.MomentKnM / PairMoment, response.ShearKn / PairShear, response.DeflectionMm / input.DeflectionLimitMm };
             if (utilization.Any(x => !TowerBeamAnalysis.Finite(x)) || utilization.Max() > 1 + 1e-10) return null;
-            return new TowerLayout { PositionsMm = (double[])positions.Clone(), Joined = (bool[])joined.Clone(), WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
+            return new TowerLayout { PositionsMm = (double[])positions.Clone(), Joined = RemoveRedundantJoins(joined), WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
                 LeftLineLoad = left, RightLineLoad = right, LeftReactions = response.Reactions.Select(x => x * left / Math.Max(left, right)).ToArray(), RightReactions = response.Reactions.Select(x => x * right / Math.Max(left, right)).ToArray(),
                 MaxLegKn = maxLeg, LegCapacityKn = input.LegCapacityKn, DeflectionLimitMm = input.DeflectionLimitMm, MomentKnM = response.MomentKnM, ShearKn = response.ShearKn, DeflectionMm = response.DeflectionMm,
                 Utilization = utilization.Max(), Governing = new[] { "Leg capacity", "Primary moment", "Primary shear", "Primary deflection" }[Array.IndexOf(utilization, utilization.Max())] };
+        }
+        // Every independent tower needs at least two frames. Split longer joined runs into
+        // pairs (and one triple for an odd frame count), retaining all support coordinates.
+        private static bool[] RemoveRedundantJoins(bool[] joined)
+        {
+            var result = (bool[])joined.Clone(); int first = 0;
+            while (first < joined.Length + 1)
+            {
+                int last = first;
+                while (last < joined.Length && joined[last]) last++;
+                int remaining = last - first + 1, split = first;
+                while (remaining >= 4) { result[split + 1] = false; split += 2; remaining -= 2; }
+                first = last + 1;
+            }
+            return result;
         }
         private static void Validate(TowerInput input)
         {
             if (input == null || new[] { input.LengthMm, input.LegCapacityKn, input.TotalLineLoad, input.DeflectionLimitMm }.Any(x => !TowerBeamAnalysis.Finite(x) || x <= 0)
                 || !TowerBeamAnalysis.Finite(input.TransverseLoadMoment)) throw new ArgumentException("Tower length, leg capacity, load and deflection limit must be finite and positive.");
+            if (!TowerBeamAnalysis.Finite(input.MaximumConcreteEndOverhangMm) || input.MaximumConcreteEndOverhangMm < 0 || input.MaximumConcreteEndOverhangMm > 500) throw new ArgumentException("Concrete end allowance must be between 0 and 500 mm per end.");
             if (input.LengthMm > 50000) throw new ArgumentException("Tower optimization supports beam lengths up to 50,000 mm.");
             if (input.StockLengthsMm == null || input.StockLengthsMm.Length == 0 || input.StockLengthsMm.Length > 30
                 || input.StockLengthsMm.Any(x => !TowerBeamAnalysis.Finite(x) || x <= 0 || x > 50000 || x != Math.Round(x)))

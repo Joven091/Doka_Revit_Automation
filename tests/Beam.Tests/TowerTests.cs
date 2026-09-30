@@ -17,6 +17,22 @@ internal static class TowerTests
         var continuous = TowerBeamAnalysis.Analyze(4, new[] { 0.0, 2.0, 4.0 }, 10, 900);
         Near(continuous.Reactions[1], 25, 1e-10, "shared frame receives unequal reaction");
         var random = new Random(42);
+        for (int trial = 0; trial < 40; trial++)
+        {
+            var supports = new[] { .2 + random.NextDouble() * .5, 1.5, 2.7 };
+            double p = random.NextDouble() * 10, r = random.NextDouble() * 10;
+            var actual = TowerBeamAnalysis.Analyze(3.3, supports, 8, 900, p, r);
+            var expected = Reference(3.3, supports, 8, 900, p, r);
+            Near(actual.Reactions.Sum(), 8 * 3.3 + p + r, 1e-9, "end loads included in equilibrium");
+            for (int i = 0; i < supports.Length; i++) Near(actual.Reactions[i], expected.Reactions[i], 1e-7, "end-load stiffness reactions");
+            Near(actual.Moment, expected.Moment, 2e-4, "end-load stiffness moment");
+            Near(actual.Shear, expected.Shear, 1e-7, "end-load stiffness shear");
+            Near(actual.DeflectionMm, expected.DeflectionMm, 2e-4, "end-load stiffness deflection");
+            Near(actual.Response(0)[0], -p, 1e-8, "left end-load diagram");
+            Near(actual.Response(3.3, false)[0], r, 1e-8, "right end-load diagram");
+            var samples = Enumerable.Range(0, 2001).Select(i => actual.Response(3.3 * i / 2000)).ToArray();
+            Near(samples.Max(x => Math.Abs(x[2])), expected.DeflectionMm, 2e-4, "end-load plotted deflection matches stiffness");
+        }
         for (int test = 0; test < 160; test++)
         {
             int count = 2 + random.Next(7); var supports = new double[count]; supports[0] = random.NextDouble() * 1.2;
@@ -92,6 +108,26 @@ internal static class TowerTests
         vm.TowerLegCapacityKn = 30; var running = vm.OptimizeTowersAsync(); vm.BeamLengthMm = 7000; running.GetAwaiter().GetResult();
         Check(!vm.IsCalculationValid && vm.TowerResult == null, "in-flight stale result discarded");
         StockChecks();
+        var regression = new TowerInput { LengthMm = 6750, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, MaximumConcreteEndOverhangMm = 75 };
+        var optimized = TowerOptimizer.Optimize(regression);
+        Check(optimized.LegCount == 8, "6750 mm with 75 mm allowance uses eight legs");
+        Near(optimized.LeftReactions.Sum() + optimized.RightReactions.Sum(), optimized.StockPlan.Pieces.Sum(p => p.StockLengthMm) / 1000 * 2.98, 1e-9, "only actual H20 length contributes load");
+        Check(optimized.ConcreteEndOverhangMm <= 75 && optimized.StockPlan.Pieces.First().StartMm == optimized.ConcreteEndOverhangMm, "symmetric stock placement within allowance");
+        Console.WriteLine("6750 regression: " + optimized.Summary + "\n" + optimized.StockSchedule);
+        var proposed = TowerOptimizer.Evaluate(new TowerInput { LengthMm = 6600, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, StockLengthsMm = new[] { 3300.0 } },
+            new[] { 650.0, 2650, 3950, 5950 }, new[] { true, false, true }, 1524, false);
+        Check(proposed != null && proposed.LegCount == 8, "two 2000 towers with 3300 stock pass default beam loading");
+        var separate = TowerOptimizer.Optimize(new TowerInput { LengthMm = 10600, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, MaximumConcreteEndOverhangMm = 75 });
+        Check(separate.LegCount == 12 && separate.GroupCount == 3 && separate.BayCount == 3, "10600 uses three independent towers");
+        Check(separate.Joined.SequenceEqual(new[] { true, false, true, false, true }), "no crosses across gaps between independent towers");
+        foreach (var piece in separate.StockPlan.Pieces) Check(piece.LastSupport - piece.FirstSupport + 1 >= 2, "each individual H20 has at least two longitudinal supports");
+        var spaced = TowerOptimizer.Evaluate(new TowerInput { LengthMm = 6600, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, StockLengthsMm = new[] { 3300.0 } },
+            new[] { 600.0, 2600, 4100, 6100 }, new[] { true, true, true }, 1524, false);
+        Check(spaced != null && !spaced.Joined[1] && spaced.GroupCount == 2, "1500 distance stays an unbraced gap when each tower has two frames");
+        regression.MaximumConcreteEndOverhangMm = 0;
+        Check(TowerStockPlanner.MinimumPieces(6750, regression.StockLengthsMm) == 4, "exact-coverage cause of 16-leg minimum");
+        var validation = new BeamCalculatorViewModel { UseTowers = true, MaximumConcreteEndOverhangMm = -1 };
+        validation.OptimizeTowersAsync().GetAwaiter().GetResult(); Check(!validation.IsCalculationValid, "negative concrete allowance rejected");
         Console.WriteLine($"Passed {checks} tower checks (160 independent stiffness comparisons).");
     }
     static void VerifyStock(TowerInput input, TowerLayout layout)
@@ -129,13 +165,13 @@ internal static class TowerTests
         Check(TowerStockPlanner.Find(input, new[] { 300.0, 1800, 3300 }, 5) == null, "no shared-head butt joint at stock boundary");
         Check(TowerStockPlanner.Find(input, new[] { 300.0, 3300 }, 5) == null, "each stock piece needs at least two supports");
         input.StockLengthsMm = new[] { 4900.0 }; Check(TowerStockPlanner.Find(input, new[] { 300.0, 1500, 2100, 3300 }, 5) == null, "overlength stock rejected rather than cut");
-        var vm = new BeamCalculatorViewModel { UseTowers = true, BeamLengthMm = 6001 };
+        var vm = new BeamCalculatorViewModel { UseTowers = true, MaximumConcreteEndOverhangMm = 0, BeamLengthMm = 6001 };
         vm.OptimizeTowersAsync().GetAwaiter().GetResult(); Check(!vm.IsCalculationValid && vm.WarningMessage.Contains("exactly"), "uncoverable length explained");
         vm.StockLengthsText = "1800; NaN"; vm.OptimizeTowersAsync().GetAwaiter().GetResult(); Check(!vm.IsCalculationValid, "invalid stock list rejected");
     }
     sealed class ReferenceResult { public double[] Reactions; public double Moment, Shear, DeflectionMm; }
     // Independent Euler-Bernoulli finite-element stiffness solution with consistent distributed loads.
-    static ReferenceResult Reference(double length, double[] supports, double q, double ei)
+    static ReferenceResult Reference(double length, double[] supports, double q, double ei, double leftEndLoad = 0, double rightEndLoad = 0)
     {
         var x = new[] { 0.0 }.Concat(supports).Concat(new[] { length }).Distinct().OrderBy(v => v).ToArray(); int n = x.Length * 2;
         var k = new double[n, n]; var f = new double[n];
@@ -146,6 +182,7 @@ internal static class TowerTests
             var fe = new[] { q*l/2, q*l*l/12, q*l/2, -q*l*l/12 };
             for (int i = 0; i < 4; i++) { f[2*e+i] += fe[i]; for (int j = 0; j < 4; j++) k[2*e+i, 2*e+j] += s * ke[i,j]; }
         }
+        f[0] += leftEndLoad; f[n - 2] += rightEndLoad;
         var fixedDof = supports.Select(v => 2 * Array.IndexOf(x, v)).ToArray(); var free = Enumerable.Range(0, n).Except(fixedDof).ToArray();
         int size = free.Length; var a = new double[size, size + 1];
         for (int i = 0; i < size; i++) { a[i,size] = f[free[i]]; for (int j = 0; j < size; j++) a[i,j] = k[free[i],free[j]]; }

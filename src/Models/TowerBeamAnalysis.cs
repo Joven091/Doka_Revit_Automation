@@ -12,7 +12,7 @@ namespace EngineeringDashboard
         public double Moment { get; private set; }
         public double Shear { get; private set; }
         public double DeflectionMm { get; private set; }
-        private double length, load, ei, firstSlope, lastSlope;
+        private double length, load, ei, firstSlope, lastSlope, leftEndLoad, rightEndLoad;
         private double[] supports, moments;
         // Signed response: sagging moment positive; upward displacement positive.
         // At a support, rightSide selects the corresponding side of the shear jump.
@@ -20,7 +20,9 @@ namespace EngineeringDashboard
         {
             if (!Finite(position) || position < -1e-10 || position > length + 1e-10) throw new ArgumentOutOfRangeException(nameof(position));
             position = Math.Max(0, Math.Min(length, position));
-            double v = -load * position, m = -load * position * position / 2;
+            double v = -load * position - leftEndLoad, m = -load * position * position / 2 - leftEndLoad * position;
+            if (position == 0 && !rightSide) v += leftEndLoad;
+            if (position == length && rightSide) v -= rightEndLoad;
             for (int j = 0; j < supports.Length; j++)
                 if (supports[j] < position || (rightSide && supports[j] == position))
                 { v += Reactions[j]; m += Reactions[j] * (position - supports[j]); }
@@ -28,12 +30,12 @@ namespace EngineeringDashboard
             if (position < supports[0])
             {
                 double x = position - supports[0], a = supports[0];
-                y = firstSlope * x - load * (Math.Pow(x, 4) / 24 + a * Math.Pow(x, 3) / 6 + a * a * x * x / 4);
+                y = firstSlope * x - load * (Math.Pow(x, 4) / 24 + a * Math.Pow(x, 3) / 6 + a * a * x * x / 4) - leftEndLoad * (x * x * x / 6 + a * x * x / 2);
             }
             else if (position > supports[supports.Length - 1])
             {
                 double x = position - supports[supports.Length - 1], b = length - supports[supports.Length - 1];
-                y = lastSlope * x - load * (b * b * x * x / 4 - b * Math.Pow(x, 3) / 6 + Math.Pow(x, 4) / 24);
+                y = lastSlope * x - load * (b * b * x * x / 4 - b * Math.Pow(x, 3) / 6 + Math.Pow(x, 4) / 24) - rightEndLoad * (b * x * x / 2 - x * x * x / 6);
             }
             else
             {
@@ -45,15 +47,16 @@ namespace EngineeringDashboard
             }
             return new[] { v, m, y / ei * 1000 };
         }
-        public static TowerBeamAnalysis Analyze(double length, double[] supports, double load, double ei)
+        public static TowerBeamAnalysis Analyze(double length, double[] supports, double load, double ei, double leftEndLoad = 0, double rightEndLoad = 0)
         {
             if (!Finite(length) || length <= 0 || !Finite(load) || load <= 0 || !Finite(ei) || ei <= 0
+                || !Finite(leftEndLoad) || !Finite(rightEndLoad) || leftEndLoad < 0 || rightEndLoad < 0
                 || supports == null || supports.Length < 2 || supports.Any(x => !Finite(x) || x < 0 || x > length))
                 throw new ArgumentException("Invalid tower beam analysis input.");
             int n = supports.Length; var h = new double[n - 1];
             for (int i = 0; i < n - 1; i++) { h[i] = supports[i + 1] - supports[i]; if (h[i] <= 1e-8) throw new ArgumentException("Support positions must increase."); }
             double a = supports[0], b = length - supports[n - 1];
-            var m = new double[n]; m[0] = -load * a * a / 2; m[n - 1] = -load * b * b / 2;
+            var m = new double[n]; m[0] = -load * a * a / 2 - leftEndLoad * a; m[n - 1] = -load * b * b / 2 - rightEndLoad * b;
             var d = new double[n]; var rhs = new double[n];
             for (int i = 1; i < n - 1; i++)
             {
@@ -63,7 +66,7 @@ namespace EngineeringDashboard
                 if (i > 1) { double f = h[i - 1] / d[i - 1]; d[i] -= f * h[i - 1]; rhs[i] -= f * rhs[i - 1]; }
             }
             for (int i = n - 2; i >= 1; i--) m[i] = (rhs[i] - (i < n - 2 ? h[i] * m[i + 1] : 0)) / d[i];
-            var result = new TowerBeamAnalysis { Reactions = new double[n], Moment = m.Max(x => Math.Abs(x)), Shear = load * Math.Max(a, b) };
+            var result = new TowerBeamAnalysis { Reactions = new double[n], Moment = m.Max(x => Math.Abs(x)), Shear = Math.Max(load * a + leftEndLoad, load * b + rightEndLoad) };
             double maxY = 0, firstSlope = 0, lastSlope = 0;
             for (int i = 0; i < n - 1; i++)
             {
@@ -80,15 +83,16 @@ namespace EngineeringDashboard
                 maxY = Math.Max(maxY, Extrema(slope, y, cuts));
                 if (i == 0) firstSlope = c; if (i == n - 2) lastSlope = slope(l);
             }
-            result.Reactions[0] += load * a; result.Reactions[n - 1] += load * b;
-            maxY = Math.Max(maxY, Extrema(x => firstSlope - load * (x * x * x / 6 + a * x * x / 2 + a * a * x / 2),
-                x => firstSlope * x - load * (Math.Pow(x, 4) / 24 + a * Math.Pow(x, 3) / 6 + a * a * x * x / 4), new List<double> { -a, 0 }));
-            maxY = Math.Max(maxY, Extrema(x => lastSlope - load * (b * b * x / 2 - b * x * x / 2 + x * x * x / 6),
-                x => lastSlope * x - load * (b * b * x * x / 4 - b * Math.Pow(x, 3) / 6 + Math.Pow(x, 4) / 24), new List<double> { 0, b }));
+            result.Reactions[0] += load * a + leftEndLoad; result.Reactions[n - 1] += load * b + rightEndLoad;
+            maxY = Math.Max(maxY, Extrema(x => firstSlope - load * (x * x * x / 6 + a * x * x / 2 + a * a * x / 2) - leftEndLoad * (x * x / 2 + a * x),
+                x => firstSlope * x - load * (Math.Pow(x, 4) / 24 + a * Math.Pow(x, 3) / 6 + a * a * x * x / 4) - leftEndLoad * (x * x * x / 6 + a * x * x / 2), new List<double> { -a, 0 }));
+            maxY = Math.Max(maxY, Extrema(x => lastSlope - load * (b * b * x / 2 - b * x * x / 2 + x * x * x / 6) - rightEndLoad * (b * x - x * x / 2),
+                x => lastSlope * x - load * (b * b * x * x / 4 - b * Math.Pow(x, 3) / 6 + Math.Pow(x, 4) / 24) - rightEndLoad * (b * x * x / 2 - x * x * x / 6), new List<double> { 0, b }));
             result.DeflectionMm = maxY / ei * 1000;
             result.length = length; result.load = load; result.ei = ei;
             result.supports = (double[])supports.Clone(); result.moments = m;
             result.firstSlope = firstSlope; result.lastSlope = lastSlope;
+            result.leftEndLoad = leftEndLoad; result.rightEndLoad = rightEndLoad;
             return result;
         }
         private static double Extrema(Func<double, double> slope, Func<double, double> y, List<double> cuts)

@@ -55,7 +55,7 @@ namespace EngineeringDashboard
             foreach (string token in tokens)
             {
                 if (!int.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out int mm) || mm <= 0 || mm > 50000)
-                    throw new ArgumentException("H20 stock lengths must be whole millimetres from 1 to 50,000 (for example 1200; 2450; 4900).");
+                    throw new ArgumentException("H20 stock lengths must be whole millimetres from 1 to 50,000 (for example 1250; 2450; 4900).");
                 result.Add(mm);
             }
             return result.Distinct().OrderBy(x => x).ToArray();
