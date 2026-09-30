@@ -13,16 +13,25 @@ namespace EngineeringDashboard
         private BeamCalculatorViewModel observedModel;
         private bool refreshingValidation;
         internal TowerDiagramWindow TowerDiagrams { get; private set; }
-        private void CloseTowerDiagrams() { TowerDiagrams?.Close(); TowerDiagrams = null; }
+        private void CloseTowerDiagrams() { TowerDiagrams?.Close(); TowerDiagrams = null; SupportDiagram.SelectMember(-1, 0, 0); }
         private void TowerDiagrams_Click(object sender, RoutedEventArgs e)
         {
             if (!TryGetValidCalculation(out var vm) || !vm.UseTowers || vm.TowerResult == null) return;
-            CloseTowerDiagrams(); TowerDiagrams = new TowerDiagramWindow(vm.TowerResult);
+            CloseTowerDiagrams(); TowerDiagrams = new TowerDiagramWindow(vm);
+            TowerDiagrams.MemberSelectionChanged += SupportDiagram.SelectMember;
+            TowerDiagrams.Closed += (s, args) => SupportDiagram.SelectMember(-1, 0, 0);
+            SupportDiagram.SelectMember(0, 0, 0);
             if (IsVisible) TowerDiagrams.Owner = this;
             TowerDiagrams.Show();
         }
         private void InitializeUi()
         {
+            SupportDiagram.MemberSelected += (run, line, member) => {
+                if (!TryGetValidCalculation(out var vm) || !vm.UseTowers) return;
+                if (TowerDiagrams == null || !TowerDiagrams.IsVisible) TowerDiagrams_Click(this, new RoutedEventArgs());
+                TowerDiagrams?.SelectMember(run, line, member);
+                TowerDiagrams?.Activate();
+            };
             AddHandler(Validation.ErrorEvent, new EventHandler<ValidationErrorEventArgs>(InputValidation_Error));
             DataContextChanged += (s,e) => {
                 CloseTowerDiagrams(); if(observedModel != null) observedModel.PropertyChanged -= ModelChanged;

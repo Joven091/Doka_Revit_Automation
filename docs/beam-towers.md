@@ -50,3 +50,7 @@ dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
 dotnet run --project tests/Beam.Tests -c Release
 dotnet run --project tests/Beam.UiSmoke -c Release
 ```
+
+## H20 selection and support offsets
+
+The plan dimensions both H20 ends to their nearest support-leg centres, including free ends at internal stock breaks. Dimensions are common to both primary lines and both members of each double pair. Select a drawn H20 in the main plan, or use the clickable plan in the response window; the selected individual member is highlighted blue. Stock, primary-line and member selectors provide an alternative to clicking. The diagram window displays individual-H20 response (half the pair load, moment and shear, with the same deflection under equal sharing). Support reactions identify both the selected beam contribution and the total shared leg load. Every plot includes the end offsets and intervening support spans. Input edits invalidate the selection and close stale diagrams.

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Input;
 
 namespace EngineeringDashboard
 {
@@ -9,6 +10,19 @@ namespace EngineeringDashboard
     public sealed class BeamSupportDiagram : FrameworkElement
     {
         private BeamCalculatorViewModel model;
+        internal readonly List<Tuple<Rect, int, int, int>> MemberTargets = new List<Tuple<Rect, int, int, int>>();
+        public event Action<int, int, int> MemberSelected;
+        private int selectedRun = -1, selectedLine, selectedMember;
+        public int DrawnEndDimensionCount { get; private set; }
+        public void SelectMember(int run, int line, int member) { selectedRun = run; selectedLine = line; selectedMember = member; InvalidateVisual(); }
+        internal bool SelectAt(Point point)
+        {
+            foreach (var hit in MemberTargets) if (hit.Item1.Contains(point))
+            { SelectMember(hit.Item2, hit.Item3, hit.Item4); MemberSelected?.Invoke(hit.Item2, hit.Item3, hit.Item4); return true; }
+            return false;
+        }
+        protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+        { base.OnMouseLeftButtonDown(e); if (SelectAt(e.GetPosition(this))) e.Handled = true; }
         public int DrawnPropCount { get; private set; }
         public int DrawnSlabCount { get; private set; }
         public int DrawnTowerLegCount { get; private set; }
@@ -26,7 +40,8 @@ namespace EngineeringDashboard
                 for (int i = 1; i < p.Length; i++) shortest = Math.Min(shortest, p[i] - p[i - 1]);
             }
             // Long plans scroll horizontally so stock length labels remain readable.
-            MinWidth = shortest < double.MaxValue ? 50 + 78 * model.TowerResult.LengthMm / shortest : 0;
+            MinWidth = shortest < double.MaxValue ? Math.Max(50 + 78 * model.TowerResult.LengthMm / shortest, 50 + 190 * model.TowerResult.StockPlan.Pieces.Length) : 0;
+            Cursor = model?.UseTowers == true ? Cursors.Hand : Cursors.Arrow;
             InvalidateVisual();
         }
         private static Brush Brush(string hex) => (Brush)new BrushConverter().ConvertFromString(hex);
@@ -56,7 +71,7 @@ namespace EngineeringDashboard
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc); DrawnPropCount = DrawnSlabCount = DrawnTowerLegCount = DrawnStockPieceCount = 0;
-            DrawnBayDimensionCount = DrawnGapDimensionCount = 0;
+            DrawnBayDimensionCount = DrawnGapDimensionCount = DrawnEndDimensionCount = 0; MemberTargets.Clear();
             if (model == null || !model.IsCalculationValid) return;
             if (model.UseTowers) { DrawTowerPlan(dc); return; }
             // Ratios across the beam are geometric; longitudinal length/prop height are schematic.
@@ -98,21 +113,35 @@ namespace EngineeringDashboard
         {
             var layout = model.TowerResult; if (layout == null || ActualWidth < 80 || ActualHeight < 80) return;
             double scale = (ActualWidth - 50) / layout.LengthMm;
-            double x0 = 25, cy = ActualHeight / 2 - 10;
-            double transverseScale = Math.Min(scale, (ActualHeight - 160) / Math.Max(layout.WidthMm, model.Width));
+            double x0 = 25, cy = ActualHeight / 2 - 30;
+            double transverseScale = Math.Min(scale, (ActualHeight - 200) / Math.Max(layout.WidthMm, model.Width));
             double top = cy - layout.WidthMm * transverseScale / 2, bottom = cy + layout.WidthMm * transverseScale / 2;
             var frame = new Pen(SteelSide, 2); var cross = new Pen(Steel, 1.5) { DashStyle = DashStyles.Dash };
+            dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
             dc.DrawRectangle(ConcreteTop, null, new Rect(x0, cy - model.Width * transverseScale / 2, layout.LengthMm * scale, model.Width * transverseScale));
             for (int i = 0; i < layout.StockPlan.Pieces.Length; i++)
             {
                 var piece = layout.StockPlan.Pieces[i];
-                foreach (double y in new[] { top, bottom }) foreach (double offset in new[] { -3.0, 3.0 })
+                for (int line = 0; line < 2; line++) for (int member = 0; member < 2; member++)
                 {
-                    dc.DrawLine(new Pen(i % 2 == 0 ? Gold : GoldSide, 2), new Point(x0 + piece.StartMm * scale, y + offset), new Point(x0 + piece.EndMm * scale, y + offset));
+                    double y = line == 0 ? top : bottom, offset = member == 0 ? -5 : 5;
+                    bool selected = i == selectedRun && line == selectedLine && member == selectedMember;
+                    dc.DrawLine(new Pen(selected ? Brushes.DodgerBlue : i % 2 == 0 ? Gold : GoldSide, selected ? 4 : 2), new Point(x0 + piece.StartMm * scale, y + offset), new Point(x0 + piece.EndMm * scale, y + offset));
+                    MemberTargets.Add(Tuple.Create(new Rect(x0 + piece.StartMm * scale, y + offset - 4, piece.StockLengthMm * scale, 8), i, line, member));
                     DrawnStockPieceCount++;
                 }
+                double dimY = bottom + 53 + (i % 2) * 22;
+                double[] ends = { piece.StartMm, piece.EndMm }, legs = { layout.PositionsMm[piece.FirstSupport], layout.PositionsMm[piece.LastSupport] };
+                for (int end = 0; end < 2; end++)
+                {
+                    double a = x0 + ends[end] * scale, b = x0 + legs[end] * scale;
+                    dc.DrawLine(new Pen(Steel, 1), new Point(a, dimY), new Point(b, dimY));
+                    foreach (double x in new[] { a, b }) dc.DrawLine(new Pen(Steel, 1), new Point(x, dimY - 3), new Point(x, dimY + 3));
+                    Label(dc, Math.Abs(ends[end] - legs[end]).ToString("0.###") + " mm", (a + b) / 2, dimY - 16, true);
+                    DrawnEndDimensionCount++;
+                }
                 Label(dc, "P" + (i + 1) + "\n" + piece.StockLengthMm.ToString("0.###") + " mm",
-                    x0 + (piece.StartMm + piece.StockLengthMm / 2) * scale, bottom + 6, true);
+                    x0 + (piece.StartMm + piece.StockLengthMm / 2) * scale, bottom + 12, true);
                 if (i > 0) dc.DrawLine(new Pen(ConcreteSide, 1) { DashStyle = DashStyles.Dot }, new Point(x0 + piece.StartMm * scale, top - 8), new Point(x0 + piece.StartMm * scale, bottom + 15));
             }
             for (int i = 0; i < layout.PositionsMm.Length; i++)
@@ -136,9 +165,9 @@ namespace EngineeringDashboard
                     if (layout.Joined[i]) DrawnBayDimensionCount++; else DrawnGapDimensionCount++;
                 }
             }
-            dc.DrawLine(new Pen(Steel, 1), new Point(x0, bottom + 44), new Point(x0 + layout.LengthMm * scale, bottom + 44));
-            Label(dc, "Concrete beam: " + layout.LengthMm.ToString("0.###") + " mm", ActualWidth / 2, bottom + 49, true);
-            Label(dc, (layout.Rotated ? "Cross" : "Frame") + " across: " + layout.WidthMm.ToString("0") + " mm · concrete end overhang: " + layout.ConcreteEndOverhangMm.ToString("0.###") + " mm/end", x0, bottom + 70);
+            dc.DrawLine(new Pen(Steel, 1), new Point(x0, bottom + 91), new Point(x0 + layout.LengthMm * scale, bottom + 91));
+            Label(dc, "Concrete beam: " + layout.LengthMm.ToString("0.###") + " mm", ActualWidth / 2, bottom + 96, true);
+            Label(dc, (layout.Rotated ? "Cross" : "Frame") + " across: " + layout.WidthMm.ToString("0") + " mm · concrete end overhang: " + layout.ConcreteEndOverhangMm.ToString("0.###") + " mm/end", x0, bottom + 113);
         }
         private void Label(DrawingContext dc, string value, double x, double y, bool centered = false)
         {
