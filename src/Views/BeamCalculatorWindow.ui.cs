@@ -12,21 +12,30 @@ namespace EngineeringDashboard
     {
         private BeamCalculatorViewModel observedModel;
         private bool refreshingValidation;
+        internal TowerDiagramWindow TowerDiagrams { get; private set; }
+        private void CloseTowerDiagrams() { TowerDiagrams?.Close(); TowerDiagrams = null; }
+        private void TowerDiagrams_Click(object sender, RoutedEventArgs e)
+        {
+            if (!TryGetValidCalculation(out var vm) || !vm.UseTowers || vm.TowerResult == null) return;
+            CloseTowerDiagrams(); TowerDiagrams = new TowerDiagramWindow(vm.TowerResult);
+            if (IsVisible) TowerDiagrams.Owner = this;
+            TowerDiagrams.Show();
+        }
         private void InitializeUi()
         {
             AddHandler(Validation.ErrorEvent, new EventHandler<ValidationErrorEventArgs>(InputValidation_Error));
             DataContextChanged += (s,e) => {
-                if(observedModel != null) observedModel.PropertyChanged -= ModelChanged;
+                CloseTowerDiagrams(); if(observedModel != null) observedModel.PropertyChanged -= ModelChanged;
                 observedModel = DataContext as BeamCalculatorViewModel;
                 if(observedModel != null) observedModel.PropertyChanged += ModelChanged;
                 RefreshInputValidity(); UpdateDiagram();
             };
-            Closed += (s,e) => { if(observedModel != null) observedModel.PropertyChanged -= ModelChanged; };
+            Closed += (s,e) => { CloseTowerDiagrams(); if(observedModel != null) observedModel.PropertyChanged -= ModelChanged; };
         }
         private void ModelChanged(object sender, PropertyChangedEventArgs e)
         {
-            if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) UpdateDiagram();
-            if(e.PropertyName == nameof(BeamCalculatorViewModel.HasLeftSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.HasRightSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.UseCustomLoads))
+            if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) { UpdateDiagram(); if (!observedModel.IsCalculationValid) CloseTowerDiagrams(); }
+            if(e.PropertyName == nameof(BeamCalculatorViewModel.HasLeftSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.HasRightSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.UseCustomLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseTowers))
                 Dispatcher.BeginInvoke(new Action(RefreshInputValidity), DispatcherPriority.DataBind);
         }
         private void InputValidation_Error(object sender, ValidationErrorEventArgs e)
@@ -62,14 +71,25 @@ namespace EngineeringDashboard
         {
             SupportDiagram.SetModel(observedModel);
             DiagramCaption.Text = observedModel == null || !observedModel.IsCalculationValid ? "Enter valid dimensions to show the support arrangement."
+                : observedModel.UseTowers ? $"Plan view · {observedModel.BeamLengthMm:0.###} mm beam · {observedModel.TowerResult.LegCount} legs\nP labels: H20 stock pieces · dotted: free member breaks\nBlue: frames · dashed: cross sides"
                 : $"Beam {observedModel.Width:0.##} × {observedModel.Depth:0.##} mm · {observedModel.NumberOfProps} props per primary line\nPrimary lines {observedModel.PrimaryLineSpacingMm:0.##} mm apart";
+        }
+        private async void OptimizeTowers_Click(object sender, RoutedEventArgs e)
+        {
+            RefreshInputValidity();
+            if (observedModel != null) await observedModel.OptimizeTowersAsync();
         }
         private const string FileInputs = "Depth,Width,FloorHeight,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,SlabStripWidthMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad,NumberOfProps";
         internal CalculationRecord CaptureCalculation()
         {
             if(!TryGetValidCalculation(out var vm)) throw new ArgumentException("Correct the inputs before saving or exporting.");
             var record = CalculationFiles.Capture("Beam", vm, FileInputs);
-            record.Inputs.Add(CalculationFiles.Field("PropConfiguration", vm.SelectedProp.CapacityKey));
+            record.Inputs.Add(CalculationFiles.Field("UseTowers", vm.UseTowers));
+            record.Inputs.Add(CalculationFiles.Field("BeamLengthMm", vm.BeamLengthMm));
+            record.Inputs.Add(CalculationFiles.Field("TowerLegCapacityKn", vm.TowerLegCapacityKn));
+            record.Inputs.Add(CalculationFiles.Field("StockLengthsText", vm.StockLengthsText));
+            record.Inputs.Add(CalculationFiles.Field("StockEndSetbackMm", vm.StockEndSetbackMm));
+            record.Inputs.Add(CalculationFiles.Field("PropConfiguration", vm.SelectedProp?.CapacityKey ?? BeamPropOption.All[0].CapacityKey));
             record.Inputs.Add(CalculationFiles.Field("DeflectionLimitMm", vm.DeflectionLimit.Millimetres));
             return record;
         }
@@ -80,13 +100,25 @@ namespace EngineeringDashboard
             candidate.SelectedProp = BeamPropOption.All.SingleOrDefault(p=>p.CapacityKey==record.Inputs.SingleOrDefault(f=>f.Name=="PropConfiguration")?.Value);
             string limit = record.Inputs.SingleOrDefault(f=>f.Name=="DeflectionLimitMm")?.Value;
             candidate.DeflectionLimit = candidate.DeflectionOptions.SingleOrDefault(d=>d.Millimetres.ToString(System.Globalization.CultureInfo.InvariantCulture)==limit);
-            if(!candidate.IsCalculationValid) throw new ArgumentException("The loaded calculation is invalid: " + candidate.WarningMessage);
+            RestoreTowerFields(record, candidate);
+            if(candidate.UseTowers) candidate.ValidateTowerInputs();
+            else if(!candidate.IsCalculationValid) throw new ArgumentException("The loaded calculation is invalid: " + candidate.WarningMessage);
             // Validate a separate model first. Preserve the launcher's retained model instance.
             var target=(BeamCalculatorViewModel)DataContext;
             CalculationFiles.Apply(record,"Beam",target,FileInputs);
             target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
+            target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
+            target.StockLengthsText = candidate.StockLengthsText; target.StockEndSetbackMm = candidate.StockEndSetbackMm;
             foreach(var box in TextInputs(this)) box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
             RefreshInputValidity();
+        }
+        private static void RestoreTowerFields(CalculationRecord record, BeamCalculatorViewModel vm)
+        {
+            // Old version-1 Beam records have none of these fields and retain prop mode.
+            var fields = new[] { "UseTowers", "BeamLengthMm", "TowerLegCapacityKn" };
+            if (record.Inputs.Any(f => fields.Contains(f.Name))) CalculationFiles.Apply(record, "Beam", vm, string.Join(",", fields));
+            var stockFields = new[] { "StockLengthsText", "StockEndSetbackMm" };
+            if (record.Inputs.Any(f => stockFields.Contains(f.Name))) CalculationFiles.Apply(record, "Beam", vm, string.Join(",", stockFields));
         }
         private void SaveCalculation_Click(object sender,RoutedEventArgs e) => CalculationFiles.Run(this,()=>CalculationFiles.Save(this,CaptureCalculation(),"Beam"));
         private void LoadCalculation_Click(object sender,RoutedEventArgs e) => CalculationFiles.Run(this,()=> { var path=CalculationFiles.ChooseLoad(this); if(path!=null) RestoreCalculation(CalculationFiles.Read<CalculationRecord>(path)); });
@@ -94,11 +126,21 @@ namespace EngineeringDashboard
         internal string BuildReport()
         {
             var record=CaptureCalculation(); var vm=(BeamCalculatorViewModel)DataContext;
+            if (vm.UseTowers)
+            {
+                var tower = vm.TowerResult;
+                var fields = new[] { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis),
+                    CalculationFiles.Field("LegUtilizationPercent", tower.MaxLegKn / vm.TowerLegCapacityKn * 100), CalculationFiles.Field("SupportSchedule", tower.Schedule),
+                    CalculationFiles.Field("PrimaryStockSchedule", tower.StockSchedule), CalculationFiles.Field("TotalPrimaryH20Count", tower.StockPlan.TotalH20Count),
+                    CalculationFiles.Field("SearchStatus", vm.TowerSearchNote), CalculationFiles.Field("TotalLineLoadKnPerM", vm.TotalLineLoad),
+                    CalculationFiles.Field("LeftLineLoadKnPerM", vm.LeftLineLoad), CalculationFiles.Field("RightLineLoadKnPerM", vm.RightLineLoad) };
+                return CalculationFiles.Report("Beam — shoring towers", record.Inputs, fields, BeamCalculatorViewModel.TowerAssumptions);
+            }
             var results=CalculationFiles.Capture("Beam",vm,"MaximumPropSpacing,PrimaryBeamCantilever,MaximumPropLoad,PropCapacityKn,PropUtilizationPercent,PropExtensionMm,PropLookupExtensionMm,PrimaryLineSpacingMm,LeftLineLoad,RightLineLoad,TotalLineLoad,LimitingFactor,IsCalculationValid");
             return CalculationFiles.Report("Beam",record.Inputs,results.Inputs,
                 "Geometry and spacing: mm. Area loads: kN/m². Line loads: kN/m. Prop loads/capacity: kN. Utilization: %. Deflection limit: mm.\n"+
                 "Each checked side uses the entered slab strip width. Primary lines = (beam width + 1400)/2. Line reactions use force and moment equilibrium; the heavier line governs.\n"+
-                "Concrete 25 kN/m³; default heaping min(1.75,max(0.75,10% of concrete weight)), working 0.75 and formwork 0.40 kN/m². Custom live replaces placing + working load.\n"+
+                "Concrete 25 kN/mÂ³; default heaping min(1.75,max(0.75,10% of concrete weight)), working 0.75 and formwork 0.40 kN/m². Custom live replaces placing + working load.\n"+
                 "Equal spans and full uniform loading. H20 moment 5 kNm, shear 11 kN, EI 449.8756 kNm². Spacing rounds down to 25 mm and checks selected prop capacity; extension = floor height - beam depth - 418 mm.\n"+
                 "2/3/4+ support coefficient model; primary span limits 2000/3000 mm. Sheeting, secondary beams, joints, restraint and local bearing require separate checks. Results recalculated from inputs; this is not a complete formwork verification.");
         }

@@ -1,0 +1,48 @@
+# Beam Calculator: shoring tower mode
+
+Choose **Shoring towers**, enter concrete beam length (mm), permissible load per leg (kN), and available primary H20 stock lengths, then select **Optimize towers**. The project stock list defaults to 1200, 1800, 2450, 2650, 2900, 3300, 3600, 3900, 4500 and 4900 mm. There are no overlaps or cuts. The existing beam dimensions, adjacent slab strips, default/custom load allowances and 3/5/10 mm deflection selection remain applicable. Free-prop catalog and extension inputs do not affect tower mode.
+
+The result gives leg count, group count, orientation, support coordinates, cross bays, gaps, end overhangs, left/right leg reactions, primary moment/shear/deflection and governing utilization. The stock schedule adds each member's length, start/end, assigned supports, checks and quantities. Each scheduled run uses four H20s: two per primary line. The plan shows individual stock pieces and dotted free member breaks. Save/load retains stock settings; a loaded tower record must be optimized again. Old Beam records still load, with the project stock defaults when stock fields are absent.
+
+## Geometry and load path
+
+- Normal orientation: two leg rows 1524 mm apart, centered on the concrete beam. Each transverse frame has two legs. Cross-side horizontal bays are exactly 600, 1000, 1500 or 2000 mm.
+- Joined bays share a transverse frame: two bays have three frames/six legs. Mixed bay sizes and mixtures of isolated and joined groups are candidates. Each group has at least two frames.
+- Rotated orientation: isolated towers have a 1524 mm longitudinal frame span and one selected cross dimension across the beam. All groups in a candidate use the same transverse width. Joining rotated towers would introduce additional primary rows across the beam and is outside this two-line model. Mixed orientations in one layout are not searched.
+- Each longitudinal primary line consists of two equally loaded H20 members. Single H20 properties match the existing calculator: M=5 kNm, V=11 kN, EI=449.8756 kNm². Pair limits are 10 kNm, 22 kN and 899.7512 kNm².
+- Each uncut stock run is checked as an independent member with its own free ends and at least two supports. The two primary lines use identical stock arrangements, and each pair shares its line load equally. Supports are not shared across stock breaks: no butt splice, rotational continuity, overlap or unsupported transfer between pieces is assumed. Joined tower frames and stock member breaks are separate decisions.
+- Stock members exactly cover the concrete beam from x=0 to x=L, without gaps or projection past its ends. Only listed lengths may be used, with unlimited quantities assumed. For example, 6000 mm needs at least three runs per line (1200+1200+3600); 5950 mm can use 2650+3300; 6001 mm cannot be covered by this stock list. No partial cover is accepted.
+- Every support centre must be inside its assigned stock member by at least the editable stock-end allowance (default 150 mm). This is a planning setback, not a manufacturer-verified head/bearing design. Adjacent free ends must be detailed with suitable secondary placement and load transfer; secondary members are not designed here.
+- A gap is the distance between the leg planes of adjacent groups. It is not a component-clearance allowance. No component envelopes or site obstacles are modeled.
+
+The same existing concrete, formwork and placing/working line loads are used. Adjacent slab eccentricity is resolved about the actual transverse row spacing for each orientation. Symmetric loading gives equal row loads; individual longitudinal leg loads generally differ. The entered permissible leg capacity must apply to the actual tower arrangement. Tower self-weight and height-dependent system capacity are not derived here.
+
+## Structural solution
+
+`TowerBeamAnalysis` solves the unequal-span three-moment equations separately for each stock member, with its own free overhangs, uniform load and constant EI. Supports are rigid, vertical and non-settling. It calculates signed individual reactions, maximum absolute moment, maximum shear, and maximum absolute deflection relative to the support level including both member overhangs. Deflection extrema are roots of integrated slope; production does not sample deflection. Negative reactions reject a member. The heavier primary line governs; the other row's reactions follow linear scaling. Each leg is assigned to exactly one stock run, and each part of the concrete length is loaded exactly once per primary line.
+
+All four checks must pass for every member: leg capacity, primary pair moment, primary pair shear and deflection. Secondary H20 and sheeting checks remain excluded. Local bearing, pair load-sharing and member-end detailing, tower stability/bracing/height, horizontal actions, partial loading, support settlement and foundations are also outside this span calculator. A successful result is not verification of those items. The rule excluding butt joints on support heads is consistent with Doka's [timber formwork beam user information, page 8](https://direct.doka.com/_ext/downloads/downloadcenter/999791002_2024_12_online.pdf); the adjacent independently supported free ends in this model are not a designed splice.
+
+## Search and ranking
+
+The search ranks **fewest legs**, **fewest tower groups**, **fewest primary H20 pieces**, then **lowest governing utilization**. It uses necessary load-capacity/span and stock-count lower bounds, tests increasing station counts, enumerates short bay sequences and samples larger combinations with a fixed random seed. Regular and irregular gap/end allocations are explored. Manufactured dimensions remain exact; gaps and the left offset snap down to 25 mm, and the right overhang receives the remainder. A candidate is checked using its final positions.
+
+For each candidate, `TowerStockPlanner` uses a directed acyclic stock-cover search from 0 to L. Each transition is one listed stock length covering at least two support stations, with the required setbacks and all structural checks passing. The best prefix for each end coordinate is retained by piece count then utilization. This is valid because all supports preceding that coordinate have already been assigned and no member shares a support at a break. Thus the stock plan is optimized for the tested tower geometry. The overall tower geometry search remains bounded. The minimum stock run count is found independently using exact integer length combinations; it supplies a lower bound of four legs per run. Failure to form an exact length combination is reported before searching towers.
+
+Limits: beam length up to 50,000 mm, up to 40 longitudinal stations/80 legs, up to 200,000 generated candidates, and at most 4,096 trials per group count/orientation. Stock entries are positive whole millimetres (at most 30 entries), and stock lengths must sum exactly to the beam length. The tower search does **not** prove global optimality. Results explicitly say “best found.” When the station count reaches the stronger of the universal load-capacity and stock-count lower bounds, minimum leg count alone is proven within this model; group count and layout still are not proven optimal. A failed geometry search says no layout was found, not that no feasible layout exists. Smaller leg counts can be missed by sampling.
+
+Optimization runs off the UI thread without Revit calls. Editing any calculation input clears the result. A generation counter discards an in-flight result if its inputs or support mode have changed. The prop mode remains synchronous and retains its prior calculation.
+
+## Revit and verification
+
+Tower mode supports saving and report export. It deliberately disables the existing Revit import, with an independent handler guard, because `Max Prop spacing` and two cantilever parameters cannot represent nonuniform tower layouts. No towers are placed in Revit by this change.
+
+`tests/Beam.Tests` retains the prop regression suite and adds closed-form simple-span/shared-frame checks, 160 independently assembled Euler–Bernoulli stiffness solutions for unequal spans/overhangs, equilibrium, mixed bays, rotations, input validation, search feasibility and stale-result checks. Stock tests verify exact coverage, available lengths, no shared support at breaks, no cutting/overlength substitution, support setbacks, quantities and independent stiffness comparisons for each accepted stock member. The independent solution samples its exact element displacement polynomials to compare production extrema. `tests/Beam.UiSmoke` covers switching modes, inactive prop errors, invalid tower/stock/setback inputs, uncovered-length feedback, real leg/member counts, report content, stock record round-trip, legacy records and diagrams.
+
+Run:
+
+```text
+dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
+dotnet run --project tests/Beam.Tests -c Release
+dotnet run --project tests/Beam.UiSmoke -c Release
+```
