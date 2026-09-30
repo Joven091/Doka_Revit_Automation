@@ -11,20 +11,28 @@ namespace EngineeringDashboard
     public sealed class TowerDiagramWindow : Window
     {
         internal ComboBox RunSelector { get; } = new ComboBox { Margin = new Thickness(0, 8, 0, 8) };
-        internal ComboBox LineSelector { get; } = new ComboBox { Margin = new Thickness(0, 0, 0, 8), ItemsSource = new[] { "Left primary line — double H20", "Right primary line — double H20" }, SelectedIndex = 0 };
+        internal ComboBox LineSelector { get; } = new ComboBox { Margin = new Thickness(0, 0, 0, 8), ItemsSource = new[] { "Left primary line", "Right primary line" }, SelectedIndex = 0 };
+        internal ComboBox MemberSelector { get; } = new ComboBox { ItemsSource = new[] { "H20 1", "H20 2" }, SelectedIndex = 0, Margin = new Thickness(0, 0, 0, 8) };
+        internal BeamSupportDiagram Plan { get; } = new BeamSupportDiagram { Height = 340 };
+        public void SelectMember(int run, int line, int member)
+        { RunSelector.SelectedIndex = run; LineSelector.SelectedIndex = line; MemberSelector.SelectedIndex = member; Refresh(); }
         internal TowerBeamAnalysis Analysis { get; private set; }
+        public event Action<int, int, int> MemberSelectionChanged;
         private readonly TowerLayout layout;
         private readonly StackPanel charts = new StackPanel();
-        public TowerDiagramWindow(TowerLayout result)
+        public TowerDiagramWindow(BeamCalculatorViewModel model)
         {
-            layout = result ?? throw new ArgumentNullException(nameof(result));
-            Title = "Primary H20 — shear, moment and deflection"; Width = 900; Height = 850;
+            layout = model.TowerResult ?? throw new ArgumentException("Optimize the tower layout first.");
+            Title = "Select H20 — shear, moment and deflection"; Width = 1000; Height = 900;
             var panel = new StackPanel { Margin = new Thickness(20), Background = Brushes.White };
-            panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = "Each plot represents two H20s sharing load equally. Single-H20 shear and moment are half the plotted values; deflection is unchanged. Positive moment = sagging; negative deflection = downward. Dashed horizontal lines are permissible limits; vertical lines mark supports. Curves are sampled; peak values use exact extrema.", TextWrapping = TextWrapping.Wrap } });
+            panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = "Each plot represents the selected individual H20, assuming equal load sharing within its double pair. Beam reactions are half the tower leg reaction. Lower plan dimensions run from each H20 end to its nearest support-leg centre. Positive moment = sagging; negative deflection = downward. Dashed horizontal lines are permissible limits; vertical lines mark supports. Curves are sampled; peak values use exact extrema.", TextWrapping = TextWrapping.Wrap } });
+            panel.Children.Add(new TextBlock { Text = "Click an H20 in the plan to inspect it. Blue = selected member." });
+            Plan.SetModel(model); Plan.MemberSelected += SelectMember;
+            panel.Children.Add(new ScrollViewer { Content = Plan, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled });
             RunSelector.ItemsSource = layout.StockPlan.Pieces.Select((p, i) => $"P{i + 1}: {p.StockLengthMm:0} mm stock · concrete beam x={p.StartMm:0}–{p.EndMm:0} mm").ToArray();
-            panel.Children.Add(RunSelector); panel.Children.Add(LineSelector); panel.Children.Add(charts);
+            panel.Children.Add(RunSelector); panel.Children.Add(LineSelector); panel.Children.Add(MemberSelector); panel.Children.Add(charts);
             Content = new ScrollViewer { Content = panel, Background = Brushes.White, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            RunSelector.SelectionChanged += (s, e) => Refresh(); LineSelector.SelectionChanged += (s, e) => Refresh();
+            RunSelector.SelectionChanged += (s, e) => Refresh(); LineSelector.SelectionChanged += (s, e) => Refresh(); MemberSelector.SelectionChanged += (s, e) => Refresh();
             RunSelector.SelectedIndex = 0;
         }
         private void Refresh()
@@ -32,12 +40,15 @@ namespace EngineeringDashboard
             if (RunSelector.SelectedIndex < 0) return;
             var piece = layout.StockPlan.Pieces[RunSelector.SelectedIndex];
             var supports = layout.PositionsMm.Skip(piece.FirstSupport).Take(piece.LastSupport - piece.FirstSupport + 1).Select(x => (x - piece.StartMm) / 1000).ToArray();
-            double q = LineSelector.SelectedIndex == 0 ? layout.LeftLineLoad : layout.RightLineLoad;
-            Analysis = TowerBeamAnalysis.Analyze(piece.StockLengthMm / 1000, supports, q, TowerOptimizer.PairEI);
+            double q = (LineSelector.SelectedIndex == 0 ? layout.LeftLineLoad : layout.RightLineLoad) / 2;
+            Plan.SelectMember(RunSelector.SelectedIndex, LineSelector.SelectedIndex, MemberSelector.SelectedIndex);
+            MemberSelectionChanged?.Invoke(RunSelector.SelectedIndex, LineSelector.SelectedIndex, MemberSelector.SelectedIndex);
+            Title = $"P{RunSelector.SelectedIndex + 1} · {(LineSelector.SelectedIndex == 0 ? "Left" : "Right")} · H20 {MemberSelector.SelectedIndex + 1} — response diagrams";
+            Analysis = TowerBeamAnalysis.Analyze(piece.StockLengthMm / 1000, supports, q, TowerOptimizer.PairEI / 2);
             charts.Children.Clear();
-            charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · loaded length: {piece.StockLengthMm:0.###} mm · permissible leg load: {layout.LegCapacityKn:0.00} kN\n" + string.Join("   ", Analysis.Reactions.Select((v, i) => $"Leg {piece.FirstSupport + i + 1}: {v:0.00} kN ({v / layout.LegCapacityKn * 100:0.0}%)")), TextWrapping = TextWrapping.Wrap });
+            charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · loaded length: {piece.StockLengthMm:0.###} mm\n" + string.Join("   ", Analysis.Reactions.Select((v, i) => $"Support {piece.FirstSupport + i + 1}: beam {v:0.00} kN / leg {2*v:0.00} kN")), TextWrapping = TextWrapping.Wrap });
             string[] names = { "Shear (kN)", "Moment (kNm)", "Deflection (mm)" };
-            double[] peaks = { Analysis.Shear, Analysis.Moment, Analysis.DeflectionMm }, limits = { TowerOptimizer.PairShear, TowerOptimizer.PairMoment, layout.DeflectionLimitMm };
+            double[] peaks = { Analysis.Shear, Analysis.Moment, Analysis.DeflectionMm }, limits = { TowerOptimizer.PairShear / 2, TowerOptimizer.PairMoment / 2, layout.DeflectionLimitMm };
             for (int i = 0; i < 3; i++)
             {
                 charts.Children.Add(new TextBlock { Text = $"{names[i]} · peak {peaks[i]:0.000} / permissible {limits[i]:0.000}", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 16, 0, 0) });
@@ -48,7 +59,7 @@ namespace EngineeringDashboard
         {
             readonly TowerBeamAnalysis analysis; readonly double[] supports; readonly double length, range, limit; readonly int index;
             public ResponsePlot(TowerBeamAnalysis a, double[] s, double l, int i, double peak, double allowable)
-            { analysis = a; supports = s; length = l; index = i; limit = allowable; range = Math.Max(peak, allowable) * 1.15; Height = 210; }
+            { analysis = a; supports = s; length = l; index = i; limit = allowable; range = Math.Max(peak, allowable) * 1.15; Height = 245; }
             protected override void OnRender(DrawingContext dc)
             {
                 base.OnRender(dc); double left = 65, right = Math.Max(left + 20, ActualWidth - 20), top = 20, bottom = 175;
@@ -69,7 +80,15 @@ namespace EngineeringDashboard
                         previous = point;
                     }
                 label("0", left, bottom + 4); label($"{length * 1000:0} mm", right - 60, bottom + 4);
-                label("Position from start of selected stock member (mm)", left, bottom + 20);
+                var stations = new[] { 0.0 }.Concat(supports).Concat(new[] { length }).Distinct().ToArray();
+                for (int i = 1; i < stations.Length; i++)
+                {
+                    double a = xx(stations[i-1]), b = xx(stations[i]), y = bottom + 34;
+                    dc.DrawLine(new Pen(Brushes.Gray, 1), new Point(a,y), new Point(b,y));
+                    foreach (double end in new[] {a,b}) dc.DrawLine(new Pen(Brushes.Gray,1),new Point(end,y-3),new Point(end,y+3));
+                    label($"{(stations[i]-stations[i-1])*1000:0.###}", (a+b)/2-14, y+5);
+                }
+                label("End offsets and support spans (mm)", left, bottom + 56);
             }
         }
     }
