@@ -13,6 +13,21 @@ namespace EngineeringDashboard
         private BeamCalculatorViewModel observedModel;
         private bool refreshingValidation;
         internal TowerDiagramWindow TowerDiagrams { get; private set; }
+        private void PickProps_Click(object sender, RoutedEventArgs e) => SelectSupportSystem(false);
+        private void PickTowers_Click(object sender, RoutedEventArgs e) => SelectSupportSystem(true);
+        private void SelectSupportSystem(bool towers)
+        {
+            if (observedModel == null) return;
+            if (observedModel.UseTowers != towers) observedModel.UseTowers = towers;
+            observedModel.HasSelectedSupportSystem = true;
+            InputScroll.ScrollToTop();
+            RefreshInputValidity(); UpdateDiagram();
+        }
+        private void ChangeSupportSystem_Click(object sender, RoutedEventArgs e)
+        {
+            CloseTowerDiagrams();
+            if (observedModel != null) observedModel.HasSelectedSupportSystem = false;
+        }
         private void CloseTowerDiagrams()
         {
             SupportDiagram.IsSelectionEnabled = false;
@@ -85,7 +100,7 @@ namespace EngineeringDashboard
         {
             vm = DataContext as BeamCalculatorViewModel;
             RefreshInputValidity();
-            return vm != null && vm.IsCalculationValid && !TextInputs(this).Any(t => t.IsEnabled && Validation.GetHasError(t));
+            return vm != null && vm.HasSelectedSupportSystem && vm.IsCalculationValid && !TextInputs(this).Any(t => t.IsEnabled && Validation.GetHasError(t));
         }
         private void UpdateDiagram()
         {
@@ -133,6 +148,7 @@ namespace EngineeringDashboard
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
             target.Exclude600Standalone = candidate.Exclude600Standalone; target.MaximumConcreteEndOverhangMm = candidate.MaximumConcreteEndOverhangMm; target.StockLengthsText = candidate.StockLengthsText; target.StockEndSetbackMm = candidate.StockEndSetbackMm;
             foreach(var box in TextInputs(this)) box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
+            target.HasSelectedSupportSystem = true;
             RefreshInputValidity();
         }
         private static void RestoreTowerFields(CalculationRecord record, BeamCalculatorViewModel vm)

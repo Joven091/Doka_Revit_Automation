@@ -58,3 +58,7 @@ The plan dimensions both H20 ends to their nearest support-leg centres, includin
 ## Standalone 600 mm exclusion
 
 The **Exclude standalone 600 mm towers** checkbox defaults off. When enabled, no four-leg standalone tower may use a 600 mm cross dimension, including rotated towers. Joined 600 mm bays remain available. Redundant-connection removal keeps enough frames joined to avoid creating an excluded standalone tower. Changing the checkbox invalidates results and requires optimization again. Save/load and report inputs retain this setting; older files default to unrestricted behavior.
+
+## Visual support choice
+
+The Beam calculator opens with two illustrated cards: Dokaflex and D3 Shoring System. The illustrations show their beams and supports without concrete slabs, and the cards have no subtitles. Neither is preselected. Choosing a card reveals that system's inputs; Change system returns to the cards while keeping entered geometry. Selecting the same system retains its calculated layout, while switching modes invalidates the old result. The launcher's retained view model remembers the choice when reopening the calculator. Loading a saved calculation selects its recorded system; older prop records select Props. Save, export and import remain disabled until a system is chosen.

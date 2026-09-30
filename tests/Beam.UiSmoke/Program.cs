@@ -34,6 +34,17 @@ internal static class Program
    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
    window=new BeamCalculatorWindow();vm=new BeamCalculatorViewModel();window.DataContext=vm;Render();
    var import=(Button)window.FindName("ImportButton");var results=(Border)window.FindName("ResultsBorder");var diagram=(BeamSupportDiagram)window.FindName("SupportDiagram");
+   var picker=(Grid)window.FindName("SupportSystemPicker");var workspace=(Grid)window.FindName("CalculatorWorkspace");
+   Check(picker.Visibility==Visibility.Visible && workspace.Visibility==Visibility.Collapsed,"fresh beam calculator starts with visual system choice");
+   Check(!import.IsEnabled && !window.TryGetValidCalculation(out var unselected),"no import or capture before choosing supports");
+   if(args.Length>0) SavePreview(Path.ChangeExtension(args[0],"support-picker.png"),1040,860);
+   ((Button)window.FindName("PickTowersButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+   Check(vm.HasSelectedSupportSystem && vm.UseTowers && workspace.Visibility==Visibility.Visible && picker.Visibility==Visibility.Collapsed,"tower card reveals tower inputs");
+   Check(Input("TowerLegCapacityKn").IsEnabled && !Input("FloorHeight").IsEnabled,"tower card enables only tower support inputs");
+   ((Button)Find<Button>(window).Single(t=>Equals(t.Content,"Change system"))).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+   Check(picker.Visibility==Visibility.Visible && !import.IsEnabled,"change system returns to visual choices");
+   ((Button)window.FindName("PickPropsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render();
+   Check(vm.HasSelectedSupportSystem && !vm.UseTowers && picker.Visibility==Visibility.Collapsed,"prop card reveals prop calculator");
    Check(import.IsEnabled,"initial import");Check(diagram.DrawnPropCount==4,"two props per primary line");Check(diagram.DrawnSlabCount==0,"no slabs by default");
    Enter("Depth","abc");Check(!vm.IsCalculationValid,"invalid text invalidates VM");Check(!import.IsEnabled,"invalid import disabled");Check(results.Visibility==Visibility.Collapsed,"stale results hidden");Check(Input("Depth").Text=="abc","invalid text preserved");
    Check(!window.TryGetValidCalculation(out var ignored),"import guard rejects conversion error");
@@ -78,6 +89,11 @@ internal static class Program
    Check(((Border)window.FindName("TowerResultsBorder")).Visibility==Visibility.Visible && results.Visibility==Visibility.Collapsed,"correct result panel");
    Check(diagram.DrawnEndDimensionCount==vm.TowerResult.StockPlan.Pieces.Length*2,"both H20 end offsets are dimensioned");
    var towerSaved=window.CaptureCalculation();var coordinates=vm.TowerResult.PositionsMm.ToArray();
+   var retainedLayout=vm.TowerResult;double retainedWidth=vm.Width;
+   Find<Button>(window).Single(t=>Equals(t.Content,"Change system")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+   ((Button)window.FindName("PickTowersButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render();
+   Check(ReferenceEquals(vm.TowerResult,retainedLayout) && vm.Width==retainedWidth,"reselecting same system retains geometry and optimized layout");
+
    Check(!diagram.SelectAt(new Point(diagram.MemberTargets[0].Item1.X+2,diagram.MemberTargets[0].Item1.Y+4)),"selection waits for diagram button");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
    Check(window.TowerDiagrams==null && diagram.IsSelectionEnabled,"button enables main-plan selection without a duplicate plan");
@@ -139,6 +155,11 @@ internal static class Program
    exclusionRecord.Inputs.RemoveAll(f=>f.Name=="Exclude600Standalone");window.RestoreCalculation(exclusionRecord);Pump();Check(!vm.Exclude600Standalone,"legacy files retain prior unrestricted behavior");
    var old=towerSaved;old.Inputs.RemoveAll(f=>new[]{"UseTowers","BeamLengthMm","TowerLegCapacityKn","StockLengthsText","StockEndSetbackMm","MaximumConcreteEndOverhangMm"}.Contains(f.Name));
    window.RestoreCalculation(old);Pump();Check(!vm.UseTowers && vm.IsCalculationValid,"legacy prop record loads");
+   var reopened=new BeamCalculatorWindow { DataContext=vm };Pump();
+   Check(((Grid)reopened.FindName("SupportSystemPicker")).Visibility==Visibility.Collapsed,"reopening retained model preserves chosen system");reopened.Close();
+   vm.HasSelectedSupportSystem=false;window.RestoreCalculation(old);Pump();
+   Check(vm.HasSelectedSupportSystem && picker.Visibility==Visibility.Collapsed,"loading saved calculation selects its support system");
+   vm.UseTowers=true;Pump();Check(vm.TowerResult==null && !vm.IsCalculationValid,"switching support modes invalidates old results");
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }
   catch(Exception ex){Console.Error.WriteLine(ex);window?.Close();return 1;}
