@@ -20,7 +20,7 @@ namespace EngineeringDashboard
             layout = result ?? throw new ArgumentNullException(nameof(result));
             Title = "Primary H20 — shear, moment and deflection"; Width = 900; Height = 850;
             var panel = new StackPanel { Margin = new Thickness(20), Background = Brushes.White };
-            panel.Children.Add(new TextBlock { Text = "Each plot represents two H20s sharing load equally. Single-H20 shear and moment are half the plotted values; deflection is unchanged. Positive moment = sagging; negative deflection = downward. Dashed horizontal lines are permissible limits; vertical lines mark supports. Curves are sampled; peak values use exact extrema.", TextWrapping = TextWrapping.Wrap });
+            panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = "Each plot represents two H20s sharing load equally. Single-H20 shear and moment are half the plotted values; deflection is unchanged. Positive moment = sagging; negative deflection = downward. Dashed horizontal lines are permissible limits; vertical lines mark supports. Curves are sampled; peak values use exact extrema.", TextWrapping = TextWrapping.Wrap } });
             RunSelector.ItemsSource = layout.StockPlan.Pieces.Select((p, i) => $"P{i + 1}: {p.StockLengthMm:0} mm stock · concrete beam x={p.StartMm:0}–{p.EndMm:0} mm").ToArray();
             panel.Children.Add(RunSelector); panel.Children.Add(LineSelector); panel.Children.Add(charts);
             Content = new ScrollViewer { Content = panel, Background = Brushes.White, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -40,7 +40,7 @@ namespace EngineeringDashboard
             double[] peaks = { Analysis.Shear, Analysis.Moment, Analysis.DeflectionMm }, limits = { TowerOptimizer.PairShear, TowerOptimizer.PairMoment, layout.DeflectionLimitMm };
             for (int i = 0; i < 3; i++)
             {
-                charts.Children.Add(new TextBlock { Text = $"{names[i]} · absolute peak {peaks[i]:0.000} / permissible {limits[i]:0.000}", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 16, 0, 0) });
+                charts.Children.Add(new TextBlock { Text = $"{names[i]} · peak {peaks[i]:0.000} / permissible {limits[i]:0.000}", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 16, 0, 0) });
                 charts.Children.Add(new ResponsePlot(Analysis, supports, piece.StockLengthMm / 1000, i, peaks[i], limits[i]));
             }
         }

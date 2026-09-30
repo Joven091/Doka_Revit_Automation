@@ -124,14 +124,13 @@
                 <TextBox x:Name="TowerCapacityInput" Text="{Binding TowerLegCapacityKn, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                 <TextBlock Text="Available primary H20 stock lengths (mm)"/>
                 <TextBox x:Name="StockLengthsInput" TextWrapping="Wrap" Text="{Binding StockLengthsText, UpdateSourceTrigger=PropertyChanged}"/>
-                <TextBlock Style="{StaticResource Hint}" Text="No overlaps or cutting. Members must cover the full concrete length without extending beyond its ends."/>
+                <TextBlock Style="{StaticResource Hint}" Text="Exact stock fit · no cutting or overlaps."/>
                 <Expander Header="Stock end support allowance" Margin="0,6">
                   <StackPanel><TextBlock Text="Minimum support-centre inset from each stock end (mm)"/>
                     <TextBox Text="{Binding StockEndSetbackMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                     <TextBlock Style="{StaticResource Hint}" Text="Planning allowance; local bearing and head details require separate checks."/>
                   </StackPanel>
                 </Expander>
-                <TextBlock Style="{StaticResource Hint}" Text="1524 mm frames · 600 / 1000 / 1500 / 2000 mm cross bays. Compare joined groups and rotated isolated towers. Rank by legs, then groups."/>
                 <Button x:Name="OptimizeTowersButton" Content="Optimize towers" IsEnabled="{Binding CanOptimizeTowers}" Click="OptimizeTowers_Click" Margin="0,8"/>
               </StackPanel>
               <Grid>
@@ -229,12 +228,15 @@
               <TextBlock Text="Tower layout · best found" FontWeight="SemiBold" FontSize="18"/>
               <TextBlock Text="{Binding TowerResult.LegLoadSummary}" FontWeight="Bold" TextWrapping="Wrap" Margin="0,8"/>
               <ProgressBar Value="{Binding TowerResult.LegUtilizationPercent, Mode=OneWay}" Maximum="100" Height="10"/>
-              <TextBlock Text="{Binding TowerResult.CapacityBasis}" TextWrapping="Wrap" Margin="0,8"/>
+              <TextBlock Text="{Binding TowerResult.CompactSummary}" Margin="0,8"/>
               <Button x:Name="TowerDiagramsButton" Content="Show shear, moment &amp; deflection" Click="TowerDiagrams_Click" IsEnabled="{Binding ShowTowerResults}" Margin="0,8"/>
-              <TextBlock Text="{Binding TowerSummary}" Margin="0,8"/>
-              <TextBlock Text="{Binding TowerSearchNote}" Style="{StaticResource Hint}"/>
-              <Expander Header="Positions, bays and leg loads" Margin="0,10,0,0"><TextBlock Text="{Binding TowerSchedule}" Margin="0,8"/></Expander>
-              <Expander Header="Primary H20 stock schedule" Margin="0,10,0,0"><TextBlock Text="{Binding TowerStockSchedule}" Margin="0,8"/></Expander>
+              <Expander Header="Checks and optimization" Margin="0,8,0,0"><StackPanel>
+                <TextBlock Text="{Binding TowerSummary}" Margin="0,8"/>
+                <TextBlock Text="{Binding TowerSearchNote}" Style="{StaticResource Hint}"/>
+                <TextBlock Text="{Binding TowerResult.CapacityBasis}" Style="{StaticResource Hint}" Margin="0,8"/>
+              </StackPanel></Expander>
+              <Expander Header="Leg loads and positions" Margin="0,10,0,0"><TextBlock Text="{Binding TowerSchedule}" Margin="0,8"/></Expander>
+              <Expander Header="H20 stock schedule" Margin="0,10,0,0"><TextBlock Text="{Binding TowerStockSchedule}" Margin="0,8"/></Expander>
             </StackPanel>
           </Border>
           <Border Background="#ECEFF1" Padding="14" Margin="0,0,0,12">
@@ -242,7 +244,6 @@
               <TextBlock Style="{StaticResource Subheading}" Text="Beam and support section" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
               <TextBlock Style="{StaticResource Hint}" Text="Schematic · secondary H20 perpendicular to primary H20" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
               <TextBlock Style="{StaticResource Subheading}" Text="Tower layout · plan" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
-              <TextBlock Style="{StaticResource Hint}" Text="Station numbers match the position schedule above." Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
               <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
               <local:BeamSupportDiagram x:Name="SupportDiagram" Margin="0,4">
                 <local:BeamSupportDiagram.Style>

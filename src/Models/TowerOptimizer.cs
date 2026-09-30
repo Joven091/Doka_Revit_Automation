@@ -29,7 +29,8 @@ namespace EngineeringDashboard
         public double[] RightReactions { get; internal set; }
         public TowerStockPlan StockPlan { get; internal set; }
         public double LegUtilizationPercent => MaxLegKn / LegCapacityKn * 100;
-        public string LegLoadSummary => $"Peak current leg load: {MaxLegKn:0.00} kN / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
+        public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {StockPlan.TotalH20Count} H20s";
+        public string LegLoadSummary => $"Peak leg: {MaxLegKn:0.00} / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
         public string CapacityBasis => $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then tower groups, H20 quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
         public string StockSchedule => StockPlan.Schedule;
         public int LegCount => PositionsMm.Length * 2;
