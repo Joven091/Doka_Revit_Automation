@@ -5,7 +5,8 @@ namespace EngineeringDashboard
 {
     public partial class BeamCalculatorViewModel
     {
-        private bool useTowers;
+        private bool useTowers, exclude600Standalone;
+        public bool Exclude600Standalone { get => exclude600Standalone; set { exclude600Standalone = value; Changed(); } }
         private double beamLengthMm = 6100, towerLegCapacityKn = 30;
         private string stockLengthsText = TowerStockPlanner.DefaultLengths;
         private double stockEndSetbackMm = 150, maximumConcreteEndOverhangMm = 75;
@@ -44,7 +45,7 @@ namespace EngineeringDashboard
             double left = HasLeftSlab ? AreaLoad(LeftSlabThickness) * SlabStripWidthMm / 1000 : 0;
             double right = HasRightSlab ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;
             var input = new TowerInput { LengthMm = BeamLengthMm, LegCapacityKn = TowerLegCapacityKn, DeflectionLimitMm = DeflectionLimit.Millimetres,
-                MaximumConcreteEndOverhangMm = MaximumConcreteEndOverhangMm, StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
+                Exclude600Standalone = Exclude600Standalone, MaximumConcreteEndOverhangMm = MaximumConcreteEndOverhangMm, StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
                 TotalLineLoad = AreaLoad(Depth) * Width / 1000 + left + right,
                 TransverseLoadMoment = (right - left) * (Width + (HasAnySlab ? SlabStripWidthMm : 0)) / 2000 };
             Check(input.TotalLineLoad, "Calculated line load", true); Check(Math.Abs(input.TransverseLoadMoment), "Transverse load moment");

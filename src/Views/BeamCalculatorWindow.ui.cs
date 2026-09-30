@@ -99,6 +99,7 @@ namespace EngineeringDashboard
             record.Inputs.Add(CalculationFiles.Field("StockLengthsText", vm.StockLengthsText));
             record.Inputs.Add(CalculationFiles.Field("StockEndSetbackMm", vm.StockEndSetbackMm));
             record.Inputs.Add(CalculationFiles.Field("MaximumConcreteEndOverhangMm", vm.MaximumConcreteEndOverhangMm));
+            record.Inputs.Add(CalculationFiles.Field("Exclude600Standalone", vm.Exclude600Standalone));
             record.Inputs.Add(CalculationFiles.Field("PropConfiguration", vm.SelectedProp?.CapacityKey ?? BeamPropOption.All[0].CapacityKey));
             record.Inputs.Add(CalculationFiles.Field("DeflectionLimitMm", vm.DeflectionLimit.Millimetres));
             return record;
@@ -118,12 +119,14 @@ namespace EngineeringDashboard
             CalculationFiles.Apply(record,"Beam",target,FileInputs);
             target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
-            target.MaximumConcreteEndOverhangMm = candidate.MaximumConcreteEndOverhangMm; target.StockLengthsText = candidate.StockLengthsText; target.StockEndSetbackMm = candidate.StockEndSetbackMm;
+            target.Exclude600Standalone = candidate.Exclude600Standalone; target.MaximumConcreteEndOverhangMm = candidate.MaximumConcreteEndOverhangMm; target.StockLengthsText = candidate.StockLengthsText; target.StockEndSetbackMm = candidate.StockEndSetbackMm;
             foreach(var box in TextInputs(this)) box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
             RefreshInputValidity();
         }
         private static void RestoreTowerFields(CalculationRecord record, BeamCalculatorViewModel vm)
         {
+            vm.Exclude600Standalone = false;
+            if (record.Inputs.Any(f => f.Name == "Exclude600Standalone")) CalculationFiles.Apply(record, "Beam", vm, "Exclude600Standalone");
             vm.MaximumConcreteEndOverhangMm = 0;
             if (record.Inputs.Any(f => f.Name == "MaximumConcreteEndOverhangMm")) CalculationFiles.Apply(record, "Beam", vm, "MaximumConcreteEndOverhangMm");
             // Old version-1 Beam records have none of these fields and retain prop mode.

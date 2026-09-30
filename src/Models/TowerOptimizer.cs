@@ -16,6 +16,7 @@ namespace EngineeringDashboard
         public double[] StockLengthsMm { get; set; } = TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths);
         public double StockEndSetbackMm { get; set; } = 150;
         public double MaximumConcreteEndOverhangMm { get; set; }
+        public bool Exclude600Standalone { get; set; }
     }
     public sealed class TowerLayout
     {
@@ -94,7 +95,7 @@ namespace EngineeringDashboard
                 double overhang = (input.LengthMm - covered) / 2;
                 var candidateInput = new TowerInput { LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
                     TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm,
-                    StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm };
+                    StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone };
                 TowerLayout candidate;
                 try { candidate = OptimizeCovered(candidateInput); }
                 catch (ArgumentException) { continue; }
@@ -217,6 +218,8 @@ namespace EngineeringDashboard
                 else { if (run < 2 || rotated && run != 2) return null; run = 1; }
             }
             if (run < 2 || rotated && run != 2) return null;
+            var finalJoined = RemoveRedundantJoins(joined, positions, input.Exclude600Standalone);
+            if (finalJoined == null || input.Exclude600Standalone && rotated && width == 600) return null;
             double left = input.TotalLineLoad / 2 - input.TransverseLoadMoment / (width / 1000), right = input.TotalLineLoad - left;
             if (Math.Min(left, right) <= 0) return null;
             var response = TowerStockPlanner.Find(input, positions, Math.Max(left, right));
@@ -225,22 +228,30 @@ namespace EngineeringDashboard
             if (response.Reactions.Min() < -1e-9 * maxLeg) return null;
             var utilization = new[] { maxLeg / input.LegCapacityKn, response.MomentKnM / PairMoment, response.ShearKn / PairShear, response.DeflectionMm / input.DeflectionLimitMm };
             if (utilization.Any(x => !TowerBeamAnalysis.Finite(x)) || utilization.Max() > 1 + 1e-10) return null;
-            return new TowerLayout { PositionsMm = (double[])positions.Clone(), Joined = RemoveRedundantJoins(joined), WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
+            return new TowerLayout { PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
                 LeftLineLoad = left, RightLineLoad = right, LeftReactions = response.Reactions.Select(x => x * left / Math.Max(left, right)).ToArray(), RightReactions = response.Reactions.Select(x => x * right / Math.Max(left, right)).ToArray(),
                 MaxLegKn = maxLeg, LegCapacityKn = input.LegCapacityKn, DeflectionLimitMm = input.DeflectionLimitMm, MomentKnM = response.MomentKnM, ShearKn = response.ShearKn, DeflectionMm = response.DeflectionMm,
                 Utilization = utilization.Max(), Governing = new[] { "Leg capacity", "Primary moment", "Primary shear", "Primary deflection" }[Array.IndexOf(utilization, utilization.Max())] };
         }
-        // Every independent tower needs at least two frames. Split longer joined runs into
-        // pairs (and one triple for an odd frame count), retaining all support coordinates.
-        private static bool[] RemoveRedundantJoins(bool[] joined)
+        // Maximize independent groups while retaining at least two frames per group.
+        // When excluded, a 600 mm pair must remain joined to more frames or be rejected.
+        private static bool[] RemoveRedundantJoins(bool[] joined, double[] positions, bool exclude600)
         {
             var result = (bool[])joined.Clone(); int first = 0;
-            while (first < joined.Length + 1)
+            while (first < positions.Length)
             {
                 int last = first;
                 while (last < joined.Length && joined[last]) last++;
-                int remaining = last - first + 1, split = first;
-                while (remaining >= 4) { result[split + 1] = false; split += 2; remaining -= 2; }
+                int n = last - first + 1;
+                var groups = Enumerable.Repeat(-1, n + 1).ToArray(); var sizes = new int[n + 1]; groups[n] = 0;
+                for (int i = n - 2; i >= 0; i--)
+                    for (int size = 2; i + size <= n; size++)
+                    {
+                        if (groups[i + size] < 0 || exclude600 && size == 2 && Math.Abs(positions[first+i+1] - positions[first+i] - 600) < 1e-6) continue;
+                        if (groups[i + size] + 1 > groups[i]) { groups[i] = groups[i + size] + 1; sizes[i] = size; }
+                    }
+                if (groups[0] < 0) return null;
+                for (int i = 0; i + sizes[i] < n; i += sizes[i]) result[first + i + sizes[i] - 1] = false;
                 first = last + 1;
             }
             return result;

@@ -118,6 +118,12 @@ internal static class Program
    Check(diagram.DrawnBayDimensionCount==1 && diagram.DrawnGapDimensionCount==0,"rotated frame span dimension");
    typeof(BeamCalculatorViewModel).GetProperty("TowerResult").SetValue(vm,actualLayout);diagram.SetModel(vm);Render();
    if(args.Length>0){File.WriteAllText(Path.ChangeExtension(args[0],"tower-report.html"),window.BuildReport());SavePreview(Path.ChangeExtension(args[0],"tower.png"),1040,860);}
+   var exclusionBox=(CheckBox)window.FindName("Exclude600StandaloneCheckBox");
+   Check(exclusionBox.IsChecked==false,"standalone 600 checkbox defaults off");
+   exclusionBox.IsChecked=true;Pump();Check(vm.Exclude600Standalone && !vm.IsCalculationValid,"checkbox binds and clears stale result");Optimize();
+   var exclusionRecord=window.CaptureCalculation();Check(window.BuildReport().Contains("Exclude600Standalone") || window.BuildReport().Contains("Exclude600 Standalone"),"report records standalone exclusion");
+   vm.Exclude600Standalone=false;window.RestoreCalculation(exclusionRecord);Pump();Check(vm.Exclude600Standalone && !vm.IsCalculationValid,"checkbox save/load round trip");
+   exclusionRecord.Inputs.RemoveAll(f=>f.Name=="Exclude600Standalone");window.RestoreCalculation(exclusionRecord);Pump();Check(!vm.Exclude600Standalone,"legacy files retain prior unrestricted behavior");
    var old=towerSaved;old.Inputs.RemoveAll(f=>new[]{"UseTowers","BeamLengthMm","TowerLegCapacityKn","StockLengthsText","StockEndSetbackMm","MaximumConcreteEndOverhangMm"}.Contains(f.Name));
    window.RestoreCalculation(old);Pump();Check(!vm.UseTowers && vm.IsCalculationValid,"legacy prop record loads");
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;

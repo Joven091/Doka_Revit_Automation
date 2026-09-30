@@ -108,6 +108,25 @@ internal static class TowerTests
         vm.TowerLegCapacityKn = 30; var running = vm.OptimizeTowersAsync(); vm.BeamLengthMm = 7000; running.GetAwaiter().GetResult();
         Check(!vm.IsCalculationValid && vm.TowerResult == null, "in-flight stale result discarded");
         StockChecks();
+        var exclusion = new TowerInput { LengthMm = 1800, StockLengthsMm = new[] { 1800.0 }, TotalLineLoad = 5, LegCapacityKn = 70, DeflectionLimitMm = 10 };
+        Check(TowerOptimizer.Evaluate(exclusion, new[] { 600.0, 1200 }, new[] { true }, 1524, false) != null, "600 standalone allowed by default");
+        exclusion.Exclude600Standalone = true;
+        Check(TowerOptimizer.Evaluate(exclusion, new[] { 600.0, 1200 }, new[] { true }, 1524, false) == null, "600 standalone excluded");
+        Check(TowerOptimizer.Evaluate(exclusion, new[] { 300.0, 900, 1500 }, new[] { true, true }, 1524, false)?.LegCount == 6, "joined 600 bays remain allowed");
+        exclusion.LengthMm = 3000; exclusion.StockLengthsMm = new[] { 3000.0 };
+        Check(TowerOptimizer.Evaluate(exclusion, new[] { 700.0, 2224 }, new[] { true }, 600, true) == null, "rotated standalone 600 excluded");
+        Check(TowerOptimizer.Evaluate(exclusion, new[] { 700.0, 2224 }, new[] { true }, 1000, true) != null, "other rotated tower widths retained");
+        exclusion.LengthMm = 2400; exclusion.StockLengthsMm = new[] { 2400.0 };
+        var retained = TowerOptimizer.Evaluate(exclusion, new[] { 300.0, 900, 1500, 2100 }, new[] { true, true, true }, 1524, false);
+        Check(retained != null && retained.GroupCount == 1, "join removal cannot create forbidden 600 standalone towers");
+        exclusion.LengthMm = 6750; exclusion.StockLengthsMm = TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths); exclusion.MaximumConcreteEndOverhangMm = 75;
+        var filtered = TowerOptimizer.Optimize(exclusion);
+        int groupStart = 0;
+        for (int i = 0; i < filtered.PositionsMm.Length; i++) if (i == filtered.Joined.Length || !filtered.Joined[i])
+        {
+            Check(i - groupStart != 1 || (filtered.Rotated ? filtered.WidthMm : filtered.PositionsMm[i] - filtered.PositionsMm[groupStart]) != 600, "optimized end-allowance candidates respect checkbox");
+            groupStart = i + 1;
+        }
         var regression = new TowerInput { LengthMm = 6750, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, MaximumConcreteEndOverhangMm = 75 };
         var optimized = TowerOptimizer.Optimize(regression);
         Check(optimized.LegCount == 8, "6750 mm with 75 mm allowance uses eight legs");

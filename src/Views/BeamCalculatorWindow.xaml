@@ -133,6 +133,7 @@
                     <TextBlock Style="{StaticResource Hint}" Text="Planning allowance; local bearing and head details require separate checks."/>
                   </StackPanel>
                 </Expander>
+                <CheckBox x:Name="Exclude600StandaloneCheckBox" Content="Exclude standalone 600 mm towers" IsChecked="{Binding Exclude600Standalone}" ToolTip="Applies in either orientation. Joined 600 mm bays remain allowed."/>
                 <Button x:Name="OptimizeTowersButton" Content="Optimize towers" IsEnabled="{Binding CanOptimizeTowers}" Click="OptimizeTowers_Click" Margin="0,8"/>
               </StackPanel>
               <Grid>
