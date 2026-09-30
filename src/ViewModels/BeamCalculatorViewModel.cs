@@ -13,7 +13,7 @@ namespace EngineeringDashboard
         public BeamDeflectionOption(string label, double millimetres) { Label = label; Millimetres = millimetres; }
     }
 
-    public class BeamCalculatorViewModel : INotifyPropertyChanged
+    public partial class BeamCalculatorViewModel : INotifyPropertyChanged
     {
         public static IReadOnlyList<BeamDeflectionOption> AvailableDeflectionOptions { get; } = Array.AsReadOnly(new[] {
             new BeamDeflectionOption("Class A / Architectural Concrete (3mm limit)", 3),
@@ -60,7 +60,7 @@ namespace EngineeringDashboard
         public double TotalLineLoad { get; private set; }
         // Existing transverse arrangement: primary lines at the quarter points of
         // the secondary member, whose overall length is beam width + 1400 mm.
-        public double PrimaryLineSpacingMm => (Width + 1400) / 2;
+        public double PrimaryLineSpacingMm => UseTowers ? TowerResult?.WidthMm ?? 1524 : (Width + 1400) / 2;
         private double slabStripWidthMm = 300;
         public double SlabStripWidthMm { get => slabStripWidthMm; set { slabStripWidthMm = value; Changed(); } }
         public bool HasAnySlab => HasLeftSlab || HasRightSlab;
@@ -88,11 +88,18 @@ namespace EngineeringDashboard
         }
         private void Calculate()
         {
+            towerRevision++; TowerResult = null;
             IsCalculationValid = false;
             MaximumPropSpacing = MaximumPropLoad = PrimaryBeamCantilever = 0;
             LeftLineLoad = RightLineLoad = TotalLineLoad = 0;
             PropCapacityKn = PropLookupExtensionMm = PropUtilizationPercent = 0;
             LimitingFactor = string.Empty; WarningMessage = string.Empty;
+            if (UseTowers)
+            {
+                try { CreateTowerInput(); WarningMessage = "Select Optimize towers to calculate the current inputs."; }
+                catch (ArgumentException ex) { WarningMessage = ex.Message; }
+                NotifyTower(); return;
+            }
             try
             {
                 if (textErrors) throw new ArgumentException("Correct the highlighted input before calculating or importing.");
@@ -150,6 +157,7 @@ namespace EngineeringDashboard
                 LimitingFactor = governing; IsCalculationValid = true;
             }
             catch (ArgumentException ex) { WarningMessage = ex.Message; }
+            NotifyTower();
             foreach (string name in new[] { nameof(MaximumPropSpacing), nameof(MaximumPropLoad), nameof(PrimaryBeamCantilever), nameof(LimitingFactor), nameof(WarningMessage), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(PrimaryLineSpacingMm), nameof(PropExtensionMm), nameof(PropCapacityKn), nameof(PropLookupExtensionMm), nameof(PropUtilizationPercent), nameof(IsCalculationValid) }) OnPropertyChanged(name);
         }
         private void Changed([CallerMemberName] string property = null) { Calculate(); OnPropertyChanged(property); if(property == nameof(HasLeftSlab) || property == nameof(HasRightSlab)) OnPropertyChanged(nameof(HasAnySlab)); }

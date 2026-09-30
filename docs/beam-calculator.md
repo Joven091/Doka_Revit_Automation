@@ -1,5 +1,7 @@
 # Beam calculator: calculation and UI fixes
 
+The calculator also provides [shoring tower optimization](beam-towers.md), with a separate unequal-span solver, double H20 primary lines, mixed/shared-frame bays, rotations and per-leg capacity. The prop-mode assumptions below remain unchanged.
+
 ## Inputs and validity
 
 Active dimensions must be positive and finite; active slab thickness cannot exceed total beam depth. Custom live/formwork allowances may be zero but cannot be negative or non-finite. Inactive optional fields do not contribute loads or block the calculation. Invalid numeric values and WPF text-conversion errors clear results and disable import. The import handler independently checks validity before any model access.

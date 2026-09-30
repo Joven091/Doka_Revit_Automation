@@ -12,7 +12,7 @@ namespace EngineeringDashboard
 
         private void BtnApplyToBeams_Click(object sender, RoutedEventArgs e)
         {
-            if (!TryGetValidCalculation(out BeamCalculatorViewModel vm))
+            if (!TryGetValidCalculation(out BeamCalculatorViewModel vm) || !vm.CanImport)
             {
                 MessageBox.Show("Correct the inputs before importing values.", "Invalid calculation", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;

@@ -11,4 +11,5 @@ jobs:
       - run: dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
       - run: dotnet run --project tests/Dome.Tests/Dome.Tests.csproj -c Release
       - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release
+      - run: dotnet run --project tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release
       - run: dotnet run --project tests/Backpropping.Tests/Backpropping.Tests.csproj -c Release
