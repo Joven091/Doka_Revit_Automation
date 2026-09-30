@@ -10,39 +10,29 @@ namespace EngineeringDashboard
     /// <summary>Read-only response plots for the exact stock members used by the optimizer.</summary>
     public sealed class TowerDiagramWindow : Window
     {
-        internal ComboBox RunSelector { get; } = new ComboBox { Margin = new Thickness(0, 8, 0, 8) };
-        internal ComboBox LineSelector { get; } = new ComboBox { Margin = new Thickness(0, 0, 0, 8), ItemsSource = new[] { "Left double-H20 pair", "Right double-H20 pair" }, SelectedIndex = 0 };
-        internal BeamSupportDiagram Plan { get; } = new BeamSupportDiagram { Height = 340 };
+        internal int SelectedRun { get; private set; } = -1;
+        internal int SelectedLine { get; private set; }
         public void SelectMember(int run, int line, int member)
-        { RunSelector.SelectedIndex = run; LineSelector.SelectedIndex = line; Refresh(); }
+        { SelectedRun = run; SelectedLine = line; Refresh(); }
         internal TowerBeamAnalysis Analysis { get; private set; }
-        public event Action<int, int, int> MemberSelectionChanged;
         private readonly TowerLayout layout;
         private readonly StackPanel charts = new StackPanel();
         public TowerDiagramWindow(BeamCalculatorViewModel model)
         {
             layout = model.TowerResult ?? throw new ArgumentException("Optimize the tower layout first.");
-            Title = "Select H20 — shear, moment and deflection"; Width = 1000; Height = 900;
+            Title = "Select H20 — shear, moment and deflection"; Width = 900; Height = 850;
             var panel = new StackPanel { Margin = new Thickness(20), Background = Brushes.White };
             panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = "Each plot represents the selected double-H20 pair with equal load sharing. Pair limits: shear 22 kN and moment 10 kNm. Pair reactions equal the supporting leg loads. Lower plan dimensions run from each H20 end to its nearest support-leg centre. Positive moment = sagging; negative deflection = downward. Dashed horizontal lines are permissible limits; vertical lines mark supports. Curves are sampled; peak values use exact extrema.", TextWrapping = TextWrapping.Wrap } });
-            panel.Children.Add(new TextBlock { Text = "Click either H20 to select its pair. Blue = selected double-H20 pair." });
-            Plan.SetModel(model); Plan.MemberSelected += SelectMember;
-            panel.Children.Add(new ScrollViewer { Content = Plan, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled });
-            RunSelector.ItemsSource = layout.StockPlan.Pieces.Select((p, i) => $"P{i + 1}: {p.StockLengthMm:0} mm stock · concrete beam x={p.StartMm:0}–{p.EndMm:0} mm").ToArray();
-            panel.Children.Add(RunSelector); panel.Children.Add(LineSelector); panel.Children.Add(charts);
+            panel.Children.Add(charts);
             Content = new ScrollViewer { Content = panel, Background = Brushes.White, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            RunSelector.SelectionChanged += (s, e) => Refresh(); LineSelector.SelectionChanged += (s, e) => Refresh();
-            RunSelector.SelectedIndex = 0;
-        }
+                }
         private void Refresh()
         {
-            if (RunSelector.SelectedIndex < 0) return;
-            var piece = layout.StockPlan.Pieces[RunSelector.SelectedIndex];
+            if (SelectedRun < 0) return;
+            var piece = layout.StockPlan.Pieces[SelectedRun];
             var supports = layout.PositionsMm.Skip(piece.FirstSupport).Take(piece.LastSupport - piece.FirstSupport + 1).Select(x => (x - piece.StartMm) / 1000).ToArray();
-            double q = LineSelector.SelectedIndex == 0 ? layout.LeftLineLoad : layout.RightLineLoad;
-            Plan.SelectMember(RunSelector.SelectedIndex, LineSelector.SelectedIndex, -1);
-            MemberSelectionChanged?.Invoke(RunSelector.SelectedIndex, LineSelector.SelectedIndex, -1);
-            Title = $"P{RunSelector.SelectedIndex + 1} · {(LineSelector.SelectedIndex == 0 ? "Left" : "Right")} · double H20 — response diagrams";
+            double q = SelectedLine == 0 ? layout.LeftLineLoad : layout.RightLineLoad;
+            Title = $"P{SelectedRun + 1} · {(SelectedLine == 0 ? "Left" : "Right")} · double H20 — response diagrams";
             Analysis = TowerBeamAnalysis.Analyze(piece.StockLengthMm / 1000, supports, q, TowerOptimizer.PairEI);
             charts.Children.Clear();
             charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · loaded length: {piece.StockLengthMm:0.###} mm\n" + string.Join("   ", Analysis.Reactions.Select((v, i) => $"Support {piece.FirstSupport + i + 1}: leg load {v:0.00} kN")), TextWrapping = TextWrapping.Wrap });

@@ -13,24 +13,35 @@ namespace EngineeringDashboard
         private BeamCalculatorViewModel observedModel;
         private bool refreshingValidation;
         internal TowerDiagramWindow TowerDiagrams { get; private set; }
-        private void CloseTowerDiagrams() { TowerDiagrams?.Close(); TowerDiagrams = null; SupportDiagram.SelectMember(-1, 0, 0); }
+        private void CloseTowerDiagrams()
+        {
+            SupportDiagram.IsSelectionEnabled = false;
+            TowerDiagrams?.Close(); TowerDiagrams = null;
+            SupportDiagram.SelectMember(-1, 0, -1);
+        }
         private void TowerDiagrams_Click(object sender, RoutedEventArgs e)
         {
             if (!TryGetValidCalculation(out var vm) || !vm.UseTowers || vm.TowerResult == null) return;
-            CloseTowerDiagrams(); TowerDiagrams = new TowerDiagramWindow(vm);
-            TowerDiagrams.MemberSelectionChanged += SupportDiagram.SelectMember;
-            TowerDiagrams.Closed += (s, args) => SupportDiagram.SelectMember(-1, 0, 0);
-            SupportDiagram.SelectMember(0, 0, -1);
-            if (IsVisible) TowerDiagrams.Owner = this;
-            TowerDiagrams.Show();
+            SupportDiagram.IsSelectionEnabled = true;
+            DiagramCaption.Text = "Click an H20 pair in the plan to show its diagrams.";
+            TowerPlanScroll.BringIntoView();
         }
         private void InitializeUi()
         {
             SupportDiagram.MemberSelected += (run, line, member) => {
-                if (!TryGetValidCalculation(out var vm) || !vm.UseTowers) return;
-                if (TowerDiagrams == null || !TowerDiagrams.IsVisible) TowerDiagrams_Click(this, new RoutedEventArgs());
-                TowerDiagrams?.SelectMember(run, line, member);
-                TowerDiagrams?.Activate();
+                if (!SupportDiagram.IsSelectionEnabled || !TryGetValidCalculation(out var vm) || !vm.UseTowers) return;
+                bool opening = TowerDiagrams == null;
+                if (opening)
+                {
+                    TowerDiagrams = new TowerDiagramWindow(vm);
+                    TowerDiagrams.Closed += (s, args) => {
+                        TowerDiagrams = null; SupportDiagram.SelectMember(-1, 0, -1);
+                    };
+                    if (IsVisible) TowerDiagrams.Owner = this;
+                }
+                TowerDiagrams.SelectMember(run, line, -1);
+                SupportDiagram.SelectMember(run, line, -1);
+                if (opening) TowerDiagrams.Show();
             };
             AddHandler(Validation.ErrorEvent, new EventHandler<ValidationErrorEventArgs>(InputValidation_Error));
             DataContextChanged += (s,e) => {
@@ -79,6 +90,7 @@ namespace EngineeringDashboard
         private void UpdateDiagram()
         {
             SupportDiagram.SetModel(observedModel);
+            TowerPlanScroll.ScrollToLeftEnd();
             DiagramCaption.Text = observedModel == null || !observedModel.IsCalculationValid ? "Enter valid dimensions to show the support arrangement."
                 : observedModel.UseTowers ? $"Plan view · {observedModel.BeamLengthMm:0.###} mm beam · {observedModel.TowerResult.LegCount} legs\nP labels: H20 stock pieces · dotted: free member breaks\nSolid: frames · dashed: cross sides · gaps measured between leg planes"
                 : $"Beam {observedModel.Width:0.##} × {observedModel.Depth:0.##} mm · {observedModel.NumberOfProps} props per primary line\nPrimary lines {observedModel.PrimaryLineSpacingMm:0.##} mm apart";
