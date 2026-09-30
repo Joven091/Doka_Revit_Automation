@@ -33,9 +33,9 @@ namespace EngineeringDashboard
             var piece = layout.StockPlan.Pieces[RunSelector.SelectedIndex];
             var supports = layout.PositionsMm.Skip(piece.FirstSupport).Take(piece.LastSupport - piece.FirstSupport + 1).Select(x => (x - piece.StartMm) / 1000).ToArray();
             double q = LineSelector.SelectedIndex == 0 ? layout.LeftLineLoad : layout.RightLineLoad;
-            Analysis = TowerBeamAnalysis.Analyze(piece.StockLengthMm / 1000, supports, q, TowerOptimizer.PairEI);
+            Analysis = TowerBeamAnalysis.Analyze(piece.StockLengthMm / 1000, supports, q, TowerOptimizer.PairEI, q * piece.LeftTributaryEndMm / 1000, q * piece.RightTributaryEndMm / 1000);
             charts.Children.Clear();
-            charts.Children.Add(new TextBlock { Text = $"Uniform line load: {q:0.000} kN/m · permissible leg load: {layout.LegCapacityKn:0.00} kN\n" + string.Join("   ", Analysis.Reactions.Select((v, i) => $"Leg {piece.FirstSupport + i + 1}: {v:0.00} kN ({v / layout.LegCapacityKn * 100:0.0}%)")), TextWrapping = TextWrapping.Wrap });
+            charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · end loads L/R: {q * piece.LeftTributaryEndMm / 1000:0.000}/{q * piece.RightTributaryEndMm / 1000:0.000} kN · permissible leg load: {layout.LegCapacityKn:0.00} kN\n" + string.Join("   ", Analysis.Reactions.Select((v, i) => $"Leg {piece.FirstSupport + i + 1}: {v:0.00} kN ({v / layout.LegCapacityKn * 100:0.0}%)")), TextWrapping = TextWrapping.Wrap });
             string[] names = { "Shear (kN)", "Moment (kNm)", "Deflection (mm)" };
             double[] peaks = { Analysis.Shear, Analysis.Moment, Analysis.DeflectionMm }, limits = { TowerOptimizer.PairShear, TowerOptimizer.PairMoment, layout.DeflectionLimitMm };
             for (int i = 0; i < 3; i++)

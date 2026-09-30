@@ -71,7 +71,7 @@ namespace EngineeringDashboard
         {
             SupportDiagram.SetModel(observedModel);
             DiagramCaption.Text = observedModel == null || !observedModel.IsCalculationValid ? "Enter valid dimensions to show the support arrangement."
-                : observedModel.UseTowers ? $"Plan view · {observedModel.BeamLengthMm:0.###} mm beam · {observedModel.TowerResult.LegCount} legs\nP labels: H20 stock pieces · dotted: free member breaks\nBlue: frames · dashed: cross sides"
+                : observedModel.UseTowers ? $"Plan view · {observedModel.BeamLengthMm:0.###} mm beam · {observedModel.TowerResult.LegCount} legs\nP labels: H20 stock pieces · dotted: free member breaks\nSolid: frames · dashed: cross sides · gaps measured between leg planes"
                 : $"Beam {observedModel.Width:0.##} × {observedModel.Depth:0.##} mm · {observedModel.NumberOfProps} props per primary line\nPrimary lines {observedModel.PrimaryLineSpacingMm:0.##} mm apart";
         }
         private async void OptimizeTowers_Click(object sender, RoutedEventArgs e)
@@ -89,6 +89,7 @@ namespace EngineeringDashboard
             record.Inputs.Add(CalculationFiles.Field("TowerLegCapacityKn", vm.TowerLegCapacityKn));
             record.Inputs.Add(CalculationFiles.Field("StockLengthsText", vm.StockLengthsText));
             record.Inputs.Add(CalculationFiles.Field("StockEndSetbackMm", vm.StockEndSetbackMm));
+            record.Inputs.Add(CalculationFiles.Field("MaximumConcreteEndOverhangMm", vm.MaximumConcreteEndOverhangMm));
             record.Inputs.Add(CalculationFiles.Field("PropConfiguration", vm.SelectedProp?.CapacityKey ?? BeamPropOption.All[0].CapacityKey));
             record.Inputs.Add(CalculationFiles.Field("DeflectionLimitMm", vm.DeflectionLimit.Millimetres));
             return record;
@@ -108,12 +109,14 @@ namespace EngineeringDashboard
             CalculationFiles.Apply(record,"Beam",target,FileInputs);
             target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
-            target.StockLengthsText = candidate.StockLengthsText; target.StockEndSetbackMm = candidate.StockEndSetbackMm;
+            target.MaximumConcreteEndOverhangMm = candidate.MaximumConcreteEndOverhangMm; target.StockLengthsText = candidate.StockLengthsText; target.StockEndSetbackMm = candidate.StockEndSetbackMm;
             foreach(var box in TextInputs(this)) box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
             RefreshInputValidity();
         }
         private static void RestoreTowerFields(CalculationRecord record, BeamCalculatorViewModel vm)
         {
+            vm.MaximumConcreteEndOverhangMm = 0;
+            if (record.Inputs.Any(f => f.Name == "MaximumConcreteEndOverhangMm")) CalculationFiles.Apply(record, "Beam", vm, "MaximumConcreteEndOverhangMm");
             // Old version-1 Beam records have none of these fields and retain prop mode.
             var fields = new[] { "UseTowers", "BeamLengthMm", "TowerLegCapacityKn" };
             if (record.Inputs.Any(f => fields.Contains(f.Name))) CalculationFiles.Apply(record, "Beam", vm, string.Join(",", fields));
@@ -129,7 +132,7 @@ namespace EngineeringDashboard
             if (vm.UseTowers)
             {
                 var tower = vm.TowerResult;
-                var fields = new[] { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis),
+                var fields = new[] { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("ConcreteEndOverhangMm", tower.ConcreteEndOverhangMm), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis),
                     CalculationFiles.Field("LegUtilizationPercent", tower.MaxLegKn / vm.TowerLegCapacityKn * 100), CalculationFiles.Field("SupportSchedule", tower.Schedule),
                     CalculationFiles.Field("PrimaryStockSchedule", tower.StockSchedule), CalculationFiles.Field("TotalPrimaryH20Count", tower.StockPlan.TotalH20Count),
                     CalculationFiles.Field("SearchStatus", vm.TowerSearchNote), CalculationFiles.Field("TotalLineLoadKnPerM", vm.TotalLineLoad),
