@@ -7,11 +7,15 @@ namespace EngineeringDashboard
     {
         private bool useTowers;
         private double beamLengthMm = 6000, towerLegCapacityKn = 30;
+        private string stockLengthsText = TowerStockPlanner.DefaultLengths;
+        private double stockEndSetbackMm = 150;
         private int towerRevision;
         public bool UseTowers { get => useTowers; set { useTowers = value; Changed(); OnPropertyChanged(nameof(UseProps)); } }
         public bool UseProps => !UseTowers;
         public double BeamLengthMm { get => beamLengthMm; set { beamLengthMm = value; Changed(); } }
         public double TowerLegCapacityKn { get => towerLegCapacityKn; set { towerLegCapacityKn = value; Changed(); } }
+        public string StockLengthsText { get => stockLengthsText; set { stockLengthsText = value; Changed(); } }
+        public double StockEndSetbackMm { get => stockEndSetbackMm; set { stockEndSetbackMm = value; Changed(); } }
         public TowerLayout TowerResult { get; private set; }
         public bool IsOptimizing { get; private set; }
         public bool CanOptimizeTowers => UseTowers && !IsOptimizing && !textErrors;
@@ -20,13 +24,15 @@ namespace EngineeringDashboard
         public bool ShowTowerResults => IsCalculationValid && UseTowers;
         public string TowerSummary => TowerResult?.Summary ?? "";
         public string TowerSchedule => TowerResult?.Schedule ?? "";
+        public string TowerStockSchedule => TowerResult?.StockSchedule ?? "";
         public string TowerSearchNote => TowerResult == null ? "" : TowerResult.SearchNote + " Tested layouts: " + TowerResult.Tested + ".";
-        public const string TowerAssumptions = "Two continuous double-H20 primary lines; each pair shares load equally. Pair limits: moment 10 kNm, shear 22 kN, EI 899.7512 kNm². Full uniform load, rigid non-settling supports, free ends. Checks include unequal spans, end overhangs and every leg reaction. Cross bays 600/1000/1500/2000 mm; frames 1524 mm. Rotated towers are isolated and use a common transverse width. Gaps and left end offsets use 25 mm increments; the right overhang takes the remainder. Search ranks legs, groups, then governing utilization; it is bounded, not an exhaustive global optimum. Enter a permissible leg load applicable to the actual tower configuration. Secondary H20s, sheeting, timber stock lengths/joints, bearing, tower height/bracing/stability and foundations are outside this calculation. Tower layouts are report-only; existing prop-spacing Revit parameters cannot represent them.";
+        public const string TowerAssumptions = "Two double-H20 primary lines; each pair shares load equally. Pair limits: moment 10 kNm, shear 22 kN, EI 899.7512 kNm². Each stock member is analyzed separately with at least two supports, full uniform load, rigid non-settling supports and free ends. Uncut stock must cover the concrete length exactly: no overlaps, gaps or projection beyond its ends. Adjacent member ends are independent; no shared support, mechanical butt splice or bending continuity is assumed at a member break. The support-centre setback from every stock end is a planning allowance (default 150 mm), not a verified bearing/head detail. Exact secondary placement and load transfer near member ends require detailing. Checks include every member's shear, moment, deflection and leg reactions. Cross bays 600/1000/1500/2000 mm; frames 1524 mm. Rotated towers are isolated with a common transverse width. Search ranks legs, groups, H20 quantity, then governing utilization; it is bounded, not an exhaustive global optimum. Enter a permissible leg load applicable to the actual tower configuration. Secondary H20s, sheeting, local bearing, tower height/bracing/stability, tower self-weight and foundations are outside this calculation. Tower layouts are report-only; existing prop-spacing Revit parameters cannot represent them.";
         private TowerInput CreateTowerInput()
         {
             if (textErrors) throw new ArgumentException("Correct the highlighted input before optimizing.");
             Check(Depth, "Beam depth", true); Check(Width, "Beam width", true);
             Check(BeamLengthMm, "Beam length", true); Check(TowerLegCapacityKn, "Permissible tower leg load", true);
+            Check(StockEndSetbackMm, "Stock end support-centre setback", true);
             if (DeflectionLimit == null || !ContainsOption(DeflectionLimit)) throw new ArgumentException("Select a deflection limit.");
             if (HasAnySlab) Check(SlabStripWidthMm, "Adjacent slab strip width", true);
             if (HasLeftSlab) ValidateSlab(LeftSlabThickness, "Left slab thickness");
@@ -35,6 +41,7 @@ namespace EngineeringDashboard
             double left = HasLeftSlab ? AreaLoad(LeftSlabThickness) * SlabStripWidthMm / 1000 : 0;
             double right = HasRightSlab ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;
             var input = new TowerInput { LengthMm = BeamLengthMm, LegCapacityKn = TowerLegCapacityKn, DeflectionLimitMm = DeflectionLimit.Millimetres,
+                StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
                 TotalLineLoad = AreaLoad(Depth) * Width / 1000 + left + right,
                 TransverseLoadMoment = (right - left) * (Width + (HasAnySlab ? SlabStripWidthMm : 0)) / 2000 };
             Check(input.TotalLineLoad, "Calculated line load", true); Check(Math.Abs(input.TransverseLoadMoment), "Transverse load moment");
@@ -60,7 +67,7 @@ namespace EngineeringDashboard
         }
         private void NotifyTower()
         {
-            foreach (string name in new[] { nameof(IsOptimizing), nameof(CanOptimizeTowers), nameof(CanImport), nameof(ShowPropResults), nameof(ShowTowerResults), nameof(TowerSummary), nameof(TowerSchedule), nameof(TowerSearchNote), nameof(TowerResult), nameof(WarningMessage), nameof(PrimaryLineSpacingMm), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(LimitingFactor), nameof(IsCalculationValid) }) OnPropertyChanged(name);
+            foreach (string name in new[] { nameof(IsOptimizing), nameof(CanOptimizeTowers), nameof(CanImport), nameof(ShowPropResults), nameof(ShowTowerResults), nameof(TowerSummary), nameof(TowerSchedule), nameof(TowerStockSchedule), nameof(TowerSearchNote), nameof(TowerResult), nameof(WarningMessage), nameof(PrimaryLineSpacingMm), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(LimitingFactor), nameof(IsCalculationValid) }) OnPropertyChanged(name);
         }
     }
 }

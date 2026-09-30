@@ -122,6 +122,15 @@
                 <TextBox x:Name="TowerLengthInput" Text="{Binding BeamLengthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                 <TextBlock Text="Permissible tower leg load (kN)"/>
                 <TextBox x:Name="TowerCapacityInput" Text="{Binding TowerLegCapacityKn, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                <TextBlock Text="Available primary H20 stock lengths (mm)"/>
+                <TextBox x:Name="StockLengthsInput" TextWrapping="Wrap" Text="{Binding StockLengthsText, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBlock Style="{StaticResource Hint}" Text="No overlaps or cutting. Members must cover the full concrete length without extending beyond its ends."/>
+                <Expander Header="Stock end support allowance" Margin="0,6">
+                  <StackPanel><TextBlock Text="Minimum support-centre inset from each stock end (mm)"/>
+                    <TextBox Text="{Binding StockEndSetbackMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                    <TextBlock Style="{StaticResource Hint}" Text="Planning allowance; local bearing and head details require separate checks."/>
+                  </StackPanel>
+                </Expander>
                 <TextBlock Style="{StaticResource Hint}" Text="1524 mm frames · 600 / 1000 / 1500 / 2000 mm cross bays. Compare joined groups and rotated isolated towers. Rank by legs, then groups."/>
                 <Button x:Name="OptimizeTowersButton" Content="Optimize towers" IsEnabled="{Binding CanOptimizeTowers}" Click="OptimizeTowers_Click" Margin="0,8"/>
               </StackPanel>
@@ -221,6 +230,7 @@
               <TextBlock Text="{Binding TowerSummary}" Margin="0,8"/>
               <TextBlock Text="{Binding TowerSearchNote}" Style="{StaticResource Hint}"/>
               <Expander Header="Positions, bays and leg loads" Margin="0,10,0,0"><TextBlock Text="{Binding TowerSchedule}" Margin="0,8"/></Expander>
+              <Expander Header="Primary H20 stock schedule" Margin="0,10,0,0"><TextBlock Text="{Binding TowerStockSchedule}" Margin="0,8"/></Expander>
             </StackPanel>
           </Border>
           <Border Background="#ECEFF1" Padding="14" Margin="0,0,0,12">

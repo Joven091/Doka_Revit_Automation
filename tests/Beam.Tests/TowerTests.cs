@@ -29,7 +29,7 @@ internal static class TowerTests
             Near(result.Moment, reference.Moment, 2e-4, "independent sampled moment");
             Near(result.Shear, reference.Shear, 1e-7, "independent shear");
         }
-        var input = new TowerInput { LengthMm = 3000, LegCapacityKn = 30, TotalLineLoad = 10, DeflectionLimitMm = 5 };
+        var input = new TowerInput { LengthMm = 3000, StockLengthsMm = new[] { 3000.0 }, LegCapacityKn = 30, TotalLineLoad = 10, DeflectionLimitMm = 5 };
         var joined = TowerOptimizer.Evaluate(input, new[] { 250.0, 1250, 2750 }, new[] { true, true }, 1524, false);
         Check(joined != null && joined.LegCount == 6 && joined.GroupCount == 1, "mixed joined bays share frame/legs");
         Check(TowerOptimizer.Evaluate(input, new[] { 250.0, 1250, 2750 }, new[] { true, false }, 1524, false) == null, "no standalone frame");
@@ -38,27 +38,28 @@ internal static class TowerTests
         input.LegCapacityKn = 30;
         var rotated = TowerOptimizer.Evaluate(input, new[] { 700.0, 2224 }, new[] { true }, 1000, true);
         Check(rotated != null && rotated.Rotated, "rotated isolated geometry");
-        input.LengthMm = 4000;
+        input.LengthMm = 4000; input.StockLengthsMm = new[] { 4000.0 };
         Check(TowerOptimizer.Evaluate(input, new[] { 0.0, 1524, 3048 }, new[] { true, true }, 1000, true) == null, "rotated joining does not create extra primary rows");
         input.TotalLineLoad = 1000;
         Check(TowerOptimizer.Evaluate(input, new[] { 500.0, 2500 }, new[] { true }, 1524, false) == null, "primary failure rejection");
         input.LegCapacityKn = 1e6; input.DeflectionLimitMm = 1e6;
         Check(TowerOptimizer.Evaluate(input, new[] { 500.0, 2500 }, new[] { true }, 1524, false) == null, "moment/shear reject despite unlimited legs/deflection");
-        input = new TowerInput { LengthMm = 5500, LegCapacityKn = 30, TotalLineLoad = 10, DeflectionLimitMm = 5 };
+        input = new TowerInput { LengthMm = 5500, StockLengthsMm = new[] { 5500.0 }, LegCapacityKn = 30, TotalLineLoad = 10, DeflectionLimitMm = 5 };
         var mixed = TowerOptimizer.Evaluate(input, new[] { 250.0, 1250, 2750, 3750, 5250 }, new[] { true, true, false, true }, 1524, false);
         Check(mixed != null && mixed.LegCount == 10 && mixed.GroupCount == 2, "joined and isolated groups coexist");
-        input.LengthMm = 6000;
+        input.LengthMm = 6000; input.StockLengthsMm = new[] { 6000.0 };
         Check(TowerOptimizer.Evaluate(input, new[] { 0.0, 600, 1200 }, new[] { true, true }, 1524, false) == null, "uplift/overhang layout rejected");
         input.LegCapacityKn = 1e-100; bool tooMany = false;
         try { TowerOptimizer.Optimize(input); } catch (ArgumentException) { tooMany = true; }
         Check(tooMany, "extreme capacity lower bound rejected without integer overflow");
-        foreach (double length in new[] { 2500.0, 6000, 9007, 15000 }) foreach (double q in new[] { 5.0, 25.0 })
+        foreach (double length in new[] { 2450.0, 6000, 9000, 15000 }) foreach (double q in new[] { 5.0, 25.0 })
         {
             input = new TowerInput { LengthMm = length, LegCapacityKn = 30, TotalLineLoad = q, DeflectionLimitMm = 5 };
             var layout = TowerOptimizer.Optimize(input);
             Check(layout.PositionsMm.First() >= 0 && layout.PositionsMm.Last() <= length, "within concrete beam");
             Check(layout.MaxLegKn <= 30.000001 && layout.MomentKnM <= 10.000001 && layout.ShearKn <= 22.000001 && layout.DeflectionMm <= 5.000001, "all accepted checks");
             Near(layout.LeftReactions.Sum() + layout.RightReactions.Sum(), q * length / 1000, 1e-8, "accepted layout equilibrium");
+            VerifyStock(input, layout);
             Console.WriteLine($"Tower {length}mm q={q}: {layout.LegCount} legs, {layout.GroupCount} groups, {layout.Tested} tested");
         }
         input = new TowerInput { LengthMm = 6000, LegCapacityKn = 30, TotalLineLoad = 12, TransverseLoadMoment = 1.5, DeflectionLimitMm = 5 };
@@ -71,7 +72,47 @@ internal static class TowerTests
         vm.TowerLegCapacityKn = double.NaN; vm.OptimizeTowersAsync().GetAwaiter().GetResult(); Check(!vm.IsCalculationValid, "NaN rejects");
         vm.TowerLegCapacityKn = 30; var running = vm.OptimizeTowersAsync(); vm.BeamLengthMm = 7000; running.GetAwaiter().GetResult();
         Check(!vm.IsCalculationValid && vm.TowerResult == null, "in-flight stale result discarded");
+        StockChecks();
         Console.WriteLine($"Passed {checks} tower checks (160 independent stiffness comparisons).");
+    }
+    static void VerifyStock(TowerInput input, TowerLayout layout)
+    {
+        double end = 0; int nextSupport = 0;
+        foreach (var piece in layout.StockPlan.Pieces)
+        {
+            Near(piece.StartMm, end, 1e-9, "stock cover has no overlap or gap"); end = piece.EndMm;
+            Check(input.StockLengthsMm.Contains(piece.StockLengthMm), "selected stock is available");
+            Check(piece.FirstSupport == nextSupport && piece.LastSupport > piece.FirstSupport, "each member has its own two or more supports");
+            nextSupport = piece.LastSupport + 1;
+            Check(layout.PositionsMm[piece.FirstSupport] - piece.StartMm >= input.StockEndSetbackMm - 1e-7 && piece.EndMm - layout.PositionsMm[piece.LastSupport] >= input.StockEndSetbackMm - 1e-7, "stock end support inset");
+            var positions = layout.PositionsMm.Skip(piece.FirstSupport).Take(piece.LastSupport - piece.FirstSupport + 1).Select(x => (x - piece.StartMm) / 1000).ToArray();
+            var reference = Reference(piece.StockLengthMm / 1000, positions, Math.Max(layout.LeftLineLoad, layout.RightLineLoad), TowerOptimizer.PairEI);
+            Near(piece.MomentKnM, reference.Moment, 2e-4, "per-stock independent moment");
+            Near(piece.ShearKn, reference.Shear, 1e-7, "per-stock independent shear");
+            Near(piece.DeflectionMm, reference.DeflectionMm, 2e-4, "per-stock independent deflection");
+            for (int i = 0; i < reference.Reactions.Length; i++) Near(Math.Max(layout.LeftReactions[piece.FirstSupport + i], layout.RightReactions[piece.FirstSupport + i]), reference.Reactions[i], 1e-7, "per-stock reaction");
+        }
+        Near(end, input.LengthMm, 1e-9, "stock cover reaches concrete end");
+        Check(nextSupport == layout.PositionsMm.Length, "all legs assigned once");
+        Check(layout.StockPlan.TotalH20Count == layout.StockPlan.Pieces.Length * 4, "two H20s on each of two primary lines");
+    }
+    static void StockChecks()
+    {
+        var stocks = TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths);
+        Check(stocks.SequenceEqual(new[] { 1200.0, 1800, 2450, 2650, 2900, 3300, 3600, 3900, 4500, 4900 }), "user stock catalogue");
+        Check(TowerStockPlanner.MinimumPieces(6000, stocks) == 3, "6000 needs three stock runs per line");
+        Check(TowerStockPlanner.MinimumPieces(5950, stocks) == 2, "5950 can use 2650 + 3300");
+        Check(TowerStockPlanner.MinimumPieces(6001, stocks) == int.MaxValue, "uncut stock cannot cover residual length");
+        var input = new TowerInput { LengthMm = 3600, StockLengthsMm = new[] { 1800.0 }, TotalLineLoad = 10, LegCapacityKn = 30, DeflectionLimitMm = 5 };
+        var plan = TowerStockPlanner.Find(input, new[] { 300.0, 1500, 2100, 3300 }, 5);
+        Check(plan != null && plan.Pieces.Length == 2 && plan.TotalH20Count == 8, "two independent stock pieces");
+        Near(plan.Reactions.Sum(), 18, 1e-9, "no duplicated load at piece break");
+        Check(TowerStockPlanner.Find(input, new[] { 300.0, 1800, 3300 }, 5) == null, "no shared-head butt joint at stock boundary");
+        Check(TowerStockPlanner.Find(input, new[] { 300.0, 3300 }, 5) == null, "each stock piece needs at least two supports");
+        input.StockLengthsMm = new[] { 4900.0 }; Check(TowerStockPlanner.Find(input, new[] { 300.0, 1500, 2100, 3300 }, 5) == null, "overlength stock rejected rather than cut");
+        var vm = new BeamCalculatorViewModel { UseTowers = true, BeamLengthMm = 6001 };
+        vm.OptimizeTowersAsync().GetAwaiter().GetResult(); Check(!vm.IsCalculationValid && vm.WarningMessage.Contains("exactly"), "uncoverable length explained");
+        vm.StockLengthsText = "1800; NaN"; vm.OptimizeTowersAsync().GetAwaiter().GetResult(); Check(!vm.IsCalculationValid, "invalid stock list rejected");
     }
     sealed class ReferenceResult { public double[] Reactions; public double Moment, Shear, DeflectionMm; }
     // Independent Euler-Bernoulli finite-element stiffness solution with consistent distributed loads.
