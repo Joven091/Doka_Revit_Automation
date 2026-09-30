@@ -16,7 +16,6 @@ namespace EngineeringDashboard
         public double[] StockLengthsMm { get; set; } = TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths);
         public double StockEndSetbackMm { get; set; } = 150;
         public double MaximumConcreteEndOverhangMm { get; set; }
-        internal double EndLoadLengthMm { get; set; }
     }
     public sealed class TowerLayout
     {
@@ -52,7 +51,7 @@ namespace EngineeringDashboard
         public string SearchNote => MinimumLegCountProven
             ? "Minimum leg count meets the load/stock lower bound. Group count/layout are best found in a bounded search."
             : "Best valid layout found in a bounded search; global minimum leg/group count is not proven.";
-        public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\nMoment {7:0.00}/10 kNm · shear {8:0.00}/22 kN\nDeflection {9:0.00}/{11:0.00} mm (includes end overhangs)",
+        public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\nMoment {7:0.00}/10 kNm · shear {8:0.00}/22 kN\nDeflection {9:0.00}/{11:0.00} mm (includes H20 cantilevers)",
             LegCount, GroupCount, BayCount, Rotated ? "Rotated isolated towers" : "1524 mm frames across beam", WidthMm, MaxLegKn, Utilization * 100, MomentKnM, ShearKn, DeflectionMm, LegCapacityKn, DeflectionLimitMm)
             + string.Format(CultureInfo.CurrentCulture, "\nPrimary H20s: {0} pieces · no overlaps\nConcrete beyond H20: {1:0.###} mm per end", StockPlan.TotalH20Count, ConcreteEndOverhangMm);
         public string Schedule
@@ -95,7 +94,7 @@ namespace EngineeringDashboard
                 double overhang = (input.LengthMm - covered) / 2;
                 var candidateInput = new TowerInput { LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
                     TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm,
-                    StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, EndLoadLengthMm = overhang };
+                    StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm };
                 TowerLayout candidate;
                 try { candidate = OptimizeCovered(candidateInput); }
                 catch (ArgumentException) { continue; }
@@ -108,7 +107,7 @@ namespace EngineeringDashboard
                     || candidate.StockPlan.TotalH20Count == best.StockPlan.TotalH20Count && candidate.Utilization < best.Utilization))) best = candidate;
             }
             if (best == null) throw new ArgumentException("No valid layout found within the end-overhang allowance and bounded search. Check stock lengths, loads and end allowance.");
-            int capacityBound = 2 * Math.Max(2, (int)Math.Ceiling((input.TotalLineLoad / 2 + Math.Abs(input.TransverseLoadMoment) / 2) * input.LengthMm / 1000 / input.LegCapacityKn - 1e-10));
+            int capacityBound = 2 * Math.Max(2, (int)Math.Ceiling((input.TotalLineLoad / 2 + Math.Abs(input.TransverseLoadMoment) / 2) * covers.Min() / 1000 / input.LegCapacityKn - 1e-10));
             best.MinimumLegCountProven = best.LegCount == Math.Max(capacityBound, covers.Min(x => counts[x]) * 4);
             best.Tested = tested; return best;
         }

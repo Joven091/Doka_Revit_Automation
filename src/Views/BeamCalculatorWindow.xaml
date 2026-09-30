@@ -125,7 +125,7 @@
                 <TextBlock Text="Available primary H20 stock lengths (mm)"/>
                 <TextBox x:Name="StockLengthsInput" TextWrapping="Wrap" Text="{Binding StockLengthsText, UpdateSourceTrigger=PropertyChanged}"/>
                 <TextBlock Style="{StaticResource Hint}" Text="No cutting, overlaps or internal gaps."/>
-                <TextBlock Text="Maximum concrete overhang per end (mm)" ToolTip="Centered stock; end-overhang load transfers to the nearest H20 end. Secondary transfer detail requires separate verification. Set 0 for exact coverage."/>
+                <TextBlock Text="Maximum concrete overhang per end (mm)" ToolTip="Centered stock. Only load over the actual H20 length is included; concrete beyond its ends is excluded. Set 0 for exact coverage."/>
                 <TextBox Text="{Binding MaximumConcreteEndOverhangMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                 <Expander Header="Stock end support allowance" Margin="0,6">
                   <StackPanel><TextBlock Text="Minimum support-centre inset from each stock end (mm)"/>

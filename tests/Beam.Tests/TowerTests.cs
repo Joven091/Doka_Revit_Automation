@@ -111,10 +111,10 @@ internal static class TowerTests
         var regression = new TowerInput { LengthMm = 6750, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, MaximumConcreteEndOverhangMm = 75 };
         var optimized = TowerOptimizer.Optimize(regression);
         Check(optimized.LegCount == 8, "6750 mm with 75 mm allowance uses eight legs");
-        Near(optimized.LeftReactions.Sum() + optimized.RightReactions.Sum(), 6.75 * 2.98, 1e-9, "6750 full concrete load retained");
+        Near(optimized.LeftReactions.Sum() + optimized.RightReactions.Sum(), optimized.StockPlan.Pieces.Sum(p => p.StockLengthMm) / 1000 * 2.98, 1e-9, "only actual H20 length contributes load");
         Check(optimized.ConcreteEndOverhangMm <= 75 && optimized.StockPlan.Pieces.First().StartMm == optimized.ConcreteEndOverhangMm, "symmetric stock placement within allowance");
         Console.WriteLine("6750 regression: " + optimized.Summary + "\n" + optimized.StockSchedule);
-        var proposed = TowerOptimizer.Evaluate(new TowerInput { LengthMm = 6600, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, StockLengthsMm = new[] { 3300.0 }, EndLoadLengthMm = 75 },
+        var proposed = TowerOptimizer.Evaluate(new TowerInput { LengthMm = 6600, LegCapacityKn = 70, TotalLineLoad = 2.98, DeflectionLimitMm = 5, StockLengthsMm = new[] { 3300.0 } },
             new[] { 650.0, 2650, 3950, 5950 }, new[] { true, false, true }, 1524, false);
         Check(proposed != null && proposed.LegCount == 8, "two 2000 towers with 3300 stock pass default beam loading");
         regression.MaximumConcreteEndOverhangMm = 0;

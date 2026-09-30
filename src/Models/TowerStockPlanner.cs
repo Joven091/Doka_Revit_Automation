@@ -15,8 +15,6 @@ namespace EngineeringDashboard
         public double MomentKnM { get; internal set; }
         public double ShearKn { get; internal set; }
         public double DeflectionMm { get; internal set; }
-        public double LeftTributaryEndMm { get; internal set; }
-        public double RightTributaryEndMm { get; internal set; }
     }
     public sealed class TowerStockPlan
     {
@@ -93,14 +91,12 @@ namespace EngineeringDashboard
                     if (last + 1 < n && positions[last + 1] < end + setback - 1e-7) continue;
                     if (end < length - 1e-7 && last + 1 == n || Math.Abs(end - length) < 1e-7 && last + 1 != n) continue;
                     var response = TowerBeamAnalysis.Analyze(stock / 1000,
-                        positions.Skip(first).Take(last - first + 1).Select(x => (x - start) / 1000).ToArray(), load, TowerOptimizer.PairEI,
-                        start == 0 ? load * input.EndLoadLengthMm / 1000 : 0, Math.Abs(end - length) < 1e-7 ? load * input.EndLoadLengthMm / 1000 : 0);
+                        positions.Skip(first).Take(last - first + 1).Select(x => (x - start) / 1000).ToArray(), load, TowerOptimizer.PairEI);
                     var u = new[] { response.Reactions.Max() / input.LegCapacityKn, response.Moment / TowerOptimizer.PairMoment,
                         response.Shear / TowerOptimizer.PairShear, response.DeflectionMm / input.DeflectionLimitMm };
                     if (response.Reactions.Min() < -1e-9 * response.Reactions.Max() || u.Any(x => !TowerBeamAnalysis.Finite(x) || x > 1 + 1e-10)) continue;
                     var piece = new TowerStockPiece { StartMm = start, StockLengthMm = stock, FirstSupport = first, LastSupport = last,
-                        MomentKnM = response.Moment, ShearKn = response.Shear, DeflectionMm = response.DeflectionMm,
-                        LeftTributaryEndMm = start == 0 ? input.EndLoadLengthMm : 0, RightTributaryEndMm = Math.Abs(end - length) < 1e-7 ? input.EndLoadLengthMm : 0 };
+                        MomentKnM = response.Moment, ShearKn = response.Shear, DeflectionMm = response.DeflectionMm };
                     var reactions = (double[])previous.Reactions.Clone();
                     for (int k = first; k <= last; k++) reactions[k] = response.Reactions[k - first];
                     var next = new TowerStockPlan { Pieces = previous.Pieces.Concat(new[] { piece }).ToArray(), Reactions = reactions, Utilization = Math.Max(previous.Utilization, u.Max()) };
