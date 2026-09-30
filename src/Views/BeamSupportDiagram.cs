@@ -13,10 +13,22 @@ namespace EngineeringDashboard
         internal readonly List<Tuple<Rect, int, int, int>> MemberTargets = new List<Tuple<Rect, int, int, int>>();
         public event Action<int, int, int> MemberSelected;
         private int selectedRun = -1, selectedLine, selectedMember;
+        private bool isSelectionEnabled;
+        public bool IsSelectionEnabled
+        {
+            get => isSelectionEnabled;
+            set { isSelectionEnabled = value; Cursor = value ? Cursors.Hand : Cursors.Arrow; }
+        }
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            if (model?.UseTowers != true) return base.MeasureOverride(availableSize);
+            return new Size(Math.Max(MinWidth, double.IsInfinity(availableSize.Width) ? MinWidth : availableSize.Width), double.IsNaN(Height) ? 0 : Height);
+        }
         public int DrawnEndDimensionCount { get; private set; }
         public void SelectMember(int run, int line, int member) { selectedRun = run; selectedLine = line; selectedMember = member; InvalidateVisual(); }
         internal bool SelectAt(Point point)
         {
+            if (!IsSelectionEnabled) return false;
             foreach (var hit in MemberTargets) if (hit.Item1.Contains(point))
             { SelectMember(hit.Item2, hit.Item3, hit.Item4); MemberSelected?.Invoke(hit.Item2, hit.Item3, hit.Item4); return true; }
             return false;
@@ -41,7 +53,7 @@ namespace EngineeringDashboard
             }
             // Long plans scroll horizontally so stock length labels remain readable.
             MinWidth = shortest < double.MaxValue ? Math.Max(50 + 78 * model.TowerResult.LengthMm / shortest, 50 + 190 * model.TowerResult.StockPlan.Pieces.Length) : 0;
-            Cursor = model?.UseTowers == true ? Cursors.Hand : Cursors.Arrow;
+            Cursor = IsSelectionEnabled ? Cursors.Hand : Cursors.Arrow;
             InvalidateVisual();
         }
         private static Brush Brush(string hex) => (Brush)new BrushConverter().ConvertFromString(hex);

@@ -78,16 +78,22 @@ internal static class Program
    Check(((Border)window.FindName("TowerResultsBorder")).Visibility==Visibility.Visible && results.Visibility==Visibility.Collapsed,"correct result panel");
    Check(diagram.DrawnEndDimensionCount==vm.TowerResult.StockPlan.Pieces.Length*2,"both H20 end offsets are dimensioned");
    var towerSaved=window.CaptureCalculation();var coordinates=vm.TowerResult.PositionsMm.ToArray();
+   Check(!diagram.SelectAt(new Point(diagram.MemberTargets[0].Item1.X+2,diagram.MemberTargets[0].Item1.Y+4)),"selection waits for diagram button");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
-   var charts=window.TowerDiagrams;Check(charts!=null && charts.IsVisible,"diagram button opens window");
-   charts.RunSelector.SelectedIndex=1;charts.LineSelector.SelectedIndex=1;Pump();
-   var piece=vm.TowerResult.StockPlan.Pieces[1];
-   Check(Math.Abs(charts.Analysis.Reactions.Sum()-vm.TowerResult.RightLineLoad*piece.StockLengthMm/1000)<1e-8,"selected diagram stock and line load");
-   var chartRoot=(FrameworkElement)charts.Content;chartRoot.Measure(new Size(980,1400));chartRoot.Arrange(new Rect(0,0,980,1400));chartRoot.UpdateLayout();
-   Check(charts.Plan.DrawnEndDimensionCount==vm.TowerResult.StockPlan.Pieces.Length*2,"diagram selection plan shows offsets");
-   foreach(var hit in charts.Plan.MemberTargets.ToArray()) {
-    Check(charts.Plan.SelectAt(new Point(hit.Item1.X+hit.Item1.Width/2,hit.Item1.Y+hit.Item1.Height/2)),"plan member hit");
-    Check(charts.RunSelector.SelectedIndex==hit.Item2 && charts.LineSelector.SelectedIndex==hit.Item3,"plan selection drives matching pair diagram");
+   Check(window.TowerDiagrams==null && diagram.IsSelectionEnabled,"button enables main-plan selection without a duplicate plan");
+   var planScroll=(ScrollViewer)window.FindName("TowerPlanScroll");Render();
+   Check(planScroll.ScrollableWidth>0 && planScroll.ExtentWidth>=diagram.ActualWidth-.1,"full plan exposes horizontal scrolling");
+   planScroll.ScrollToRightEnd();Pump();
+   var lastHit=diagram.MemberTargets.Last();
+   var visiblePoint=diagram.TranslatePoint(new Point(lastHit.Item1.Right-2,lastHit.Item1.Y+4),planScroll);
+   Check(visiblePoint.X>=0 && visiblePoint.X<=planScroll.ViewportWidth,"last H20 end is reachable by sideways scrolling");
+   var firstHit=diagram.MemberTargets.First();
+   diagram.SelectAt(new Point(firstHit.Item1.X+firstHit.Item1.Width/2,firstHit.Item1.Y+4));Pump();
+   var charts=window.TowerDiagrams;Check(charts!=null && charts.IsVisible,"main-plan click opens diagrams");
+   Check(!Find<ComboBox>(charts).Any() && !Find<BeamSupportDiagram>(charts).Any(),"response window contains no dropdowns or duplicate plan");
+   foreach(var hit in diagram.MemberTargets.ToArray()) {
+    Check(diagram.SelectAt(new Point(hit.Item1.X+hit.Item1.Width/2,hit.Item1.Y+hit.Item1.Height/2)),"main-plan member hit");
+    Check(charts.SelectedRun==hit.Item2 && charts.SelectedLine==hit.Item3,"main-plan selection drives matching pair diagram");
     var selected=vm.TowerResult.StockPlan.Pieces[hit.Item2];double q=hit.Item3==0?vm.TowerResult.LeftLineLoad:vm.TowerResult.RightLineLoad;
     Check(Math.Abs(charts.Analysis.Reactions.Sum()-q*selected.StockLengthMm/1000)<1e-8,"double-H20 load for selected pair");
     double ratio=q/Math.Max(vm.TowerResult.LeftLineLoad,vm.TowerResult.RightLineLoad);
@@ -97,13 +103,14 @@ internal static class Program
    }
    Check(Find<TextBlock>(charts).Any(t=>t.Text.StartsWith("Shear (kN)") && t.Text.Contains("22.000")),"pair shear limit shown as 22 kN");
    Check(Find<TextBlock>(charts).Any(t=>t.Text.StartsWith("Moment (kNm)") && t.Text.Contains("10.000")),"pair moment limit shown as 10 kNm");
-   Check(!charts.Plan.SelectAt(new Point(-5,-5)),"empty plan area does not select a member");
-   var mainHit=diagram.MemberTargets.First();diagram.SelectAt(new Point(mainHit.Item1.X+mainHit.Item1.Width/2,mainHit.Item1.Y+mainHit.Item1.Height/2));Pump();
-   Check(window.TowerDiagrams.RunSelector.SelectedIndex==mainHit.Item2,"main plan also selects diagram");
+   Check(!diagram.SelectAt(new Point(-5,-5)),"empty plan area does not select a member");
+   charts.Close();Pump();Check(window.TowerDiagrams==null,"closing diagrams clears window reference");
+   diagram.SelectAt(new Point(firstHit.Item1.X+firstHit.Item1.Width/2,firstHit.Item1.Y+4));Pump();charts=window.TowerDiagrams;
+   Check(charts!=null && charts.IsVisible,"main-plan click reopens diagrams after closing");
    if(args.Length>0){var root=(FrameworkElement)((ScrollViewer)charts.Content).Content;root.Measure(new Size(940,double.PositiveInfinity));int chartHeight=(int)Math.Ceiling(root.DesiredSize.Height);root.Arrange(new Rect(0,0,940,chartHeight));root.UpdateLayout();var bitmap=new RenderTargetBitmap(940,chartHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var output=File.Create(Path.ChangeExtension(args[0],"diagrams.png")))encoder.Save(output);}
    Check(window.BuildReport().Contains("Support Schedule") && window.BuildReport().Contains("bounded") && window.BuildReport().Contains("Primary Stock Schedule"),"tower report schedule and scope");
    vm.BeamLengthMm=6500;Pump();Check(!vm.IsCalculationValid && vm.TowerResult==null,"editing clears tower");
-   Check(window.TowerDiagrams==null && !charts.IsVisible,"editing closes stale diagrams");
+   Check(window.TowerDiagrams==null && !charts.IsVisible && !diagram.IsSelectionEnabled,"editing closes stale diagrams and selection");
    window.RestoreCalculation(towerSaved);Pump();Check(vm.UseTowers && vm.BeamLengthMm==6100 && !vm.IsCalculationValid,"tower restore requires fresh search");Optimize();
    Check(vm.TowerResult.PositionsMm.SequenceEqual(coordinates),"tower record reproduces layout");
    Check(vm.StockLengthsText==TowerStockPlanner.DefaultLengths && vm.StockEndSetbackMm==150,"stock settings restored");
