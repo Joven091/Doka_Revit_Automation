@@ -20,7 +20,7 @@ namespace EngineeringDashboard
             CloseTowerDiagrams(); TowerDiagrams = new TowerDiagramWindow(vm);
             TowerDiagrams.MemberSelectionChanged += SupportDiagram.SelectMember;
             TowerDiagrams.Closed += (s, args) => SupportDiagram.SelectMember(-1, 0, 0);
-            SupportDiagram.SelectMember(0, 0, 0);
+            SupportDiagram.SelectMember(0, 0, -1);
             if (IsVisible) TowerDiagrams.Owner = this;
             TowerDiagrams.Show();
         }

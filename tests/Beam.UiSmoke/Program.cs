@@ -82,15 +82,21 @@ internal static class Program
    var charts=window.TowerDiagrams;Check(charts!=null && charts.IsVisible,"diagram button opens window");
    charts.RunSelector.SelectedIndex=1;charts.LineSelector.SelectedIndex=1;Pump();
    var piece=vm.TowerResult.StockPlan.Pieces[1];
-   Check(Math.Abs(charts.Analysis.Reactions.Sum()-vm.TowerResult.RightLineLoad*piece.StockLengthMm/2000)<1e-8,"selected diagram stock and line load");
+   Check(Math.Abs(charts.Analysis.Reactions.Sum()-vm.TowerResult.RightLineLoad*piece.StockLengthMm/1000)<1e-8,"selected diagram stock and line load");
    var chartRoot=(FrameworkElement)charts.Content;chartRoot.Measure(new Size(980,1400));chartRoot.Arrange(new Rect(0,0,980,1400));chartRoot.UpdateLayout();
    Check(charts.Plan.DrawnEndDimensionCount==vm.TowerResult.StockPlan.Pieces.Length*2,"diagram selection plan shows offsets");
    foreach(var hit in charts.Plan.MemberTargets.ToArray()) {
     Check(charts.Plan.SelectAt(new Point(hit.Item1.X+hit.Item1.Width/2,hit.Item1.Y+hit.Item1.Height/2)),"plan member hit");
-    Check(charts.RunSelector.SelectedIndex==hit.Item2 && charts.LineSelector.SelectedIndex==hit.Item3 && charts.MemberSelector.SelectedIndex==hit.Item4,"plan selection drives matching member diagram");
+    Check(charts.RunSelector.SelectedIndex==hit.Item2 && charts.LineSelector.SelectedIndex==hit.Item3,"plan selection drives matching pair diagram");
     var selected=vm.TowerResult.StockPlan.Pieces[hit.Item2];double q=hit.Item3==0?vm.TowerResult.LeftLineLoad:vm.TowerResult.RightLineLoad;
-    Check(Math.Abs(charts.Analysis.Reactions.Sum()-q*selected.StockLengthMm/2000)<1e-8,"individual H20 load for selected member");
+    Check(Math.Abs(charts.Analysis.Reactions.Sum()-q*selected.StockLengthMm/1000)<1e-8,"double-H20 load for selected pair");
+    double ratio=q/Math.Max(vm.TowerResult.LeftLineLoad,vm.TowerResult.RightLineLoad);
+    Check(Math.Abs(charts.Analysis.Moment-selected.MomentKnM*ratio)<1e-8,"pair diagram moment matches optimizer");
+    Check(Math.Abs(charts.Analysis.Shear-selected.ShearKn*ratio)<1e-8,"pair diagram shear matches optimizer");
+    Check(Math.Abs(charts.Analysis.DeflectionMm-selected.DeflectionMm*ratio)<1e-8,"pair diagram retains optimizer deflection");
    }
+   Check(Find<TextBlock>(charts).Any(t=>t.Text.StartsWith("Shear (kN)") && t.Text.Contains("22.000")),"pair shear limit shown as 22 kN");
+   Check(Find<TextBlock>(charts).Any(t=>t.Text.StartsWith("Moment (kNm)") && t.Text.Contains("10.000")),"pair moment limit shown as 10 kNm");
    Check(!charts.Plan.SelectAt(new Point(-5,-5)),"empty plan area does not select a member");
    var mainHit=diagram.MemberTargets.First();diagram.SelectAt(new Point(mainHit.Item1.X+mainHit.Item1.Width/2,mainHit.Item1.Y+mainHit.Item1.Height/2));Pump();
    Check(window.TowerDiagrams.RunSelector.SelectedIndex==mainHit.Item2,"main plan also selects diagram");

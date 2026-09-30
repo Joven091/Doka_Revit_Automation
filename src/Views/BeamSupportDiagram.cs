@@ -125,7 +125,7 @@ namespace EngineeringDashboard
                 for (int line = 0; line < 2; line++) for (int member = 0; member < 2; member++)
                 {
                     double y = line == 0 ? top : bottom, offset = member == 0 ? -5 : 5;
-                    bool selected = i == selectedRun && line == selectedLine && member == selectedMember;
+                    bool selected = i == selectedRun && line == selectedLine && (selectedMember < 0 || member == selectedMember);
                     dc.DrawLine(new Pen(selected ? Brushes.DodgerBlue : i % 2 == 0 ? Gold : GoldSide, selected ? 4 : 2), new Point(x0 + piece.StartMm * scale, y + offset), new Point(x0 + piece.EndMm * scale, y + offset));
                     MemberTargets.Add(Tuple.Create(new Rect(x0 + piece.StartMm * scale, y + offset - 4, piece.StockLengthMm * scale, 8), i, line, member));
                     DrawnStockPieceCount++;
