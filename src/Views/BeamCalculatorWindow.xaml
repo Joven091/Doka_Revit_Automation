@@ -4,6 +4,22 @@
       <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="CalculatorStyles.xaml"/>
       </ResourceDictionary.MergedDictionaries>
+      <Style x:Key="SupportCard" TargetType="Button">
+        <Setter Property="Width" Value="280"/><Setter Property="Height" Value="270"/>
+        <Setter Property="Margin" Value="10"/><Setter Property="Background" Value="White"/>
+        <Setter Property="BorderBrush" Value="#C9D1D7"/><Setter Property="BorderThickness" Value="2"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+          <Border x:Name="Card" CornerRadius="8" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="18">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Card" Property="BorderBrush" Value="#D2AE00"/><Setter TargetName="Card" Property="Background" Value="#FFF8D9"/></Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Card" Property="BorderBrush" Value="#376FA0"/></Trigger>
+            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Card" Property="Background" Value="#FFF0AF"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+      </Style>
     </ResourceDictionary>
   </Window.Resources>
   <Border Background="#F5F5F5" Padding="16"><Grid>
@@ -16,7 +32,7 @@
       <TextBlock Text="Beam calculator" FontSize="22" FontWeight="SemiBold"/>
       <TextBlock Style="{StaticResource Hint}" Text="Set the geometry and supports, then review the calculated spacing."/>
     </StackPanel>
-    <Grid Grid.Row="1">
+    <Grid x:Name="CalculatorWorkspace" Grid.Row="1" Visibility="{Binding HasSelectedSupportSystem, Converter={StaticResource BoolToVis}}">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="1.2*"/>
         <ColumnDefinition Width="18"/>
@@ -116,7 +132,10 @@
           </Border>
           <Border Style="{StaticResource Card}">
             <StackPanel>
-              <CheckBox Content="Shoring towers (double H20 primaries)" IsChecked="{Binding UseTowers}"/>
+              <DockPanel Margin="0,0,0,8">
+                <Button DockPanel.Dock="Right" Content="Change system" Click="ChangeSupportSystem_Click" Padding="10,4" Margin="0"/>
+                <TextBlock FontWeight="SemiBold" VerticalAlignment="Center"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="Props"/><Style.Triggers><DataTrigger Binding="{Binding UseTowers}" Value="True"><Setter Property="Text" Value="Shoring towers"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+              </DockPanel>
               <StackPanel Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding UseTowers}">
                 <TextBlock Text="Concrete beam length (mm)"/>
                 <TextBox x:Name="TowerLengthInput" Text="{Binding BeamLengthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
@@ -316,16 +335,51 @@
         </StackPanel>
       </ScrollViewer>
     </Grid>
+    <Grid x:Name="SupportSystemPicker" Grid.Row="1">
+      <Grid.Style><Style TargetType="Grid"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding HasSelectedSupportSystem}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Grid.Style>
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+        <TextBlock Text="Choose a support system" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+        <StackPanel Orientation="Horizontal">
+          <Button x:Name="PickPropsButton" Style="{StaticResource SupportCard}" Click="PickProps_Click" AutomationProperties.Name="Choose props">
+            <StackPanel>
+              <Viewbox Width="220" Height="155" Margin="0,0,0,12"><Canvas Width="220" Height="155">
+                <Rectangle Canvas.Left="15" Canvas.Top="15" Width="190" Height="20" Fill="#AEB9C3"/>
+                <Rectangle Canvas.Left="8" Canvas.Top="38" Width="204" Height="12" Fill="#DCA923"/>
+                <Rectangle Canvas.Left="8" Canvas.Top="53" Width="204" Height="8" Fill="#FFE084"/>
+                <Path Stroke="#647B8D" StrokeThickness="6" Data="M 50,65 L 50,135 M 170,65 L 170,135"/>
+                <Path Stroke="#425764" StrokeThickness="3" Data="M 38,65 L 62,65 M 158,65 L 182,65 M 35,138 L 65,138 M 155,138 L 185,138"/>
+                <Rectangle Canvas.Left="46" Canvas.Top="90" Width="8" Height="10" Fill="#DCA923"/><Rectangle Canvas.Left="166" Canvas.Top="90" Width="8" Height="10" Fill="#DCA923"/>
+              </Canvas></Viewbox>
+              <TextBlock Text="Props" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+              <TextBlock Text="Individual adjustable supports" Foreground="#52616B" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+            </StackPanel>
+          </Button>
+          <Button x:Name="PickTowersButton" Style="{StaticResource SupportCard}" Click="PickTowers_Click" AutomationProperties.Name="Choose shoring towers">
+            <StackPanel>
+              <Viewbox Width="220" Height="155" Margin="0,0,0,12"><Canvas Width="220" Height="155">
+                <Polygon Points="15,18 170,18 205,3 50,3" Fill="#DAE1E6"/><Polygon Points="15,18 170,18 170,33 15,33" Fill="#AEB9C3"/>
+                <Path Stroke="#DCA923" StrokeThickness="8" Data="M 10,42 L 178,42 M 40,29 L 208,29"/>
+                <Path Stroke="#FFE084" StrokeThickness="3" Data="M 10,49 L 178,49 M 40,36 L 208,36"/>
+                <Path Stroke="#647B8D" StrokeThickness="4" Data="M 45,53 L 45,136 M 145,53 L 145,136 M 75,40 L 75,123 M 175,40 L 175,123 M 45,80 L 145,80 M 45,110 L 145,110 M 75,67 L 175,67 M 75,97 L 175,97"/>
+                <Path Stroke="#425764" StrokeThickness="2" Data="M 45,60 L 75,116 M 75,47 L 45,129 M 145,60 L 175,116 M 175,47 L 145,129 M 36,139 L 54,139 M 136,139 L 154,139 M 66,126 L 84,126 M 166,126 L 184,126"/>
+              </Canvas></Viewbox>
+              <TextBlock Text="Shoring towers" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+              <TextBlock Text="Frames, crosses and double H20s" Foreground="#52616B" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </StackPanel>
+    </Grid>
     <Border Grid.Row="2" BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
       <DockPanel LastChildFill="True">
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
           <Button Content="Close" MinWidth="80" Click="BtnClose_Click" Margin="0,0,10,0"/>
-          <Button x:Name="ImportButton" IsEnabled="{Binding CanImport}" Style="{StaticResource PrimaryAction}" Content="Import to Revit" Click="BtnApplyToBeams_Click" ToolTip="Tower layouts can be saved/exported; the existing Revit import is for prop spacing."/>
+          <Border IsEnabled="{Binding HasSelectedSupportSystem}"><Button x:Name="ImportButton" IsEnabled="{Binding CanImport}" Style="{StaticResource PrimaryAction}" Content="Import to Revit" Click="BtnApplyToBeams_Click" ToolTip="Tower layouts can be saved/exported; the existing Revit import is for prop spacing."/></Border>
         </StackPanel>
         <WrapPanel VerticalAlignment="Center">
-          <Button Content="Save calculation" Click="SaveCalculation_Click" Margin="0,0,6,0"/>
+          <Button IsEnabled="{Binding HasSelectedSupportSystem}" Content="Save calculation" Click="SaveCalculation_Click" Margin="0,0,6,0"/>
           <Button Content="Load calculation" Click="LoadCalculation_Click" Margin="0,0,6,0"/>
-          <Button Content="Export report" Click="ExportReport_Click"/>
+          <Button IsEnabled="{Binding HasSelectedSupportSystem}" Content="Export report" Click="ExportReport_Click"/>
         </WrapPanel>
       </DockPanel>
     </Border>

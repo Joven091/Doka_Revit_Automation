@@ -5,6 +5,12 @@ namespace EngineeringDashboard
 {
     public partial class BeamCalculatorViewModel
     {
+        private bool hasSelectedSupportSystem;
+        public bool HasSelectedSupportSystem
+        {
+            get => hasSelectedSupportSystem;
+            set { hasSelectedSupportSystem = value; OnPropertyChanged(); }
+        }
         private bool useTowers, exclude600Standalone;
         public bool Exclude600Standalone { get => exclude600Standalone; set { exclude600Standalone = value; Changed(); } }
         private double beamLengthMm = 6100, towerLegCapacityKn = 30;
