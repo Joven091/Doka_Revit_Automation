@@ -263,6 +263,14 @@ internal static class Program
    vm.NetworkBeams[1].DepthMm=1000;Check(!vm.IsCalculationValid && window.TowerDiagrams==null,"editing any beam invalidates network diagrams");
    window.RestoreCalculation(networkSaved);Pump();Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBeams[1].DepthMm==1200 && vm.NetworkBeams[2].WidthMm==900,"network save/load round trip retains per-beam width/depth and all bays");
    ((Button)window.FindName("RemoveBeamBayButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Check(vm.NetworkBeams.Count==2 && vm.NetworkBays.Count==1,"remove last bay button");
+   vm.NetworkBeams[0].WidthMm=800;vm.NetworkBeams[0].DepthMm=1750;vm.NetworkBeams[1].WidthMm=650;vm.NetworkBeams[1].DepthMm=1150;vm.NetworkBays[0].WidthMm=2575;vm.NetworkBays[0].ThicknessMm=300;
+   vm.BeamLengthMm=10600;vm.TowerLegCapacityKn=70;vm.Exclude600Standalone=true;vm.UpperSupportSpacingMm=750;Optimize();Render();
+   var failureExpander=(Expander)window.FindName("FailureDetailsExpander");var failureText=(TextBox)window.FindName("FailureDetailsText");
+   Check(!vm.IsCalculationValid && vm.HasTowerFailure && failureExpander.Visibility==Visibility.Visible && networkPlan.DrawnTowerLegCount==0,"failed network shows diagnostic control and clears stale plan");
+   failureExpander.IsExpanded=true;Render();
+   Check(failureText.IsReadOnly && failureText.Text.Contains("1875–2175") && failureText.Text.Contains("387.5") && failureText.Text.Contains("62.5"),"copyable failure detail shows user's exact stock/edge failure");
+   if(args.Length>0){SavePreview(Path.ChangeExtension(args[0],"failure.png"),1040,860);File.WriteAllText(Path.ChangeExtension(args[0],"failure.txt"),failureText.Text);}
+   window.RestoreCalculation(networkSaved);Pump();Check(!vm.HasTowerFailure && failureExpander.Visibility==Visibility.Collapsed,"restoring inputs clears stale failure details");Optimize();Render();Check(vm.IsCalculationValid && !vm.HasTowerFailure,"successful retry hides failure report");
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }
   catch(Exception ex){Console.Error.WriteLine(ex);window?.Close();return 1;}

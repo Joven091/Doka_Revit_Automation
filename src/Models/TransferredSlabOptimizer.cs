@@ -75,10 +75,13 @@ namespace EngineeringDashboard
         private sealed class Geometry { public TowerStockPiece[] Stock; public double[] Positions; public bool[] Joined; }
         private sealed class Upper { public double Stock, Edge, Foot, OtherFoot, Bay, Load; public LoadedBeamAnalysis Analysis; }
         private sealed class CrossOption { public double Start, Stock; public Upper Left, Right; public LoadedBeamAnalysis[] Cases; public string[] Names; public readonly Dictionary<int,LoadedBeamAnalysis> RowAnalyses=new Dictionary<int,LoadedBeamAnalysis>(); }
-        public static TowerLayout Optimize(TowerInput input)
+        public static TowerLayout Optimize(TowerInput input,bool shareDiagnostics=false)
         {
             var t = input.TransferredSlab; t.Validate(input); TowerLayout best = null; int tested = 0;
-            foreach (var cover in Covers(input))
+            if(!shareDiagnostics || input.Diagnostics==null)input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator);var diag=input.Diagnostics;
+            var covers=Covers(input).ToArray();
+            if(covers.Length==0)diag.Geometry(input.DiagnosticScope+"coverage",$"{input.DiagnosticScope}primary coverage: no available stock combination totals {input.LengthMm-2*input.MaximumConcreteEndOverhangMm:0.###}–{input.LengthMm:0.###} mm.","Review stock lengths and the concrete end allowance.");
+            foreach (var cover in covers)
             {
                 double covered = cover.Sum(), edge = (input.LengthMm-covered)/2;
                 if(t.FixedCoveredLengthMm.HasValue && Math.Abs(covered-t.FixedCoveredLengthMm.Value)>1e-7) continue;
@@ -88,7 +91,9 @@ namespace EngineeringDashboard
                 {
                     if (rotated && input.Exclude600Standalone && width == 600) continue;
                     var crosses = CrossOptions(input,width,count>2 ? t.UpperSpacingMm : covered/count).ToArray(); if (crosses.Length == 0) continue;
-                    foreach (var geometry in Geometries(cover,rotated,input))
+                    var geometries=Geometries(cover,rotated,input).ToArray();
+                    if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
+                    foreach (var geometry in geometries)
                     {
                         if (best != null && geometry.Positions.Length*2 > best.LegCount) continue;
                         // Try a centred grid and small phase shifts; every end tributary stays ≤ the entered spacing.
@@ -99,7 +104,8 @@ namespace EngineeringDashboard
                             var tributaries = Enumerable.Range(0,count).Select(i => (i == count-1 ? covered : (rows[i]+rows[i+1])/2)-(i == 0 ? 0 : (rows[i-1]+rows[i])/2)).ToArray();
                             if (tributaries.Max() > t.UpperSpacingMm+1e-7) continue;
                             // A transverse row must bear on both longitudinal stocks, away from independent member breaks.
-                            if (rows.Any(r => geometry.Stock.Skip(1).Any(s => Math.Abs(s.StartMm-r) < 40))) continue;
+                            var conflicting=rows.FirstOrDefault(r=>geometry.Stock.Skip(1).Any(s=>Math.Abs(s.StartMm-r)<40));
+                            if(conflicting>0) {double joint=geometry.Stock.Skip(1).OrderBy(s=>Math.Abs(s.StartMm-conflicting)).First().StartMm;diag.Geometry(input.DiagnosticScope+"row/joint",$"{input.DiagnosticScope}support row x={conflicting+edge:0.###} mm is {Math.Abs(joint-conflicting):0.###} mm from primary joint x={joint+edge:0.###} mm; minimum 40 mm.","Review upper row spacing and the primary stock combination.",40-Math.Abs(joint-conflicting));continue;}
                             foreach (var cross in crosses)
                             {
                                 tested++; var candidate = Evaluate(input,geometry,width,rotated,cross,rows,tributaries,edge);
@@ -110,7 +116,7 @@ namespace EngineeringDashboard
                     }
                 }
             }
-            if (best == null) throw new ArgumentException("No valid transferred-slab layout found. Check upper spacing, slab-bay stock coverage, loads, leg capacity or available lengths. A different upper arrangement may be needed.");
+            if (best == null) throw diag.Exception("No valid transferred-slab layout found within the bounded search.");
             best.Tested = tested; return best;
         }
         private static double Timber(TowerLayout l) => l.StockPlan.TotalStockLengthMm+l.Transfer.AdditionalTimberMm;
@@ -171,7 +177,7 @@ namespace EngineeringDashboard
             {
                 fixedPlan.Validate(bay,input.StockLengthsMm);
                 var a=LoadedBeamAnalysis.Analyze(fixedPlan.StockLengthMm,new[] {fixedPlan.NearFootMm-fixedPlan.EdgeMm,bay-fixedPlan.FarFootMm-fixedPlan.EdgeMm},new[] {new BeamDistributedLoad {StartMm=0,EndMm=fixedPlan.StockLengthMm,KnPerM=load}},null,TowerOptimizer.PairEI/2,input.DeflectionDenominator);
-                if(Pass(a,tributaryMm/1000,1)) result.Add(new Upper {Stock=fixedPlan.StockLengthMm,Edge=fixedPlan.EdgeMm,Foot=fixedPlan.NearFootMm,OtherFoot=fixedPlan.FarFootMm,Bay=bay,Load=load,Analysis=a});
+                if(Pass(a,tributaryMm/1000,1,input.Diagnostics,input.DiagnosticScope+"Slab H20",1,$"stock {fixedPlan.StockLengthMm:0} mm · feet {fixedPlan.NearFootMm:0.###}/{fixedPlan.FarFootMm:0.###} mm from faces · base tributary {tributaryMm:0.###} mm")) result.Add(new Upper {Stock=fixedPlan.StockLengthMm,Edge=fixedPlan.EdgeMm,Foot=fixedPlan.NearFootMm,OtherFoot=fixedPlan.FarFootMm,Bay=bay,Load=load,Analysis=a});
                 return result;
             }
             foreach(double stock in input.StockLengthsMm)
@@ -183,9 +189,10 @@ namespace EngineeringDashboard
                 foreach(double foot in feet.Where(x=>x>=min && x<=max))
                 {
                     var a=LoadedBeamAnalysis.Analyze(stock,new[] {foot-edge,bay-foot-edge},new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock,KnPerM=load}},null,TowerOptimizer.PairEI/2,input.DeflectionDenominator);
-                    if (Pass(a,tributaryMm/1000,1)) result.Add(new Upper { Stock=stock,Edge=edge,Foot=foot,OtherFoot=foot,Bay=bay,Load=load,Analysis=a });
+                    if (Pass(a,tributaryMm/1000,1,input.Diagnostics,input.DiagnosticScope+"Slab H20",1,$"stock {stock:0} mm · foot {foot:0.###} mm from face · base tributary {tributaryMm:0.###} mm")) result.Add(new Upper { Stock=stock,Edge=edge,Foot=foot,OtherFoot=foot,Bay=bay,Load=load,Analysis=a });
                 }
             }
+            if(!input.StockLengthsMm.Any(stock=>(bay-stock)/2>=200 && (bay-stock)/2<=350))input.Diagnostics?.Geometry(input.DiagnosticScope+"slab stock "+bay,$"{input.DiagnosticScope}slab bay {bay:0.###} mm requires one stock {bay-700:0.###}–{bay-400:0.###} mm for 200–350 mm edge strips; none is available.","Review the available slab H20 stocks and entered clear bay width.");
             return result;
         }
         private static IEnumerable<CrossOption> CrossOptions(TowerInput input,double width,double tributaryMm)
@@ -195,6 +202,7 @@ namespace EngineeringDashboard
             {
                 double lx=left==null ? -t.BeamWidthMm/2 : -t.BeamWidthMm/2-left.Foot, rx=right==null ? t.BeamWidthMm/2 : t.BeamWidthMm/2+right.Foot;
                 double lo=Math.Min(-width/2,lx)-150,hi=Math.Max(width/2,rx)+150;
+                if(!input.StockLengthsMm.Any(x=>x>=hi-lo))input.Diagnostics?.Geometry(input.DiagnosticScope+"lower stock",$"{input.DiagnosticScope}lower secondary needs at least {hi-lo:0.###} mm stock to reach bearings/feet with 150 mm end allowance; longest available {input.StockLengthsMm.Max():0} mm.","Review lower secondary stock lengths and upper-foot positions.",hi-lo-input.StockLengthsMm.Max());
                 foreach(double stock in input.StockLengthsMm.Where(x=>x>=hi-lo))
                     foreach(double start in new[] {lo,hi-stock,(lo+hi-stock)/2}.Distinct())
                     {
@@ -207,7 +215,7 @@ namespace EngineeringDashboard
                             if ((mask&1)!=0) points.Add(new BeamPointLoad {PositionMm=-t.BeamWidthMm/2-100-start,Kn=left.Load*left.Edge/1000});
                             if ((mask&2)!=0) points.Add(new BeamPointLoad {PositionMm=t.BeamWidthMm/2+100-start,Kn=right.Load*right.Edge/1000});
                             var a=LoadedBeamAnalysis.Analyze(stock,new[] {-width/2-start,width/2-start},new[] {new BeamDistributedLoad {StartMm=-t.BeamWidthMm/2-start,EndMm=t.BeamWidthMm/2-start,KnPerM=t.BeamLineLoadKnM/(t.BeamWidthMm/1000)}},points.ToArray(),TowerOptimizer.PairEI/2,input.DeflectionDenominator);
-                            if (!Pass(a,tributaryMm/1000,1)) { valid=false;break; }
+                            if (!Pass(a,tributaryMm/1000,1,input.Diagnostics,input.DiagnosticScope+"Lower secondary",2,$"stock {stock:0} mm · primary span {width:0} mm · {(mask==0 ? "Beam" : mask==1 ? "Beam + left slab" : mask==2 ? "Beam + right slab" : "Beam + both slabs")} · base tributary {tributaryMm:0.###} mm")) { valid=false;break; }
                             cases.Add(a); names.Add(mask==0 ? "Beam" : mask==1 ? "Beam + left slab" : mask==2 ? "Beam + right slab" : "Beam + both slabs");
                         }
                         if(valid) result.Add(new CrossOption { Start=start,Stock=stock,Left=left,Right=right,Cases=cases.ToArray(),Names=names.ToArray() });
@@ -216,13 +224,17 @@ namespace EngineeringDashboard
             // Retain varied reaction splits as well as the least-timber choices; this is a bounded search.
             return result.OrderBy(x=>x.Stock+(x.Left?.Stock??0)+(x.Right?.Stock??0)).ThenBy(x=>x.Cases.Max(a=>a.DeflectionUtilization)).GroupBy(x=>Math.Round(x.Cases.Last().Reactions[0],1)).Select(g=>g.First()).Take(24).ToArray();
         }
-        private static bool Pass(LoadedBeamAnalysis a,double scale=1,int h20Count=2) => a.Reactions.All(x=>x>=-1e-7) && a.MomentKnM*scale<=TowerOptimizer.PairMoment*h20Count/2+1e-8 && a.ShearKn*scale<=TowerOptimizer.PairShear*h20Count/2+1e-8 && a.DeflectionUtilization*scale<=1+1e-8;
+        private static bool Pass(LoadedBeamAnalysis a,double scale=1,int h20Count=2,TowerSearchDiagnostics diag=null,string scope="H20",int stage=1,string location="")
+        {
+            diag?.Analysis(a,scale,h20Count,scope,stage,location);
+            return a.Reactions.All(x=>x>=-1e-7) && a.MomentKnM*scale<=TowerOptimizer.PairMoment*h20Count/2+1e-8 && a.ShearKn*scale<=TowerOptimizer.PairShear*h20Count/2+1e-8 && a.DeflectionUtilization*scale<=1+1e-8;
+        }
         private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,double[] rows,double[] trib,double edge)
         {
             var ls=(input.TransferredSlab.LeftEffectiveWidthsMm??trib).Select(x=>x/1000).ToArray();
             var rs=(input.TransferredSlab.RightEffectiveWidthsMm??trib).Select(x=>x/1000).ToArray();
             if(ls.Length!=rows.Length || rs.Length!=rows.Length)throw new ArgumentException("Crossing beam row loads do not match the support rows.");
-            if(cross.Left!=null && !Pass(cross.Left.Analysis,ls.Max(),1) || cross.Right!=null && !Pass(cross.Right.Analysis,rs.Max(),1))return null;
+            if(cross.Left!=null && !Pass(cross.Left.Analysis,ls.Max(),1,input.Diagnostics,input.DiagnosticScope+"Left slab H20",1,$"governing row T{Array.IndexOf(ls,ls.Max())+1} · stock {cross.Left.Stock:0} mm") || cross.Right!=null && !Pass(cross.Right.Analysis,rs.Max(),1,input.Diagnostics,input.DiagnosticScope+"Right slab H20",1,$"governing row T{Array.IndexOf(rs,rs.Max())+1} · stock {cross.Right.Stock:0} mm"))return null;
             int n=g.Positions.Length; var left=new double[n]; var right=new double[n];
             var primaryCases=new List<TransferMember[]>(); var lowerCases=new List<TransferMember[]>();
             for(int c=0;c<cross.Cases.Length;c++)
@@ -241,7 +253,7 @@ namespace EngineeringDashboard
                         int key=c*rows.Length+row;
                         if(!cross.RowAnalyses.TryGetValue(key,out a)) cross.RowAnalyses[key]=a=LoadedBeamAnalysis.Analyze(cross.Stock,new[] {-width/2-cross.Start,width/2-cross.Start},new[] {new BeamDistributedLoad {StartMm=-input.TransferredSlab.BeamWidthMm/2-cross.Start,EndMm=input.TransferredSlab.BeamWidthMm/2-cross.Start,KnPerM=input.TransferredSlab.BeamLineLoadKnM/input.TransferredSlab.BeamWidthMm*trib[row]}},points.ToArray(),TowerOptimizer.PairEI/2,input.DeflectionDenominator);
                     }
-                    if(!Pass(a,1,1))return null;
+                    if(!Pass(a,1,1,input.Diagnostics,input.DiagnosticScope+"Lower secondary",2,$"T{row+1} · x={rows[row]+edge:0.###} mm · {cross.Names[c]} · stock {cross.Stock:0} mm · primary span {width:0} mm"))return null;
                     lower.Add(new TransferMember {H20Count=1,Name="T"+(row+1),LoadCase=cross.Names[c],StartMm=cross.Start,LengthMm=cross.Stock,SupportsMm=new[] {-width/2-cross.Start,width/2-cross.Start},Points=points.ToArray(),Uniform=new[] {new BeamDistributedLoad {StartMm=-input.TransferredSlab.BeamWidthMm/2-cross.Start,EndMm=input.TransferredSlab.BeamWidthMm/2-cross.Start,KnPerM=input.TransferredSlab.BeamLineLoadKnM/input.TransferredSlab.BeamWidthMm*trib[row]}},Analysis=a});
                 }
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
@@ -249,7 +261,10 @@ namespace EngineeringDashboard
                     var supports=g.Positions.Skip(stock.FirstSupport).Take(stock.LastSupport-stock.FirstSupport+1).Select(x=>x-stock.StartMm).ToArray();
                     var points=Enumerable.Range(0,rows.Length).Where(i=>rows[i]>=stock.StartMm && rows[i]<stock.EndMm).Select(i=>new BeamPointLoad {PositionMm=rows[i]-stock.StartMm,Kn=lower[i].Analysis.Reactions[line]}).ToArray();
                     var a=LoadedBeamAnalysis.Analyze(stock.StockLengthMm,supports,null,points,TowerOptimizer.PairEI,input.DeflectionDenominator);
-                    if(!Pass(a) || a.Reactions.Max()>input.LegCapacityKn+1e-8) return null;
+                    bool memberPass=Pass(a,1,2,input.Diagnostics,input.DiagnosticScope+"Primary pair",3,$"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · stock {stock.StockLengthMm:0} mm · x={stock.StartMm+edge:0.###}–{stock.EndMm+edge:0.###} mm");
+                    int peakLeg=Array.IndexOf(a.Reactions,a.Reactions.Max());
+                    input.Diagnostics?.Legs(a.Reactions,input.LegCapacityKn,input.DiagnosticScope+"Tower legs",$"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · peak leg x={g.Positions[stock.FirstSupport+peakLeg]+edge:0.###} mm");
+                    if(!memberPass || a.Reactions.Max()>input.LegCapacityKn+1e-8) return null;
                     for(int i=0;i<a.Reactions.Length;i++) { var envelope=line==0 ? left : right; envelope[stock.FirstSupport+i]=Math.Max(envelope[stock.FirstSupport+i],a.Reactions[i]); }
                     members.Add(new TransferMember {Name="P"+(Array.IndexOf(g.Stock,stock)+1)+(line==0 ? " L" : " R"),LoadCase=cross.Names[c],StartMm=stock.StartMm+edge,LengthMm=stock.StockLengthMm,SupportsMm=supports,Points=points,Uniform=new BeamDistributedLoad[0],Analysis=a});
                 }

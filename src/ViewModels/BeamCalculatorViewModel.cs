@@ -103,7 +103,7 @@ namespace EngineeringDashboard
         }
         private void Calculate()
         {
-            towerRevision++; TowerResult = null; NetworkResult=null; SelectedNetworkBeam=0;
+            towerRevision++; TowerFailureDetails=""; TowerResult = null; NetworkResult=null; SelectedNetworkBeam=0;
             IsCalculationValid = false;
             MaximumPropSpacing = MaximumPropLoad = PrimaryBeamCantilever = PrimaryDeflectionMm = PrimaryDeflectionUtilization = 0;
             LeftLineLoad = RightLineLoad = TotalLineLoad = 0;

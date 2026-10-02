@@ -82,6 +82,31 @@ internal static class NetworkTests
         crossingInput.CrossingBeams[0].BayNumber=99;bool rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"nonexistent crossing bay rejected");
         crossingInput.CrossingBeams[0].BayNumber=1;crossingInput.CrossingBeams[0].DepthMm=200;rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"crossing depth below slab thickness rejected");
         crossingInput.CrossingBeams[0].DepthMm=350;crossingInput.CrossingBeams=new[] {crossingInput.CrossingBeams[0],new TransferCrossingBeamRow {PositionMm=3100,WidthMm=300,DepthMm=400}};rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"overlapping crossing beams rejected to avoid duplicate volume");
+        var failureVm=new BeamCalculatorViewModel {UseTowers=true,Depth=1750,Width=800,BeamLengthMm=10600,TowerLegCapacityKn=70,HasRightSlab=true,RightSlabThickness=300,RightSlabBayMm=2575,TransferSlabLoads=true,Exclude600Standalone=true,UseBeamNetwork=true};
+        failureVm.NetworkBeams[1].WidthMm=650;failureVm.NetworkBeams[1].DepthMm=1150;
+        failureVm.OptimizeTowersAsync().GetAwaiter().GetResult();
+        Check(!failureVm.IsCalculationValid && failureVm.NetworkResult==null && failureVm.HasTowerFailure,"failed user setup retains diagnostics without a solution");
+        Check(failureVm.WarningMessage.Contains("S1 stock coverage") && failureVm.WarningMessage.Contains("1875–2175") && failureVm.TowerFailureDetails.Contains("387.5") && failureVm.TowerFailureDetails.Contains("62.5"),"10600 beam / 2575 bay explains exact stock and edge constraints");
+        Check(failureVm.TowerFailureDetails.Contains("Numerical checks recorded: 0"),"stock failure is diagnosed before structural checks");
+        failureVm.NetworkBays[0].WidthMm=2500;Check(!failureVm.HasTowerFailure && failureVm.TowerFailureDetails=="","editing geometry clears stale failure report");
+        var overloadInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=200,CrossingBeams=new[] {new TransferCrossingBeamRow {WidthMm=400,DepthMm=10000,PositionMm=3175}}};
+        TowerOptimizationException failure=null;try {TransferNetworkOptimizer.Optimize(common,overloadInput);}catch(TowerOptimizationException ex){failure=ex;}
+        Check(failure!=null && failure.Details.Contains("S1 slab H20") && failure.Details.Contains("moment") && failure.Details.Contains("shear") && failure.Details.Contains("deflection") && failure.Details.Contains("T") && failure.Details.Contains("L/350"),"crossing overload reports member, actual row, demand, capacity and deflection criterion");
+        Check(failure.Details.Contains("examples may come from different layouts"),"diagnostic samples do not pretend to form one alternative layout");
+        overloadInput.CrossingBeams=new TransferCrossingBeamRow[0];TransferNetworkOptimizer.Optimize(common,overloadInput);
+        overloadInput.Bays[0]=new TransferBayRow {WidthMm=2575,ThicknessMm=300};failure=null;try {TransferNetworkOptimizer.Optimize(common,overloadInput);}catch(TowerOptimizationException ex){failure=ex;}
+        Check(failure!=null && !failure.Details.Contains("S1 slab H20 · moment") && failure.Details.Contains("Numerical checks recorded: 0"),"reusing a snapshot starts a new diagnostic run");
+        var legInput=new TowerInput {LengthMm=6750,LegCapacityKn=1,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,TransferredSlab=new TransferredSlabInput {BeamWidthMm=1100,BeamLineLoadKnM=50,UpperSpacingMm=200,LeftBayMm=3900,LeftAreaLoadKnM2=9.4}};
+        failure=null;try {TransferredSlabOptimizer.Optimize(legInput);}catch(TowerOptimizationException ex){failure=ex;}
+        Check(failure!=null && failure.Details.Contains("leg load") && failure.Details.Contains("peak leg x=") && failure.Details.Contains("/ 1 kN"),"leg overload reports exact line, load case, support station and permissible load");
+        var responseCheck=LoadedBeamAnalysis.Analyze(1000,new[] {0.0,1000},new[] {new BeamDistributedLoad {StartMm=0,EndMm=1000,KnPerM=120}},null,TowerOptimizer.PairEI/2,350);
+        var numericReport=new TowerSearchDiagnostics(350);numericReport.Analysis(responseCheck,1,1,"Test single H20",2,"T4 · x=750 mm · Beam + right slab");
+        var numericText=numericReport.Exception("Test failure").Details;
+        Check(numericText.Contains("15 / 5 kNm") && numericText.Contains("60 / 11 kN"),"failure demands and capacities agree with independent simply-supported UDL equilibrium");
+        double analyticDeflection=5*120/(384*(TowerOptimizer.PairEI/2))*1000;
+        Check(numericText.Contains($"{analyticDeflection:0.###} / {1000.0/350:0.###} mm") && numericText.Contains("T4 · x=750 mm · Beam + right slab"),"reported deflection uses governing-region demand/allowance and preserves location and load stage");
+        numericReport.Analysis(LoadedBeamAnalysis.Analyze(1000,new[] {700.0,900},new[] {new BeamDistributedLoad {StartMm=0,EndMm=1000,KnPerM=80}},null,TowerOptimizer.PairEI/2,350),1,1,"Uplift test",2,"one-sided load");
+        Check(numericReport.Exception("Test failure").Details.Contains("reaction -80 kN; minimum 0 kN"),"negative bearing reaction reports signed magnitude and zero bound");
         Console.WriteLine($"Network: {checks} checks passed · {result.LegCount} tower legs · {result.TimberMm/1000:0.0} m timber · {timer.Elapsed.TotalSeconds:0.00} s");
     }
 }

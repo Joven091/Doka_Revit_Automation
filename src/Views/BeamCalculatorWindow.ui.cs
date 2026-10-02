@@ -85,6 +85,8 @@ namespace EngineeringDashboard
         }
         private void ModelChanged(object sender, PropertyChangedEventArgs e)
         {
+            if(e.PropertyName==nameof(BeamCalculatorViewModel.HasTowerFailure) && observedModel?.HasTowerFailure==true)
+                Dispatcher.BeginInvoke(new Action(()=> {if(observedModel?.HasTowerFailure==true)ReviewScroll.ScrollToTop();}),DispatcherPriority.Loaded);
             if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) { UpdateDiagram(); if (!observedModel.IsCalculationValid) CloseTowerDiagrams(); }
             if(e.PropertyName == nameof(BeamCalculatorViewModel.HasLeftSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.HasRightSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.UseCustomLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseTowers) || e.PropertyName == nameof(BeamCalculatorViewModel.TransferSlabLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseBeamNetwork))
                 Dispatcher.BeginInvoke(new Action(RefreshInputValidity), DispatcherPriority.DataBind);
