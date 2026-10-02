@@ -7,6 +7,8 @@ namespace EngineeringDashboard
 {
     public sealed class TowerInput
     {
+        public TransferredSlabInput TransferredSlab { get; set; }
+        public TransferNetworkInput Network {get;set;}
         public double LengthMm { get; set; }
         public double LegCapacityKn { get; set; }
         public double TotalLineLoad { get; set; }
@@ -21,6 +23,7 @@ namespace EngineeringDashboard
     }
     public sealed class TowerLayout
     {
+        public TransferredSlabResult Transfer { get; internal set; }
         public double[] PositionsMm { get; internal set; }
         public bool[] Joined { get; internal set; }
         public double WidthMm { get; internal set; }
@@ -33,10 +36,10 @@ namespace EngineeringDashboard
         public double[] RightReactions { get; internal set; }
         public TowerStockPlan StockPlan { get; internal set; }
         public double LegUtilizationPercent => MaxLegKn / LegCapacityKn * 100;
-        public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {StockPlan.TotalH20Count} H20s";
+        public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s";
         public string LegLoadSummary => $"Peak leg: {MaxLegKn:0.00} / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
-        public string CapacityBasis => $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then braced bays, H20 quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
-        public string StockSchedule => StockPlan.Schedule;
+        public string CapacityBasis => Transfer != null ? "Every leg is checked for beam, one-sided and combined slab loading. Search minimizes receiving-beam legs, then total H20 length. Leg values are load-case envelopes." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then braced bays, H20 quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
+        public string StockSchedule => StockPlan.Schedule + (Transfer == null ? "" : "\n" + Transfer.Schedule);
         public int LegCount => PositionsMm.Length * 2;
         public int GroupCount => 1 + Joined.Count(x => !x);
         public int BayCount => Joined.Count(x => x);
@@ -54,8 +57,17 @@ namespace EngineeringDashboard
         public string SearchNote => MinimumLegCountProven
             ? "Minimum leg count meets the load/stock lower bound. Group count/layout are best found in a bounded search."
             : "Best valid layout found in a bounded search; global minimum leg/group count is not proven.";
-        public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\nMoment {7:0.00}/10 kNm · shear {8:0.00}/22 kN\nPeak deflection {9:0.00} mm · criterion {11} (each span/overhang)",
-            LegCount, GroupCount, BayCount, Rotated ? "Rotated isolated towers" : "1524 mm frames across beam", WidthMm, MaxLegKn, Utilization * 100, MomentKnM, ShearKn, DeflectionMm, LegCapacityKn, DeflectionDenominator == 0 ? $"{DeflectionLimitMm:0.00} mm" : $"L/{DeflectionDenominator}")
+        private string MemberDemandSummary
+        {
+            get
+            {
+                if(Transfer==null)return $"Moment {MomentKnM:0.00}/10 kNm · shear {ShearKn:0.00}/22 kN";
+                var members=Transfer.PrimaryCases.SelectMany(c=>c).Concat(Transfer.LowerCases.SelectMany(c=>c)).Concat(Transfer.UpperMembers).ToArray();
+                return $"Moment utilization {members.Max(m=>m.Analysis.MomentKnM/m.MomentLimitKnM)*100:0.0}% · shear utilization {members.Max(m=>m.Analysis.ShearKn/m.ShearLimitKn)*100:0.0}%";
+            }
+        }
+        public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\n{12}\nPeak deflection {9:0.00} mm · criterion {11} (each span/overhang)",
+            LegCount, GroupCount, BayCount, Rotated ? "Rotated isolated towers" : "1524 mm frames across beam", WidthMm, MaxLegKn, Utilization * 100, MomentKnM, ShearKn, DeflectionMm, LegCapacityKn, DeflectionDenominator == 0 ? $"{DeflectionLimitMm:0.00} mm" : $"L/{DeflectionDenominator}", MemberDemandSummary)
             + string.Format(CultureInfo.CurrentCulture, "\nPrimary H20s: {0} pieces · no overlaps\nConcrete beyond H20: {1:0.###} mm per end", StockPlan.TotalH20Count, ConcreteEndOverhangMm);
         public string Schedule
         {
@@ -81,6 +93,8 @@ namespace EngineeringDashboard
         public const double PairEI = 2 * 449.8756, PairMoment = 10, PairShear = 22;
         public static TowerLayout Optimize(TowerInput input)
         {
+            if(input?.Network!=null)return TransferNetworkOptimizer.Optimize(input,input.Network).Beams[0];
+            if (input?.TransferredSlab != null) return TransferredSlabOptimizer.Optimize(input);
             Validate(input);
             if (input.MaximumConcreteEndOverhangMm == 0) return OptimizeCovered(input);
             // Reachable stock totals; allow only symmetric concrete end overhang, never internal stock gaps.

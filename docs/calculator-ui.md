@@ -1,5 +1,7 @@
 # Calculator interface
 
+The Slab entry now opens illustrated **Dokaflex** and **D3 Shoring System** cards. Dokaflex keeps its existing calculations/import workflow. D3 provides a rectangular slab tower/stock optimizer with a dimensioned plan and leg/member schedules; see [D3 slab rules and validation](d3-slab.md). Its advanced inputs and detailed schedules remain collapsed by default.
+
 The slab and beam calculators share CalculatorStyles.xaml, using the backpropping calculator's yellow numbered sections, neutral grey background, labelled fields, grey diagram panels and prominent yellow spacing results.
 
 The launcher uses the same shared styles: Slab, Beam and Backpropping are full-width cards with yellow accents, vector formwork icons and short descriptions. Hover, pressed and keyboard-focus states are visible. The window is resizable with scrolling at smaller sizes and a fixed Close action. Existing calculator click handlers and saved slab/beam state are preserved. The launcher was rendered at 620 × 550 and 500 × 480; its three XAML click bindings were exercised in a preview host, and the production add-in build passed.

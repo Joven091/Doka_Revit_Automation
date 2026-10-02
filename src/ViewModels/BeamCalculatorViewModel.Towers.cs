@@ -38,22 +38,31 @@ namespace EngineeringDashboard
         private TowerInput CreateTowerInput()
         {
             if (textErrors) throw new ArgumentException("Correct the highlighted input before optimizing.");
-            Check(Depth, "Beam depth", true); Check(Width, "Beam width", true);
+            if(!IsNetworkMode) {Check(Depth, "Beam depth", true); Check(Width, "Beam width", true);}
             Check(BeamLengthMm, "Beam length", true); Check(TowerLegCapacityKn, "Permissible tower leg load", true);
             Check(StockEndSetbackMm, "Stock end support-centre setback", true);
             Check(MaximumConcreteEndOverhangMm, "Maximum concrete end overhang");
             if (MaximumConcreteEndOverhangMm > 500) throw new ArgumentException("Concrete end allowance must not exceed 500 mm per end.");
             if (DeflectionLimit == null || !ContainsOption(DeflectionLimit)) throw new ArgumentException("Select a deflection limit.");
-            if (HasAnySlab) Check(SlabStripWidthMm, "Adjacent slab strip width", true);
-            if (HasLeftSlab) ValidateSlab(LeftSlabThickness, "Left slab thickness");
-            if (HasRightSlab) ValidateSlab(RightSlabThickness, "Right slab thickness");
+            if (HasAnySlab && !IsTransferMode) Check(SlabStripWidthMm, "Adjacent slab strip width", true);
+            if (HasLeftSlab && !IsNetworkMode) ValidateSlab(LeftSlabThickness, "Left slab thickness");
+            if (HasRightSlab && !IsNetworkMode) ValidateSlab(RightSlabThickness, "Right slab thickness");
             if (UseCustomLoads) { Check(CustomLiveLoad, "Placing + working live load"); Check(CustomFormworkLoad, "Formwork load"); }
-            double left = HasLeftSlab ? AreaLoad(LeftSlabThickness) * SlabStripWidthMm / 1000 : 0;
-            double right = HasRightSlab ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;
+            double left = HasLeftSlab && !IsTransferMode ? AreaLoad(LeftSlabThickness) * SlabStripWidthMm / 1000 : 0;
+            double right = HasRightSlab && !IsTransferMode ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;
             var input = new TowerInput { LengthMm = BeamLengthMm, LegCapacityKn = TowerLegCapacityKn, DeflectionLimitMm = DeflectionLimit.Millimetres, DeflectionDenominator = DeflectionLimit.Denominator,
                 Exclude600Standalone = Exclude600Standalone, MaximumConcreteEndOverhangMm = MaximumConcreteEndOverhangMm, StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
-                TotalLineLoad = AreaLoad(Depth) * Width / 1000 + left + right,
-                TransverseLoadMoment = (right - left) * (Width + (HasAnySlab ? SlabStripWidthMm : 0)) / 2000 };
+                TotalLineLoad = IsNetworkMode ? 0 : AreaLoad(Depth) * Width / 1000 + left + right,
+                TransverseLoadMoment = IsTransferMode ? 0 : (right - left) * (Width + (HasAnySlab ? SlabStripWidthMm : 0)) / 2000 };
+            if(IsNetworkMode) { input.Network=CreateNetworkInput(); input.Network.Validate(input); input.TotalLineLoad=input.Network.AreaLoad(input.Network.Beams[0].DepthMm)*input.Network.Beams[0].WidthMm/1000; }
+            else if (IsTransferMode)
+            {
+                if (HasLeftSlab) Check(LeftSlabBayMm, "Left clear slab bay", true);
+                if (HasRightSlab) Check(RightSlabBayMm, "Right clear slab bay", true);
+                input.TransferredSlab = new TransferredSlabInput { BeamWidthMm=Width, BeamLineLoadKnM=AreaLoad(Depth)*Width/1000, UpperSpacingMm=UpperSupportSpacingMm,
+                    LeftBayMm=HasLeftSlab ? LeftSlabBayMm : 0, RightBayMm=HasRightSlab ? RightSlabBayMm : 0, LeftAreaLoadKnM2=HasLeftSlab ? AreaLoad(LeftSlabThickness) : 0, RightAreaLoadKnM2=HasRightSlab ? AreaLoad(RightSlabThickness) : 0 };
+                input.TransferredSlab.Validate(input);
+            }
             Check(input.TotalLineLoad, "Calculated line load", true); Check(Math.Abs(input.TransverseLoadMoment), "Transverse load moment");
             return input;
         }
@@ -66,10 +75,11 @@ namespace EngineeringDashboard
             try
             {
                 var input = CreateTowerInput();
-                var result = await Task.Run(() => TowerOptimizer.Optimize(input));
+                TransferNetworkResult networkResult=null;
+                var result = await Task.Run(() => { if(input.Network==null)return TowerOptimizer.Optimize(input);networkResult=TransferNetworkOptimizer.Optimize(input,input.Network);return networkResult.Beams[0]; });
                 if (revision != towerRevision || !UseTowers) return;
-                TowerResult = result; LeftLineLoad = result.LeftLineLoad; RightLineLoad = result.RightLineLoad;
-                TotalLineLoad = input.TotalLineLoad; LimitingFactor = result.Governing;
+                NetworkResult=networkResult;SelectedNetworkBeam=0;TowerResult = result; LeftLineLoad = result.LeftLineLoad; RightLineLoad = result.RightLineLoad;
+                TotalLineLoad = result.LeftLineLoad + result.RightLineLoad; LimitingFactor = result.Governing;
                 IsCalculationValid = true; WarningMessage = "";
             }
             catch (ArgumentException ex) { if (revision == towerRevision) WarningMessage = ex.Message; }
@@ -77,6 +87,7 @@ namespace EngineeringDashboard
         }
         private void NotifyTower()
         {
+            NotifyTransfer();
             foreach (string name in new[] { nameof(IsOptimizing), nameof(CanOptimizeTowers), nameof(CanImport), nameof(ShowPropResults), nameof(ShowTowerResults), nameof(TowerSummary), nameof(TowerSchedule), nameof(TowerStockSchedule), nameof(TowerSearchNote), nameof(TowerResult), nameof(WarningMessage), nameof(PrimaryLineSpacingMm), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(LimitingFactor), nameof(IsCalculationValid) }) OnPropertyChanged(name);
         }
     }

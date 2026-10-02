@@ -12,6 +12,9 @@ namespace EngineeringDashboard
     {
         private BeamCalculatorViewModel observedModel;
         private bool refreshingValidation;
+        private int diagramBeam=-1;
+        private void AddBeamBay_Click(object sender,RoutedEventArgs e) {if(observedModel==null)return;observedModel.UseBeamNetwork=true;observedModel.AddNetworkBay();}
+        private void RemoveBeamBay_Click(object sender,RoutedEventArgs e)=>observedModel?.RemoveNetworkBay();
         internal TowerDiagramWindow TowerDiagrams { get; private set; }
         private void PickProps_Click(object sender, RoutedEventArgs e) => SelectSupportSystem(false);
         private void PickTowers_Click(object sender, RoutedEventArgs e) => SelectSupportSystem(true);
@@ -31,6 +34,7 @@ namespace EngineeringDashboard
         private void CloseTowerDiagrams()
         {
             SupportDiagram.IsSelectionEnabled = false;
+            NetworkPlan.IsSelectionEnabled=false;diagramBeam=-1;
             TowerDiagrams?.Close(); TowerDiagrams = null;
             SupportDiagram.SelectMember(-1, 0, -1);
         }
@@ -38,11 +42,21 @@ namespace EngineeringDashboard
         {
             if (!TryGetValidCalculation(out var vm) || !vm.UseTowers || vm.TowerResult == null) return;
             SupportDiagram.IsSelectionEnabled = true;
-            DiagramCaption.Text = "Click an H20 pair in the plan to show its diagrams.";
-            TowerPlanScroll.BringIntoView();
+            NetworkPlan.IsSelectionEnabled=vm.IsNetworkMode;
+            DiagramCaption.Text = "Click a primary pair in plan, or a single secondary H20 in section.";
+            if(vm.IsNetworkMode)NetworkPlanScroll.BringIntoView();else TowerPlanScroll.BringIntoView();
         }
         private void InitializeUi()
         {
+            NetworkPlan.MemberSelected+=(beam,run,line)=>
+            {
+                if(!NetworkPlan.IsSelectionEnabled || !TryGetValidCalculation(out var vm) || vm.NetworkResult==null)return;
+                if(diagramBeam!=beam) {TowerDiagrams?.Close();TowerDiagrams=null;}
+                vm.SelectNetworkBeam(beam);diagramBeam=beam;NetworkPlan.SelectMember(beam,run,line);
+                bool opening=TowerDiagrams==null;
+                if(opening) {TowerDiagrams=new TowerDiagramWindow(vm);TowerDiagrams.Closed+=(s,e)=> {TowerDiagrams=null;diagramBeam=-1;NetworkPlan.SelectMember(-1,-1,0);};if(IsVisible)TowerDiagrams.Owner=this;}
+                TowerDiagrams.SelectMember(run,line,-1);if(opening)TowerDiagrams.Show();
+            };
             SupportDiagram.MemberSelected += (run, line, member) => {
                 if (!SupportDiagram.IsSelectionEnabled || !TryGetValidCalculation(out var vm) || !vm.UseTowers) return;
                 bool opening = TowerDiagrams == null;
@@ -70,7 +84,7 @@ namespace EngineeringDashboard
         private void ModelChanged(object sender, PropertyChangedEventArgs e)
         {
             if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) { UpdateDiagram(); if (!observedModel.IsCalculationValid) CloseTowerDiagrams(); }
-            if(e.PropertyName == nameof(BeamCalculatorViewModel.HasLeftSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.HasRightSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.UseCustomLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseTowers))
+            if(e.PropertyName == nameof(BeamCalculatorViewModel.HasLeftSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.HasRightSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.UseCustomLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseTowers) || e.PropertyName == nameof(BeamCalculatorViewModel.TransferSlabLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseBeamNetwork))
                 Dispatcher.BeginInvoke(new Action(RefreshInputValidity), DispatcherPriority.DataBind);
         }
         private void InputValidation_Error(object sender, ValidationErrorEventArgs e)
@@ -81,12 +95,11 @@ namespace EngineeringDashboard
         }
         private static IEnumerable<TextBox> TextInputs(DependencyObject parent)
         {
-            foreach(object item in LogicalTreeHelper.GetChildren(parent))
-                if(item is DependencyObject child)
-                {
-                    if(child is TextBox box) yield return box;
-                    foreach(var descendant in TextInputs(child)) yield return descendant;
-                }
+            var visited=new HashSet<DependencyObject>();var found=new List<TextBox>();Action<DependencyObject> visit=null;
+            visit=node=> {if(node==null || !visited.Add(node))return;if(node is TextBox box)found.Add(box);
+                foreach(object item in LogicalTreeHelper.GetChildren(node))if(item is DependencyObject child)visit(child);
+                if(node is System.Windows.Media.Visual || node is System.Windows.Media.Media3D.Visual3D)for(int i=0;i<System.Windows.Media.VisualTreeHelper.GetChildrenCount(node);i++)visit(System.Windows.Media.VisualTreeHelper.GetChild(node,i));};
+            visit(parent);return found;
         }
         private void RefreshInputValidity()
         {
@@ -105,6 +118,7 @@ namespace EngineeringDashboard
         private void UpdateDiagram()
         {
             SupportDiagram.SetModel(observedModel);
+            NetworkPlan.SetResult(observedModel?.NetworkResult);
             TowerPlanScroll.ScrollToLeftEnd();
             DiagramCaption.Text = observedModel == null || !observedModel.IsCalculationValid ? "Enter valid dimensions to show the support arrangement."
                 : observedModel.UseTowers ? $"Plan view · {observedModel.BeamLengthMm:0.###} mm beam · {observedModel.TowerResult.LegCount} legs\nP labels: H20 stock pieces · dotted: free member breaks\nSolid: frames · dashed: cross sides · gaps measured between leg planes"
@@ -120,7 +134,10 @@ namespace EngineeringDashboard
         {
             if(!TryGetValidCalculation(out var vm)) throw new ArgumentException("Correct the inputs before saving or exporting.");
             var record = CalculationFiles.Capture("Beam", vm, FileInputs);
+            foreach (var field in CalculationFiles.Capture("Beam", vm, "TransferSlabLoads,UpperSupportSpacingMm,LeftSlabBayMm,RightSlabBayMm").Inputs) record.Inputs.Add(field);
             record.Inputs.Add(CalculationFiles.Field("UseTowers", vm.UseTowers));
+            record.Inputs.Add(CalculationFiles.Field("UseBeamNetwork",vm.UseBeamNetwork));
+            if(vm.NetworkBeams.Count>=2)record.Inputs.Add(CalculationFiles.Field("NetworkConfigurationXml",vm.NetworkConfigurationXml));
             record.Inputs.Add(CalculationFiles.Field("BeamLengthMm", vm.BeamLengthMm));
             record.Inputs.Add(CalculationFiles.Field("TowerLegCapacityKn", vm.TowerLegCapacityKn));
             record.Inputs.Add(CalculationFiles.Field("StockLengthsText", vm.StockLengthsText));
@@ -146,6 +163,8 @@ namespace EngineeringDashboard
             var target=(BeamCalculatorViewModel)DataContext;
             CalculationFiles.Apply(record,"Beam",target,FileInputs);
             target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
+            target.TransferSlabLoads=candidate.TransferSlabLoads; target.UpperSupportSpacingMm=candidate.UpperSupportSpacingMm; target.LeftSlabBayMm=candidate.LeftSlabBayMm; target.RightSlabBayMm=candidate.RightSlabBayMm;
+            target.UseBeamNetwork=candidate.UseBeamNetwork;if(candidate.NetworkBeams.Count>=2)target.NetworkConfigurationXml=candidate.NetworkConfigurationXml;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
             target.Exclude600Standalone = candidate.Exclude600Standalone; target.MaximumConcreteEndOverhangMm = candidate.MaximumConcreteEndOverhangMm; target.StockLengthsText = candidate.StockLengthsText; target.StockEndSetbackMm = candidate.StockEndSetbackMm;
             foreach(var box in TextInputs(this)) box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
@@ -154,6 +173,9 @@ namespace EngineeringDashboard
         }
         private static void RestoreTowerFields(CalculationRecord record, BeamCalculatorViewModel vm)
         {
+            foreach (string field in new[] { "TransferSlabLoads", "UpperSupportSpacingMm", "LeftSlabBayMm", "RightSlabBayMm" })
+                if (record.Inputs.Any(f=>f.Name==field)) CalculationFiles.Apply(record,"Beam",vm,field);
+            foreach(string field in new[] {"UseBeamNetwork","NetworkConfigurationXml"})if(record.Inputs.Any(f=>f.Name==field))CalculationFiles.Apply(record,"Beam",vm,field);
             vm.Exclude600Standalone = false;
             if (record.Inputs.Any(f => f.Name == "Exclude600Standalone")) CalculationFiles.Apply(record, "Beam", vm, "Exclude600Standalone");
             vm.MaximumConcreteEndOverhangMm = 0;
@@ -173,12 +195,14 @@ namespace EngineeringDashboard
             if (vm.UseTowers)
             {
                 var tower = vm.TowerResult;
-                var fields = new[] { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("ConcreteEndOverhangMm", tower.ConcreteEndOverhangMm), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis),
+                var fields = new List<CalculationField> { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("ConcreteEndOverhangMm", tower.ConcreteEndOverhangMm), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis),
                     CalculationFiles.Field("LegUtilizationPercent", tower.MaxLegKn / vm.TowerLegCapacityKn * 100), CalculationFiles.Field("SupportSchedule", tower.Schedule),
                     CalculationFiles.Field("PrimaryStockSchedule", tower.StockSchedule), CalculationFiles.Field("TotalPrimaryH20Count", tower.StockPlan.TotalH20Count),
                     CalculationFiles.Field("SearchStatus", vm.TowerSearchNote), CalculationFiles.Field("TotalLineLoadKnPerM", vm.TotalLineLoad),
                     CalculationFiles.Field("LeftLineLoadKnPerM", vm.LeftLineLoad), CalculationFiles.Field("RightLineLoadKnPerM", vm.RightLineLoad) };
-                return CalculationFiles.Report("Beam — shoring towers", record.Inputs, fields, BeamCalculatorViewModel.TowerAssumptions);
+                if(tower.Transfer != null) {fields.Add(CalculationFiles.Field("TransferredSlabSummary",tower.Transfer.Summary));fields.Add(CalculationFiles.Field("EstimatedSlabSoffitMovementMm",tower.Transfer.SlabMovementMm));fields.Add(CalculationFiles.Field("ShutterLoadKn",tower.Transfer.ShutterLoadKn));}
+                if(vm.NetworkResult!=null) {fields.Add(CalculationFiles.Field("NetworkSummary",vm.NetworkResult.Summary));fields.Add(CalculationFiles.Field("AllBeamSchedules",vm.NetworkResult.Schedule));fields.Add(CalculationFiles.Field("TotalNetworkH20LengthMm",vm.NetworkResult.TimberMm));fields.Add(CalculationFiles.Field("TotalNetworkSlabLoadKn",vm.NetworkResult.SlabLoadKn));}
+                return CalculationFiles.Report("Beam — shoring towers", record.Inputs, fields, vm.TowerCalculationBasis);
             }
             var results=CalculationFiles.Capture("Beam",vm,"MaximumPropSpacing,PrimaryBeamCantilever,MaximumPropLoad,PropCapacityKn,PrimaryDeflectionMm,PrimaryDeflectionUtilization,PropUtilizationPercent,PropExtensionMm,PropLookupExtensionMm,PrimaryLineSpacingMm,LeftLineLoad,RightLineLoad,TotalLineLoad,LimitingFactor,IsCalculationValid");
             return CalculationFiles.Report("Beam",record.Inputs,results.Inputs,

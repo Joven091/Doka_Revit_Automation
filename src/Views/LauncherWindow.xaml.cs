@@ -9,6 +9,7 @@ namespace EngineeringDashboard
         // Static ViewModels to persist state across command executions
         private static FlexCalculatorViewModel _flexViewModel;
         private static BeamCalculatorViewModel _beamViewModel;
+        private static D3SlabCalculatorViewModel _d3SlabViewModel;
         private static Dome.MainViewModel _domeViewModel;
 
         public LauncherWindow()
@@ -37,31 +38,30 @@ namespace EngineeringDashboard
 
         private void BtnFlexCalculator_Click(object sender, RoutedEventArgs e)
         {
-            // Hide the launcher
-            this.Hide();
-
-            if (_flexViewModel == null)
+            Hide();
+            try
             {
-                _flexViewModel = new FlexCalculatorViewModel();
+                while (true)
+                {
+                    var choice = new SlabSystemWindow { Owner = this };
+                    if (choice.ShowDialog() != true) break;
+                    if (choice.UseD3)
+                    {
+                        if (_d3SlabViewModel == null) _d3SlabViewModel = new D3SlabCalculatorViewModel();
+                        var d3 = new D3SlabCalculatorWindow(_d3SlabViewModel) { Owner = this };
+                        d3.ShowDialog(); if (d3.ChangeSystemRequested) continue; break;
+                    }
+                    if (_flexViewModel == null) _flexViewModel = new FlexCalculatorViewModel();
+                    var flex = new FlexCalculatorWindow { ViewModel = _flexViewModel, Owner = this };
+                    bool? result = flex.ShowDialog();
+                    if (flex.ChangeSystemRequested) continue;
+                    if (result == true) { closingAfterImport = true; Close(); return; }
+                    break;
+                }
             }
-
-            FlexCalculatorWindow flexWindow = new FlexCalculatorWindow();
-            flexWindow.ViewModel = _flexViewModel;
-
-            bool? result = flexWindow.ShowDialog();
-
-            if (result == true)
-            {
-                // Operation completed successfully and user wants to stop, close launcher
-                this.Close();
-            }
-            else
-            {
-                // Show the launcher again once the calculator is closed normally
-                this.Show();
-            }
+            finally { if (!closingAfterImport) Show(); }
         }
-
+        private bool closingAfterImport;
         private void BtnBeamCalculator_Click(object sender, RoutedEventArgs e)
         {
             // Hide the launcher
