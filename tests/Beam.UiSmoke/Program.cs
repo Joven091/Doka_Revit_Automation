@@ -280,7 +280,9 @@ internal static class Program
    Check(networkPlan.SelectAt(new Point(customHit.Item1.X+customHit.Item1.Width/2,customHit.Item1.Y+customHit.Item1.Height/2)),"custom slab H20 can be selected directly for diagrams");Pump();
    Check(window.TowerDiagrams.SelectedTransferMember.LengthMm==2175 && window.TowerDiagrams.SelectedTransferMember.H20Count==1,"custom slab diagrams use actual length and single H20 capacity");
    if(args.Length>0){var bitmap=new RenderTargetBitmap((int)Math.Ceiling(networkPlan.ActualWidth),(int)Math.Ceiling(networkPlan.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(networkPlan);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"custom-plan.png")))encoder.Save(file);File.WriteAllText(Path.ChangeExtension(args[0],"custom.txt"),vm.NetworkResult.Summary+"\n\n"+vm.NetworkResult.Schedule);}
+   var customWorkspaceRecord=window.CaptureCalculation();
    window.RestoreCalculation(networkSaved);Pump();Check(!vm.HasTowerFailure && failureExpander.Visibility==Visibility.Collapsed,"restoring inputs clears stale failure details");Optimize();Render();Check(vm.IsCalculationValid && !vm.HasTowerFailure,"successful retry hides failure report");
+   checks+=WorkspaceTests.Run(window,vm,customWorkspaceRecord,args.Length>0 ? args[0] : null);
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }
   catch(Exception ex){Console.Error.WriteLine(ex);window?.Close();return 1;}

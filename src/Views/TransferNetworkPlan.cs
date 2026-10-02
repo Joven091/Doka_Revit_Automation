@@ -14,6 +14,7 @@ namespace EngineeringDashboard
         private TransferNetworkResult result;
         private int selectedBeam=-1,selectedRun=-1,selectedLine;
         public bool IsSelectionEnabled {get;set;}
+        public bool SectionOnly {get;set;}
         public event Action<int,int,int> MemberSelected;
         internal readonly List<Tuple<Rect,int,int,int>> MemberTargets=new List<Tuple<Rect,int,int,int>>();
         public int DrawnTowerLegCount {get;private set;}
@@ -24,8 +25,8 @@ namespace EngineeringDashboard
         public void SetResult(TransferNetworkResult value)
         {
             result=value;
-            MinWidth=result==null ? 0 : Math.Max(1000,80+result.Beams.Max(b=>b.LengthMm/b.StockPlan.Pieces.Min(p=>p.StockLengthMm)*160));
-            Height=result==null ? 0 : Centres().Last()+result.Beams.Last().WidthMm*.03+505;
+            MinWidth=result==null ? 0 : SectionOnly ? 1000 : Math.Max(1000,80+result.Beams.Max(b=>b.LengthMm/b.StockPlan.Pieces.Min(p=>p.StockLengthMm)*160));
+            Height=result==null ? 0 : SectionOnly ? 420 : Centres().Last()+result.Beams.Last().WidthMm*.03+505;
             InvalidateMeasure();InvalidateVisual();
         }
         public void SelectMember(int beam,int run,int line) {selectedBeam=beam;selectedRun=run;selectedLine=line;InvalidateVisual();}
@@ -55,6 +56,7 @@ namespace EngineeringDashboard
         {
             base.OnRender(dc);MemberTargets.Clear();DrawnTowerLegCount=DrawnPrimaryLengthCount=DrawnSecondaryLengthCount=DrawnCrossingBeamCount=0;if(result==null || ActualWidth<100)return;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));
+            if(SectionOnly) {Section(dc,55);return;}
             Label(dc,$"mm · primary P = 2×H20/line · secondaries = single H20 @ {result.Input.UpperSpacingMm:0}",30,8);
             Label(dc,"Red: braced bays · grey: gaps · beam W×D · slab t = thickness · transverse view schematic",30,27);
             var ys=Centres();double scale=(ActualWidth-80)/result.Beams[0].LengthMm;Func<double,double> xx=x=>40+x*scale;
