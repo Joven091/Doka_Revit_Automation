@@ -54,12 +54,13 @@ internal static class Program
    vm.HasLeftSlab=true;Pump();Enter("LeftSlabThickness","0");Check(!vm.IsCalculationValid,"zero checked slab");Enter("LeftSlabThickness","200");vm.HasRightSlab=true;vm.NumberOfProps="3";Render();
    Check(diagram.DrawnPropCount==6,"three props per line");Check(diagram.DrawnSlabCount==2,"both slabs shown");
    vm.HasLeftSlab=false;Render();Check(diagram.DrawnSlabCount==1,"unchecked slab removed");vm.HasRightSlab=false;
-   vm.NumberOfProps="4+";var combo=Find<ComboBox>(window).Single(c=>c.SelectedItem is BeamDeflectionOption);Check(combo.Items.Count==3,"typed deflection options loaded");combo.SelectedIndex=2;Pump();Check(vm.DeflectionLimit.Millimetres==10,"10mm selection maps numerically");Check(vm.MaximumPropSpacing==3000,"10mm spacing");
+   vm.NumberOfProps="4+";var combo=Find<ComboBox>(window).Single(c=>c.SelectedItem is BeamDeflectionOption);Check(combo.Items.Count==3,"typed deflection options loaded");combo.SelectedIndex=2;Pump();Check(vm.DeflectionLimit.Denominator==270,"L/270 selection maps numerically");Check(vm.PrimaryDeflectionUtilization<=1,"ratio criteria control rounded spacing");
    Thread.CurrentThread.CurrentCulture=CultureInfo.GetCultureInfo("de-DE");vm.Width=701;Render();Check(diagram.DrawnPropCount==8,"decimal comma vector diagram");Check(vm.IsCalculationValid,"decimal comma calculation");
    var props=Find<ComboBox>(window).Single(c=>c.SelectedItem is BeamPropOption);Check(props.Items.Count==BeamPropOption.All.Count,"prop dropdown shares catalog");props.SelectedItem=BeamPropOption.All.First(p=>p.CapacityKey=="DokaFit Prop 300 at top");Pump();Check(vm.SelectedProp.CapacityKey=="DokaFit Prop 300 at top","prop selection binding");Enter("FloorHeight","9999");Check(!vm.IsCalculationValid&&!import.IsEnabled,"unsupported extension blocks import");Enter("FloorHeight","3000");Check(vm.IsCalculationValid,"floor height recovery");
    Thread.CurrentThread.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
    vm.Width=200;vm.HasLeftSlab=true;vm.HasRightSlab=true;vm.NumberOfProps="3";var picture=Render();
    vm.SlabStripWidthMm=450;Pump(); var saved=window.CaptureCalculation();double savedSpacing=vm.MaximumPropSpacing,savedLoad=vm.MaximumPropLoad;
+   Check(saved.Inputs.Any(f=>f.Name=="DeflectionCriterion"&&f.Value=="L/270") && !saved.Inputs.Any(f=>f.Name=="DeflectionLimitMm"),"ratio saved by criterion without fake fixed limit");
    string recordPath=Path.GetTempFileName();
    try { CalculationFiles.Write(recordPath,saved);vm.SlabStripWidthMm=150;window.RestoreCalculation(CalculationFiles.Read<CalculationRecord>(recordPath));Pump();Check(vm.SlabStripWidthMm==450 && vm.MaximumPropSpacing==savedSpacing && Math.Abs(vm.MaximumPropLoad-savedLoad)<1e-9,"beam file roundtrip"); }
    finally { File.Delete(recordPath); }
@@ -117,6 +118,7 @@ internal static class Program
     Check(Math.Abs(charts.Analysis.Shear-selected.ShearKn*ratio)<1e-8,"pair diagram shear matches optimizer");
     Check(Math.Abs(charts.Analysis.DeflectionMm-selected.DeflectionMm*ratio)<1e-8,"pair diagram retains optimizer deflection");
    }
+   Check(Find<TextBlock>(charts).Any(t=>t.Text.StartsWith("Deflection (mm)")&&t.Text.Contains("L/270")&&t.Text.Contains("utilization")),"diagram shows selected ratio and utilization");
    Check(Find<TextBlock>(charts).Any(t=>t.Text.StartsWith("Shear (kN)") && t.Text.Contains("22.000")),"pair shear limit shown as 22 kN");
    Check(Find<TextBlock>(charts).Any(t=>t.Text.StartsWith("Moment (kNm)") && t.Text.Contains("10.000")),"pair moment limit shown as 10 kNm");
    Check(!diagram.SelectAt(new Point(-5,-5)),"empty plan area does not select a member");
@@ -159,6 +161,16 @@ internal static class Program
    Check(((Grid)reopened.FindName("SupportSystemPicker")).Visibility==Visibility.Collapsed,"reopening retained model preserves chosen system");reopened.Close();
    vm.HasSelectedSupportSystem=false;window.RestoreCalculation(old);Pump();
    Check(vm.HasSelectedSupportSystem && picker.Visibility==Visibility.Collapsed,"loading saved calculation selects its support system");
+   foreach(string fixedLimit in new[]{"3","5","10"}) {
+    var legacy=window.CaptureCalculation();legacy.Inputs.RemoveAll(f=>f.Name=="DeflectionCriterion" || f.Name=="DeflectionLimitMm");legacy.Inputs.Add(CalculationFiles.Field("DeflectionLimitMm",double.Parse(fixedLimit,CultureInfo.InvariantCulture)));
+    window.RestoreCalculation(legacy);Pump();Check(vm.DeflectionLimit.Denominator==0 && vm.DeflectionLimit.Millimetres==double.Parse(fixedLimit,CultureInfo.InvariantCulture),"legacy fixed criterion preserved");
+    Check(combo.Items.Count==4 && combo.SelectedItem==vm.DeflectionLimit,"legacy criterion visible without losing selection");
+    var roundtrip=window.CaptureCalculation();window.RestoreCalculation(roundtrip);Pump();Check(vm.DeflectionLimit.Denominator==0,"legacy fixed re-save remains fixed");
+   }
+   combo.SelectedIndex=1;Pump();Check(vm.DeflectionLimit.Label=="L/350"&&combo.Items.Count==3,"switching legacy to ratio removes legacy-only option");
+   var invalidCriterion=window.CaptureCalculation();invalidCriterion.Inputs.Single(f=>f.Name=="DeflectionCriterion").Value="L/0";
+   bool criterionRejected=false;try {window.RestoreCalculation(invalidCriterion);}catch(ArgumentException){criterionRejected=true;}
+   Check(criterionRejected&&vm.DeflectionLimit.Label=="L/350","invalid saved criterion leaves current calculation intact");
    vm.UseTowers=true;Pump();Check(vm.TowerResult==null && !vm.IsCalculationValid,"switching support modes invalidates old results");
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }

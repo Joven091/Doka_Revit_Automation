@@ -6,7 +6,7 @@ The calculator also provides [shoring tower optimization](beam-towers.md), with 
 
 Active dimensions must be positive and finite; active slab thickness cannot exceed total beam depth. Custom live/formwork allowances may be zero but cannot be negative or non-finite. Inactive optional fields do not contribute loads or block the calculation. Invalid numeric values and WPF text-conversion errors clear results and disable import. The import handler independently checks validity before any model access.
 
-Deflection choices carry numeric values (3, 5, 10 mm); display text does not select the calculation branch.
+Deflection choices match Slab: L/500, L/350 (default), and L/270. The numeric denominator controls the calculation. Each H20 support span and end overhang uses its own length; neither concrete beam length nor stock length defines L. Overhang checks include support rotation and exact displacement extrema. Legacy saved 3, 5 and 10 mm limits remain fixed and appear as a legacy option until the user selects a ratio.
 
 ## Load distribution
 
@@ -91,3 +91,9 @@ Shared free-prop catalog corrected to the published revisions in [prop-capacity-
 ## Records
 
 Save/load uses versioned .dokacalc input files, with invariant numeric values, prop configuration and numeric deflection selection. Loads are validated on a separate model before the retained model is changed. Export report produces standalone printable HTML containing inputs, results, governing spacing criterion, prop configuration/capacity and the adopted assumptions. Invalid active inputs block saving/report export. The 300 mm adjacent slab strip is editable; its width changes both line load and eccentricity, and the schematic follows it.
+
+## Span-based deflection criteria
+
+Both Dokaflex and D3 Shoring System use L/500, L/350 (default) or L/270, matching the slab calculator's selectable criteria. L means each H20 support span. End overhangs use their own length divided by the same denominator, with support rotation included. The exact peak displacement is checked within each region, including the tip; this also catches an interior overhang maximum if it exceeds the tip displacement. Mixed tower spans are checked separately, so a longer stock length cannot relax a shorter span's limit. Governing utilization uses the largest local peak/allowable ratio. Tower diagrams show separate dashed limits for each region, and stock schedules give the governing deflection and allowance. These are selected calculation criteria, not declarations of a mandatory project standard.
+
+Prop spacing continues to use the existing strength, spacing and capacity limits, and tests the rounded layout's exact deflection for two or three supports, or four through twelve supports for the existing 4+ selection. Saved calculations store the selected criterion explicitly. Older fixed-mm records retain their original check rather than silently converting to a ratio. Selecting a different criterion invalidates a tower layout and requires optimization again.

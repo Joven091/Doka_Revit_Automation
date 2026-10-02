@@ -173,8 +173,8 @@
                 </ContentControl>
                 <ContentControl Grid.Column="2" IsTabStop="False">
                   <StackPanel>
-                    <TextBlock Text="Deflection limit"/>
-                    <ComboBox AutomationProperties.Name="Deflection limit" ItemsSource="{Binding DeflectionOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" ToolTip="{Binding DeflectionLimit.Label}">
+                    <TextBlock Text="Deflection criterion"/>
+                    <ComboBox AutomationProperties.Name="Deflection criterion" ItemsSource="{Binding DeflectionOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" ToolTip="{Binding DeflectionCriteriaNote}">
                       <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextWrapping="Wrap"/></DataTemplate></ComboBox.ItemTemplate>
                     </ComboBox>
                   </StackPanel>
@@ -243,6 +243,7 @@
                 <TextBlock Text="Prop utilization" Margin="0,0,12,0"/>
                 <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding PropUtilizationPercent, StringFormat='{}{0:F1}%'}"/>
               </Grid>
+              <TextBlock Text="{Binding PrimaryDeflectionSummary}" TextWrapping="Wrap" Margin="0,6,0,0"/>
             </StackPanel>
           </Border>
           <Border x:Name="TowerResultsBorder" Visibility="{Binding ShowTowerResults, Converter={StaticResource BoolToVis}}" Background="#FFF6D6" BorderBrush="#D4AA00" BorderThickness="5,0,0,0" Padding="16" Margin="0,0,0,12">

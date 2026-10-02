@@ -12,6 +12,18 @@ namespace EngineeringDashboard
         public double Moment { get; private set; }
         public double Shear { get; private set; }
         public double DeflectionMm { get; private set; }
+        public sealed class DeflectionRegion
+        {
+            public double StartMm { get; internal set; }
+            public double EndMm { get; internal set; }
+            public double PeakMm { get; internal set; }
+            public bool IsOverhang { get; internal set; }
+            public double AllowableMm(double fixedMm, int denominator) => denominator == 0 ? fixedMm : (EndMm - StartMm) / denominator;
+        }
+        private readonly List<DeflectionRegion> regions = new List<DeflectionRegion>();
+        public IReadOnlyList<DeflectionRegion> DeflectionRegions => regions.AsReadOnly();
+        public double DeflectionUtilization(double fixedMm, int denominator) => regions.Max(x => x.PeakMm / x.AllowableMm(fixedMm, denominator));
+        public DeflectionRegion GoverningDeflection(double fixedMm, int denominator) => regions.OrderByDescending(x => x.PeakMm / x.AllowableMm(fixedMm, denominator)).First();
         private double length, load, ei, firstSlope, lastSlope, leftEndLoad, rightEndLoad;
         private double[] supports, moments;
         // Signed response: sagging moment positive; upward displacement positive.
@@ -80,15 +92,20 @@ namespace EngineeringDashboard
                 Func<double, double> y = x => c * x + ml * x * x / 2 + v * Math.Pow(x, 3) / 6 - load * Math.Pow(x, 4) / 24;
                 var cuts = new List<double> { 0, l }; double disc = v * v + 2 * load * ml;
                 if (disc >= 0) foreach (double x in new[] { (v - Math.Sqrt(disc)) / load, (v + Math.Sqrt(disc)) / load }) if (x > 0 && x < l) cuts.Add(x);
-                maxY = Math.Max(maxY, Extrema(slope, y, cuts));
+                double regionPeak = Extrema(slope, y, cuts);
+                maxY = Math.Max(maxY, regionPeak);
+                result.regions.Add(new DeflectionRegion { StartMm = supports[i] * 1000, EndMm = supports[i + 1] * 1000, PeakMm = regionPeak / ei * 1000 });
                 if (i == 0) firstSlope = c; if (i == n - 2) lastSlope = slope(l);
             }
             result.Reactions[0] += load * a + leftEndLoad; result.Reactions[n - 1] += load * b + rightEndLoad;
-            maxY = Math.Max(maxY, Extrema(x => firstSlope - load * (x * x * x / 6 + a * x * x / 2 + a * a * x / 2) - leftEndLoad * (x * x / 2 + a * x),
-                x => firstSlope * x - load * (Math.Pow(x, 4) / 24 + a * Math.Pow(x, 3) / 6 + a * a * x * x / 4) - leftEndLoad * (x * x * x / 6 + a * x * x / 2), new List<double> { -a, 0 }));
-            maxY = Math.Max(maxY, Extrema(x => lastSlope - load * (b * b * x / 2 - b * x * x / 2 + x * x * x / 6) - rightEndLoad * (b * x - x * x / 2),
-                x => lastSlope * x - load * (b * b * x * x / 4 - b * Math.Pow(x, 3) / 6 + Math.Pow(x, 4) / 24) - rightEndLoad * (b * x * x / 2 - x * x * x / 6), new List<double> { 0, b }));
-            result.DeflectionMm = maxY / ei * 1000;
+            double leftPeak = Extrema(x => firstSlope - load * (x * x * x / 6 + a * x * x / 2 + a * a * x / 2) - leftEndLoad * (x * x / 2 + a * x),
+                x => firstSlope * x - load * (Math.Pow(x, 4) / 24 + a * Math.Pow(x, 3) / 6 + a * a * x * x / 4) - leftEndLoad * (x * x * x / 6 + a * x * x / 2), new List<double> { -a, 0 });
+            double rightPeak = Extrema(x => lastSlope - load * (b * b * x / 2 - b * x * x / 2 + x * x * x / 6) - rightEndLoad * (b * x - x * x / 2),
+                x => lastSlope * x - load * (b * b * x * x / 4 - b * Math.Pow(x, 3) / 6 + Math.Pow(x, 4) / 24) - rightEndLoad * (b * x * x / 2 - x * x * x / 6), new List<double> { 0, b });
+            // Overhang displacement includes the rotation of the adjacent supported span.
+            if (a > 1e-10) result.regions.Add(new DeflectionRegion { StartMm = 0, EndMm = a * 1000, PeakMm = leftPeak / ei * 1000, IsOverhang = true });
+            if (b > 1e-10) result.regions.Add(new DeflectionRegion { StartMm = supports[n - 1] * 1000, EndMm = length * 1000, PeakMm = rightPeak / ei * 1000, IsOverhang = true });
+            result.DeflectionMm = Math.Max(maxY, Math.Max(leftPeak, rightPeak)) / ei * 1000;
             result.length = length; result.load = load; result.ei = ei;
             result.supports = (double[])supports.Clone(); result.moments = m;
             result.firstSlope = firstSlope; result.lastSlope = lastSlope;
