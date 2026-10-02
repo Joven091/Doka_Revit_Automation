@@ -7,6 +7,7 @@ namespace EngineeringDashboard
 {
     public sealed class TowerInput
     {
+        public TransferredSlabInput TransferredSlab { get; set; }
         public double LengthMm { get; set; }
         public double LegCapacityKn { get; set; }
         public double TotalLineLoad { get; set; }
@@ -21,6 +22,7 @@ namespace EngineeringDashboard
     }
     public sealed class TowerLayout
     {
+        public TransferredSlabResult Transfer { get; internal set; }
         public double[] PositionsMm { get; internal set; }
         public bool[] Joined { get; internal set; }
         public double WidthMm { get; internal set; }
@@ -33,10 +35,10 @@ namespace EngineeringDashboard
         public double[] RightReactions { get; internal set; }
         public TowerStockPlan StockPlan { get; internal set; }
         public double LegUtilizationPercent => MaxLegKn / LegCapacityKn * 100;
-        public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {StockPlan.TotalH20Count} H20s";
+        public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s";
         public string LegLoadSummary => $"Peak leg: {MaxLegKn:0.00} / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
-        public string CapacityBasis => $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then braced bays, H20 quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
-        public string StockSchedule => StockPlan.Schedule;
+        public string CapacityBasis => Transfer != null ? "Every leg is checked for beam, one-sided and combined slab loading. Search minimizes receiving-beam legs, then total H20 length. Leg values are load-case envelopes." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then braced bays, H20 quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
+        public string StockSchedule => StockPlan.Schedule + (Transfer == null ? "" : "\n" + Transfer.Schedule);
         public int LegCount => PositionsMm.Length * 2;
         public int GroupCount => 1 + Joined.Count(x => !x);
         public int BayCount => Joined.Count(x => x);
@@ -81,6 +83,7 @@ namespace EngineeringDashboard
         public const double PairEI = 2 * 449.8756, PairMoment = 10, PairShear = 22;
         public static TowerLayout Optimize(TowerInput input)
         {
+            if (input?.TransferredSlab != null) return TransferredSlabOptimizer.Optimize(input);
             Validate(input);
             if (input.MaximumConcreteEndOverhangMm == 0) return OptimizeCovered(input);
             // Reachable stock totals; allow only symmetric concrete end overhang, never internal stock gaps.

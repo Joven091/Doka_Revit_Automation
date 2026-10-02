@@ -93,9 +93,21 @@
                   </StackPanel>
                 </ContentControl>
               </Grid>
-              <StackPanel Visibility="{Binding HasAnySlab, Converter={StaticResource BoolToVis}}">
+              <CheckBox x:Name="TransferredSlabCheckBox" Content="Transfer slab loads through beam supports" IsChecked="{Binding TransferSlabLoads}" IsEnabled="{Binding CanSelectTransfer}" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
+              <StackPanel IsEnabled="{Binding IsTransferMode}" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Upper support spacing along beam (mm)"/>
+                <TextBox Text="{Binding UpperSupportSpacingMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                <StackPanel IsEnabled="{Binding ShowLeftBay}" Visibility="{Binding ShowLeftBay, Converter={StaticResource BoolToVis}}">
+                  <TextBlock Text="Left clear slab bay (mm)"/><TextBox Text="{Binding LeftSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                </StackPanel>
+                <StackPanel IsEnabled="{Binding ShowRightBay}" Visibility="{Binding ShowRightBay, Converter={StaticResource BoolToVis}}">
+                  <TextBlock Text="Right clear slab bay (mm)"/><TextBox Text="{Binding RightSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Hint}" Text="Matching opposite beam · beam concrete placed first · foot centres ≥250 mm from beam face."/>
+              </StackPanel>
+              <StackPanel Visibility="{Binding ShowSlabStrip, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="Adjacent slab strip width — each checked side (mm)"/>
-                <TextBox x:Name="SlabStripWidthInput" IsEnabled="{Binding HasAnySlab}" Text="{Binding SlabStripWidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                <TextBox x:Name="SlabStripWidthInput" IsEnabled="{Binding ShowSlabStrip}" Text="{Binding SlabStripWidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
               </StackPanel>
               <Expander x:Name="LoadInputsExpander" Margin="0,2,0,0">
                   <Expander.Header><TextBlock><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="Load inputs · default"/><Style.Triggers><DataTrigger Binding="{Binding UseCustomLoads}" Value="True"><Setter Property="Text" Value="Load inputs · custom"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></Expander.Header>
@@ -272,12 +284,14 @@
                 <local:BeamSupportDiagram.Style>
                   <Style TargetType="local:BeamSupportDiagram">
                     <Setter Property="Height" Value="300"/>
-                    <Style.Triggers><DataTrigger Binding="{Binding IsCalculationValid}" Value="False"><Setter Property="Height" Value="0"/></DataTrigger></Style.Triggers>
+                    <Style.Triggers><DataTrigger Binding="{Binding IsTransferMode}" Value="True"><Setter Property="Height" Value="710"/></DataTrigger><DataTrigger Binding="{Binding IsCalculationValid}" Value="False"><Setter Property="Height" Value="0"/></DataTrigger></Style.Triggers>
                   </Style>
                 </local:BeamSupportDiagram.Style>
               </local:BeamSupportDiagram>
               </ScrollViewer>
               <TextBlock x:Name="DiagramCaption" Style="{StaticResource Hint}"/>
+              <TextBlock Text="{Binding TransferSummary}" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0"/>
+              <Expander Header="Transferred load details" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}"><TextBlock Text="{Binding TransferSchedule}" TextWrapping="Wrap"/></Expander>
             </StackPanel>
           </Border>
           <Border Style="{StaticResource Card}">
@@ -329,7 +343,7 @@
                 </StackPanel>
               </Expander>
               <Expander Header="Tower calculation basis" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}">
-                <TextBlock Style="{StaticResource Hint}" Margin="0,10,0,0" Text="{x:Static local:BeamCalculatorViewModel.TowerAssumptions}"/>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,10,0,0" Text="{Binding TowerCalculationBasis}"/>
               </Expander>
             </StackPanel>
           </Border>

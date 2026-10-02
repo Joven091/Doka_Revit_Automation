@@ -70,7 +70,7 @@ namespace EngineeringDashboard
         private void ModelChanged(object sender, PropertyChangedEventArgs e)
         {
             if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) { UpdateDiagram(); if (!observedModel.IsCalculationValid) CloseTowerDiagrams(); }
-            if(e.PropertyName == nameof(BeamCalculatorViewModel.HasLeftSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.HasRightSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.UseCustomLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseTowers))
+            if(e.PropertyName == nameof(BeamCalculatorViewModel.HasLeftSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.HasRightSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.UseCustomLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseTowers) || e.PropertyName == nameof(BeamCalculatorViewModel.TransferSlabLoads))
                 Dispatcher.BeginInvoke(new Action(RefreshInputValidity), DispatcherPriority.DataBind);
         }
         private void InputValidation_Error(object sender, ValidationErrorEventArgs e)
@@ -120,6 +120,7 @@ namespace EngineeringDashboard
         {
             if(!TryGetValidCalculation(out var vm)) throw new ArgumentException("Correct the inputs before saving or exporting.");
             var record = CalculationFiles.Capture("Beam", vm, FileInputs);
+            foreach (var field in CalculationFiles.Capture("Beam", vm, "TransferSlabLoads,UpperSupportSpacingMm,LeftSlabBayMm,RightSlabBayMm").Inputs) record.Inputs.Add(field);
             record.Inputs.Add(CalculationFiles.Field("UseTowers", vm.UseTowers));
             record.Inputs.Add(CalculationFiles.Field("BeamLengthMm", vm.BeamLengthMm));
             record.Inputs.Add(CalculationFiles.Field("TowerLegCapacityKn", vm.TowerLegCapacityKn));
@@ -146,6 +147,7 @@ namespace EngineeringDashboard
             var target=(BeamCalculatorViewModel)DataContext;
             CalculationFiles.Apply(record,"Beam",target,FileInputs);
             target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
+            target.TransferSlabLoads=candidate.TransferSlabLoads; target.UpperSupportSpacingMm=candidate.UpperSupportSpacingMm; target.LeftSlabBayMm=candidate.LeftSlabBayMm; target.RightSlabBayMm=candidate.RightSlabBayMm;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
             target.Exclude600Standalone = candidate.Exclude600Standalone; target.MaximumConcreteEndOverhangMm = candidate.MaximumConcreteEndOverhangMm; target.StockLengthsText = candidate.StockLengthsText; target.StockEndSetbackMm = candidate.StockEndSetbackMm;
             foreach(var box in TextInputs(this)) box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
@@ -154,6 +156,8 @@ namespace EngineeringDashboard
         }
         private static void RestoreTowerFields(CalculationRecord record, BeamCalculatorViewModel vm)
         {
+            foreach (string field in new[] { "TransferSlabLoads", "UpperSupportSpacingMm", "LeftSlabBayMm", "RightSlabBayMm" })
+                if (record.Inputs.Any(f=>f.Name==field)) CalculationFiles.Apply(record,"Beam",vm,field);
             vm.Exclude600Standalone = false;
             if (record.Inputs.Any(f => f.Name == "Exclude600Standalone")) CalculationFiles.Apply(record, "Beam", vm, "Exclude600Standalone");
             vm.MaximumConcreteEndOverhangMm = 0;
@@ -173,12 +177,12 @@ namespace EngineeringDashboard
             if (vm.UseTowers)
             {
                 var tower = vm.TowerResult;
-                var fields = new[] { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("ConcreteEndOverhangMm", tower.ConcreteEndOverhangMm), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis),
+                var fields = new List<CalculationField> { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("ConcreteEndOverhangMm", tower.ConcreteEndOverhangMm), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis),
                     CalculationFiles.Field("LegUtilizationPercent", tower.MaxLegKn / vm.TowerLegCapacityKn * 100), CalculationFiles.Field("SupportSchedule", tower.Schedule),
                     CalculationFiles.Field("PrimaryStockSchedule", tower.StockSchedule), CalculationFiles.Field("TotalPrimaryH20Count", tower.StockPlan.TotalH20Count),
                     CalculationFiles.Field("SearchStatus", vm.TowerSearchNote), CalculationFiles.Field("TotalLineLoadKnPerM", vm.TotalLineLoad),
                     CalculationFiles.Field("LeftLineLoadKnPerM", vm.LeftLineLoad), CalculationFiles.Field("RightLineLoadKnPerM", vm.RightLineLoad) };
-                return CalculationFiles.Report("Beam — shoring towers", record.Inputs, fields, BeamCalculatorViewModel.TowerAssumptions);
+                return CalculationFiles.Report("Beam — shoring towers", record.Inputs, fields, vm.TowerCalculationBasis);
             }
             var results=CalculationFiles.Capture("Beam",vm,"MaximumPropSpacing,PrimaryBeamCantilever,MaximumPropLoad,PropCapacityKn,PrimaryDeflectionMm,PrimaryDeflectionUtilization,PropUtilizationPercent,PropExtensionMm,PropLookupExtensionMm,PrimaryLineSpacingMm,LeftLineLoad,RightLineLoad,TotalLineLoad,LimitingFactor,IsCalculationValid");
             return CalculationFiles.Report("Beam",record.Inputs,results.Inputs,

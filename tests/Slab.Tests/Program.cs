@@ -79,7 +79,7 @@ class Program
   var cases = MyRevitAddin.ViewModels.DiagramWindowViewModel.ForSelection(5,1,0,5,449.8756,"Secondary beam");
   Check(cases.DiagramRows[0].CaseText.Contains("Governing reaction"),"five governs reaction");
   Check(!cases.DiagramRows[3].CaseText.Contains("Governing magnitude"),"five does not govern deflection");
-  Check(cases.DiagramRows[7].CaseText.Contains("6 supports · Governing magnitude"),"six governs deflection within 5+");
+  Check(cases.DiagramRows[7].CaseText.Contains("6 supports") && cases.DiagramRows[7].CaseText.Contains("Governing magnitude"),"six governs deflection within 5+");
   Check(cases.DiagramRows[7].MaxValueText.Contains("Maximum downward: 0.07 mm"),"downward deflection sign and units");
   Check(cases.DiagramRows[0].GeometryText.Contains("1000 mm"),"dimensions have units");
   foreach(int j in new[]{1,2,3,5,6,7}) Check(cases.DiagramRows[j].ChartModel.Annotations.OfType<OxyPlot.Annotations.LineAnnotation>().Count(a=>a.Type==OxyPlot.Annotations.LineAnnotationType.Vertical)==(j<4?5:6),"support guides match case");

@@ -172,6 +172,25 @@ internal static class Program
    bool criterionRejected=false;try {window.RestoreCalculation(invalidCriterion);}catch(ArgumentException){criterionRejected=true;}
    Check(criterionRejected&&vm.DeflectionLimit.Label=="L/350","invalid saved criterion leaves current calculation intact");
    vm.UseTowers=true;Pump();Check(vm.TowerResult==null && !vm.IsCalculationValid,"switching support modes invalidates old results");
+   vm.Depth=1750;vm.Width=1100;vm.BeamLengthMm=6750;vm.TowerLegCapacityKn=70;vm.LeftSlabThickness=300;vm.HasLeftSlab=true;vm.HasRightSlab=false;vm.TransferSlabLoads=true;vm.UpperSupportSpacingMm=275;Pump();
+   Check(!Input("SlabStripWidthMm").IsEnabled && Input("LeftSlabBayMm").IsEnabled && !Input("RightSlabBayMm").IsEnabled,"transfer mode enables only applicable bay inputs");
+   Optimize();Check(vm.IsCalculationValid && vm.TowerResult.Transfer!=null,"transferred load optimization through WPF");
+   Render();var transferred=vm.TowerResult.Transfer;
+   Check(diagram.DrawnTransferRowCount==transferred.RowsMm.Length && diagram.DrawnFootCount==transferred.RowsMm.Length,"plan shows actual transverse rows and upper feet");
+   Check(diagram.MinWidth>1000,"transfer plan can scroll with readable row spacing");
+   var transferRecord=window.CaptureCalculation();Check(window.BuildReport().Contains("UpperSupportSpacingMm") || window.BuildReport().Contains("Upper Support Spacing Mm"),"report contains transfer inputs");
+   Check(window.BuildReport().Contains("Beam + left slab") && window.BuildReport().Contains("receiving beam slab load"),"report contains discrete transfer cases and load coverage");
+   ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+   var lowerHit=diagram.MemberTargets.First(h=>h.Item2==vm.TowerResult.StockPlan.Pieces.Length);
+   Check(diagram.SelectAt(new Point(lowerHit.Item1.X+lowerHit.Item1.Width/2,lowerHit.Item1.Y+lowerHit.Item1.Height/2)),"select lower paired bearer in main plan");Pump();
+   Check(window.TowerDiagrams.LoadedAnalysis!=null && window.TowerDiagrams.Analysis==null,"transfer diagrams use point-loaded analysis");
+   window.TowerDiagrams.SelectMember(0,0,-1);Pump();Check(window.TowerDiagrams.LoadedAnalysis==transferred.PrimaryCases.Last()[0].Analysis,"selected primary plots exact transferred point reactions");
+   var upperHit=diagram.MemberTargets.First(h=>h.Item2>=vm.TowerResult.StockPlan.Pieces.Length+transferred.RowsMm.Length);
+   Check(diagram.SelectAt(new Point(upperHit.Item1.X+upperHit.Item1.Width/2,upperHit.Item1.Y+upperHit.Item1.Height/2)),"select upper pair from main section");Pump();Check(window.TowerDiagrams.Title.Contains("Upper left"),"upper pair diagram selection");
+   if(args.Length>0){SavePreview(Path.ChangeExtension(args[0],"transferred.png"),1040,860);File.WriteAllText(Path.ChangeExtension(args[0],"transferred-report.html"),window.BuildReport());
+    var bitmap=new RenderTargetBitmap((int)Math.Ceiling(diagram.ActualWidth),(int)Math.Ceiling(diagram.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(diagram);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"transfer-plan.png")))encoder.Save(file);}
+   vm.TransferSlabLoads=false;window.RestoreCalculation(transferRecord);Pump();Check(vm.IsTransferMode && vm.UpperSupportSpacingMm==275 && !vm.IsCalculationValid,"transfer input round trip invalidates stale results");
+   Enter("UpperSupportSpacingMm","oops");Check(!vm.CanOptimizeTowers,"invalid active transfer text blocks optimization");vm.TransferSlabLoads=false;Pump();Check(vm.CanOptimizeTowers,"inactive transfer text ignored in strip mode");
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }
   catch(Exception ex){Console.Error.WriteLine(ex);window?.Close();return 1;}
