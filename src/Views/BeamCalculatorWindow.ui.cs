@@ -14,6 +14,8 @@ namespace EngineeringDashboard
         private bool refreshingValidation;
         private int diagramBeam=-1;
         private void AddBeamBay_Click(object sender,RoutedEventArgs e) {if(observedModel==null)return;observedModel.UseBeamNetwork=true;observedModel.AddNetworkBay();}
+        private void AddCrossingBeam_Click(object sender,RoutedEventArgs e)=>observedModel?.AddCrossingBeam();
+        private void RemoveCrossingBeam_Click(object sender,RoutedEventArgs e)=>observedModel?.RemoveCrossingBeam((sender as Button)?.Tag as TransferCrossingBeamRow);
         private void RemoveBeamBay_Click(object sender,RoutedEventArgs e)=>observedModel?.RemoveNetworkBay();
         internal TowerDiagramWindow TowerDiagrams { get; private set; }
         private void PickProps_Click(object sender, RoutedEventArgs e) => SelectSupportSystem(false);

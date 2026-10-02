@@ -32,10 +32,22 @@ namespace EngineeringDashboard
         public double ThicknessMm {get=>thickness;set {thickness=value;PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(nameof(ThicknessMm)));}}
         public event PropertyChangedEventHandler PropertyChanged;
     }
+    public sealed class TransferCrossingBeamRow : INotifyPropertyChanged
+    {
+        private int bayNumber=1;
+        private double position=3000,width=300,depth=600;
+        public int BayNumber {get=>bayNumber;set {bayNumber=value;Notify(nameof(BayNumber));}}
+        public double PositionMm {get=>position;set {position=value;Notify(nameof(PositionMm));}}
+        public double WidthMm {get=>width;set {width=value;Notify(nameof(WidthMm));}}
+        public double DepthMm {get=>depth;set {depth=value;Notify(nameof(DepthMm));}}
+        public event PropertyChangedEventHandler PropertyChanged;
+        private void Notify(string name)=>PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(name));
+    }
     public sealed class TransferNetworkInput
     {
         public TransferBeamRow[] Beams;
         public TransferBayRow[] Bays;
+        public TransferCrossingBeamRow[] CrossingBeams = new TransferCrossingBeamRow[0];
         public double UpperSpacingMm, LiveKnM2, FormworkKnM2;
         public bool CustomLoads;
         public double AreaLoad(double thickness) => 25*thickness/1000+(CustomLoads ? LiveKnM2+FormworkKnM2 : BeamCalculatorViewModel.HeapingLoad(25*thickness/1000)+.75+.4);
@@ -46,6 +58,14 @@ namespace EngineeringDashboard
             if(Bays.Any(b=>b==null || !TowerBeamAnalysis.Finite(b.WidthMm) || !TowerBeamAnalysis.Finite(b.ThicknessMm) || b.WidthMm<=0 || b.WidthMm>30000 || b.ThicknessMm<=0)) throw new ArgumentException("Enter a positive width and thickness for every slab bay.");
             for(int i=0;i<Bays.Length;i++) if(Bays[i].ThicknessMm>Math.Min(Beams[i].DepthMm,Beams[i+1].DepthMm)) throw new ArgumentException($"Slab S{i+1} is thicker than an adjacent beam.");
             if(CustomLoads && new[] {LiveKnM2,FormworkKnM2}.Any(x=>!TowerBeamAnalysis.Finite(x) || x<0)) throw new ArgumentException("Custom loads must be finite and nonnegative.");
+            if(CrossingBeams==null || CrossingBeams.Length>30 || CrossingBeams.Any(c=>c==null || c.BayNumber<1 || c.BayNumber>Bays.Length
+                || new[] {c.PositionMm,c.WidthMm,c.DepthMm}.Any(x=>!TowerBeamAnalysis.Finite(x)) || c.WidthMm<=0 || c.DepthMm<Bays[c.BayNumber-1].ThicknessMm || c.DepthMm>10000
+                || c.PositionMm-c.WidthMm/2<0 || c.PositionMm+c.WidthMm/2>common.LengthMm)) throw new ArgumentException("Crossing beams: enter a valid slab bay, centre position within the beam length, positive width and total depth at least the slab thickness (maximum 10,000 mm).");
+            foreach(var group in CrossingBeams.GroupBy(c=>c.BayNumber))
+            {
+                var ordered=group.OrderBy(c=>c.PositionMm).ToArray();
+                for(int i=1;i<ordered.Length;i++) if(ordered[i].PositionMm-ordered[i].WidthMm/2<ordered[i-1].PositionMm+ordered[i-1].WidthMm/2-1e-7) throw new ArgumentException("Crossing beams in the same bay must not overlap.");
+            }
             new TransferredSlabInput {BeamWidthMm=Beams[0].WidthMm,BeamLineLoadKnM=AreaLoad(Beams[0].DepthMm)*Beams[0].WidthMm/1000,UpperSpacingMm=UpperSpacingMm,RightBayMm=Bays[0].WidthMm,RightAreaLoadKnM2=AreaLoad(Bays[0].ThicknessMm)}.Validate(common);
         }
     }
@@ -63,7 +83,7 @@ namespace EngineeringDashboard
         public int H20Count=>Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.RowsMm.Length)+Bays.Length*Beams[0].Transfer.RowsMm.Length;
         public double PeakLegKn=>Beams.Max(b=>b.MaxLegKn);
         public string Summary=>$"{Beams.Length} beams · {Bays.Length} slab bays · {LegCount} tower legs\n{H20Count} H20s · {TimberMm/1000:0.00} m timber · peak leg {PeakLegKn:0.00} kN\nSlab movement {SlabMovementMm:0.00} mm · best found in bounded search";
-        public string Schedule=>string.Join("\n\n",Beams.Select((b,i)=>$"B{i+1}: {Input.Beams[i].WidthMm:0} × {Input.Beams[i].DepthMm:0} mm · {b.LegCount} legs\n{b.Schedule}\n{b.StockSchedule}"));
+        public string Schedule=>(Input.CrossingBeams.Length==0 ? "" : string.Join("\n",Input.CrossingBeams.Select((c,i)=>$"X{i+1}: S{c.BayNumber} · centre {c.PositionMm:0.###} mm · {c.WidthMm:0.###} × {c.DepthMm:0.###} mm · extra bay load {(Input.AreaLoad(c.DepthMm)-Input.AreaLoad(Input.Bays[c.BayNumber-1].ThicknessMm))*c.WidthMm/1000*Input.Bays[c.BayNumber-1].WidthMm/1000:0.00} kN through slab H20s"))+"\n\n")+string.Join("\n\n",Beams.Select((b,i)=>$"B{i+1}: {Input.Beams[i].WidthMm:0} × {Input.Beams[i].DepthMm:0} mm · {b.LegCount} legs\n{b.Schedule}\n{b.StockSchedule}"));
     }
     public static class TransferNetworkOptimizer
     {
@@ -77,8 +97,11 @@ namespace EngineeringDashboard
             {
                 int rows=(int)Math.Ceiling(cover/input.UpperSpacingMm);double first=(cover-(rows-1)*input.UpperSpacingMm)/2+phase;
                 if(first<=0 || first+(rows-1)*input.UpperSpacingMm>=cover || (rows>1 && (first+input.UpperSpacingMm/2>input.UpperSpacingMm+1e-7 || cover-(first+(rows-1)*input.UpperSpacingMm)+input.UpperSpacingMm/2>input.UpperSpacingMm+1e-7))) continue;
-                double tributary=rows>2 ? input.UpperSpacingMm : rows==1 ? cover : cover/2+Math.Abs(phase);
-                var options=input.Bays.Select((b,i)=>Options(common,input,i,tributary).ToArray()).ToArray();if(options.Any(o=>o.Length==0))continue;
+                double edge=(common.LengthMm-cover)/2;
+                if(input.CrossingBeams.Any(c=>c.PositionMm-c.WidthMm/2<edge-1e-7 || c.PositionMm+c.WidthMm/2>edge+cover+1e-7))continue;
+                var rowLoads=input.Bays.Select((b,i)=>EffectiveWidthsMm(common,input,i,cover,phase)).ToArray();
+                if(rowLoads.Any(r=>r==null))continue;
+                var options=input.Bays.Select((b,i)=>Options(common,input,i,rowLoads[i].Max()).ToArray()).ToArray();if(options.Any(o=>o.Length==0))continue;
                 var states=new Dictionary<int,State>();
                 for(int option=0;option<options[0].Length;option++)
                 {
@@ -106,8 +129,30 @@ namespace EngineeringDashboard
                     CalculateMovement(best);
                 }
             }
-            if(best==null)throw new ArgumentException("No valid beam/slab network found. Check slab stocks, beam depths, upper spacing, loads and leg capacity.");
+            if(best==null)throw new ArgumentException("No valid beam/slab network found. Check slab stocks, beam depths, upper spacing, crossing footprints, loads and leg capacity. A crossing beam must lie inside primary coverage and have an H20 row beneath it.");
             best.Tested=tested;return best;
+        }
+        // Incremental crossing loads go only to rows beneath the beam footprint, with closing tributaries.
+        // The transverse beam spans the entire clear bay; subtract existing slab concrete and allowances once.
+        internal static double[] EffectiveWidthsMm(TowerInput common,TransferNetworkInput input,int bay,double cover,double phase)
+        {
+            int count=(int)Math.Ceiling(cover/input.UpperSpacingMm);
+            double first=(cover-(count-1)*input.UpperSpacingMm)/2+phase,edge=(common.LengthMm-cover)/2;
+            var stations=Enumerable.Range(0,count).Select(i=>edge+first+i*input.UpperSpacingMm).ToArray();
+            double slabLoad=input.AreaLoad(input.Bays[bay].ThicknessMm);
+            var widths=Enumerable.Range(0,count).Select(i=>(i==count-1 ? edge+cover : (stations[i]+stations[i+1])/2)-(i==0 ? edge : (stations[i-1]+stations[i])/2)).ToArray();
+            foreach(var crossing in input.CrossingBeams.Where(c=>c.BayNumber==bay+1))
+            {
+                double lo=crossing.PositionMm-crossing.WidthMm/2,hi=crossing.PositionMm+crossing.WidthMm/2;
+                var beneath=Enumerable.Range(0,count).Where(i=>stations[i]>=lo && stations[i]<=hi).ToArray();
+                if(beneath.Length==0)return null; // A crossing beam needs an H20 row physically below its footprint.
+                for(int k=0;k<beneath.Length;k++)
+                {
+                    double a=k==0 ? lo : (stations[beneath[k-1]]+stations[beneath[k]])/2,b=k==beneath.Length-1 ? hi : (stations[beneath[k]]+stations[beneath[k+1]])/2;
+                    widths[beneath[k]]+=(b-a)*(input.AreaLoad(crossing.DepthMm)-slabLoad)/slabLoad;
+                }
+            }
+            return widths;
         }
         private static double LowerTimber(TowerLayout beam)=>beam.StockPlan.TotalStockLengthMm+beam.Transfer.RowsMm.Length*beam.Transfer.LowerStockLengthMm;
         private static IEnumerable<UpperTransferPlan> Options(TowerInput common,TransferNetworkInput input,int bay,double tributary)
@@ -132,7 +177,8 @@ namespace EngineeringDashboard
         private static TowerLayout Solve(TowerInput common,TransferNetworkInput network,int beam,UpperTransferPlan left,UpperTransferPlan right,double cover,double phase,double[][] stockCovers)
         {
             var b=network.Beams[beam];var t=new TransferredSlabInput {IsNetwork=true,StockCovers=stockCovers,BeamWidthMm=b.WidthMm,BeamLineLoadKnM=network.AreaLoad(b.DepthMm)*b.WidthMm/1000,UpperSpacingMm=network.UpperSpacingMm,FixedCoveredLengthMm=cover,FixedRowPhaseMm=phase,
-                LeftBayMm=left==null ? 0 : network.Bays[beam-1].WidthMm,RightBayMm=right==null ? 0 : network.Bays[beam].WidthMm,LeftAreaLoadKnM2=left==null ? 0 : network.AreaLoad(network.Bays[beam-1].ThicknessMm),RightAreaLoadKnM2=right==null ? 0 : network.AreaLoad(network.Bays[beam].ThicknessMm),LeftPlan=left?.Reverse(),RightPlan=right};
+                LeftBayMm=left==null ? 0 : network.Bays[beam-1].WidthMm,RightBayMm=right==null ? 0 : network.Bays[beam].WidthMm,LeftAreaLoadKnM2=left==null ? 0 : network.AreaLoad(network.Bays[beam-1].ThicknessMm),RightAreaLoadKnM2=right==null ? 0 : network.AreaLoad(network.Bays[beam].ThicknessMm),LeftPlan=left?.Reverse(),RightPlan=right,
+                LeftEffectiveWidthsMm=left==null ? null : EffectiveWidthsMm(common,network,beam-1,cover,phase),RightEffectiveWidthsMm=right==null ? null : EffectiveWidthsMm(common,network,beam,cover,phase)};
             var input=new TowerInput {LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t};
             try{return TransferredSlabOptimizer.Optimize(input);}catch(ArgumentException){return null;}
         }
@@ -154,7 +200,7 @@ namespace EngineeringDashboard
                 for(int row=0;row<left.Transfer.RowsMm.Length;row++)
                 {
                     double dl=FootDisplacement(left,result.Input.Beams[bay].WidthMm,lc,row,false),dr=FootDisplacement(right,result.Input.Beams[bay+1].WidthMm,rc,row,true);
-                    var analysis=upper.Analysis.Scale(left.Transfer.TributaryWidthsMm[row]/left.Transfer.TributaryWidthsMm.Max());
+                    var analysis=upper.Analysis.Scale(left.Transfer.UpperScale(false,row)/left.Transfer.RightUpperScales.Max());
                     double movement=analysis.DeflectionWithAffineOffsetMm(dl,dr,upper.SupportsMm[0],upper.SupportsMm[1]);
                     result.SlabMovementMm=Math.Max(result.SlabMovementMm,movement);
                     left.Transfer.SlabMovementMm=Math.Max(left.Transfer.SlabMovementMm,movement);right.Transfer.SlabMovementMm=Math.Max(right.Transfer.SlabMovementMm,movement);

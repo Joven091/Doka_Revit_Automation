@@ -22,6 +22,7 @@ internal static class Program
  static TextBox Input(string name)=>Find<TextBox>(window).Single(t=>t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path==name);
  static void Enter(string name,string text){Input(name).Text=text;Input(name).GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();}
  static IEnumerable<TextBox> VisualInputs(DependencyObject root) {if(root is TextBox box)yield return box;if(root is Visual)for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)foreach(var value in VisualInputs(VisualTreeHelper.GetChild(root,i)))yield return value;}
+ static IEnumerable<Button> VisualButtons(DependencyObject root) {if(root is Button button)yield return button;if(root is Visual)for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)foreach(var value in VisualButtons(VisualTreeHelper.GetChild(root,i)))yield return value;}
  static RenderTargetBitmap Render(int width=1040,int height=860)
  {
   Pump();var root=(FrameworkElement)window.Content;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();
@@ -239,6 +240,26 @@ internal static class Program
     Check(!Find<Button>(window.TowerDiagrams).Any(),"slab selection clears lower-member loading-stage buttons");
    }
    if(args.Length>0){var bitmap=new RenderTargetBitmap((int)Math.Ceiling(networkPlan.ActualWidth),(int)Math.Ceiling(networkPlan.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(networkPlan);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"network-plan.png")))encoder.Save(file);File.WriteAllText(Path.ChangeExtension(args[0],"network-report.html"),networkReport);}
+   Find<Expander>(window).Single(e=>Equals(e.Header,"Crossing beams")).IsExpanded=true;Render();
+   ((Button)window.FindName("AddCrossingBeamButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render();
+   Check(vm.CrossingBeams.Count==1 && !vm.IsCalculationValid && window.TowerDiagrams==null,"adding crossing beam invalidates stale plans and diagrams");
+   var crossing=vm.CrossingBeams[0];crossing.PositionMm=3175;crossing.WidthMm=400;crossing.DepthMm=350;Render();
+   var crossingWidth=VisualInputs((DependencyObject)window.Content).Single(t=>t.DataContext==crossing && t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path=="WidthMm");
+   crossingWidth.Text="oops";crossingWidth.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(!vm.CanOptimizeTowers,"invalid crossing width blocks optimization");
+   crossingWidth.Text="400";crossingWidth.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Optimize();Render();
+   Check(vm.IsCalculationValid && networkPlan.DrawnCrossingBeamCount==1 && window.BuildReport().Contains("extra bay load"),"crossing beam shown in plan and load schedule");
+   ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+   var tCross=vm.NetworkResult.Beams[0].Transfer;int crossRow=Array.IndexOf(tCross.RightUpperScales,tCross.RightUpperScales.Max());
+   int crossEncoded=vm.NetworkResult.Beams[0].StockPlan.Pieces.Length+tCross.RowsMm.Length+crossRow*2+1;
+   var crossingHit=networkPlan.MemberTargets.Single(h=>h.Item2==0 && h.Item3==crossEncoded);
+   Check(networkPlan.SelectAt(new Point(crossingHit.Item1.X+crossingHit.Item1.Width/2,crossingHit.Item1.Y+crossingHit.Item1.Height/2)),"select governing crossing-loaded slab H20 in main section");Pump();
+   Check(Math.Abs(window.TowerDiagrams.LoadedAnalysis.TotalLoadKn-tCross.UpperMembers.Single(m=>m.Name=="Upper right").Analysis.TotalLoadKn)<1e-8 && window.TowerDiagrams.SelectedTransferMember.H20Count==1,"crossing diagram uses actual governing row load and single capacity");
+   var crossedRecord=window.CaptureCalculation();window.RestoreCalculation(crossedRecord);Pump();Check(vm.CrossingBeams.Count==1 && vm.CrossingBeams[0].PositionMm==3175 && vm.CrossingBeams[0].DepthMm==350,"crossing input save/load round trip");Optimize();Render();
+   if(args.Length>0){var bitmap=new RenderTargetBitmap((int)Math.Ceiling(networkPlan.ActualWidth),(int)Math.Ceiling(networkPlan.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(networkPlan);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"crossing-plan.png")))encoder.Save(file);}
+   Render();var removeCross=VisualButtons((DependencyObject)window.Content).Single(b=>b.Tag==vm.CrossingBeams[0]);
+   removeCross.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+   Check(vm.CrossingBeams.Count==0 && !vm.IsCalculationValid,"remove crossing beam clears old result");
+   window.RestoreCalculation(networkSaved);Pump();Optimize();Render();
    vm.NetworkBeams[1].DepthMm=1000;Check(!vm.IsCalculationValid && window.TowerDiagrams==null,"editing any beam invalidates network diagrams");
    window.RestoreCalculation(networkSaved);Pump();Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBeams[1].DepthMm==1200 && vm.NetworkBeams[2].WidthMm==900,"network save/load round trip retains per-beam width/depth and all bays");
    ((Button)window.FindName("RemoveBeamBayButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Check(vm.NetworkBeams.Count==2 && vm.NetworkBays.Count==1,"remove last bay button");

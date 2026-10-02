@@ -251,7 +251,7 @@ namespace EngineeringDashboard
         }
         // Maximize independent groups while retaining at least two frames per group.
         // When excluded, a 600 mm pair must remain joined to more frames or be rejected.
-        private static bool[] RemoveRedundantJoins(bool[] joined, double[] positions, bool exclude600)
+        internal static bool[] RemoveRedundantJoins(bool[] joined, double[] positions, bool exclude600)
         {
             var result = (bool[])joined.Clone(); int first = 0;
             while (first < positions.Length)

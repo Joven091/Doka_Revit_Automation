@@ -46,6 +46,42 @@ internal static class NetworkTests
         Check(vm.NetworkBeams.Count==2,"network initializes two actual beams");vm.AddNetworkBay();vm.NetworkBeams[1].DepthMm=1200;Check(vm.NetworkBeams.Count==3 && vm.NetworkBays.Count==2,"add slab and beam");
         var xml=vm.NetworkConfigurationXml;var other=new BeamCalculatorViewModel();other.NetworkConfigurationXml=xml;Near(other.NetworkBeams[1].DepthMm,1200,"per-beam depths saved");
         vm.RemoveNetworkBay();Check(vm.NetworkBeams.Count==2 && !vm.CanRemoveNetworkBay,"remove preserves connected sequence");
+        var bracePositions=new[] {450.0,1450,2450,3450,4450};
+        var braceJoins=TowerOptimizer.RemoveRedundantJoins(new[] {true,true,true,true},bracePositions,false);
+        Check(braceJoins.SequenceEqual(new[] {true,false,true,true}),"five frames split into one standalone and one joined tower with three cross bays");
+        Check(TowerOptimizer.RemoveRedundantJoins(new[] {true,true,true,true},new[] {150.0,750,1350,1950,2550},true).All(j=>j),"five 600 frames stay joined when standalone 600 bays are excluded");
+        var crossingInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=200,
+            CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3175,WidthMm=400,DepthMm=350}}};
+        Near(crossingInput.AreaLoad(300),9.4,"default slab area load includes one set of allowances");
+        Near(crossingInput.AreaLoad(1750),46.65,"default deep beam load clamps 10 percent surcharge to 1.75");
+        var custom=new TransferNetworkInput {CustomLoads=true,LiveKnM2=2,FormworkKnM2=.5};
+        Near(custom.AreaLoad(300),10,"custom allowances replace the defaults");
+        var widths=TransferNetworkOptimizer.EffectiveWidthsMm(common,crossingInput,0,6700,0);
+        Near(widths.Sum(),6700+400*(crossingInput.AreaLoad(350)-9.4)/9.4,"crossing footprint replaces the slab once, with force conservation");
+        Check(widths.Count(w=>w>200+1e-8)<=2,"crossing weight is local to rows beneath its footprint");
+        var crossed=TransferNetworkOptimizer.Optimize(common,crossingInput);
+        double crossingLength=common.LengthMm-2*crossed.Beams[0].ConcreteEndOverhangMm;
+        double expectedCrossing=9.4*crossingInput.Bays[0].WidthMm/1000*crossingLength/1000+(crossingInput.AreaLoad(350)-9.4)*.4*crossingInput.Bays[0].WidthMm/1000;
+        Near(crossed.SlabLoadKn,expectedCrossing,"crossing and slab load reaches both main beams including shutter edges");
+        Check(crossed.Beams.All(b=>b.Transfer.UpperMembers.All(m=>m.Utilization<=1+1e-8) && b.Transfer.LowerCases.Concat(b.Transfer.PrimaryCases).SelectMany(c=>c).All(m=>m.Utilization<=1+1e-8 && m.Analysis.Reactions.All(r=>r>=-1e-7)) && b.MaxLegKn<=70+1e-8),"crossing layout checks upper singles, lower singles, primaries and individual legs");
+        for(int r=0;r<crossed.Beams[0].Transfer.RowsMm.Length;r++)
+        {
+            Near(crossed.Beams[0].Transfer.UpperScale(false,r),crossed.Beams[1].Transfer.UpperScale(true,r),"both main beams use the same physical crossing row loads");
+            foreach(var beam in crossed.Beams)Near(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.Reactions.Sum()),beam.Transfer.LowerCases.Last().Sum(m=>m.Analysis.TotalLoadKn),"crossing row point reactions conserved through primaries to legs");
+        }
+        Check(crossed.Schedule.Contains("X1: S1") && crossed.Schedule.Contains("extra bay load"),"crossing geometry and added load retained in schedule");
+        vm.UseBeamNetwork=true;vm.AddCrossingBeam();vm.CrossingBeams[0].DepthMm=800;
+        other.NetworkConfigurationXml=vm.NetworkConfigurationXml;Near(other.CrossingBeams[0].DepthMm,800,"crossing beam XML round trip");
+        vm.CrossingBeams[0].BayNumber=2;vm.AddNetworkBay();vm.RemoveNetworkBay();Check(vm.CrossingBeams.Count==0,"removing a bay removes its crossing beams");
+        crossingInput.CrossingBeams[0].DepthMm=300;
+        Near(TransferNetworkOptimizer.EffectiveWidthsMm(common,crossingInput,0,6700,0).Sum(),6700,"equal slab and crossing depths add no duplicate area load");
+        crossingInput.CrossingBeams[0].DepthMm=10000;bool overloaded=false;try {TransferNetworkOptimizer.Optimize(common,crossingInput);}catch(ArgumentException){overloaded=true;}Check(overloaded,"severe local crossing overload cannot produce a passing layout");
+        crossingInput.CrossingBeams[0].DepthMm=350;crossingInput.CrossingBeams[0].WidthMm=10;crossingInput.CrossingBeams[0].PositionMm=3175;
+        Check(TransferNetworkOptimizer.EffectiveWidthsMm(common,crossingInput,0,6700,0)==null,"crossing footprint between H20 rows cannot send weight to neighbouring rows");
+        crossingInput.CrossingBeams[0].WidthMm=400;
+        crossingInput.CrossingBeams[0].BayNumber=99;bool rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"nonexistent crossing bay rejected");
+        crossingInput.CrossingBeams[0].BayNumber=1;crossingInput.CrossingBeams[0].DepthMm=200;rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"crossing depth below slab thickness rejected");
+        crossingInput.CrossingBeams[0].DepthMm=350;crossingInput.CrossingBeams=new[] {crossingInput.CrossingBeams[0],new TransferCrossingBeamRow {PositionMm=3100,WidthMm=300,DepthMm=400}};rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"overlapping crossing beams rejected to avoid duplicate volume");
         Console.WriteLine($"Network: {checks} checks passed · {result.LegCount} tower legs · {result.TimberMm/1000:0.0} m timber · {timer.Elapsed.TotalSeconds:0.00} s");
     }
 }
