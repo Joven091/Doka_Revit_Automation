@@ -62,8 +62,9 @@ namespace EngineeringDashboard
             {
                 int encoded=SelectedRun-runs-t.RowsMm.Length,row=encoded/2,side=encoded%2;
                 var original=t.UpperMembers.Single(x=>x.Name==(side==0 ? "Upper left" : "Upper right"));
-                m=new TransferMember {Name=original.Name+" · T"+(row+1),LoadCase="Slab",LengthMm=original.LengthMm,SupportsMm=original.SupportsMm,Points=original.Points,
-                    H20Count=original.H20Count,Uniform=original.Uniform.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM*t.TributaryWidthsMm[row]/t.TributaryWidthsMm.Max()}).ToArray(),Analysis=original.Analysis.Scale(t.TributaryWidthsMm[row]/t.TributaryWidthsMm.Max())};
+                double scale=t.UpperScale(side==0,row)/(side==0 ? t.LeftUpperScales : t.RightUpperScales).Max();
+                m=new TransferMember {Name=original.Name+" · T"+(row+1),LoadCase=original.LoadCase,LengthMm=original.LengthMm,SupportsMm=original.SupportsMm,Points=original.Points,
+                    H20Count=original.H20Count,Uniform=original.Uniform.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM*scale}).ToArray(),Analysis=original.Analysis.Scale(scale)};
             }
             SelectedTransferMember=m; LoadedAnalysis=m.Analysis; Analysis=null;
             Title=m.Name+(m.H20Count==1 ? " · single H20" : " · double H20")+" — response diagrams";

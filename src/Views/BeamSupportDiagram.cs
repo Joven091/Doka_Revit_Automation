@@ -138,7 +138,8 @@ namespace EngineeringDashboard
             var frame = new Pen(SteelSide, 2); var cross = new Pen(Steel, 1.5) { DashStyle = DashStyles.Dash };
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
             dc.DrawRectangle(ConcreteTop, null, new Rect(x0, cy - model.Width * transverseScale / 2, layout.LengthMm * scale, model.Width * transverseScale));
-            if(layout.Transfer!=null) {Label(dc,$"mm · P = 2×H20/line · secondaries = single H20 @ {layout.Transfer.EnteredUpperSpacingMm:0}",x0,8);Label(dc,"C = cross · F = frame · G = gap",x0,25);}
+            if(layout.Transfer!=null) {Label(dc,$"mm · P = 2×H20/line · secondaries = single H20 @ {layout.Transfer.EnteredUpperSpacingMm:0}",x0,8);Label(dc,"Red: braced bays · grey: gaps",x0,25);}
+            if(layout.Transfer==null)Label(dc,"mm · red: braced bays · grey: gaps",x0,8);
             for (int i = 0; i < layout.StockPlan.Pieces.Length; i++)
             {
                 var piece = layout.StockPlan.Pieces[i];
@@ -150,7 +151,7 @@ namespace EngineeringDashboard
                     MemberTargets.Add(Tuple.Create(new Rect(x0 + piece.StartMm * scale, y + offset - 4, piece.StockLengthMm * scale, 8), i, line, member));
                     DrawnStockPieceCount++;
                 }
-                double dimY = bottom + (layout.Transfer == null ? 53 : 83) + (i % 2) * 22;
+                double dimY = bottom + (layout.Transfer == null ? 65 : 55);
                 double[] ends = { piece.StartMm, piece.EndMm }, legs = { layout.PositionsMm[piece.FirstSupport], layout.PositionsMm[piece.LastSupport] };
                 for (int end = 0; end < 2; end++)
                 {
@@ -173,16 +174,15 @@ namespace EngineeringDashboard
                 if (i < layout.Joined.Length && layout.Joined[i])
                 {
                     double next = x0 + layout.PositionsMm[i + 1] * scale;
-                    foreach (double y in new[] { top, bottom }) dc.DrawLine(layout.Rotated ? frame : cross, new Point(x, y), new Point(next, y));
+                    foreach (double y in new[] { top, bottom }) dc.DrawLine(new Pen(Brushes.Firebrick,1.5){DashStyle=layout.Rotated ? DashStyles.Solid : DashStyles.Dash}, new Point(x, y), new Point(next, y));
                 }
                 if (i < layout.Joined.Length && layout.Transfer==null)
                 {
                     double next = x0 + layout.PositionsMm[i + 1] * scale, y = top - (layout.Transfer==null ? 32 : 14);
-                    dc.DrawLine(new Pen(Steel, 1), new Point(x, y), new Point(next, y));
-                    foreach (double end in new[] { x, next }) dc.DrawLine(new Pen(Steel, 1), new Point(end, y - 3), new Point(end, y + 3));
-                    string type = layout.Joined[i] ? (layout.Rotated ? "Frame" : "Cross") : "Gap";
-                    if(layout.Transfer!=null)type=type.Substring(0,1);
-                    Label(dc, type + (layout.Transfer==null ? "\n" : " ") + (layout.PositionsMm[i + 1] - layout.PositionsMm[i]).ToString("0.###") + (layout.Transfer==null ? " mm" : ""), (x + next) / 2, y - (layout.Transfer==null ? 32 : 15), true);
+                    Brush colour=layout.Joined[i] ? Brushes.Firebrick : Steel;
+                    dc.DrawLine(new Pen(colour, 1), new Point(x, y), new Point(next, y));
+                    foreach (double end in new[] { x, next }) dc.DrawLine(new Pen(colour, 1), new Point(end, y - 3), new Point(end, y + 3));
+                    Label(dc,(layout.PositionsMm[i+1]-layout.PositionsMm[i]).ToString("0.###"),(x+next)/2,y-15,true,colour);
                     if (layout.Joined[i]) DrawnBayDimensionCount++; else DrawnGapDimensionCount++;
                 }
             }
@@ -191,10 +191,10 @@ namespace EngineeringDashboard
                 int count=1;double interval=layout.PositionsMm[i+1]-layout.PositionsMm[i],y=top-14;
                 while(i+count<layout.Joined.Length && layout.Joined[i+count]==layout.Joined[i] && Math.Abs(layout.PositionsMm[i+count+1]-layout.PositionsMm[i+count]-interval)<1e-7)count++;
                 double a=x0+layout.PositionsMm[i]*scale,b=x0+layout.PositionsMm[i+count]*scale;
-                dc.DrawLine(new Pen(Steel,1),new Point(a,y),new Point(b,y));
-                for(int j=0;j<=count;j++) {double x=x0+layout.PositionsMm[i+j]*scale;dc.DrawLine(new Pen(Steel,1),new Point(x,y-3),new Point(x,y+3));}
-                string code=layout.Joined[i] ? layout.Rotated ? "F" : "C" : "G";
-                Label(dc,$"{(count>1 ? count+"×" : "")}{code} {interval:0.###}",(a+b)/2,y-15,true);
+                Brush colour=layout.Joined[i] ? Brushes.Firebrick : Steel;
+                dc.DrawLine(new Pen(colour,1),new Point(a,y),new Point(b,y));
+                for(int j=0;j<=count;j++) {double x=x0+layout.PositionsMm[i+j]*scale;dc.DrawLine(new Pen(colour,1),new Point(x,y-3),new Point(x,y+3));}
+                Label(dc,$"{(count>1 ? count+"×" : "")}{interval:0.###}",(a+b)/2,y-15,true,colour);
                 if(layout.Joined[i])DrawnBayDimensionCount+=count;else DrawnGapDimensionCount+=count;i+=count;
             }
             dc.DrawLine(new Pen(Steel, 1), new Point(x0, bottom + (layout.Transfer == null ? 91 : 121)), new Point(x0 + layout.LengthMm * scale, bottom + (layout.Transfer == null ? 91 : 121)));
@@ -255,16 +255,16 @@ namespace EngineeringDashboard
                 dim(face,near,beamBottom+45,$"Face → foot {foot:0}");
                 dim(face+sign*bay,far,beamBottom+45,$"{foot:0}");
                 dim(a,near,beamTop-36,$"End → foot {foot-edge:0}");
-                dim(a,b,beamTop-64,$"Slab H20 1 × {stock:0} · bay {bay:0}");
+                dim(a,b,beamTop-64,$"Slab H20 1 × {stock:0}{((side==0 ? t.LeftUpperCustom : t.RightUpperCustom) ? " custom" : "")} · bay {bay:0}");
             }
             dim(t.LowerStockStartMm,-layout.WidthMm/2,beamBottom+78,$"End → primary {-layout.WidthMm/2-t.LowerStockStartMm:0}");
             dim(layout.WidthMm/2,t.LowerStockStartMm+t.LowerStockLengthMm,beamBottom+78,$"{t.LowerStockStartMm+t.LowerStockLengthMm-layout.WidthMm/2:0}");
 
         }
-        private void Label(DrawingContext dc, string value, double x, double y, bool centered = false)
+        private void Label(DrawingContext dc, string value, double x, double y, bool centered = false,Brush colour=null)
         {
             var text = new FormattedText(value, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                new Typeface("Segoe UI"), 11, SteelSide, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                new Typeface("Segoe UI"), 11, colour??SteelSide, VisualTreeHelper.GetDpi(this).PixelsPerDip);
             if (centered) { text.MaxTextWidth = Math.Max(1, text.Width); text.TextAlignment = TextAlignment.Center; x -= text.MaxTextWidth / 2; }
             dc.DrawText(text, new Point(x, y));
         }

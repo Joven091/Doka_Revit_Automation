@@ -14,6 +14,8 @@ namespace EngineeringDashboard
         private bool refreshingValidation;
         private int diagramBeam=-1;
         private void AddBeamBay_Click(object sender,RoutedEventArgs e) {if(observedModel==null)return;observedModel.UseBeamNetwork=true;observedModel.AddNetworkBay();}
+        private void AddCrossingBeam_Click(object sender,RoutedEventArgs e)=>observedModel?.AddCrossingBeam();
+        private void RemoveCrossingBeam_Click(object sender,RoutedEventArgs e)=>observedModel?.RemoveCrossingBeam((sender as Button)?.Tag as TransferCrossingBeamRow);
         private void RemoveBeamBay_Click(object sender,RoutedEventArgs e)=>observedModel?.RemoveNetworkBay();
         internal TowerDiagramWindow TowerDiagrams { get; private set; }
         private void PickProps_Click(object sender, RoutedEventArgs e) => SelectSupportSystem(false);
@@ -83,6 +85,8 @@ namespace EngineeringDashboard
         }
         private void ModelChanged(object sender, PropertyChangedEventArgs e)
         {
+            if(e.PropertyName==nameof(BeamCalculatorViewModel.HasTowerFailure) && observedModel?.HasTowerFailure==true)
+                Dispatcher.BeginInvoke(new Action(()=> {if(observedModel?.HasTowerFailure==true)ReviewScroll.ScrollToTop();}),DispatcherPriority.Loaded);
             if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) { UpdateDiagram(); if (!observedModel.IsCalculationValid) CloseTowerDiagrams(); }
             if(e.PropertyName == nameof(BeamCalculatorViewModel.HasLeftSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.HasRightSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.UseCustomLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseTowers) || e.PropertyName == nameof(BeamCalculatorViewModel.TransferSlabLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseBeamNetwork))
                 Dispatcher.BeginInvoke(new Action(RefreshInputValidity), DispatcherPriority.DataBind);

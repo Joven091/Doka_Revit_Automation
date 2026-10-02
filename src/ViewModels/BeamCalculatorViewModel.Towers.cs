@@ -26,6 +26,8 @@ namespace EngineeringDashboard
         public double StockEndSetbackMm { get => stockEndSetbackMm; set { stockEndSetbackMm = value; Changed(); } }
         public TowerLayout TowerResult { get; private set; }
         public bool IsOptimizing { get; private set; }
+        public string TowerFailureDetails {get;private set;}="";
+        public bool HasTowerFailure=>!string.IsNullOrEmpty(TowerFailureDetails);
         public bool CanOptimizeTowers => UseTowers && !IsOptimizing && !textErrors;
         public bool CanImport => IsCalculationValid && !UseTowers;
         public bool ShowPropResults => IsCalculationValid && !UseTowers;
@@ -70,7 +72,7 @@ namespace EngineeringDashboard
         public async Task OptimizeTowersAsync()
         {
             if (!UseTowers || IsOptimizing) return;
-            int revision = towerRevision; IsOptimizing = true; TowerResult = null; IsCalculationValid = false;
+            int revision = towerRevision; IsOptimizing = true; TowerResult = null; NetworkResult=null; TowerFailureDetails=""; IsCalculationValid = false;
             WarningMessage = "Searching tower layouts…"; NotifyTower();
             try
             {
@@ -82,13 +84,14 @@ namespace EngineeringDashboard
                 TotalLineLoad = result.LeftLineLoad + result.RightLineLoad; LimitingFactor = result.Governing;
                 IsCalculationValid = true; WarningMessage = "";
             }
+            catch (TowerOptimizationException ex) {if(revision==towerRevision) {WarningMessage=ex.Message;TowerFailureDetails=ex.Details;}}
             catch (ArgumentException ex) { if (revision == towerRevision) WarningMessage = ex.Message; }
             finally { IsOptimizing = false; NotifyTower(); }
         }
         private void NotifyTower()
         {
             NotifyTransfer();
-            foreach (string name in new[] { nameof(IsOptimizing), nameof(CanOptimizeTowers), nameof(CanImport), nameof(ShowPropResults), nameof(ShowTowerResults), nameof(TowerSummary), nameof(TowerSchedule), nameof(TowerStockSchedule), nameof(TowerSearchNote), nameof(TowerResult), nameof(WarningMessage), nameof(PrimaryLineSpacingMm), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(LimitingFactor), nameof(IsCalculationValid) }) OnPropertyChanged(name);
+            foreach (string name in new[] { nameof(TowerFailureDetails),nameof(HasTowerFailure),nameof(IsOptimizing), nameof(CanOptimizeTowers), nameof(CanImport), nameof(ShowPropResults), nameof(ShowTowerResults), nameof(TowerSummary), nameof(TowerSchedule), nameof(TowerStockSchedule), nameof(TowerSearchNote), nameof(TowerResult), nameof(WarningMessage), nameof(PrimaryLineSpacingMm), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(LimitingFactor), nameof(IsCalculationValid) }) OnPropertyChanged(name);
         }
     }
 }

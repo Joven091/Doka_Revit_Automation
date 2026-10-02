@@ -78,7 +78,7 @@ namespace EngineeringDashboard
         }
         public static TowerStockPlan Find(TowerInput input, double[] positions, double load)
         {
-            int n = positions.Length; double length = input.LengthMm, setback = input.StockEndSetbackMm;
+            bool analyzed=false; int n = positions.Length; double length = input.LengthMm, setback = input.StockEndSetbackMm;
             var stocks = input.StockLengthsMm.Where(s => s <= length + 1e-7).OrderBy(s => s).ToArray();
             var states = new Dictionary<int, TowerStockPlan>();
             states[0] = new TowerStockPlan { Pieces = new TowerStockPiece[0], Reactions = new double[n] };
@@ -96,10 +96,11 @@ namespace EngineeringDashboard
                     if (last <= first || end - positions[last] < setback - 1e-7) continue;
                     if (last + 1 < n && positions[last + 1] < end + setback - 1e-7) continue;
                     if (end < length - 1e-7 && last + 1 == n || Math.Abs(end - length) < 1e-7 && last + 1 != n) continue;
-                    var response = TowerBeamAnalysis.Analyze(stock / 1000,
+                    analyzed=true;var response = TowerBeamAnalysis.Analyze(stock / 1000,
                         positions.Skip(first).Take(last - first + 1).Select(x => (x - start) / 1000).ToArray(), load, TowerOptimizer.PairEI);
                     var u = new[] { response.Reactions.Max() / input.LegCapacityKn, response.Moment / TowerOptimizer.PairMoment,
                         response.Shear / TowerOptimizer.PairShear, response.DeflectionUtilization(input.DeflectionLimitMm, input.DeflectionDenominator) };
+                    input.Diagnostics?.Primary(response,input,$"stock {stock:0} mm · x={start+input.DiagnosticOffsetMm:0.###}–{end+input.DiagnosticOffsetMm:0.###} mm · support x={string.Join(", ",positions.Skip(first).Take(last-first+1).Select(x=>(x+input.DiagnosticOffsetMm).ToString("0.###")))} mm · governing loaded line");
                     if (response.Reactions.Min() < -1e-9 * response.Reactions.Max() || u.Any(x => !TowerBeamAnalysis.Finite(x) || x > 1 + 1e-10)) continue;
                     var region = response.GoverningDeflection(input.DeflectionLimitMm, input.DeflectionDenominator);
                     var piece = new TowerStockPiece { StartMm = start, StockLengthMm = stock, FirstSupport = first, LastSupport = last,
@@ -114,6 +115,7 @@ namespace EngineeringDashboard
                     { states[key] = next; if (end < length - 1e-7) pending.Add(key); }
                 }
             }
+            if(!analyzed)input.Diagnostics?.Geometry("primary stock supports",$"Primary stock/support geometry: no member can be checked in this support pattern with at least two supports and {setback:0.###} mm stock-end setbacks.","Review the stock lengths, support positions and end setbacks.");
             return states.TryGetValue((int)Math.Round(length), out var result) ? result : null;
         }
     }

@@ -5,8 +5,76 @@ using System.Linq;
 
 namespace EngineeringDashboard
 {
+    public sealed class TowerOptimizationException : ArgumentException
+    {
+        public string Details {get;}
+        internal TowerOptimizationException(string message,string details):base(message) {Details=details;}
+    }
+    /// <summary>Bounded rejection samples; examples may belong to different candidates, never a passing layout.</summary>
+    internal sealed class TowerSearchDiagnostics
+    {
+        private sealed class Failure {public int Stage,Count;public double Score;public string Text,Advice,Summary;public bool Blocker;}
+        private readonly Dictionary<string,Failure> failures=new Dictionary<string,Failure>();
+        private readonly int denominator;
+        private readonly double fixedLimit;
+        private int checks;
+        public TowerSearchDiagnostics(int denominator,double fixedLimit=0) {this.denominator=denominator;this.fixedLimit=fixedLimit;}
+        private void Add(string key,int stage,double score,string text,string advice,string summary=null,bool blocker=false)
+        {
+            if(!failures.TryGetValue(key,out var f)) failures[key]=f=new Failure {Stage=stage,Score=double.PositiveInfinity};
+            f.Count++;if(score<f.Score) {f.Score=score;f.Text=text;f.Advice=advice;f.Summary=summary??text;f.Blocker=blocker;}
+        }
+        public void Geometry(string key,string text,string advice,double score=0,string summary=null,bool blocker=false)=>Add(key,0,score,text,advice,summary,blocker);
+        public void Limit(string scope,string check,int stage,double demand,double limit,string units,string location,string advice,double tolerance=1e-8)
+        {
+            checks++;if(demand<=limit+tolerance)return;
+            Add(scope+"/"+check,stage,demand/limit,$"{scope} · {check}: {demand:0.###} / {limit:0.###} {units} ({demand/limit*100:0.0}%). {location}",advice,$"{scope} · {check}: {demand:0.###} / {limit:0.###} {units} ({demand/limit*100:0.0}%).");
+        }
+        public void Bearing(string scope,int stage,double reaction,string location,double tolerance=1e-7)
+        {
+            checks++;if(reaction>=-tolerance)return;
+            Add(scope+"/uplift",stage,Math.Abs(reaction),$"{scope} · uplift: reaction {reaction:G6} kN; minimum 0 kN. {location}","Review foot positions, primary-line/tower width and one-sided loading balance.");
+        }
+        public void Analysis(LoadedBeamAnalysis a,double scale,int count,string scope,int stage,string location)
+        {
+            string advice=stage==1 ? "Review upper spacing, stock length and foot positions." : stage==2 ? "Review upper row spacing, lower secondary stock and foot/primary bearing positions." : "Review primary stock lengths and tower support spacing.";
+            Limit(scope,"moment",stage,a.MomentKnM*scale,TowerOptimizer.PairMoment*count/2,"kNm",location,advice);
+            Limit(scope,"shear",stage,a.ShearKn*scale,TowerOptimizer.PairShear*count/2,"kN",location,advice);
+            double allowable=a.GoverningLengthMm/denominator;
+            Limit(scope,"deflection",stage,a.DeflectionUtilization*allowable*scale,allowable,"mm",location+$" · governing span/overhang {a.GoverningLengthMm:0.###} mm (L/{denominator})",advice,allowable*1e-8);
+            Bearing(scope,stage,a.Reactions.Min()*scale,location);
+        }
+        public void Primary(TowerBeamAnalysis a,TowerInput input,string location)
+        {
+            string scope="Primary pair";var region=a.GoverningDeflection(input.DeflectionLimitMm,input.DeflectionDenominator);
+            Limit(scope,"moment",3,a.Moment,TowerOptimizer.PairMoment,"kNm",location,"Review primary support spacing and stock layout.",1e-10*TowerOptimizer.PairMoment);
+            Limit(scope,"shear",3,a.Shear,TowerOptimizer.PairShear,"kN",location,"Review primary support spacing and stock layout.",1e-10*TowerOptimizer.PairShear);
+            Limit(scope,"deflection",3,region.PeakMm,region.AllowableMm(fixedLimit,denominator),"mm",location+$" · {(region.IsOverhang ? "overhang" : "span")} {region.EndMm-region.StartMm:0.###} mm", "Review the support span/overhang and selected criterion.",1e-10*region.AllowableMm(fixedLimit,denominator));
+            Legs(a.Reactions,input.LegCapacityKn,scope,location,input.LegCapacityKn*1e-10,a.Reactions.Max()*1e-9);
+        }
+        public void Legs(double[] reactions,double capacity,string scope,string location,double tolerance=1e-8,double bearingTolerance=1e-7)
+        {
+            int leg=Array.IndexOf(reactions,reactions.Max());
+            Limit(scope,"leg load",4,reactions[leg],capacity,"kN",location+$" · support {leg+1}","Review support layout and applied loads. Use the permissible leg load for the actual tower configuration.",tolerance);
+            Bearing(scope+" legs",4,reactions.Min(),location,bearingTolerance);
+        }
+        public TowerOptimizationException Exception(string title)
+        {
+            var numeric=failures.Values.Where(f=>f.Stage>0).OrderByDescending(f=>f.Stage).ThenBy(f=>f.Score).ToArray();
+            var geometry=failures.Values.Where(f=>f.Stage==0).ToArray();
+            var selected=geometry.Where(f=>f.Blocker).Concat(numeric).Concat(geometry.Where(f=>!f.Blocker)).ToArray();
+            string summary=selected.Length==0 ? title : "No solution found in the searched candidates. Example rejection: "+selected[0].Summary+" Open failure details.";
+            string details=title+"\nBounded search: this does not prove that no feasible arrangement exists.\nClosest recorded failing example for each check; examples may come from different layouts.\n"
+                +string.Join("\n\n",selected.Select(f=>f.Text+$"\nRecorded failures: {f.Count}. "+f.Advice))
+                +$"\n\nNumerical checks recorded: {checks}. Rejected layouts are not approved or displayed as solutions.";
+            return new TowerOptimizationException(summary,details);
+        }
+    }
     public sealed class TowerInput
     {
+        internal TowerSearchDiagnostics Diagnostics;
+        internal string DiagnosticScope="";
+        internal double DiagnosticOffsetMm;
         public TransferredSlabInput TransferredSlab { get; set; }
         public TransferNetworkInput Network {get;set;}
         public double LengthMm { get; set; }
@@ -96,6 +164,7 @@ namespace EngineeringDashboard
             if(input?.Network!=null)return TransferNetworkOptimizer.Optimize(input,input.Network).Beams[0];
             if (input?.TransferredSlab != null) return TransferredSlabOptimizer.Optimize(input);
             Validate(input);
+            input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm);
             if (input.MaximumConcreteEndOverhangMm == 0) return OptimizeCovered(input);
             // Reachable stock totals; allow only symmetric concrete end overhang, never internal stock gaps.
             int total = (int)Math.Floor(input.LengthMm);
@@ -111,10 +180,11 @@ namespace EngineeringDashboard
                 double overhang = (input.LengthMm - covered) / 2;
                 var candidateInput = new TowerInput { LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
                     TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator,
-                    StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone };
+                    StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
                 TowerLayout candidate;
                 try { candidate = OptimizeCovered(candidateInput); }
-                catch (ArgumentException) { continue; }
+                catch (TowerOptimizationException) {continue;}
+                catch (ArgumentException ex) {input.Diagnostics.Geometry("search limits",$"Coverage {covered} mm: {ex.Message}","Review the reported stock/load bounds; changing leg capacity requires a configuration-specific permissible value.");continue;}
                 tested += candidate.Tested;
                 candidate.PositionsMm = candidate.PositionsMm.Select(x => x + overhang).ToArray();
                 foreach (var piece in candidate.StockPlan.Pieces) piece.StartMm += overhang;
@@ -123,7 +193,8 @@ namespace EngineeringDashboard
                     || candidate.BayCount == best.BayCount && (candidate.StockPlan.TotalH20Count < best.StockPlan.TotalH20Count
                     || candidate.StockPlan.TotalH20Count == best.StockPlan.TotalH20Count && candidate.Utilization < best.Utilization))) best = candidate;
             }
-            if (best == null) throw new ArgumentException("No valid layout found within the end-overhang allowance and bounded search. Check stock lengths, loads and end allowance.");
+            if(covers.Length==0)input.Diagnostics.Geometry("primary coverage",$"Primary stock coverage: no stock combination totals {input.LengthMm-2*input.MaximumConcreteEndOverhangMm:0.###}–{input.LengthMm:0.###} mm.","Review available stock lengths and the maximum concrete end allowance.");
+            if (best == null) throw input.Diagnostics.Exception("No valid layout found within the end-overhang allowance and bounded search.");
             int capacityBound = 2 * Math.Max(2, (int)Math.Ceiling((input.TotalLineLoad / 2 + Math.Abs(input.TransverseLoadMoment) / 2) * covers.Min() / 1000 / input.LegCapacityKn - 1e-10));
             best.MinimumLegCountProven = best.LegCount == Math.Max(capacityBound, covers.Min(x => counts[x]) * 4);
             best.Tested = tested; return best;
@@ -215,7 +286,7 @@ namespace EngineeringDashboard
                 }
                 if (best != null) break;
             }
-            if (best == null) throw new ArgumentException("No valid tower layout found within the bounded search (up to 80 legs). This does not prove that no feasible layout exists.");
+            if (best == null) throw (input.Diagnostics??new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm)).Exception("No valid tower layout found within the bounded search (up to 80 legs).");
             best.Tested = tested;
             int capacityBound = Math.Max(2, (int)Math.Ceiling((input.TotalLineLoad / 2 + Math.Abs(input.TransverseLoadMoment) / 2) * length / 1000 / input.LegCapacityKn - 1e-10));
             best.MinimumLegCountProven = best.PositionsMm.Length == Math.Max(capacityBound, minimumPieces * 2); return best;
@@ -251,7 +322,7 @@ namespace EngineeringDashboard
         }
         // Maximize independent groups while retaining at least two frames per group.
         // When excluded, a 600 mm pair must remain joined to more frames or be rejected.
-        private static bool[] RemoveRedundantJoins(bool[] joined, double[] positions, bool exclude600)
+        internal static bool[] RemoveRedundantJoins(bool[] joined, double[] positions, bool exclude600)
         {
             var result = (bool[])joined.Clone(); int first = 0;
             while (first < positions.Length)
