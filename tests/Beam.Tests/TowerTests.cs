@@ -9,6 +9,28 @@ internal static class TowerTests
     static void Near(double actual, double expected, double tolerance, string message) => Check(Math.Abs(actual - expected) <= tolerance * Math.Max(1, Math.Abs(expected)), message + $" ({actual} vs {expected})");
     public static void Run()
     {
+        foreach (int denominator in new[] { 500, 350, 270 })
+        {
+            var benchmark = TowerBeamAnalysis.Analyze(2, new[] { 0.0, 2.0 }, 10, 900);
+            Near(benchmark.DeflectionUtilization(0, denominator), (5*10*16.0/(384*900)*1000)/(2000.0/denominator), 1e-10, "closed-form ratio limit uses support span");
+            var ratioInput = new TowerInput { LengthMm=6750, MaximumConcreteEndOverhangMm=75, StockLengthsMm=new[]{3300.0}, TotalLineLoad=2.98, LegCapacityKn=70, DeflectionDenominator=denominator };
+            var ratioMixed=TowerOptimizer.Evaluate(new TowerInput { LengthMm=3600, StockLengthsMm=new[]{3600.0}, TotalLineLoad=2.98,LegCapacityKn=70,DeflectionDenominator=denominator },new[]{450.0,1450,2950},new[]{true,true},1524,false);
+            Check(ratioMixed!=null && ratioMixed.StockPlan.DeflectionUtilization<=1,"mixed cross bays pass local ratio checks");
+            var ratioLayout = TowerOptimizer.Optimize(ratioInput);Check(ratioLayout.DeflectionDenominator==denominator,"criterion propagated through optimization");
+            foreach(var piece in ratioLayout.StockPlan.Pieces) {
+                var memberSupports=ratioLayout.PositionsMm.Skip(piece.FirstSupport).Take(piece.LastSupport-piece.FirstSupport+1).Select(x=>(x-piece.StartMm)/1000).ToArray();
+                var reference=Reference(piece.StockLengthMm/1000,memberSupports,Math.Max(ratioLayout.LeftLineLoad,ratioLayout.RightLineLoad),TowerOptimizer.PairEI);
+                Check(reference.DeflectionRatios[denominator]<=1.00001,"optimized member independently satisfies every span and overhang limit");
+                Near(piece.DeflectionUtilization,reference.DeflectionRatios[denominator],2e-4,"optimizer local deflection utilization matches stiffness solution");
+            }
+        }
+        var shortEnd=TowerBeamAnalysis.Analyze(2.4,new[]{.2,1.7,2.2},8,900);
+        Check(shortEnd.DeflectionRegions.Count==4,"unequal support spans and two overhangs retained separately");
+        foreach(var region in shortEnd.DeflectionRegions) Near(region.AllowableMm(0,350),(region.EndMm-region.StartMm)/350,1e-12,"local length defines allowance");
+        var rotatedEnd=TowerBeamAnalysis.Analyze(3.3,new[]{.65,2.65},5,TowerOptimizer.PairEI);
+        Check(rotatedEnd.DeflectionUtilization(0,500)>rotatedEnd.DeflectionMm/(3300.0/500),"stock length cannot mask an overhang or span failure");
+        var excessiveEnd=TowerOptimizer.Evaluate(new TowerInput { LengthMm=4900,StockLengthsMm=new[]{4900.0},TotalLineLoad=4,LegCapacityKn=70,DeflectionDenominator=500 },new[]{1700.0,3224},new[]{true},1000,true);
+        Check(excessiveEnd==null,"overhang ratio rejects layout even at low leg loads");
         var simple = TowerBeamAnalysis.Analyze(2, new[] { 0.0, 2.0 }, 10, 900);
         Near(simple.Moment, 5, 1e-10, "simple-span moment"); Near(simple.Shear, 10, 1e-10, "simple-span shear");
         Near(simple.DeflectionMm, 5 * 10 * 16.0 / (384 * 900) * 1000, 1e-10, "simple-span deflection");
@@ -28,6 +50,7 @@ internal static class TowerTests
             Near(actual.Moment, expected.Moment, 2e-4, "end-load stiffness moment");
             Near(actual.Shear, expected.Shear, 1e-7, "end-load stiffness shear");
             Near(actual.DeflectionMm, expected.DeflectionMm, 2e-4, "end-load stiffness deflection");
+            foreach(int denominator in new[]{500,350,270}) Near(actual.DeflectionUtilization(0,denominator),expected.DeflectionRatios[denominator],2e-4,"end-load local deflection ratio");
             Near(actual.Response(0)[0], -p, 1e-8, "left end-load diagram");
             Near(actual.Response(3.3, false)[0], r, 1e-8, "right end-load diagram");
             var samples = Enumerable.Range(0, 2001).Select(i => actual.Response(3.3 * i / 2000)).ToArray();
@@ -44,6 +67,7 @@ internal static class TowerTests
             var reference = Reference(length, supports, load, 899.7512);
             for (int i = 0; i < count; i++) Near(result.Reactions[i], reference.Reactions[i], 1e-7, "independent stiffness reaction");
             Near(result.DeflectionMm, reference.DeflectionMm, 2e-4, "independent sampled deflection");
+            foreach(int denominator in new[]{500,350,270}) Near(result.DeflectionUtilization(0,denominator),reference.DeflectionRatios[denominator],2e-4,"independent local deflection ratio");
             Near(result.Moment, reference.Moment, 2e-4, "independent sampled moment");
             Near(result.Shear, reference.Shear, 1e-7, "independent shear");
             foreach (double x in supports)
@@ -188,7 +212,7 @@ internal static class TowerTests
         vm.OptimizeTowersAsync().GetAwaiter().GetResult(); Check(!vm.IsCalculationValid && vm.WarningMessage.Contains("exactly"), "uncoverable length explained");
         vm.StockLengthsText = "1800; NaN"; vm.OptimizeTowersAsync().GetAwaiter().GetResult(); Check(!vm.IsCalculationValid, "invalid stock list rejected");
     }
-    sealed class ReferenceResult { public double[] Reactions; public double Moment, Shear, DeflectionMm; }
+    sealed class ReferenceResult { public double[] Reactions; public double Moment, Shear, DeflectionMm; public System.Collections.Generic.Dictionary<int,double> DeflectionRatios = new System.Collections.Generic.Dictionary<int,double> { {500,0}, {350,0}, {270,0} }; }
     // Independent Euler-Bernoulli finite-element stiffness solution with consistent distributed loads.
     static ReferenceResult Reference(double length, double[] supports, double q, double ei, double leftEndLoad = 0, double rightEndLoad = 0)
     {
@@ -218,7 +242,9 @@ internal static class TowerTests
         {
             double l=x[e+1]-x[e], u=d[2*e], v=d[2*e+2], t=d[2*e+1], z=d[2*e+3];
             double c2=(-3*u+3*v)/l/l-(2*t+z)/l+q*l*l/(24*ei), c3=(2*u-2*v)/l/l/l+(t+z)/l/l-q*l/(12*ei), c4=q/(24*ei);
-            for(int j=0;j<=400;j++){double s=l*j/400;double y=u+t*s+c2*s*s+c3*s*s*s+c4*Math.Pow(s,4);result.DeflectionMm=Math.Max(result.DeflectionMm,Math.Abs(y)*1000);result.Moment=Math.Max(result.Moment,Math.Abs(ei*(2*c2+6*c3*s+12*c4*s*s)));result.Shear=Math.Max(result.Shear,Math.Abs(ei*(6*c3+24*c4*s)));}
+            double regionPeak=0;
+            for(int j=0;j<=400;j++){double s=l*j/400;double y=u+t*s+c2*s*s+c3*s*s*s+c4*Math.Pow(s,4);regionPeak=Math.Max(regionPeak,Math.Abs(y)*1000);result.DeflectionMm=Math.Max(result.DeflectionMm,Math.Abs(y)*1000);result.Moment=Math.Max(result.Moment,Math.Abs(ei*(2*c2+6*c3*s+12*c4*s*s)));result.Shear=Math.Max(result.Shear,Math.Abs(ei*(6*c3+24*c4*s)));}
+            foreach(int denominator in new[]{500,350,270})result.DeflectionRatios[denominator]=Math.Max(result.DeflectionRatios[denominator],regionPeak/(l*1000/denominator));
         }
         return result;
     }

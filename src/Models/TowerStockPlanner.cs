@@ -15,6 +15,10 @@ namespace EngineeringDashboard
         public double MomentKnM { get; internal set; }
         public double ShearKn { get; internal set; }
         public double DeflectionMm { get; internal set; }
+        public double DeflectionUtilization { get; internal set; }
+        public double GoverningDeflectionMm { get; internal set; }
+        public double GoverningDeflectionLimitMm { get; internal set; }
+        public string GoverningDeflectionRegion { get; internal set; }
     }
     public sealed class TowerStockPlan
     {
@@ -23,6 +27,7 @@ namespace EngineeringDashboard
         public double MomentKnM => Pieces.Max(x => x.MomentKnM);
         public double ShearKn => Pieces.Max(x => x.ShearKn);
         public double DeflectionMm => Pieces.Max(x => x.DeflectionMm);
+        public double DeflectionUtilization => Pieces.Max(x => x.DeflectionUtilization);
         public int TotalH20Count => Pieces.Length * 4;
         public double TotalStockLengthMm => Pieces.Sum(x => x.StockLengthMm) * 4;
         internal double Utilization;
@@ -36,6 +41,7 @@ namespace EngineeringDashboard
                     var p = Pieces[i];
                     lines.Add(string.Format(CultureInfo.CurrentCulture, "P{0}: 4 × {1:0.###} mm · x={2:0.###}–{3:0.###} mm · supports {4}–{5}\n  M {6:0.00} kNm · V {7:0.00} kN · d {8:0.00} mm",
                         i + 1, p.StockLengthMm, p.StartMm, p.EndMm, p.FirstSupport + 1, p.LastSupport + 1, p.MomentKnM, p.ShearKn, p.DeflectionMm));
+                    lines.Add($"  Deflection: {p.GoverningDeflectionMm:0.00}/{p.GoverningDeflectionLimitMm:0.00} mm · {p.GoverningDeflectionRegion}");
                 }
                 lines.Add("Stock quantities: " + string.Join("; ", Pieces.GroupBy(p => p.StockLengthMm).OrderBy(g => g.Key).Select(g => string.Format(CultureInfo.CurrentCulture, "{0} × {1:0.###} mm", g.Count() * 4, g.Key))));
                 return string.Join("\n", lines);
@@ -93,10 +99,13 @@ namespace EngineeringDashboard
                     var response = TowerBeamAnalysis.Analyze(stock / 1000,
                         positions.Skip(first).Take(last - first + 1).Select(x => (x - start) / 1000).ToArray(), load, TowerOptimizer.PairEI);
                     var u = new[] { response.Reactions.Max() / input.LegCapacityKn, response.Moment / TowerOptimizer.PairMoment,
-                        response.Shear / TowerOptimizer.PairShear, response.DeflectionMm / input.DeflectionLimitMm };
+                        response.Shear / TowerOptimizer.PairShear, response.DeflectionUtilization(input.DeflectionLimitMm, input.DeflectionDenominator) };
                     if (response.Reactions.Min() < -1e-9 * response.Reactions.Max() || u.Any(x => !TowerBeamAnalysis.Finite(x) || x > 1 + 1e-10)) continue;
+                    var region = response.GoverningDeflection(input.DeflectionLimitMm, input.DeflectionDenominator);
                     var piece = new TowerStockPiece { StartMm = start, StockLengthMm = stock, FirstSupport = first, LastSupport = last,
-                        MomentKnM = response.Moment, ShearKn = response.Shear, DeflectionMm = response.DeflectionMm };
+                        MomentKnM = response.Moment, ShearKn = response.Shear, DeflectionMm = response.DeflectionMm, DeflectionUtilization = u[3], GoverningDeflectionMm = region.PeakMm,
+                        GoverningDeflectionLimitMm = region.AllowableMm(input.DeflectionLimitMm, input.DeflectionDenominator),
+                        GoverningDeflectionRegion = $"{(region.IsOverhang ? "overhang" : "span")} {region.EndMm-region.StartMm:0.###} mm" };
                     var reactions = (double[])previous.Reactions.Clone();
                     for (int k = first; k <= last; k++) reactions[k] = response.Reactions[k - first];
                     var next = new TowerStockPlan { Pieces = previous.Pieces.Concat(new[] { piece }).ToArray(), Reactions = reactions, Utilization = Math.Max(previous.Utilization, u.Max()) };

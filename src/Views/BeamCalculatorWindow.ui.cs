@@ -128,7 +128,8 @@ namespace EngineeringDashboard
             record.Inputs.Add(CalculationFiles.Field("MaximumConcreteEndOverhangMm", vm.MaximumConcreteEndOverhangMm));
             record.Inputs.Add(CalculationFiles.Field("Exclude600Standalone", vm.Exclude600Standalone));
             record.Inputs.Add(CalculationFiles.Field("PropConfiguration", vm.SelectedProp?.CapacityKey ?? BeamPropOption.All[0].CapacityKey));
-            record.Inputs.Add(CalculationFiles.Field("DeflectionLimitMm", vm.DeflectionLimit.Millimetres));
+            record.Inputs.Add(CalculationFiles.Field("DeflectionCriterion", vm.DeflectionLimit.Label));
+            if (vm.DeflectionLimit.Denominator == 0) record.Inputs.Add(CalculationFiles.Field("DeflectionLimitMm", vm.DeflectionLimit.Millimetres));
             return record;
         }
         internal void RestoreCalculation(CalculationRecord record)
@@ -137,7 +138,7 @@ namespace EngineeringDashboard
             CalculationFiles.Apply(record,"Beam",candidate,FileInputs);
             candidate.SelectedProp = BeamPropOption.All.SingleOrDefault(p=>p.CapacityKey==record.Inputs.SingleOrDefault(f=>f.Name=="PropConfiguration")?.Value);
             string limit = record.Inputs.SingleOrDefault(f=>f.Name=="DeflectionLimitMm")?.Value;
-            candidate.DeflectionLimit = candidate.DeflectionOptions.SingleOrDefault(d=>d.Millimetres.ToString(System.Globalization.CultureInfo.InvariantCulture)==limit);
+            candidate.DeflectionLimit = BeamCalculatorViewModel.RestoreDeflectionOption(record.Inputs.SingleOrDefault(f=>f.Name=="DeflectionCriterion")?.Value, limit);
             RestoreTowerFields(record, candidate);
             if(candidate.UseTowers) candidate.ValidateTowerInputs();
             else if(!candidate.IsCalculationValid) throw new ArgumentException("The loaded calculation is invalid: " + candidate.WarningMessage);
@@ -179,12 +180,12 @@ namespace EngineeringDashboard
                     CalculationFiles.Field("LeftLineLoadKnPerM", vm.LeftLineLoad), CalculationFiles.Field("RightLineLoadKnPerM", vm.RightLineLoad) };
                 return CalculationFiles.Report("Beam — shoring towers", record.Inputs, fields, BeamCalculatorViewModel.TowerAssumptions);
             }
-            var results=CalculationFiles.Capture("Beam",vm,"MaximumPropSpacing,PrimaryBeamCantilever,MaximumPropLoad,PropCapacityKn,PropUtilizationPercent,PropExtensionMm,PropLookupExtensionMm,PrimaryLineSpacingMm,LeftLineLoad,RightLineLoad,TotalLineLoad,LimitingFactor,IsCalculationValid");
+            var results=CalculationFiles.Capture("Beam",vm,"MaximumPropSpacing,PrimaryBeamCantilever,MaximumPropLoad,PropCapacityKn,PrimaryDeflectionMm,PrimaryDeflectionUtilization,PropUtilizationPercent,PropExtensionMm,PropLookupExtensionMm,PrimaryLineSpacingMm,LeftLineLoad,RightLineLoad,TotalLineLoad,LimitingFactor,IsCalculationValid");
             return CalculationFiles.Report("Beam",record.Inputs,results.Inputs,
-                "Geometry and spacing: mm. Area loads: kN/m². Line loads: kN/m. Prop loads/capacity: kN. Utilization: %. Deflection limit: mm.\n"+
+                "Geometry and spacing: mm. Area loads: kN/m². Line loads: kN/m. Prop loads/capacity: kN. Utilization: %. Deflection criterion: each H20 support span or overhang length divided by the selected denominator; legacy limits use mm.\n"+
                 "Each checked side uses the entered slab strip width. Primary lines = (beam width + 1400)/2. Line reactions use force and moment equilibrium; the heavier line governs.\n"+
                 "Concrete 25 kN/mÂ³; default heaping min(1.75,max(0.75,10% of concrete weight)), working 0.75 and formwork 0.40 kN/m². Custom live replaces placing + working load.\n"+
-                "Equal spans and full uniform loading. H20 moment 5 kNm, shear 11 kN, EI 449.8756 kNm². Spacing rounds down to 25 mm and checks selected prop capacity; extension = floor height - beam depth - 418 mm.\n"+
+                "Equal spans and full uniform loading. Deflection includes support rotation at overhangs. The 4+ prop selection checks four through twelve supports for deflection.  H20 moment 5 kNm, shear 11 kN, EI 449.8756 kNm². Spacing rounds down to 25 mm and checks selected prop capacity; extension = floor height - beam depth - 418 mm.\n"+
                 "2/3/4+ support coefficient model; primary span limits 2000/3000 mm. Sheeting, secondary beams, joints, restraint and local bearing require separate checks. Results recalculated from inputs; this is not a complete formwork verification.");
         }
     }

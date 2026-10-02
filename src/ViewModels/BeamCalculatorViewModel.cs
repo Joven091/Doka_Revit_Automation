@@ -10,17 +10,32 @@ namespace EngineeringDashboard
     {
         public string Label { get; }
         public double Millimetres { get; }
+        public int Denominator { get; }
+        public double AllowableMm(double lengthMm) => Denominator == 0 ? Millimetres : lengthMm / Denominator;
+        public BeamDeflectionOption(int denominator) { Denominator = denominator; Label = "L/" + denominator; }
+
         public BeamDeflectionOption(string label, double millimetres) { Label = label; Millimetres = millimetres; }
     }
 
     public partial class BeamCalculatorViewModel : INotifyPropertyChanged
     {
         public static IReadOnlyList<BeamDeflectionOption> AvailableDeflectionOptions { get; } = Array.AsReadOnly(new[] {
-            new BeamDeflectionOption("Class A / Architectural Concrete (3mm limit)", 3),
-            new BeamDeflectionOption("Standard / Concealed Concrete (5mm limit)", 5),
-            new BeamDeflectionOption("Rough / Heavy Civil (10mm limit)", 10)
+            new BeamDeflectionOption(500), new BeamDeflectionOption(350), new BeamDeflectionOption(270)
         });
-        public IReadOnlyList<BeamDeflectionOption> DeflectionOptions => AvailableDeflectionOptions;
+        private static readonly BeamDeflectionOption[] legacyOptions = { new BeamDeflectionOption("Legacy fixed 3 mm", 3), new BeamDeflectionOption("Legacy fixed 5 mm", 5), new BeamDeflectionOption("Legacy fixed 10 mm", 10) };
+        public static BeamDeflectionOption RestoreDeflectionOption(string criterion, string fixedMm)
+        {
+            var option = criterion == null ? legacyOptions.SingleOrDefault(x => x.Millimetres.ToString(System.Globalization.CultureInfo.InvariantCulture) == fixedMm)
+                : AvailableDeflectionOptions.SingleOrDefault(x => x.Label == criterion) ?? legacyOptions.SingleOrDefault(x => x.Label == criterion);
+            if (option == null || option.Denominator == 0 && fixedMm != option.Millimetres.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                throw new ArgumentException("The saved deflection criterion is invalid.");
+            return option;
+        }
+        public IReadOnlyList<BeamDeflectionOption> DeflectionOptions => deflection?.Denominator == 0 ? AvailableDeflectionOptions.Concat(new[] { deflection }).ToArray() : AvailableDeflectionOptions;
+        public string DeflectionCriteriaNote => "L = each H20 support span; overhangs use their own length. Includes support rotation.";
+        public double PrimaryDeflectionMm { get; private set; }
+        public double PrimaryDeflectionUtilization { get; private set; }
+        public string PrimaryDeflectionSummary => $"H20 deflection: {PrimaryDeflectionMm:0.00} mm · {PrimaryDeflectionUtilization*100:0.0}% of criterion";
         private double depth = 500, width = 200, leftThickness = 200, rightThickness = 200;
         private double floorHeight = 3000;
         private BeamPropOption selectedProp = BeamPropOption.All.First(p => p.CapacityKey == "300 at bottom");
@@ -48,7 +63,7 @@ namespace EngineeringDashboard
         public double CustomLiveLoad { get => customLive; set { customLive = value; Changed(); } }
         public double CustomFormworkLoad { get => customFormwork; set { customFormwork = value; Changed(); } }
         public string NumberOfProps { get => numberOfProps; set { numberOfProps = value; Changed(); } }
-        public BeamDeflectionOption DeflectionLimit { get => deflection; set { deflection = value; Changed(); } }
+        public BeamDeflectionOption DeflectionLimit { get => deflection; set { deflection = value; Changed(); OnPropertyChanged(nameof(DeflectionOptions)); } }
         public bool IsCalculationValid { get; private set; }
         public string WarningMessage { get; private set; }
         public double MaximumPropSpacing { get; private set; }
@@ -90,7 +105,7 @@ namespace EngineeringDashboard
         {
             towerRevision++; TowerResult = null;
             IsCalculationValid = false;
-            MaximumPropSpacing = MaximumPropLoad = PrimaryBeamCantilever = 0;
+            MaximumPropSpacing = MaximumPropLoad = PrimaryBeamCantilever = PrimaryDeflectionMm = PrimaryDeflectionUtilization = 0;
             LeftLineLoad = RightLineLoad = TotalLineLoad = 0;
             PropCapacityKn = PropLookupExtensionMm = PropUtilizationPercent = 0;
             LimitingFactor = string.Empty; WarningMessage = string.Empty;
@@ -131,7 +146,9 @@ namespace EngineeringDashboard
                 else { a = 0.25; m = 0.10; v = 0.60; r = 1.143; d = 1.0 / 145; }
                 double moment = 1000 * Math.Sqrt(5 / (m * w));
                 double shear = 1000 * 11 / (v * w);
-                double deflect = 1000 * Math.Pow((DeflectionLimit.Millimetres / 1000 * 10760000 * 0.00004181) / (d * w), 0.25);
+                double deflect = DeflectionLimit.Denominator == 0
+                    ? 1000 * Math.Pow((DeflectionLimit.Millimetres / 1000 * 449.8756) / (d * w), 0.25)
+                    : 1000 * Math.Pow(449.8756 / (DeflectionLimit.Denominator * d * w), 1.0 / 3);
                 double limit = Math.Min(moment, Math.Min(shear, deflect));
                 string governing = limit == moment ? "Moment" : limit == shear ? "Shear" : "Deflection";
                 double ceiling = NumberOfProps == "2" ? 2000 : 3000;
@@ -145,8 +162,18 @@ namespace EngineeringDashboard
                 {
                     cantilever = Math.Floor(span * a / 25) * 25;
                     prop = NumberOfProps == "2" ? 0.5 * w * (span + 2 * cantilever) / 1000 : r * w * span / 1000;
-                    if (prop <= capacity) break;
-                    governing = "Prop Capacity";
+                    if (prop > capacity) { governing = "Prop Capacity"; continue; }
+                    double deflectionUse = 0, peakDeflection = 0;
+                    int count = NumberOfProps == "2" ? 2 : NumberOfProps == "3" ? 3 : 4;
+                    for (int n = count; n <= (count == 4 ? 12 : count); n++)
+                    {
+                        var response = TowerBeamAnalysis.Analyze(((n - 1) * span + 2 * cantilever) / 1000,
+                            Enumerable.Range(0, n).Select(i => (cantilever + i * span) / 1000).ToArray(), w, 449.8756);
+                        peakDeflection = Math.Max(peakDeflection, response.DeflectionMm);
+                        deflectionUse = Math.Max(deflectionUse, response.DeflectionUtilization(DeflectionLimit.Millimetres, DeflectionLimit.Denominator));
+                    }
+                    if (deflectionUse <= 1 + 1e-10) { PrimaryDeflectionMm = peakDeflection; PrimaryDeflectionUtilization = deflectionUse; break; }
+                    governing = "Deflection";
                 }
                 if (span < 25) throw new ArgumentException("No spacing of at least 25 mm satisfies the selected prop capacity.");
                 Check(prop, "Calculated prop reaction", true);
@@ -158,7 +185,7 @@ namespace EngineeringDashboard
             }
             catch (ArgumentException ex) { WarningMessage = ex.Message; }
             NotifyTower();
-            foreach (string name in new[] { nameof(MaximumPropSpacing), nameof(MaximumPropLoad), nameof(PrimaryBeamCantilever), nameof(LimitingFactor), nameof(WarningMessage), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(PrimaryLineSpacingMm), nameof(PropExtensionMm), nameof(PropCapacityKn), nameof(PropLookupExtensionMm), nameof(PropUtilizationPercent), nameof(IsCalculationValid) }) OnPropertyChanged(name);
+            foreach (string name in new[] { nameof(PrimaryDeflectionSummary), nameof(PrimaryDeflectionMm), nameof(PrimaryDeflectionUtilization), nameof(MaximumPropSpacing), nameof(MaximumPropLoad), nameof(PrimaryBeamCantilever), nameof(LimitingFactor), nameof(WarningMessage), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(PrimaryLineSpacingMm), nameof(PropExtensionMm), nameof(PropCapacityKn), nameof(PropLookupExtensionMm), nameof(PropUtilizationPercent), nameof(IsCalculationValid) }) OnPropertyChanged(name);
         }
         private void Changed([CallerMemberName] string property = null) { Calculate(); OnPropertyChanged(property); if(property == nameof(HasLeftSlab) || property == nameof(HasRightSlab)) OnPropertyChanged(nameof(HasAnySlab)); }
         private void ValidateSlab(double thickness, string label)
@@ -169,7 +196,7 @@ namespace EngineeringDashboard
         private static bool ContainsOption(BeamDeflectionOption option)
         {
             foreach (var item in AvailableDeflectionOptions) if (ReferenceEquals(item, option)) return true;
-            return false;
+            return legacyOptions.Contains(option);
         }
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

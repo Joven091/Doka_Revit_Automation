@@ -13,6 +13,7 @@ namespace EngineeringDashboard
         // Moment of transverse line loads about the concrete beam centre, kN (kN/m * m).
         public double TransverseLoadMoment { get; set; }
         public double DeflectionLimitMm { get; set; }
+        public int DeflectionDenominator { get; set; }
         public double[] StockLengthsMm { get; set; } = TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths);
         public double StockEndSetbackMm { get; set; } = 150;
         public double MaximumConcreteEndOverhangMm { get; set; }
@@ -42,6 +43,7 @@ namespace EngineeringDashboard
         public double MaxLegKn { get; internal set; }
         public double LegCapacityKn { get; internal set; }
         public double DeflectionLimitMm { get; internal set; }
+        public int DeflectionDenominator { get; internal set; }
         public double MomentKnM { get; internal set; }
         public double ShearKn { get; internal set; }
         public double DeflectionMm { get; internal set; }
@@ -52,8 +54,8 @@ namespace EngineeringDashboard
         public string SearchNote => MinimumLegCountProven
             ? "Minimum leg count meets the load/stock lower bound. Group count/layout are best found in a bounded search."
             : "Best valid layout found in a bounded search; global minimum leg/group count is not proven.";
-        public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\nMoment {7:0.00}/10 kNm · shear {8:0.00}/22 kN\nDeflection {9:0.00}/{11:0.00} mm (includes H20 cantilevers)",
-            LegCount, GroupCount, BayCount, Rotated ? "Rotated isolated towers" : "1524 mm frames across beam", WidthMm, MaxLegKn, Utilization * 100, MomentKnM, ShearKn, DeflectionMm, LegCapacityKn, DeflectionLimitMm)
+        public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\nMoment {7:0.00}/10 kNm · shear {8:0.00}/22 kN\nPeak deflection {9:0.00} mm · criterion {11} (each span/overhang)",
+            LegCount, GroupCount, BayCount, Rotated ? "Rotated isolated towers" : "1524 mm frames across beam", WidthMm, MaxLegKn, Utilization * 100, MomentKnM, ShearKn, DeflectionMm, LegCapacityKn, DeflectionDenominator == 0 ? $"{DeflectionLimitMm:0.00} mm" : $"L/{DeflectionDenominator}")
             + string.Format(CultureInfo.CurrentCulture, "\nPrimary H20s: {0} pieces · no overlaps\nConcrete beyond H20: {1:0.###} mm per end", StockPlan.TotalH20Count, ConcreteEndOverhangMm);
         public string Schedule
         {
@@ -94,7 +96,7 @@ namespace EngineeringDashboard
                 if (best != null && counts[covered] * 4 > best.LegCount) continue;
                 double overhang = (input.LengthMm - covered) / 2;
                 var candidateInput = new TowerInput { LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
-                    TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm,
+                    TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator,
                     StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone };
                 TowerLayout candidate;
                 try { candidate = OptimizeCovered(candidateInput); }
@@ -226,11 +228,11 @@ namespace EngineeringDashboard
             if (response == null) return null;
             double maxLeg = response.Reactions.Max();
             if (response.Reactions.Min() < -1e-9 * maxLeg) return null;
-            var utilization = new[] { maxLeg / input.LegCapacityKn, response.MomentKnM / PairMoment, response.ShearKn / PairShear, response.DeflectionMm / input.DeflectionLimitMm };
+            var utilization = new[] { maxLeg / input.LegCapacityKn, response.MomentKnM / PairMoment, response.ShearKn / PairShear, response.DeflectionUtilization };
             if (utilization.Any(x => !TowerBeamAnalysis.Finite(x)) || utilization.Max() > 1 + 1e-10) return null;
             return new TowerLayout { PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
                 LeftLineLoad = left, RightLineLoad = right, LeftReactions = response.Reactions.Select(x => x * left / Math.Max(left, right)).ToArray(), RightReactions = response.Reactions.Select(x => x * right / Math.Max(left, right)).ToArray(),
-                MaxLegKn = maxLeg, LegCapacityKn = input.LegCapacityKn, DeflectionLimitMm = input.DeflectionLimitMm, MomentKnM = response.MomentKnM, ShearKn = response.ShearKn, DeflectionMm = response.DeflectionMm,
+                MaxLegKn = maxLeg, LegCapacityKn = input.LegCapacityKn, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator, MomentKnM = response.MomentKnM, ShearKn = response.ShearKn, DeflectionMm = response.DeflectionMm,
                 Utilization = utilization.Max(), Governing = new[] { "Leg capacity", "Primary moment", "Primary shear", "Primary deflection" }[Array.IndexOf(utilization, utilization.Max())] };
         }
         // Maximize independent groups while retaining at least two frames per group.
@@ -258,8 +260,10 @@ namespace EngineeringDashboard
         }
         private static void Validate(TowerInput input)
         {
-            if (input == null || new[] { input.LengthMm, input.LegCapacityKn, input.TotalLineLoad, input.DeflectionLimitMm }.Any(x => !TowerBeamAnalysis.Finite(x) || x <= 0)
+            if (input == null || new[] { input.LengthMm, input.LegCapacityKn, input.TotalLineLoad }.Any(x => !TowerBeamAnalysis.Finite(x) || x <= 0)
                 || !TowerBeamAnalysis.Finite(input.TransverseLoadMoment)) throw new ArgumentException("Tower length, leg capacity, load and deflection limit must be finite and positive.");
+            if (input.DeflectionDenominator == 0 ? !TowerBeamAnalysis.Finite(input.DeflectionLimitMm) || input.DeflectionLimitMm <= 0
+                : !new[] { 500, 350, 270 }.Contains(input.DeflectionDenominator)) throw new ArgumentException("Select L/500, L/350, L/270 or a positive legacy fixed limit.");
             if (!TowerBeamAnalysis.Finite(input.MaximumConcreteEndOverhangMm) || input.MaximumConcreteEndOverhangMm < 0 || input.MaximumConcreteEndOverhangMm > 500) throw new ArgumentException("Concrete end allowance must be between 0 and 500 mm per end.");
             if (input.LengthMm > 50000) throw new ArgumentException("Tower optimization supports beam lengths up to 50,000 mm.");
             if (input.StockLengthsMm == null || input.StockLengthsMm.Length == 0 || input.StockLengthsMm.Length > 30
