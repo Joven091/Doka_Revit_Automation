@@ -59,8 +59,8 @@ namespace EngineeringDashboard
         public int Tested;
         public int LegCount=>Beams.Sum(b=>b.LegCount);
         public int UpperFootCount=>Bays.Length*2*Beams[0].Transfer.RowsMm.Length;
-        public double TimberMm=>Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*2*b.Transfer.LowerStockLengthMm)+Bays.Sum(b=>b.StockLengthMm)*Beams[0].Transfer.RowsMm.Length;
-        public int H20Count=>Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.RowsMm.Length*2)+Bays.Length*Beams[0].Transfer.RowsMm.Length;
+        public double TimberMm=>Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*b.Transfer.LowerStockLengthMm)+Bays.Sum(b=>b.StockLengthMm)*Beams[0].Transfer.RowsMm.Length;
+        public int H20Count=>Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.RowsMm.Length)+Bays.Length*Beams[0].Transfer.RowsMm.Length;
         public double PeakLegKn=>Beams.Max(b=>b.MaxLegKn);
         public string Summary=>$"{Beams.Length} beams · {Bays.Length} slab bays · {LegCount} tower legs\n{H20Count} H20s · {TimberMm/1000:0.00} m timber · peak leg {PeakLegKn:0.00} kN\nSlab movement {SlabMovementMm:0.00} mm · best found in bounded search";
         public string Schedule=>string.Join("\n\n",Beams.Select((b,i)=>$"B{i+1}: {Input.Beams[i].WidthMm:0} × {Input.Beams[i].DepthMm:0} mm · {b.LegCount} legs\n{b.Schedule}\n{b.StockSchedule}"));
@@ -109,7 +109,7 @@ namespace EngineeringDashboard
             if(best==null)throw new ArgumentException("No valid beam/slab network found. Check slab stocks, beam depths, upper spacing, loads and leg capacity.");
             best.Tested=tested;return best;
         }
-        private static double LowerTimber(TowerLayout beam)=>beam.StockPlan.TotalStockLengthMm+beam.Transfer.RowsMm.Length*2*beam.Transfer.LowerStockLengthMm;
+        private static double LowerTimber(TowerLayout beam)=>beam.StockPlan.TotalStockLengthMm+beam.Transfer.RowsMm.Length*beam.Transfer.LowerStockLengthMm;
         private static IEnumerable<UpperTransferPlan> Options(TowerInput common,TransferNetworkInput input,int bay,double tributary)
         {
             var row=input.Bays[bay];var result=new List<Tuple<UpperTransferPlan,double>>();

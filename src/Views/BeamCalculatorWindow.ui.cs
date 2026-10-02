@@ -43,7 +43,7 @@ namespace EngineeringDashboard
             if (!TryGetValidCalculation(out var vm) || !vm.UseTowers || vm.TowerResult == null) return;
             SupportDiagram.IsSelectionEnabled = true;
             NetworkPlan.IsSelectionEnabled=vm.IsNetworkMode;
-            DiagramCaption.Text = "Click a primary pair in plan, or a lower pair / single slab H20 in section.";
+            DiagramCaption.Text = "Click a primary pair in plan, or a single secondary H20 in section.";
             if(vm.IsNetworkMode)NetworkPlanScroll.BringIntoView();else TowerPlanScroll.BringIntoView();
         }
         private void InitializeUi()

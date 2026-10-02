@@ -1,422 +1,423 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:EngineeringDashboard" x:Class="EngineeringDashboard.BeamCalculatorWindow" Title="Beam Calculator" Width="1040" Height="860" MinWidth="900" MinHeight="620" WindowStartupLocation="CenterOwner" Background="#F5F5F5" FontFamily="Segoe UI" FontSize="13" Foreground="#202A33">
-  <Window.Resources>
-    <ResourceDictionary>
-      <ResourceDictionary.MergedDictionaries>
-        <ResourceDictionary Source="CalculatorStyles.xaml"/>
-      </ResourceDictionary.MergedDictionaries>
-      <Style x:Key="SupportCard" TargetType="Button">
-        <Setter Property="Width" Value="280"/><Setter Property="Height" Value="270"/>
-        <Setter Property="Margin" Value="10"/><Setter Property="Background" Value="White"/>
-        <Setter Property="BorderBrush" Value="#C9D1D7"/><Setter Property="BorderThickness" Value="2"/>
-        <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-          <Border x:Name="Card" CornerRadius="8" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="18">
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-          <ControlTemplate.Triggers>
-            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Card" Property="BorderBrush" Value="#D2AE00"/><Setter TargetName="Card" Property="Background" Value="#FFF8D9"/></Trigger>
-            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Card" Property="BorderBrush" Value="#376FA0"/></Trigger>
-            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Card" Property="Background" Value="#FFF0AF"/></Trigger>
-          </ControlTemplate.Triggers>
-        </ControlTemplate></Setter.Value></Setter>
-      </Style>
-    </ResourceDictionary>
-  </Window.Resources>
-  <Border Background="#F5F5F5" Padding="16"><Grid>
-    <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition/>
-      <RowDefinition Height="Auto"/>
-    </Grid.RowDefinitions>
-    <StackPanel Margin="0,0,0,16">
-      <TextBlock Text="Beam calculator" FontSize="22" FontWeight="SemiBold"/>
-      <TextBlock Style="{StaticResource Hint}" Text="Set the geometry and supports, then review the calculated spacing."/>
-    </StackPanel>
-    <Grid x:Name="CalculatorWorkspace" Grid.Row="1" Visibility="{Binding HasSelectedSupportSystem, Converter={StaticResource BoolToVis}}">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="1.2*"/>
-        <ColumnDefinition Width="18"/>
-        <ColumnDefinition/>
-      </Grid.ColumnDefinitions>
-      <ScrollViewer x:Name="InputScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="0,0,10,0">
-          <Border Style="{StaticResource Step}">
-            <TextBlock Text="1  Calculation setup" FontWeight="Bold"/>
-          </Border>
-          <Border Style="{StaticResource Card}">
-            <StackPanel>
-              <Grid IsEnabled="{Binding ShowSingleGeometry}" Visibility="{Binding ShowSingleGeometry, Converter={StaticResource BoolToVis}}">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition/>
-                  <ColumnDefinition Width="12"/>
-                  <ColumnDefinition/>
-                </Grid.ColumnDefinitions>
-                <ContentControl Grid.Column="0" IsTabStop="False">
-                  <StackPanel>
-                    <TextBlock Text="Beam depth (mm)"/>
-                    <TextBox AutomationProperties.Name="Beam depth (mm)" Text="{Binding Depth, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                  </StackPanel>
-                </ContentControl>
-                <ContentControl Grid.Column="2" IsTabStop="False">
-                  <StackPanel>
-                    <TextBlock Text="Beam width (mm)"/>
-                    <TextBox AutomationProperties.Name="Beam width (mm)" Text="{Binding Width, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                  </StackPanel>
-                </ContentControl>
-              </Grid>
-              <Grid IsEnabled="{Binding ShowSingleGeometry}" Visibility="{Binding ShowSingleGeometry, Converter={StaticResource BoolToVis}}">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition/>
-                  <ColumnDefinition Width="12"/>
-                  <ColumnDefinition/>
-                </Grid.ColumnDefinitions>
-                <ContentControl Grid.Column="0" IsTabStop="False">
-                  <StackPanel>
-                    <CheckBox Content="Include left slab" IsChecked="{Binding HasLeftSlab}"/>
-                    <StackPanel IsEnabled="{Binding HasLeftSlab}" Visibility="{Binding HasLeftSlab, Converter={StaticResource BoolToVis}}">
-                      <StackPanel>
-                        <TextBlock Text="Slab thickness (mm)"/>
-                        <TextBox AutomationProperties.Name="Slab thickness (mm)" Text="{Binding LeftSlabThickness, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" IsEnabled="{Binding HasLeftSlab}"/>
-                      </StackPanel>
-                    </StackPanel>
-                  </StackPanel>
-                </ContentControl>
-                <ContentControl Grid.Column="2" IsTabStop="False">
-                  <StackPanel>
-                    <CheckBox Content="Include right slab" IsChecked="{Binding HasRightSlab}"/>
-                    <StackPanel IsEnabled="{Binding HasRightSlab}" Visibility="{Binding HasRightSlab, Converter={StaticResource BoolToVis}}">
-                      <StackPanel>
-                        <TextBlock Text="Slab thickness (mm)"/>
-                        <TextBox AutomationProperties.Name="Slab thickness (mm)" Text="{Binding RightSlabThickness, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" IsEnabled="{Binding HasRightSlab}"/>
-                      </StackPanel>
-                    </StackPanel>
-                  </StackPanel>
-                </ContentControl>
-              </Grid>
-              <CheckBox x:Name="TransferredSlabCheckBox" Content="Transfer slab loads through beam supports" IsChecked="{Binding TransferSlabLoads}" IsEnabled="{Binding CanSelectTransfer}" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
-              <StackPanel IsEnabled="{Binding IsTransferMode}" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Upper support spacing along beam (mm)"/>
-                <TextBox Text="{Binding UpperSupportSpacingMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                <CheckBox x:Name="BeamNetworkCheckBox" Content="Individual beams and slab bays" IsChecked="{Binding UseBeamNetwork}"/>
-                <StackPanel x:Name="NetworkInputs" IsEnabled="{Binding IsNetworkMode}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}">
-                  <TextBlock Text="Beams, left to right · width / depth (mm)" FontWeight="SemiBold"/>
-                  <ItemsControl ItemsSource="{Binding NetworkBeams}"><ItemsControl.ItemTemplate><DataTemplate>
-                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                      <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
-                      <TextBox Grid.Column="1" ToolTip="Beam width (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                      <TextBox Grid.Column="3" ToolTip="Beam depth (mm)" Text="{Binding DepthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                    </Grid>
-                  </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                  <TextBlock Text="Slab bays · clear width / thickness (mm)" FontWeight="SemiBold" Margin="0,8,0,0"/>
-                  <ItemsControl ItemsSource="{Binding NetworkBays}"><ItemsControl.ItemTemplate><DataTemplate>
-                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                      <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
-                      <TextBox Grid.Column="1" ToolTip="Clear slab bay (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                      <TextBox Grid.Column="3" ToolTip="Slab thickness (mm)" Text="{Binding ThicknessMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                    </Grid>
-                  </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                </StackPanel>
-                <WrapPanel><Button x:Name="AddBeamBayButton" Content="Add slab + beam" Click="AddBeamBay_Click" IsEnabled="{Binding CanAddNetworkBay}"/><Button x:Name="RemoveBeamBayButton" Content="Remove last bay" Click="RemoveBeamBay_Click" IsEnabled="{Binding CanRemoveNetworkBay}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/></WrapPanel>
-                <StackPanel IsEnabled="{Binding ShowLeftBay}" Visibility="{Binding ShowLeftBay, Converter={StaticResource BoolToVis}}">
-                  <TextBlock Text="Left clear slab bay (mm)"/><TextBox Text="{Binding LeftSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                </StackPanel>
-                <StackPanel IsEnabled="{Binding ShowRightBay}" Visibility="{Binding ShowRightBay, Converter={StaticResource BoolToVis}}">
-                  <TextBlock Text="Right clear slab bay (mm)"/><TextBox Text="{Binding RightSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                </StackPanel>
-                <TextBlock Style="{StaticResource Hint}" Text="Matching opposite beam · beam concrete placed first · foot centres ≥250 mm from beam face."/>
-              </StackPanel>
-              <StackPanel Visibility="{Binding ShowSlabStrip, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Adjacent slab strip width — each checked side (mm)"/>
-                <TextBox x:Name="SlabStripWidthInput" IsEnabled="{Binding ShowSlabStrip}" Text="{Binding SlabStripWidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-              </StackPanel>
-              <Expander x:Name="LoadInputsExpander" Margin="0,2,0,0">
-                  <Expander.Header><TextBlock><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="Load inputs · default"/><Style.Triggers><DataTrigger Binding="{Binding UseCustomLoads}" Value="True"><Setter Property="Text" Value="Load inputs · custom"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></Expander.Header>
-                <StackPanel Margin="0,10,0,0">
-                  <TextBlock Style="{StaticResource Hint}" Text="Use the default loads, or enter project values below."/>
-                  <CheckBox Content="Use custom loads" IsChecked="{Binding UseCustomLoads}"/>
-                  <StackPanel IsEnabled="{Binding UseCustomLoads}" Visibility="{Binding UseCustomLoads, Converter={StaticResource BoolToVis}}">
-                    <Grid>
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition/>
-                        <ColumnDefinition Width="12"/>
-                        <ColumnDefinition/>
-                      </Grid.ColumnDefinitions>
-                      <ContentControl Grid.Column="0" IsTabStop="False">
-                        <StackPanel>
-                          <TextBlock Text="Placing + working load (kN/m²)"/>
-                          <TextBox AutomationProperties.Name="Placing + working load (kN/m²)" Text="{Binding CustomLiveLoad, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" IsEnabled="{Binding UseCustomLoads}"/>
-                        </StackPanel>
-                      </ContentControl>
-                      <ContentControl Grid.Column="2" IsTabStop="False">
-                        <StackPanel>
-                          <TextBlock Text="Formwork load (kN/m²)"/>
-                          <TextBox AutomationProperties.Name="Formwork load (kN/m²)" Text="{Binding CustomFormworkLoad, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" IsEnabled="{Binding UseCustomLoads}"/>
-                        </StackPanel>
-                      </ContentControl>
-                    </Grid>
-                  </StackPanel>
-                </StackPanel>
-              </Expander>
-            </StackPanel>
-          </Border>
-          <Border Style="{StaticResource Step}">
-            <TextBlock Text="2  Support layout" FontWeight="Bold"/>
-          </Border>
-          <Border Style="{StaticResource Card}">
-            <StackPanel>
-              <DockPanel Margin="0,0,0,8">
-                <Button DockPanel.Dock="Right" Content="Change system" Click="ChangeSupportSystem_Click" Padding="10,4" Margin="0"/>
-                <TextBlock FontWeight="SemiBold" VerticalAlignment="Center"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="Props"/><Style.Triggers><DataTrigger Binding="{Binding UseTowers}" Value="True"><Setter Property="Text" Value="Shoring towers"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-              </DockPanel>
-              <StackPanel Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding UseTowers}">
-                <TextBlock Text="Concrete beam length (mm)"/>
-                <TextBox x:Name="TowerLengthInput" Text="{Binding BeamLengthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                <TextBlock Text="Permissible tower leg load (kN)"/>
-                <TextBox x:Name="TowerCapacityInput" Text="{Binding TowerLegCapacityKn, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                <TextBlock Text="Available primary H20 stock lengths (mm)"/>
-                <TextBox x:Name="StockLengthsInput" TextWrapping="Wrap" Text="{Binding StockLengthsText, UpdateSourceTrigger=PropertyChanged}"/>
-                <TextBlock Style="{StaticResource Hint}" Text="No cutting, overlaps or internal gaps."/>
-                <TextBlock Text="Maximum concrete overhang per end (mm)" ToolTip="Centered stock. Only load over the actual H20 length is included; concrete beyond its ends is excluded. Set 0 for exact coverage."/>
-                <TextBox Text="{Binding MaximumConcreteEndOverhangMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                <Expander Header="Stock end support allowance" Margin="0,6">
-                  <StackPanel><TextBlock Text="Minimum support-centre inset from each stock end (mm)"/>
-                    <TextBox Text="{Binding StockEndSetbackMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                    <TextBlock Style="{StaticResource Hint}" Text="Planning allowance; local bearing and head details require separate checks."/>
-                  </StackPanel>
-                </Expander>
-                <CheckBox x:Name="Exclude600StandaloneCheckBox" Content="Exclude standalone 600 mm towers" IsChecked="{Binding Exclude600Standalone}" ToolTip="Applies in either orientation. Joined 600 mm bays remain allowed."/>
-                <Button x:Name="OptimizeTowersButton" Content="Optimize towers" IsEnabled="{Binding CanOptimizeTowers}" Click="OptimizeTowers_Click" Margin="0,8"/>
-              </StackPanel>
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition/>
-                  <ColumnDefinition Width="12"/>
-                  <ColumnDefinition/>
-                </Grid.ColumnDefinitions>
-                <ContentControl Grid.Column="0" IsTabStop="False">
-                  <StackPanel Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="Props per primary line"/>
-                    <ComboBox IsEnabled="{Binding UseProps}" AutomationProperties.Name="Props per primary line" SelectedValue="{Binding NumberOfProps}" SelectedValuePath="Content">
-                      <ComboBoxItem Content="2"/>
-                      <ComboBoxItem Content="3"/>
-                      <ComboBoxItem Content="4+"/>
-                    </ComboBox>
-                  </StackPanel>
-                </ContentControl>
-                <ContentControl Grid.Column="2" IsTabStop="False">
-                  <StackPanel>
-                    <TextBlock Text="Deflection criterion"/>
-                    <ComboBox AutomationProperties.Name="Deflection criterion" ItemsSource="{Binding DeflectionOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" ToolTip="{Binding DeflectionCriteriaNote}">
-                      <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextWrapping="Wrap"/></DataTemplate></ComboBox.ItemTemplate>
-                    </ComboBox>
-                  </StackPanel>
-                </ContentControl>
-              </Grid>
-              <StackPanel Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Floor height (mm)"/>
-                <TextBox IsEnabled="{Binding UseProps}" AutomationProperties.Name="Floor height (mm)" Text="{Binding FloorHeight, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-              </StackPanel>
-              <StackPanel Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Prop type and outer tube position"/>
-                <ComboBox IsEnabled="{Binding UseProps}" AutomationProperties.Name="Prop type and outer tube position" ItemsSource="{Binding PropOptions}" SelectedItem="{Binding SelectedProp, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" DisplayMemberPath="Label"/>
-              </StackPanel>
-              <Border Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}" Background="#F0F2F3" Padding="10">
-                <StackPanel>
-                  <TextBlock Text="{Binding PropExtensionMm, StringFormat='Automatic extension: {0:F0} mm'}"/>
-                  <TextBlock Style="{StaticResource Hint}" Text="{Binding PropCapacityKn, StringFormat='Permitted prop load: {0:F2} kN'}"/>
-                </StackPanel>
-              </Border>
-            </StackPanel>
-          </Border>
-        </StackPanel>
-      </ScrollViewer>
-      <ScrollViewer x:Name="ReviewScroll" Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="0,0,8,0">
-          <Border Style="{StaticResource Step}">
-            <TextBlock Text="3  Review spacing" FontWeight="Bold"/>
-          </Border>
-          <Border Style="{StaticResource Issue}">
-            <StackPanel>
-              <TextBlock Text="Review your inputs" FontWeight="SemiBold" Foreground="#B42318" Margin="0,0,0,6"/>
-              <TextBlock Text="{Binding WarningMessage}" Foreground="#B42318" AutomationProperties.LiveSetting="Polite"/>
-            </StackPanel>
-          </Border>
-          <Border Background="#ECEFF1" Padding="14" Margin="0,0,0,12">
-            <Border.Style>
-              <Style TargetType="Border">
-                <Setter Property="Visibility" Value="Visible"/>
-                <Style.Triggers>
-                  <DataTrigger Binding="{Binding IsCalculationValid}" Value="True">
-                    <Setter Property="Visibility" Value="Collapsed"/>
-                  </DataTrigger>
-                </Style.Triggers>
-              </Style>
-            </Border.Style>
-            <TextBlock Text="A spacing result will appear when the inputs pass the calculator checks." Foreground="#586772"/>
-          </Border>
-          <Border x:Name="ResultsBorder" Visibility="{Binding ShowPropResults, Converter={StaticResource BoolToVis}}" Background="#FFF6D6" BorderBrush="#D4AA00" BorderThickness="5,0,0,0" Padding="16" Margin="0,0,0,12">
-            <StackPanel>
-              <TextBlock Text="Prop spacing" FontWeight="SemiBold"/>
-              <TextBlock Text="{Binding MaximumPropSpacing, StringFormat='{}{0:F0} mm'}" FontSize="34" FontWeight="Bold" Margin="0,4,0,12" Foreground="#202A33"/>
-              <Border Height="1" Background="#E7DCA7" Margin="0,0,0,6"/>
-              <Grid Margin="0,5">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="Load per prop" Margin="0,0,12,0"/>
-                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding MaximumPropLoad, StringFormat='{}{0:F2} kN'}"/>
-              </Grid>
-              <Grid Margin="0,5">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="Prop utilization" Margin="0,0,12,0"/>
-                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding PropUtilizationPercent, StringFormat='{}{0:F1}%'}"/>
-              </Grid>
-              <TextBlock Text="{Binding PrimaryDeflectionSummary}" TextWrapping="Wrap" Margin="0,6,0,0"/>
-            </StackPanel>
-          </Border>
-          <Border x:Name="TowerResultsBorder" Visibility="{Binding ShowTowerResults, Converter={StaticResource BoolToVis}}" Background="#FFF6D6" BorderBrush="#D4AA00" BorderThickness="5,0,0,0" Padding="16" Margin="0,0,0,12">
-            <StackPanel>
-              <TextBlock Text="Tower layout · best found" FontWeight="SemiBold" FontSize="18"/>
-              <TextBlock Text="{Binding TowerResult.LegLoadSummary}" FontWeight="Bold" TextWrapping="Wrap" Margin="0,8"/>
-              <ProgressBar Value="{Binding TowerResult.LegUtilizationPercent, Mode=OneWay}" Maximum="100" Height="10"/>
-              <TextBlock Text="{Binding TowerResult.CompactSummary}" Margin="0,8"/>
-              <Button x:Name="TowerDiagramsButton" Content="Show shear, moment &amp; deflection" Click="TowerDiagrams_Click" IsEnabled="{Binding ShowTowerResults}" Margin="0,8"/>
-              <Expander Header="Checks and optimization" Margin="0,8,0,0"><StackPanel>
-                <TextBlock Text="{Binding TowerSummary}" Margin="0,8"/>
-                <TextBlock Text="{Binding TowerSearchNote}" Style="{StaticResource Hint}"/>
-                <TextBlock Text="{Binding TowerResult.CapacityBasis}" Style="{StaticResource Hint}" Margin="0,8"/>
-              </StackPanel></Expander>
-              <Expander Header="Leg loads and positions" Margin="0,10,0,0"><TextBlock Text="{Binding TowerSchedule}" Margin="0,8"/></Expander>
-              <Expander Header="H20 stock schedule" Margin="0,10,0,0"><TextBlock Text="{Binding TowerStockSchedule}" Margin="0,8"/></Expander>
-            </StackPanel>
-          </Border>
-          <Border Background="#ECEFF1" Padding="14" Margin="0,0,0,12">
-            <StackPanel>
-              <TextBlock Style="{StaticResource Subheading}" Text="Beam and support section" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
-              <TextBlock Style="{StaticResource Hint}" Text="Schematic · secondary H20 perpendicular to primary H20" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
-              <TextBlock Style="{StaticResource Subheading}" Text="Tower layout · plan" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
-              <ScrollViewer x:Name="TowerPlanScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
-              <local:BeamSupportDiagram x:Name="SupportDiagram" Margin="0,4"><local:BeamSupportDiagram.Visibility><Binding Path="ShowSingleGeometry" Converter="{StaticResource BoolToVis}"/></local:BeamSupportDiagram.Visibility>
-                <local:BeamSupportDiagram.Style>
-                  <Style TargetType="local:BeamSupportDiagram">
-                    <Setter Property="Height" Value="300"/>
-                    <Style.Triggers><DataTrigger Binding="{Binding IsTransferMode}" Value="True"><Setter Property="Height" Value="710"/></DataTrigger><DataTrigger Binding="{Binding IsCalculationValid}" Value="False"><Setter Property="Height" Value="0"/></DataTrigger></Style.Triggers>
-                  </Style>
-                </local:BeamSupportDiagram.Style>
-              </local:BeamSupportDiagram>
-              </ScrollViewer>
-              <ScrollViewer x:Name="NetworkPlanScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"><local:TransferNetworkPlan x:Name="NetworkPlan"/></ScrollViewer>
-              <TextBlock Text="{Binding NetworkSummary}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/>
-              <TextBlock Text="{Binding NetworkSelectedLabel}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/>
-              <TextBlock x:Name="DiagramCaption" Style="{StaticResource Hint}"/>
-              <TextBlock Text="{Binding TransferSummary}" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0"/>
-              <Expander Header="All beams: legs and H20s" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"><TextBlock Text="{Binding NetworkSchedule}" TextWrapping="Wrap"/></Expander>
-              <Expander Header="Transferred load details" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}"><TextBlock Text="{Binding TransferSchedule}" TextWrapping="Wrap"/></Expander>
-            </StackPanel>
-          </Border>
-          <Border Style="{StaticResource Card}">
-            <StackPanel>
-              <Expander Header="Calculation details" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
-                <StackPanel Margin="0,10,0,0" Visibility="{Binding IsCalculationValid, Converter={StaticResource BoolToVis}}">
-                  <Grid Margin="0,5">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Primary overhang" Margin="0,0,12,0"/>
-                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding PrimaryBeamCantilever, StringFormat='{}{0:F0} mm'}"/>
-                  </Grid>
-                  <Grid Margin="0,5">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Governing check" Margin="0,0,12,0"/>
-                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding LimitingFactor, StringFormat='{}{0}'}"/>
-                  </Grid>
-                  <Grid Margin="0,5">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Left primary line" Margin="0,0,12,0"/>
-                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding LeftLineLoad, StringFormat='{}{0:F2} kN/m'}"/>
-                  </Grid>
-                  <Grid Margin="0,5">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Right primary line" Margin="0,0,12,0"/>
-                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding RightLineLoad, StringFormat='{}{0:F2} kN/m'}"/>
-                  </Grid>
-                </StackPanel>
-              </Expander>
-            </StackPanel>
-          </Border>
-          <Border Style="{StaticResource Card}">
-            <StackPanel>
-              <Expander Header="Calculation assumptions" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
-                <StackPanel Margin="0,10,0,0" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
-                  <TextBlock Style="{StaticResource Hint}" Text="Two primary lines support transverse secondary beams. Each checked slab contributes the entered strip width (default 300 mm). Primary-line spacing = (beam width + 1400) Ã· 2. Eccentric loads are distributed by equilibrium; the heavier line governs."/>
-                  <TextBlock Style="{StaticResource Hint}" Text="Uniform loading and equal longitudinal spans. Extension = floor height âˆ’ beam depth âˆ’ 418 mm. The prop table rounds extension up to the next 100 mm. Sheeting, secondary beams, joints and restraint require separate checks. The drawn secondary-beam quantity is illustrative."/>
-                </StackPanel>
-              </Expander>
-              <Expander Header="Tower calculation basis" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}">
-                <TextBlock Style="{StaticResource Hint}" Margin="0,10,0,0" Text="{Binding TowerCalculationBasis}"/>
-              </Expander>
-            </StackPanel>
-          </Border>
-        </StackPanel>
-      </ScrollViewer>
-    </Grid>
-    <Grid x:Name="SupportSystemPicker" Grid.Row="1">
-      <Grid.Style><Style TargetType="Grid"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding HasSelectedSupportSystem}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Grid.Style>
-      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-        <TextBlock Text="Choose a support system" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,16"/>
-        <StackPanel Orientation="Horizontal">
-          <Button x:Name="PickPropsButton" Style="{StaticResource SupportCard}" Click="PickProps_Click" AutomationProperties.Name="Choose Dokaflex">
-            <StackPanel>
-              <Viewbox Width="220" Height="155" Margin="0,0,0,12"><Canvas Width="220" Height="155">
-                <Rectangle Canvas.Left="8" Canvas.Top="38" Width="204" Height="12" Fill="#DCA923"/>
-                <Rectangle Canvas.Left="8" Canvas.Top="53" Width="204" Height="8" Fill="#FFE084"/>
-                <Path Stroke="#647B8D" StrokeThickness="6" Data="M 50,65 L 50,135 M 170,65 L 170,135"/>
-                <Path Stroke="#425764" StrokeThickness="3" Data="M 38,65 L 62,65 M 158,65 L 182,65 M 35,138 L 65,138 M 155,138 L 185,138"/>
-                <Rectangle Canvas.Left="46" Canvas.Top="90" Width="8" Height="10" Fill="#DCA923"/><Rectangle Canvas.Left="166" Canvas.Top="90" Width="8" Height="10" Fill="#DCA923"/>
-              </Canvas></Viewbox>
-              <TextBlock Text="Dokaflex" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-            </StackPanel>
-          </Button>
-          <Button x:Name="PickTowersButton" Style="{StaticResource SupportCard}" Click="PickTowers_Click" AutomationProperties.Name="Choose D3 Shoring System">
-            <StackPanel>
-              <Viewbox Width="220" Height="155" Margin="0,0,0,12"><Canvas Width="220" Height="155">
-                <Path Stroke="#DCA923" StrokeThickness="8" Data="M 10,42 L 178,42 M 40,29 L 208,29"/>
-                <Path Stroke="#FFE084" StrokeThickness="3" Data="M 10,49 L 178,49 M 40,36 L 208,36"/>
-                <Path Stroke="#647B8D" StrokeThickness="4" Data="M 45,53 L 45,136 M 145,53 L 145,136 M 75,40 L 75,123 M 175,40 L 175,123 M 45,80 L 145,80 M 45,110 L 145,110 M 75,67 L 175,67 M 75,97 L 175,97"/>
-                <Path Stroke="#425764" StrokeThickness="2" Data="M 45,60 L 75,116 M 75,47 L 45,129 M 145,60 L 175,116 M 175,47 L 145,129 M 36,139 L 54,139 M 136,139 L 154,139 M 66,126 L 84,126 M 166,126 L 184,126"/>
-              </Canvas></Viewbox>
-              <TextBlock Text="D3 Shoring System" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-            </StackPanel>
-          </Button>
-        </StackPanel>
-      </StackPanel>
-    </Grid>
-    <Border Grid.Row="2" BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
-      <DockPanel LastChildFill="True">
-        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-          <Button Content="Close" MinWidth="80" Click="BtnClose_Click" Margin="0,0,10,0"/>
-          <Border IsEnabled="{Binding HasSelectedSupportSystem}"><Button x:Name="ImportButton" IsEnabled="{Binding CanImport}" Style="{StaticResource PrimaryAction}" Content="Import to Revit" Click="BtnApplyToBeams_Click" ToolTip="Tower layouts can be saved/exported; the existing Revit import is for prop spacing."/></Border>
-        </StackPanel>
-        <WrapPanel VerticalAlignment="Center">
-          <Button IsEnabled="{Binding HasSelectedSupportSystem}" Content="Save calculation" Click="SaveCalculation_Click" Margin="0,0,6,0"/>
-          <Button Content="Load calculation" Click="LoadCalculation_Click" Margin="0,0,6,0"/>
-          <Button IsEnabled="{Binding HasSelectedSupportSystem}" Content="Export report" Click="ExportReport_Click"/>
-        </WrapPanel>
-      </DockPanel>
-    </Border>
-  </Grid></Border>
-</Window>
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:EngineeringDashboard" x:Class="EngineeringDashboard.BeamCalculatorWindow" Title="Beam Calculator" Width="1040" Height="860" MinWidth="900" MinHeight="620" WindowStartupLocation="CenterOwner" Background="#F5F5F5" FontFamily="Segoe UI" FontSize="13" Foreground="#202A33">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="CalculatorStyles.xaml"/>
+      </ResourceDictionary.MergedDictionaries>
+      <Style x:Key="SupportCard" TargetType="Button">
+        <Setter Property="Width" Value="280"/><Setter Property="Height" Value="270"/>
+        <Setter Property="Margin" Value="10"/><Setter Property="Background" Value="White"/>
+        <Setter Property="BorderBrush" Value="#C9D1D7"/><Setter Property="BorderThickness" Value="2"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+          <Border x:Name="Card" CornerRadius="8" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="18">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Card" Property="BorderBrush" Value="#D2AE00"/><Setter TargetName="Card" Property="Background" Value="#FFF8D9"/></Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Card" Property="BorderBrush" Value="#376FA0"/></Trigger>
+            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Card" Property="Background" Value="#FFF0AF"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+      </Style>
+    </ResourceDictionary>
+  </Window.Resources>
+  <Border Background="#F5F5F5" Padding="16"><Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <StackPanel Margin="0,0,0,16">
+      <TextBlock Text="Beam calculator" FontSize="22" FontWeight="SemiBold"/>
+      <TextBlock Style="{StaticResource Hint}" Text="Set the geometry and supports, then review the calculated spacing."/>
+    </StackPanel>
+    <Grid x:Name="CalculatorWorkspace" Grid.Row="1" Visibility="{Binding HasSelectedSupportSystem, Converter={StaticResource BoolToVis}}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="1.2*"/>
+        <ColumnDefinition Width="18"/>
+        <ColumnDefinition/>
+      </Grid.ColumnDefinitions>
+      <ScrollViewer x:Name="InputScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,0,10,0">
+          <Border Style="{StaticResource Step}">
+            <TextBlock Text="1  Calculation setup" FontWeight="Bold"/>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <Grid IsEnabled="{Binding ShowSingleGeometry}" Visibility="{Binding ShowSingleGeometry, Converter={StaticResource BoolToVis}}">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition/>
+                  <ColumnDefinition Width="12"/>
+                  <ColumnDefinition/>
+                </Grid.ColumnDefinitions>
+                <ContentControl Grid.Column="0" IsTabStop="False">
+                  <StackPanel>
+                    <TextBlock Text="Beam depth (mm)"/>
+                    <TextBox AutomationProperties.Name="Beam depth (mm)" Text="{Binding Depth, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                  </StackPanel>
+                </ContentControl>
+                <ContentControl Grid.Column="2" IsTabStop="False">
+                  <StackPanel>
+                    <TextBlock Text="Beam width (mm)"/>
+                    <TextBox AutomationProperties.Name="Beam width (mm)" Text="{Binding Width, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                  </StackPanel>
+                </ContentControl>
+              </Grid>
+              <Grid IsEnabled="{Binding ShowSingleGeometry}" Visibility="{Binding ShowSingleGeometry, Converter={StaticResource BoolToVis}}">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition/>
+                  <ColumnDefinition Width="12"/>
+                  <ColumnDefinition/>
+                </Grid.ColumnDefinitions>
+                <ContentControl Grid.Column="0" IsTabStop="False">
+                  <StackPanel>
+                    <CheckBox Content="Include left slab" IsChecked="{Binding HasLeftSlab}"/>
+                    <StackPanel IsEnabled="{Binding HasLeftSlab}" Visibility="{Binding HasLeftSlab, Converter={StaticResource BoolToVis}}">
+                      <StackPanel>
+                        <TextBlock Text="Slab thickness (mm)"/>
+                        <TextBox AutomationProperties.Name="Slab thickness (mm)" Text="{Binding LeftSlabThickness, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" IsEnabled="{Binding HasLeftSlab}"/>
+                      </StackPanel>
+                    </StackPanel>
+                  </StackPanel>
+                </ContentControl>
+                <ContentControl Grid.Column="2" IsTabStop="False">
+                  <StackPanel>
+                    <CheckBox Content="Include right slab" IsChecked="{Binding HasRightSlab}"/>
+                    <StackPanel IsEnabled="{Binding HasRightSlab}" Visibility="{Binding HasRightSlab, Converter={StaticResource BoolToVis}}">
+                      <StackPanel>
+                        <TextBlock Text="Slab thickness (mm)"/>
+                        <TextBox AutomationProperties.Name="Slab thickness (mm)" Text="{Binding RightSlabThickness, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" IsEnabled="{Binding HasRightSlab}"/>
+                      </StackPanel>
+                    </StackPanel>
+                  </StackPanel>
+                </ContentControl>
+              </Grid>
+              <CheckBox x:Name="TransferredSlabCheckBox" Content="Transfer slab loads through beam supports" IsChecked="{Binding TransferSlabLoads}" IsEnabled="{Binding CanSelectTransfer}" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
+              <StackPanel IsEnabled="{Binding IsTransferMode}" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Upper support spacing along beam (mm)"/>
+                <TextBox Text="{Binding UpperSupportSpacingMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                <CheckBox x:Name="BeamNetworkCheckBox" Content="Individual beams and slab bays" IsChecked="{Binding UseBeamNetwork}"/>
+                <StackPanel x:Name="NetworkInputs" IsEnabled="{Binding IsNetworkMode}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}">
+                  <TextBlock Text="Beams, left to right" FontWeight="SemiBold"/>
+                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Grid.Column="1" Text="Width (mm)"/><TextBlock Grid.Column="3" Text="Depth (mm)"/></Grid>
+                  <ItemsControl ItemsSource="{Binding NetworkBeams}"><ItemsControl.ItemTemplate><DataTemplate>
+                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                      <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                      <TextBox Grid.Column="1" AutomationProperties.Name="Beam width (mm)" ToolTip="Beam width (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                      <TextBox Grid.Column="3" AutomationProperties.Name="Beam depth (mm)" ToolTip="Beam depth (mm)" Text="{Binding DepthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                    </Grid>
+                  </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                  <TextBlock Text="Slab bays · clear width / thickness (mm)" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                  <ItemsControl ItemsSource="{Binding NetworkBays}"><ItemsControl.ItemTemplate><DataTemplate>
+                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                      <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                      <TextBox Grid.Column="1" ToolTip="Clear slab bay (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                      <TextBox Grid.Column="3" ToolTip="Slab thickness (mm)" Text="{Binding ThicknessMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                    </Grid>
+                  </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                </StackPanel>
+                <WrapPanel><Button x:Name="AddBeamBayButton" Content="Add slab + beam" Click="AddBeamBay_Click" IsEnabled="{Binding CanAddNetworkBay}"/><Button x:Name="RemoveBeamBayButton" Content="Remove last bay" Click="RemoveBeamBay_Click" IsEnabled="{Binding CanRemoveNetworkBay}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/></WrapPanel>
+                <StackPanel IsEnabled="{Binding ShowLeftBay}" Visibility="{Binding ShowLeftBay, Converter={StaticResource BoolToVis}}">
+                  <TextBlock Text="Left clear slab bay (mm)"/><TextBox Text="{Binding LeftSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                </StackPanel>
+                <StackPanel IsEnabled="{Binding ShowRightBay}" Visibility="{Binding ShowRightBay, Converter={StaticResource BoolToVis}}">
+                  <TextBlock Text="Right clear slab bay (mm)"/><TextBox Text="{Binding RightSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Hint}" Text="Matching opposite beam · beam concrete placed first · foot centres ≥250 mm from beam face."/>
+              </StackPanel>
+              <StackPanel Visibility="{Binding ShowSlabStrip, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Adjacent slab strip width — each checked side (mm)"/>
+                <TextBox x:Name="SlabStripWidthInput" IsEnabled="{Binding ShowSlabStrip}" Text="{Binding SlabStripWidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+              </StackPanel>
+              <Expander x:Name="LoadInputsExpander" Margin="0,2,0,0">
+                  <Expander.Header><TextBlock><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="Load inputs · default"/><Style.Triggers><DataTrigger Binding="{Binding UseCustomLoads}" Value="True"><Setter Property="Text" Value="Load inputs · custom"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></Expander.Header>
+                <StackPanel Margin="0,10,0,0">
+                  <TextBlock Style="{StaticResource Hint}" Text="Use the default loads, or enter project values below."/>
+                  <CheckBox Content="Use custom loads" IsChecked="{Binding UseCustomLoads}"/>
+                  <StackPanel IsEnabled="{Binding UseCustomLoads}" Visibility="{Binding UseCustomLoads, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition/>
+                      </Grid.ColumnDefinitions>
+                      <ContentControl Grid.Column="0" IsTabStop="False">
+                        <StackPanel>
+                          <TextBlock Text="Placing + working load (kN/m²)"/>
+                          <TextBox AutomationProperties.Name="Placing + working load (kN/m²)" Text="{Binding CustomLiveLoad, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" IsEnabled="{Binding UseCustomLoads}"/>
+                        </StackPanel>
+                      </ContentControl>
+                      <ContentControl Grid.Column="2" IsTabStop="False">
+                        <StackPanel>
+                          <TextBlock Text="Formwork load (kN/m²)"/>
+                          <TextBox AutomationProperties.Name="Formwork load (kN/m²)" Text="{Binding CustomFormworkLoad, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" IsEnabled="{Binding UseCustomLoads}"/>
+                        </StackPanel>
+                      </ContentControl>
+                    </Grid>
+                  </StackPanel>
+                </StackPanel>
+              </Expander>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Step}">
+            <TextBlock Text="2  Support layout" FontWeight="Bold"/>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <DockPanel Margin="0,0,0,8">
+                <Button DockPanel.Dock="Right" Content="Change system" Click="ChangeSupportSystem_Click" Padding="10,4" Margin="0"/>
+                <TextBlock FontWeight="SemiBold" VerticalAlignment="Center"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="Props"/><Style.Triggers><DataTrigger Binding="{Binding UseTowers}" Value="True"><Setter Property="Text" Value="Shoring towers"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+              </DockPanel>
+              <StackPanel Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding UseTowers}">
+                <TextBlock Text="Concrete beam length (mm)"/>
+                <TextBox x:Name="TowerLengthInput" Text="{Binding BeamLengthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                <TextBlock Text="Permissible tower leg load (kN)"/>
+                <TextBox x:Name="TowerCapacityInput" Text="{Binding TowerLegCapacityKn, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                <TextBlock Text="Available primary H20 stock lengths (mm)"/>
+                <TextBox x:Name="StockLengthsInput" TextWrapping="Wrap" Text="{Binding StockLengthsText, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBlock Style="{StaticResource Hint}" Text="No cutting, overlaps or internal gaps."/>
+                <TextBlock Text="Maximum concrete overhang per end (mm)" ToolTip="Centered stock. Only load over the actual H20 length is included; concrete beyond its ends is excluded. Set 0 for exact coverage."/>
+                <TextBox Text="{Binding MaximumConcreteEndOverhangMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                <Expander Header="Stock end support allowance" Margin="0,6">
+                  <StackPanel><TextBlock Text="Minimum support-centre inset from each stock end (mm)"/>
+                    <TextBox Text="{Binding StockEndSetbackMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                    <TextBlock Style="{StaticResource Hint}" Text="Planning allowance; local bearing and head details require separate checks."/>
+                  </StackPanel>
+                </Expander>
+                <CheckBox x:Name="Exclude600StandaloneCheckBox" Content="Exclude standalone 600 mm towers" IsChecked="{Binding Exclude600Standalone}" ToolTip="Applies in either orientation. Joined 600 mm bays remain allowed."/>
+                <Button x:Name="OptimizeTowersButton" Content="Optimize towers" IsEnabled="{Binding CanOptimizeTowers}" Click="OptimizeTowers_Click" Margin="0,8"/>
+              </StackPanel>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition/>
+                  <ColumnDefinition Width="12"/>
+                  <ColumnDefinition/>
+                </Grid.ColumnDefinitions>
+                <ContentControl Grid.Column="0" IsTabStop="False">
+                  <StackPanel Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="Props per primary line"/>
+                    <ComboBox IsEnabled="{Binding UseProps}" AutomationProperties.Name="Props per primary line" SelectedValue="{Binding NumberOfProps}" SelectedValuePath="Content">
+                      <ComboBoxItem Content="2"/>
+                      <ComboBoxItem Content="3"/>
+                      <ComboBoxItem Content="4+"/>
+                    </ComboBox>
+                  </StackPanel>
+                </ContentControl>
+                <ContentControl Grid.Column="2" IsTabStop="False">
+                  <StackPanel>
+                    <TextBlock Text="Deflection criterion"/>
+                    <ComboBox AutomationProperties.Name="Deflection criterion" ItemsSource="{Binding DeflectionOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" ToolTip="{Binding DeflectionCriteriaNote}">
+                      <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextWrapping="Wrap"/></DataTemplate></ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                </ContentControl>
+              </Grid>
+              <StackPanel Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Floor height (mm)"/>
+                <TextBox IsEnabled="{Binding UseProps}" AutomationProperties.Name="Floor height (mm)" Text="{Binding FloorHeight, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+              </StackPanel>
+              <StackPanel Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Prop type and outer tube position"/>
+                <ComboBox IsEnabled="{Binding UseProps}" AutomationProperties.Name="Prop type and outer tube position" ItemsSource="{Binding PropOptions}" SelectedItem="{Binding SelectedProp, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" DisplayMemberPath="Label"/>
+              </StackPanel>
+              <Border Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}" Background="#F0F2F3" Padding="10">
+                <StackPanel>
+                  <TextBlock Text="{Binding PropExtensionMm, StringFormat='Automatic extension: {0:F0} mm'}"/>
+                  <TextBlock Style="{StaticResource Hint}" Text="{Binding PropCapacityKn, StringFormat='Permitted prop load: {0:F2} kN'}"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+      <ScrollViewer x:Name="ReviewScroll" Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,0,8,0">
+          <Border Style="{StaticResource Step}">
+            <TextBlock Text="3  Review spacing" FontWeight="Bold"/>
+          </Border>
+          <Border Style="{StaticResource Issue}">
+            <StackPanel>
+              <TextBlock Text="Review your inputs" FontWeight="SemiBold" Foreground="#B42318" Margin="0,0,0,6"/>
+              <TextBlock Text="{Binding WarningMessage}" Foreground="#B42318" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+          </Border>
+          <Border Background="#ECEFF1" Padding="14" Margin="0,0,0,12">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Visibility" Value="Visible"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsCalculationValid}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+            <TextBlock Text="A spacing result will appear when the inputs pass the calculator checks." Foreground="#586772"/>
+          </Border>
+          <Border x:Name="ResultsBorder" Visibility="{Binding ShowPropResults, Converter={StaticResource BoolToVis}}" Background="#FFF6D6" BorderBrush="#D4AA00" BorderThickness="5,0,0,0" Padding="16" Margin="0,0,0,12">
+            <StackPanel>
+              <TextBlock Text="Prop spacing" FontWeight="SemiBold"/>
+              <TextBlock Text="{Binding MaximumPropSpacing, StringFormat='{}{0:F0} mm'}" FontSize="34" FontWeight="Bold" Margin="0,4,0,12" Foreground="#202A33"/>
+              <Border Height="1" Background="#E7DCA7" Margin="0,0,0,6"/>
+              <Grid Margin="0,5">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Load per prop" Margin="0,0,12,0"/>
+                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding MaximumPropLoad, StringFormat='{}{0:F2} kN'}"/>
+              </Grid>
+              <Grid Margin="0,5">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Prop utilization" Margin="0,0,12,0"/>
+                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding PropUtilizationPercent, StringFormat='{}{0:F1}%'}"/>
+              </Grid>
+              <TextBlock Text="{Binding PrimaryDeflectionSummary}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+            </StackPanel>
+          </Border>
+          <Border x:Name="TowerResultsBorder" Visibility="{Binding ShowTowerResults, Converter={StaticResource BoolToVis}}" Background="#FFF6D6" BorderBrush="#D4AA00" BorderThickness="5,0,0,0" Padding="16" Margin="0,0,0,12">
+            <StackPanel>
+              <TextBlock Text="Tower layout · best found" FontWeight="SemiBold" FontSize="18"/>
+              <TextBlock Text="{Binding TowerResult.LegLoadSummary}" FontWeight="Bold" TextWrapping="Wrap" Margin="0,8"/>
+              <ProgressBar Value="{Binding TowerResult.LegUtilizationPercent, Mode=OneWay}" Maximum="100" Height="10"/>
+              <TextBlock Text="{Binding TowerResult.CompactSummary}" Margin="0,8"/>
+              <Button x:Name="TowerDiagramsButton" Content="Show shear, moment &amp; deflection" Click="TowerDiagrams_Click" IsEnabled="{Binding ShowTowerResults}" Margin="0,8"/>
+              <Expander Header="Checks and optimization" Margin="0,8,0,0"><StackPanel>
+                <TextBlock Text="{Binding TowerSummary}" Margin="0,8"/>
+                <TextBlock Text="{Binding TowerSearchNote}" Style="{StaticResource Hint}"/>
+                <TextBlock Text="{Binding TowerResult.CapacityBasis}" Style="{StaticResource Hint}" Margin="0,8"/>
+              </StackPanel></Expander>
+              <Expander Header="Leg loads and positions" Margin="0,10,0,0"><TextBlock Text="{Binding TowerSchedule}" Margin="0,8"/></Expander>
+              <Expander Header="H20 stock schedule" Margin="0,10,0,0"><TextBlock Text="{Binding TowerStockSchedule}" Margin="0,8"/></Expander>
+            </StackPanel>
+          </Border>
+          <Border Background="#ECEFF1" Padding="14" Margin="0,0,0,12">
+            <StackPanel>
+              <TextBlock Style="{StaticResource Subheading}" Text="Beam and support section" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
+              <TextBlock Style="{StaticResource Hint}" Text="Schematic · secondary H20 perpendicular to primary H20" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
+              <TextBlock Style="{StaticResource Subheading}" Text="Tower layout · plan" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
+              <ScrollViewer x:Name="TowerPlanScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
+              <local:BeamSupportDiagram x:Name="SupportDiagram" Margin="0,4"><local:BeamSupportDiagram.Visibility><Binding Path="ShowSingleGeometry" Converter="{StaticResource BoolToVis}"/></local:BeamSupportDiagram.Visibility>
+                <local:BeamSupportDiagram.Style>
+                  <Style TargetType="local:BeamSupportDiagram">
+                    <Setter Property="Height" Value="300"/>
+                    <Style.Triggers><DataTrigger Binding="{Binding IsTransferMode}" Value="True"><Setter Property="Height" Value="710"/></DataTrigger><DataTrigger Binding="{Binding IsCalculationValid}" Value="False"><Setter Property="Height" Value="0"/></DataTrigger></Style.Triggers>
+                  </Style>
+                </local:BeamSupportDiagram.Style>
+              </local:BeamSupportDiagram>
+              </ScrollViewer>
+              <ScrollViewer x:Name="NetworkPlanScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"><local:TransferNetworkPlan x:Name="NetworkPlan"/></ScrollViewer>
+              <TextBlock Text="{Binding NetworkSummary}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/>
+              <TextBlock Text="{Binding NetworkSelectedLabel}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/>
+              <TextBlock x:Name="DiagramCaption" Style="{StaticResource Hint}"/>
+              <TextBlock Text="{Binding TransferSummary}" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0"/>
+              <Expander Header="All beams: legs and H20s" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"><TextBlock Text="{Binding NetworkSchedule}" TextWrapping="Wrap"/></Expander>
+              <Expander Header="Transferred load details" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}"><TextBlock Text="{Binding TransferSchedule}" TextWrapping="Wrap"/></Expander>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <Expander Header="Calculation details" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
+                <StackPanel Margin="0,10,0,0" Visibility="{Binding IsCalculationValid, Converter={StaticResource BoolToVis}}">
+                  <Grid Margin="0,5">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Primary overhang" Margin="0,0,12,0"/>
+                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding PrimaryBeamCantilever, StringFormat='{}{0:F0} mm'}"/>
+                  </Grid>
+                  <Grid Margin="0,5">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Governing check" Margin="0,0,12,0"/>
+                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding LimitingFactor, StringFormat='{}{0}'}"/>
+                  </Grid>
+                  <Grid Margin="0,5">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Left primary line" Margin="0,0,12,0"/>
+                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding LeftLineLoad, StringFormat='{}{0:F2} kN/m'}"/>
+                  </Grid>
+                  <Grid Margin="0,5">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Right primary line" Margin="0,0,12,0"/>
+                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding RightLineLoad, StringFormat='{}{0:F2} kN/m'}"/>
+                  </Grid>
+                </StackPanel>
+              </Expander>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <Expander Header="Calculation assumptions" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
+                <StackPanel Margin="0,10,0,0" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
+                  <TextBlock Style="{StaticResource Hint}" Text="Two primary lines support transverse secondary beams. Each checked slab contributes the entered strip width (default 300 mm). Primary-line spacing = (beam width + 1400) Ã· 2. Eccentric loads are distributed by equilibrium; the heavier line governs."/>
+                  <TextBlock Style="{StaticResource Hint}" Text="Uniform loading and equal longitudinal spans. Extension = floor height âˆ’ beam depth âˆ’ 418 mm. The prop table rounds extension up to the next 100 mm. Sheeting, secondary beams, joints and restraint require separate checks. The drawn secondary-beam quantity is illustrative."/>
+                </StackPanel>
+              </Expander>
+              <Expander Header="Tower calculation basis" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}">
+                <TextBlock Style="{StaticResource Hint}" Margin="0,10,0,0" Text="{Binding TowerCalculationBasis}"/>
+              </Expander>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+    <Grid x:Name="SupportSystemPicker" Grid.Row="1">
+      <Grid.Style><Style TargetType="Grid"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding HasSelectedSupportSystem}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Grid.Style>
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+        <TextBlock Text="Choose a support system" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+        <StackPanel Orientation="Horizontal">
+          <Button x:Name="PickPropsButton" Style="{StaticResource SupportCard}" Click="PickProps_Click" AutomationProperties.Name="Choose Dokaflex">
+            <StackPanel>
+              <Viewbox Width="220" Height="155" Margin="0,0,0,12"><Canvas Width="220" Height="155">
+                <Rectangle Canvas.Left="8" Canvas.Top="38" Width="204" Height="12" Fill="#DCA923"/>
+                <Rectangle Canvas.Left="8" Canvas.Top="53" Width="204" Height="8" Fill="#FFE084"/>
+                <Path Stroke="#647B8D" StrokeThickness="6" Data="M 50,65 L 50,135 M 170,65 L 170,135"/>
+                <Path Stroke="#425764" StrokeThickness="3" Data="M 38,65 L 62,65 M 158,65 L 182,65 M 35,138 L 65,138 M 155,138 L 185,138"/>
+                <Rectangle Canvas.Left="46" Canvas.Top="90" Width="8" Height="10" Fill="#DCA923"/><Rectangle Canvas.Left="166" Canvas.Top="90" Width="8" Height="10" Fill="#DCA923"/>
+              </Canvas></Viewbox>
+              <TextBlock Text="Dokaflex" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+          <Button x:Name="PickTowersButton" Style="{StaticResource SupportCard}" Click="PickTowers_Click" AutomationProperties.Name="Choose D3 Shoring System">
+            <StackPanel>
+              <Viewbox Width="220" Height="155" Margin="0,0,0,12"><Canvas Width="220" Height="155">
+                <Path Stroke="#DCA923" StrokeThickness="8" Data="M 10,42 L 178,42 M 40,29 L 208,29"/>
+                <Path Stroke="#FFE084" StrokeThickness="3" Data="M 10,49 L 178,49 M 40,36 L 208,36"/>
+                <Path Stroke="#647B8D" StrokeThickness="4" Data="M 45,53 L 45,136 M 145,53 L 145,136 M 75,40 L 75,123 M 175,40 L 175,123 M 45,80 L 145,80 M 45,110 L 145,110 M 75,67 L 175,67 M 75,97 L 175,97"/>
+                <Path Stroke="#425764" StrokeThickness="2" Data="M 45,60 L 75,116 M 75,47 L 45,129 M 145,60 L 175,116 M 175,47 L 145,129 M 36,139 L 54,139 M 136,139 L 154,139 M 66,126 L 84,126 M 166,126 L 184,126"/>
+              </Canvas></Viewbox>
+              <TextBlock Text="D3 Shoring System" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </StackPanel>
+    </Grid>
+    <Border Grid.Row="2" BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
+      <DockPanel LastChildFill="True">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button Content="Close" MinWidth="80" Click="BtnClose_Click" Margin="0,0,10,0"/>
+          <Border IsEnabled="{Binding HasSelectedSupportSystem}"><Button x:Name="ImportButton" IsEnabled="{Binding CanImport}" Style="{StaticResource PrimaryAction}" Content="Import to Revit" Click="BtnApplyToBeams_Click" ToolTip="Tower layouts can be saved/exported; the existing Revit import is for prop spacing."/></Border>
+        </StackPanel>
+        <WrapPanel VerticalAlignment="Center">
+          <Button IsEnabled="{Binding HasSelectedSupportSystem}" Content="Save calculation" Click="SaveCalculation_Click" Margin="0,0,6,0"/>
+          <Button Content="Load calculation" Click="LoadCalculation_Click" Margin="0,0,6,0"/>
+          <Button IsEnabled="{Binding HasSelectedSupportSystem}" Content="Export report" Click="ExportReport_Click"/>
+        </WrapPanel>
+      </DockPanel>
+    </Border>
+  </Grid></Border>
+</Window>

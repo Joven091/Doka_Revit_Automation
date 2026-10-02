@@ -173,9 +173,9 @@ internal static class Program
    bool criterionRejected=false;try {window.RestoreCalculation(invalidCriterion);}catch(ArgumentException){criterionRejected=true;}
    Check(criterionRejected&&vm.DeflectionLimit.Label=="L/350","invalid saved criterion leaves current calculation intact");
    vm.UseTowers=true;Pump();Check(vm.TowerResult==null && !vm.IsCalculationValid,"switching support modes invalidates old results");
-   vm.Depth=1750;vm.Width=1100;vm.BeamLengthMm=6750;vm.TowerLegCapacityKn=70;vm.LeftSlabThickness=300;vm.HasLeftSlab=true;vm.HasRightSlab=false;vm.TransferSlabLoads=true;vm.UpperSupportSpacingMm=275;Pump();
+   vm.Depth=1750;vm.Width=1100;vm.BeamLengthMm=6750;vm.MaximumConcreteEndOverhangMm=75;vm.TowerLegCapacityKn=70;vm.LeftSlabThickness=300;vm.HasLeftSlab=true;vm.HasRightSlab=false;vm.TransferSlabLoads=true;vm.UpperSupportSpacingMm=200;Pump();
    Check(!Input("SlabStripWidthMm").IsEnabled && Input("LeftSlabBayMm").IsEnabled && !Input("RightSlabBayMm").IsEnabled,"transfer mode enables only applicable bay inputs");
-   Optimize();Check(vm.IsCalculationValid && vm.TowerResult.Transfer!=null,"transferred load optimization through WPF");
+   Optimize();Check(vm.IsCalculationValid && vm.TowerResult.Transfer!=null,"transferred load optimization through WPF: "+vm.WarningMessage+" · spacing "+vm.UpperSupportSpacingMm+" · end "+vm.MaximumConcreteEndOverhangMm);
    Render();var transferred=vm.TowerResult.Transfer;
    Check(diagram.DrawnTransferRowCount==0 && diagram.DrawnFootCount==0,"plan omits transverse H20s and upper feet for a cleaner tower view");
    Check(diagram.MinWidth>1000,"transfer plan can scroll with readable row spacing");
@@ -190,20 +190,24 @@ internal static class Program
    Check(diagram.SelectAt(new Point(upperHit.Item1.X+upperHit.Item1.Width/2,upperHit.Item1.Y+upperHit.Item1.Height/2)),"select upper pair from main section");Pump();Check(window.TowerDiagrams.Title.Contains("Upper left"),"upper pair diagram selection");
    if(args.Length>0){SavePreview(Path.ChangeExtension(args[0],"transferred.png"),1040,860);File.WriteAllText(Path.ChangeExtension(args[0],"transferred-report.html"),window.BuildReport());
     var bitmap=new RenderTargetBitmap((int)Math.Ceiling(diagram.ActualWidth),(int)Math.Ceiling(diagram.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(diagram);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"transfer-plan.png")))encoder.Save(file);}
-   vm.TransferSlabLoads=false;window.RestoreCalculation(transferRecord);Pump();Check(vm.IsTransferMode && vm.UpperSupportSpacingMm==275 && !vm.IsCalculationValid,"transfer input round trip invalidates stale results");
+   vm.TransferSlabLoads=false;window.RestoreCalculation(transferRecord);Pump();Check(vm.IsTransferMode && vm.UpperSupportSpacingMm==200 && !vm.IsCalculationValid,"transfer input round trip invalidates stale results");
    Enter("UpperSupportSpacingMm","oops");Check(!vm.CanOptimizeTowers,"invalid active transfer text blocks optimization");vm.TransferSlabLoads=false;Pump();Check(vm.CanOptimizeTowers,"inactive transfer text ignored in strip mode");
-   Enter("UpperSupportSpacingMm","275");vm.TransferSlabLoads=true;Pump();
+   Enter("UpperSupportSpacingMm","200");vm.TransferSlabLoads=true;Pump();
    ((Button)window.FindName("AddBeamBayButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render();
    Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBays.Count==2,"add button extends to three beams and two slab bays");
    Check(!Input("Depth").IsEnabled && !Input("LeftSlabBayMm").IsEnabled,"network uses individual beam and bay inputs");
    vm.NetworkBeams[1].DepthMm=1200;vm.NetworkBeams[2].DepthMm=1500;vm.NetworkBeams[2].WidthMm=900;vm.NetworkBays[1].WidthMm=3500;vm.NetworkBays[1].ThicknessMm=250;Render();
    var depthInput=VisualInputs((DependencyObject)window.Content).Single(t=>t.DataContext==vm.NetworkBeams[1] && t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path=="DepthMm");
    Check(depthInput.Text=="1200","each beam depth is editable in the UI");
+   var widthInput=VisualInputs((DependencyObject)window.Content).Single(t=>t.DataContext==vm.NetworkBeams[2] && t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path=="WidthMm");
+   widthInput.Text="950";widthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(vm.NetworkBeams[2].WidthMm==950 && !vm.IsCalculationValid,"each beam width is editable and invalidates the result");
+   widthInput.Text="oops";widthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(!vm.CanOptimizeTowers,"invalid individual beam width blocks optimization");
+   widthInput.Text="900";widthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();
    depthInput.Text="oops";depthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(!vm.CanOptimizeTowers,"invalid templated beam depth blocks optimization");
    depthInput.Text="1200";depthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Optimize();Check(vm.IsCalculationValid && vm.NetworkResult!=null,"network optimization from WPF");
    Render();var networkPlan=(TransferNetworkPlan)window.FindName("NetworkPlan");
    Check(networkPlan.DrawnTowerLegCount==vm.NetworkResult.LegCount && networkPlan.DrawnTransversePlanCount==0,"full network plan shows all towers and no transverse pairs");
-   Check(networkPlan.DrawnPrimaryLengthCount==vm.NetworkResult.Beams.Sum(b=>b.StockPlan.Pieces.Length*2),"each longitudinal primary stock length labelled in plan");
+   Check(networkPlan.DrawnPrimaryLengthCount==vm.NetworkResult.Beams.Sum(b=>b.StockPlan.Pieces.Length),"each paired primary stock length labelled once in plan");
    Check(networkPlan.DrawnSecondaryLengthCount==3,"secondary stock length shown below each beam in section");
    var networkSaved=window.CaptureCalculation();var networkReport=window.BuildReport();Check(networkReport.Contains("Network") && networkReport.Contains("1200") && networkReport.Contains("shutter"),"report includes complete network and distinct beam depths");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
@@ -221,8 +225,8 @@ internal static class Program
     Check(window.TowerDiagrams.SelectedLoadCase==0 && window.TowerDiagrams.LoadedAnalysis==layout.Transfer.PrimaryCases[0][runs].Analysis,"beam-only load-case button changes actual plotted analysis");
     var allCase=Find<Button>(window.TowerDiagrams).Single(b=>Equals(b.Content,layout.Transfer.CaseNames.Last()));allCase.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
     var secondaryHit=networkPlan.MemberTargets.First(h=>h.Item2==selectedBeam && h.Item3>=runs && h.Item3<runs+layout.Transfer.RowsMm.Length);
-    Check(networkPlan.SelectAt(new Point(secondaryHit.Item1.X+secondaryHit.Item1.Width/2,secondaryHit.Item1.Y+secondaryHit.Item1.Height/2)),"select each lower transverse pair from section");Pump();
-    Check(window.TowerDiagrams.LoadedAnalysis==layout.Transfer.LowerCases.Last()[secondaryHit.Item3-runs].Analysis && window.TowerDiagrams.SelectedTransferMember.H20Count==2,"lower transverse diagrams use their point loads and paired capacity");
+    Check(networkPlan.SelectAt(new Point(secondaryHit.Item1.X+secondaryHit.Item1.Width/2,secondaryHit.Item1.Y+secondaryHit.Item1.Height/2)),"select each single lower secondary from section");Pump();
+    Check(window.TowerDiagrams.LoadedAnalysis==layout.Transfer.LowerCases.Last()[secondaryHit.Item3-runs].Analysis && window.TowerDiagrams.SelectedTransferMember.H20Count==1 && window.TowerDiagrams.SelectedTransferMember.ShearLimitKn==11 && window.TowerDiagrams.SelectedTransferMember.MomentLimitKnM==5,"lower secondary diagrams use their point loads and single capacity");
    }
    for(int bay=0;bay<vm.NetworkResult.Bays.Length;bay++)
    {
@@ -236,7 +240,7 @@ internal static class Program
    }
    if(args.Length>0){var bitmap=new RenderTargetBitmap((int)Math.Ceiling(networkPlan.ActualWidth),(int)Math.Ceiling(networkPlan.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(networkPlan);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"network-plan.png")))encoder.Save(file);File.WriteAllText(Path.ChangeExtension(args[0],"network-report.html"),networkReport);}
    vm.NetworkBeams[1].DepthMm=1000;Check(!vm.IsCalculationValid && window.TowerDiagrams==null,"editing any beam invalidates network diagrams");
-   window.RestoreCalculation(networkSaved);Pump();Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBeams[1].DepthMm==1200,"network save/load round trip retains per-beam depth and all bays");
+   window.RestoreCalculation(networkSaved);Pump();Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBeams[1].DepthMm==1200 && vm.NetworkBeams[2].WidthMm==900,"network save/load round trip retains per-beam width/depth and all bays");
    ((Button)window.FindName("RemoveBeamBayButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Check(vm.NetworkBeams.Count==2 && vm.NetworkBays.Count==1,"remove last bay button");
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }

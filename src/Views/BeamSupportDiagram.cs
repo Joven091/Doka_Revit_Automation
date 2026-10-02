@@ -138,7 +138,7 @@ namespace EngineeringDashboard
             var frame = new Pen(SteelSide, 2); var cross = new Pen(Steel, 1.5) { DashStyle = DashStyles.Dash };
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
             dc.DrawRectangle(ConcreteTop, null, new Rect(x0, cy - model.Width * transverseScale / 2, layout.LengthMm * scale, model.Width * transverseScale));
-            if(layout.Transfer!=null) Label(dc,$"Secondary spacing {layout.Transfer.EnteredUpperSpacingMm:0} mm",x0,10);
+            if(layout.Transfer!=null) {Label(dc,$"mm · P = 2×H20/line · secondaries = single H20 @ {layout.Transfer.EnteredUpperSpacingMm:0}",x0,8);Label(dc,"C = cross · F = frame · G = gap",x0,25);}
             for (int i = 0; i < layout.StockPlan.Pieces.Length; i++)
             {
                 var piece = layout.StockPlan.Pieces[i];
@@ -157,10 +157,10 @@ namespace EngineeringDashboard
                     double a = x0 + ends[end] * scale, b = x0 + legs[end] * scale;
                     dc.DrawLine(new Pen(Steel, 1), new Point(a, dimY), new Point(b, dimY));
                     foreach (double x in new[] { a, b }) dc.DrawLine(new Pen(Steel, 1), new Point(x, dimY - 3), new Point(x, dimY + 3));
-                    Label(dc, Math.Abs(ends[end] - legs[end]).ToString("0.###") + " mm", (a + b) / 2, dimY - 16, true);
+                    Label(dc, Math.Abs(ends[end] - legs[end]).ToString("0.###") + (layout.Transfer==null ? " mm" : ""), (a + b) / 2, dimY - 16, true);
                     DrawnEndDimensionCount++;
                 }
-                Label(dc, "P" + (i + 1) + "\n2 × " + piece.StockLengthMm.ToString("0.###") + " mm",
+                Label(dc, "P" + (i + 1) + (layout.Transfer==null ? "\n2 × " : " · ") + piece.StockLengthMm.ToString("0.###") + (layout.Transfer==null ? " mm" : ""),
                     x0 + (piece.StartMm + piece.StockLengthMm / 2) * scale, bottom + 12, true);
                 if (i > 0) dc.DrawLine(new Pen(ConcreteSide, 1) { DashStyle = DashStyles.Dot }, new Point(x0 + piece.StartMm * scale, top - 8), new Point(x0 + piece.StartMm * scale, bottom + 15));
             }
@@ -175,15 +175,27 @@ namespace EngineeringDashboard
                     double next = x0 + layout.PositionsMm[i + 1] * scale;
                     foreach (double y in new[] { top, bottom }) dc.DrawLine(layout.Rotated ? frame : cross, new Point(x, y), new Point(next, y));
                 }
-                if (i < layout.Joined.Length)
+                if (i < layout.Joined.Length && layout.Transfer==null)
                 {
                     double next = x0 + layout.PositionsMm[i + 1] * scale, y = top - (layout.Transfer==null ? 32 : 14);
                     dc.DrawLine(new Pen(Steel, 1), new Point(x, y), new Point(next, y));
                     foreach (double end in new[] { x, next }) dc.DrawLine(new Pen(Steel, 1), new Point(end, y - 3), new Point(end, y + 3));
                     string type = layout.Joined[i] ? (layout.Rotated ? "Frame" : "Cross") : "Gap";
-                    Label(dc, type + "\n" + (layout.PositionsMm[i + 1] - layout.PositionsMm[i]).ToString("0.###") + " mm", (x + next) / 2, y - 32, true);
+                    if(layout.Transfer!=null)type=type.Substring(0,1);
+                    Label(dc, type + (layout.Transfer==null ? "\n" : " ") + (layout.PositionsMm[i + 1] - layout.PositionsMm[i]).ToString("0.###") + (layout.Transfer==null ? " mm" : ""), (x + next) / 2, y - (layout.Transfer==null ? 32 : 15), true);
                     if (layout.Joined[i]) DrawnBayDimensionCount++; else DrawnGapDimensionCount++;
                 }
+            }
+            if(layout.Transfer!=null) for(int i=0;i<layout.Joined.Length;)
+            {
+                int count=1;double interval=layout.PositionsMm[i+1]-layout.PositionsMm[i],y=top-14;
+                while(i+count<layout.Joined.Length && layout.Joined[i+count]==layout.Joined[i] && Math.Abs(layout.PositionsMm[i+count+1]-layout.PositionsMm[i+count]-interval)<1e-7)count++;
+                double a=x0+layout.PositionsMm[i]*scale,b=x0+layout.PositionsMm[i+count]*scale;
+                dc.DrawLine(new Pen(Steel,1),new Point(a,y),new Point(b,y));
+                for(int j=0;j<=count;j++) {double x=x0+layout.PositionsMm[i+j]*scale;dc.DrawLine(new Pen(Steel,1),new Point(x,y-3),new Point(x,y+3));}
+                string code=layout.Joined[i] ? layout.Rotated ? "F" : "C" : "G";
+                Label(dc,$"{(count>1 ? count+"×" : "")}{code} {interval:0.###}",(a+b)/2,y-15,true);
+                if(layout.Joined[i])DrawnBayDimensionCount+=count;else DrawnGapDimensionCount+=count;i+=count;
             }
             dc.DrawLine(new Pen(Steel, 1), new Point(x0, bottom + (layout.Transfer == null ? 91 : 121)), new Point(x0 + layout.LengthMm * scale, bottom + (layout.Transfer == null ? 91 : 121)));
             Label(dc, "Concrete beam: " + layout.LengthMm.ToString("0.###") + " mm", ActualWidth / 2, bottom + (layout.Transfer == null ? 96 : 126), true);
@@ -216,7 +228,7 @@ namespace EngineeringDashboard
             int maxRow=Array.IndexOf(t.TributaryWidthsMm,System.Linq.Enumerable.Max(t.TributaryWidthsMm));
             int lowerEncoded=layout.StockPlan.Pieces.Length+maxRow;
             MemberTargets.Add(Tuple.Create(new Rect(xx(t.LowerStockStartMm),beamBottom, t.LowerStockLengthMm*scale,12),lowerEncoded,0,0));
-            dim(t.LowerStockStartMm,t.LowerStockStartMm+t.LowerStockLengthMm,beamBottom+107,$"Secondary 2 × {t.LowerStockLengthMm:0} mm · spacing {t.EnteredUpperSpacingMm:0} mm");
+            dim(t.LowerStockStartMm,t.LowerStockStartMm+t.LowerStockLengthMm,beamBottom+107,$"Secondary {t.LowerStockLengthMm:0}");
             for(int side=0;side<2;side++)
             {
                 double bay=side==0 ? leftBay : rightBay;if(bay==0)continue;
