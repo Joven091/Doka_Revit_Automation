@@ -75,6 +75,12 @@ internal static class TransferTests
             TransferredSlab=new TransferredSlabInput {BeamWidthMm=1100,BeamLineLoadKnM=50,UpperSpacingMm=275,LeftBayMm=3900,LeftAreaLoadKnM2=9.4}};
         bool rejected=false;try {TowerOptimizer.Optimize(widerRows);}catch(ArgumentException){rejected=true;}
         Check(rejected,"a previously paired-secondary arrangement cannot retain the pair's stiffness/capacity after conversion to single");
+        var customInput=new TowerInput {LengthMm=10600,LegCapacityKn=70,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,Exclude600Standalone=true,
+            TransferredSlab=new TransferredSlabInput {BeamWidthMm=800,BeamLineLoadKnM=46.65*.8,UpperSpacingMm=200,RightBayMm=2575,RightAreaLoadKnM2=9.4}};
+        var custom=TowerOptimizer.Optimize(customInput);
+        Near(custom.Transfer.RightUpperStockMm,2175,"single-beam mode creates same 25 mm custom fallback");
+        Check(custom.Transfer.RightUpperCustom && custom.Transfer.RightUpperEdgeMm==200 && custom.Transfer.Schedule.Contains("2175 mm custom"),"single-beam custom schedule and edge clearance");
+        Near(custom.Transfer.SlabLoadKn,9.4*2.575*custom.Transfer.TributaryWidthsMm.Sum()/2000,"mirrored custom slab and shutter load conservation");
         input.TransferredSlab.UpperSpacingMm=double.NaN;
         try {TowerOptimizer.Optimize(input);throw new Exception("accepted invalid transfer spacing");} catch(ArgumentException) {checks++;}
         Console.WriteLine($"Transfer: {checks} checks passed");

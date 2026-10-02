@@ -8,10 +8,19 @@ namespace EngineeringDashboard
     public sealed class UpperTransferPlan
     {
         public double StockLengthMm, EdgeMm, NearFootMm, FarFootMm;
-        public UpperTransferPlan Reverse() => new UpperTransferPlan {StockLengthMm=StockLengthMm,EdgeMm=EdgeMm,NearFootMm=FarFootMm,FarFootMm=NearFootMm};
+        public bool IsCustomLength;
+        // Custom fallback keeps edge strips closest to 200 mm, without changing primary/lower stocks.
+        public static double[] SlabLengths(double bay,double[] stocks)
+        {
+            var fitting=stocks.Where(stock=>(bay-stock)/2>=200 && (bay-stock)/2<=350).ToArray();
+            if(fitting.Length>0)return fitting;
+            double custom=Math.Floor((bay-400)/25)*25;
+            return custom>0 && (bay-custom)/2<=350 ? new[] {custom} : new double[0];
+        }
+        public UpperTransferPlan Reverse() => new UpperTransferPlan {StockLengthMm=StockLengthMm,EdgeMm=EdgeMm,NearFootMm=FarFootMm,FarFootMm=NearFootMm,IsCustomLength=IsCustomLength};
         public void Validate(double bay,double[] stocks)
         {
-            if(new[] {StockLengthMm,EdgeMm,NearFootMm,FarFootMm}.Any(x=>!TowerBeamAnalysis.Finite(x)) || !stocks.Contains(StockLengthMm)
+            if(new[] {StockLengthMm,EdgeMm,NearFootMm,FarFootMm}.Any(x=>!TowerBeamAnalysis.Finite(x)) || !SlabLengths(bay,stocks).Contains(StockLengthMm) || IsCustomLength!=!stocks.Contains(StockLengthMm)
                 || Math.Abs(bay-StockLengthMm-2*EdgeMm)>1e-7 || EdgeMm<200 || EdgeMm>350 || NearFootMm<Math.Max(250,EdgeMm+150)
                 || FarFootMm<Math.Max(250,EdgeMm+150) || bay-NearFootMm-FarFootMm<300) throw new ArgumentException("Invalid shared upper H20 stock or foot positions.");
         }
@@ -161,12 +170,9 @@ namespace EngineeringDashboard
         private static IEnumerable<UpperTransferPlan> Options(TowerInput common,TransferNetworkInput input,int bay,double tributary,string rowLocation)
         {
             var row=input.Bays[bay];var result=new List<Tuple<UpperTransferPlan,double>>();
-            if(!common.StockLengthsMm.Any(stock=>(row.WidthMm-stock)/2>=200 && (row.WidthMm-stock)/2<=350))
-            {
-                var nearby=common.StockLengthsMm.OrderBy(stock=>Math.Abs((row.WidthMm-stock)/2-275)).Take(2);
-                common.Diagnostics.Geometry("S"+(bay+1)+" stock",$"S{bay+1} stock coverage: clear bay {row.WidthMm:0.###} mm needs one H20 {row.WidthMm-700:0.###}–{row.WidthMm-400:0.###} mm for 200–350 mm edge strips; no available stock fits. Nearby stocks: "+string.Join("; ",nearby.Select(stock=>$"{stock:0} mm leaves {(row.WidthMm-stock)/2:0.###} mm per side"))+".","Review available slab H20 stocks and permitted edge coverage; verify the entered bay is its actual clear width.",summary:$"S{bay+1} stock coverage: no available H20 in the required {row.WidthMm-700:0.###}–{row.WidthMm-400:0.###} mm range (200–350 mm edge strips).",blocker:true);
-            }
-            foreach(double stock in common.StockLengthsMm)
+            var lengths=UpperTransferPlan.SlabLengths(row.WidthMm,common.StockLengthsMm);
+            if(lengths.Length==0)common.Diagnostics.Geometry("S"+(bay+1)+" length",$"S{bay+1}: no positive 25 mm slab H20 length fits clear bay {row.WidthMm:0.###} mm with 200–350 mm edge strips.","Review the clear bay width and required edge clearance.",blocker:true);
+            foreach(double stock in lengths)
             {
                 double edge=(row.WidthMm-stock)/2;if(edge<200 || edge>350)continue;
                 double min=Math.Max(250,edge+150),max=row.WidthMm/2-150;
@@ -176,7 +182,7 @@ namespace EngineeringDashboard
                     var analysis=LoadedBeamAnalysis.Analyze(stock,new[] {a-edge,row.WidthMm-b-edge},new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock,KnPerM=input.AreaLoad(row.ThicknessMm)*tributary/1000}},null,TowerOptimizer.PairEI/2,common.DeflectionDenominator);
                     common.Diagnostics.Analysis(analysis,1,1,"S"+(bay+1)+" slab H20",1,$"{rowLocation} · stock {stock:0} mm · feet {a:0.###}/{b:0.###} mm from faces");
                     if(analysis.MomentKnM>TowerOptimizer.PairMoment/2+1e-8 || analysis.ShearKn>TowerOptimizer.PairShear/2+1e-8 || analysis.DeflectionUtilization>1+1e-8 || analysis.Reactions.Any(r=>r< -1e-7))continue;
-                    result.Add(Tuple.Create(new UpperTransferPlan {StockLengthMm=stock,EdgeMm=edge,NearFootMm=a,FarFootMm=b},analysis.DeflectionUtilization));
+                    result.Add(Tuple.Create(new UpperTransferPlan {StockLengthMm=stock,EdgeMm=edge,NearFootMm=a,FarFootMm=b,IsCustomLength=!common.StockLengthsMm.Contains(stock)},analysis.DeflectionUtilization));
                 }
             }
             // Keep varied near/far positions, both symmetric and asymmetric. The chain DP is exact over this bounded candidate set.

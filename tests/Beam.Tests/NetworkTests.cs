@@ -86,15 +86,41 @@ internal static class NetworkTests
         failureVm.NetworkBeams[1].WidthMm=650;failureVm.NetworkBeams[1].DepthMm=1150;
         failureVm.OptimizeTowersAsync().GetAwaiter().GetResult();
         Check(!failureVm.IsCalculationValid && failureVm.NetworkResult==null && failureVm.HasTowerFailure,"failed user setup retains diagnostics without a solution");
-        Check(failureVm.WarningMessage.Contains("S1 stock coverage") && failureVm.WarningMessage.Contains("1875–2175") && failureVm.TowerFailureDetails.Contains("387.5") && failureVm.TowerFailureDetails.Contains("62.5"),"10600 beam / 2575 bay explains exact stock and edge constraints");
-        Check(failureVm.TowerFailureDetails.Contains("Numerical checks recorded: 0"),"stock failure is diagnosed before structural checks");
-        failureVm.NetworkBays[0].WidthMm=2500;Check(!failureVm.HasTowerFailure && failureVm.TowerFailureDetails=="","editing geometry clears stale failure report");
+        Check(failureVm.TowerFailureDetails.Contains("Lower secondary · moment") && failureVm.TowerFailureDetails.Contains("Lower secondary · shear") && failureVm.TowerFailureDetails.Contains("Lower secondary · deflection") && failureVm.TowerFailureDetails.Contains("stock 2175 mm"),"custom length removes stock blocker and exposes lower secondary failures at 750 mm rows");
+        Check(!failureVm.TowerFailureDetails.Contains("Numerical checks recorded: 0") && !failureVm.TowerFailureDetails.Contains("no available stock fits"),"custom slab H20 reaches numerical checks");
+        failureVm.UpperSupportSpacingMm=200;Check(!failureVm.HasTowerFailure && failureVm.TowerFailureDetails=="","editing spacing clears stale failure report");
+        failureVm.OptimizeTowersAsync().GetAwaiter().GetResult();
+        var customResult=failureVm.NetworkResult;
+        Check(failureVm.IsCalculationValid && customResult!=null && !failureVm.HasTowerFailure,"same user setup passes at 200 mm rows with custom slab length");
+        Near(customResult.Bays[0].StockLengthMm,2175,"2575 bay custom length");Near(customResult.Bays[0].EdgeMm,200,"custom length leaves minimum edge strips");
+        Check(customResult.Bays[0].IsCustomLength && customResult.Beams[0].Transfer.RightUpperCustom && customResult.Beams[1].Transfer.LeftUpperCustom && customResult.Schedule.Contains("2175 mm custom"),"custom identity survives reversal and is visible in report");
+        Near(customResult.SlabLoadKn,9.4*2.575*customResult.Beams[0].Transfer.TributaryWidthsMm.Sum()/1000,"custom-covered slab plus shutter strips conserve full bay load");
+        foreach(var beam in customResult.Beams)
+        {
+            Check(beam.MaxLegKn<=70 && beam.StockPlan.Pieces.All(piece=>common.StockLengthsMm.Contains(piece.StockLengthMm)),"custom fallback does not change leg capacity or primary catalogue");
+            foreach(var member in beam.Transfer.PrimaryCases.SelectMany(c=>c).Concat(beam.Transfer.LowerCases.SelectMany(c=>c)).Concat(beam.Transfer.UpperMembers))
+            {
+                Check(member.Utilization<=1+1e-8 && member.Analysis.Reactions.All(r=>r>=-1e-7),"custom layout passes all staged member checks and no uplift");
+                Near(member.Analysis.Reactions.Sum(),member.Analysis.TotalLoadKn,"custom member vertical equilibrium");
+            }
+            for(int i=0;i<beam.Joined.Length;i++)if(beam.Joined[i] && Math.Abs(beam.PositionsMm[i+1]-beam.PositionsMm[i]-600)<1e-7)Check(i>0 && beam.Joined[i-1] || i+1<beam.Joined.Length && beam.Joined[i+1],"custom layout preserves standalone 600 exclusion");
+        }
+        Console.WriteLine("Custom user setup: "+customResult.Summary.Replace("\n"," · "));
+        foreach(double bay in new[] {2575.0,2580,2587.5,2600})
+        {
+            double length=UpperTransferPlan.SlabLengths(bay,common.StockLengthsMm).Single();double edge=(bay-length)/2;
+            Near(length%25,0,"custom lengths are multiples of 25");Check(edge>=200 && edge<212.5,"rounded custom end clearance stays close to 200 mm");
+        }
+        Check(UpperTransferPlan.SlabLengths(3900,common.StockLengthsMm).All(length=>common.StockLengthsMm.Contains(length)),"fitting catalogue lengths retain precedence");
+        var plan=customResult.Bays[0];plan.Reverse().Validate(2575,common.StockLengthsMm);
+        bool invalidCustom=false;try {new UpperTransferPlan {StockLengthMm=2176,EdgeMm=199.5,NearFootMm=600,FarFootMm=350,IsCustomLength=true}.Validate(2575,common.StockLengthsMm);}catch(ArgumentException){invalidCustom=true;}
+        Check(invalidCustom,"invalid custom length and edge cannot bypass shared-plan validation");
         var overloadInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=200,CrossingBeams=new[] {new TransferCrossingBeamRow {WidthMm=400,DepthMm=10000,PositionMm=3175}}};
         TowerOptimizationException failure=null;try {TransferNetworkOptimizer.Optimize(common,overloadInput);}catch(TowerOptimizationException ex){failure=ex;}
         Check(failure!=null && failure.Details.Contains("S1 slab H20") && failure.Details.Contains("moment") && failure.Details.Contains("shear") && failure.Details.Contains("deflection") && failure.Details.Contains("T") && failure.Details.Contains("L/350"),"crossing overload reports member, actual row, demand, capacity and deflection criterion");
         Check(failure.Details.Contains("examples may come from different layouts"),"diagnostic samples do not pretend to form one alternative layout");
         overloadInput.CrossingBeams=new TransferCrossingBeamRow[0];TransferNetworkOptimizer.Optimize(common,overloadInput);
-        overloadInput.Bays[0]=new TransferBayRow {WidthMm=2575,ThicknessMm=300};failure=null;try {TransferNetworkOptimizer.Optimize(common,overloadInput);}catch(TowerOptimizationException ex){failure=ex;}
+        overloadInput.Bays[0]=new TransferBayRow {WidthMm=3900,ThicknessMm=300};common.StockLengthsMm=new[] {1250.0};failure=null;try {TransferNetworkOptimizer.Optimize(common,overloadInput);}catch(TowerOptimizationException ex){failure=ex;}
         Check(failure!=null && !failure.Details.Contains("S1 slab H20 · moment") && failure.Details.Contains("Numerical checks recorded: 0"),"reusing a snapshot starts a new diagnostic run");
         var legInput=new TowerInput {LengthMm=6750,LegCapacityKn=1,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,TransferredSlab=new TransferredSlabInput {BeamWidthMm=1100,BeamLineLoadKnM=50,UpperSpacingMm=200,LeftBayMm=3900,LeftAreaLoadKnM2=9.4}};
         failure=null;try {TransferredSlabOptimizer.Optimize(legInput);}catch(TowerOptimizationException ex){failure=ex;}

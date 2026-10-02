@@ -255,7 +255,7 @@ namespace EngineeringDashboard
                 dim(face,near,beamBottom+45,$"Face → foot {foot:0}");
                 dim(face+sign*bay,far,beamBottom+45,$"{foot:0}");
                 dim(a,near,beamTop-36,$"End → foot {foot-edge:0}");
-                dim(a,b,beamTop-64,$"Slab H20 1 × {stock:0} · bay {bay:0}");
+                dim(a,b,beamTop-64,$"Slab H20 1 × {stock:0}{((side==0 ? t.LeftUpperCustom : t.RightUpperCustom) ? " custom" : "")} · bay {bay:0}");
             }
             dim(t.LowerStockStartMm,-layout.WidthMm/2,beamBottom+78,$"End → primary {-layout.WidthMm/2-t.LowerStockStartMm:0}");
             dim(layout.WidthMm/2,t.LowerStockStartMm+t.LowerStockLengthMm,beamBottom+78,$"{t.LowerStockStartMm+t.LowerStockLengthMm-layout.WidthMm/2:0}");

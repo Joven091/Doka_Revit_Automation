@@ -153,7 +153,7 @@ namespace EngineeringDashboard
                     Label(dc,$"Edge {plan.EdgeMm:0}",xx(shutter),top-40,true);
                     Dim(dc,xx(side==0 ? face : far),xx(side==0 ? near : other),soffit+29,$"Foot { (side==0 ? plan.NearFootMm : plan.FarFootMm):0}");
                 }
-                Dim(dc,xx(a),xx(b),top-59,$"S{bay+1} H20 {plan.StockLengthMm:0}");
+                Dim(dc,xx(a),xx(b),top-59,$"S{bay+1} H20 {plan.StockLengthMm:0}{(plan.IsCustomLength ? " custom" : "")}");
             }
         }
         private static void Arrow(DrawingContext dc,double x,double y,Brush colour) {dc.DrawLine(new Pen(colour,2),new Point(x-4,y-6),new Point(x,y));dc.DrawLine(new Pen(colour,2),new Point(x+4,y-6),new Point(x,y));}
