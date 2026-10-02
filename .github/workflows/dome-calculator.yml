@@ -10,6 +10,9 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
       - run: dotnet run --project tests/Dome.Tests/Dome.Tests.csproj -c Release
+      - run: dotnet run --project tests/D3Slab.Tests/D3Slab.Tests.csproj -c Release
+      - run: dotnet run --project tests/D3Slab.UiSmoke/D3Slab.UiSmoke.csproj -c Release
+      - run: dotnet run --project tests/Slab.Tests/Slab.Tests.csproj -c Release
       - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release
       - run: dotnet run --project tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release
       - run: dotnet run --project tests/Backpropping.Tests/Backpropping.Tests.csproj -c Release

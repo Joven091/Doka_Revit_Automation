@@ -10,6 +10,8 @@ namespace EngineeringDashboard
 {
     public partial class FlexCalculatorWindow
     {
+        public bool ChangeSystemRequested { get; private set; }
+        private void ChangeSystem_Click(object sender, RoutedEventArgs e) { ChangeSystemRequested = true; Close(); }
         private FlexCalculatorViewModel observedModel;
         private bool refreshingValidation;
         private void InitializeUi()
