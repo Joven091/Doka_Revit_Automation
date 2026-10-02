@@ -17,7 +17,7 @@ internal static class TransferTests
         Check(t.LeftUpperEdgeMm>=200 && t.LeftUpperEdgeMm<=350,"slab edge coverage");
         Check(layout.LegCount==layout.PositionsMm.Length*2 && layout.MaxLegKn<=70,"individual permissible leg checks");
         Near(t.TributaryWidthsMm.Sum(),input.LengthMm-2*layout.ConcreteEndOverhangMm,"closing tributary strips");
-        Near(t.SlabLoadKn,9.4*t.LeftUpperStockMm/1000*t.TributaryWidthsMm.Sum()/1000/2,"only covered slab load reaches receiving beam");
+        Near(t.SlabLoadKn,9.4*3900/1000*t.TributaryWidthsMm.Sum()/1000/2,"covered stock plus shutter edges reach receiving beam");
         for(int c=0;c<t.CaseNames.Length;c++)
         {
             var primary=t.PrimaryCases[c]; var lower=t.LowerCases[c];
@@ -54,7 +54,7 @@ internal static class TransferTests
         var mirror=TowerOptimizer.Optimize(input);
         Check(mirror.Transfer.LeftFootMm==0 && mirror.Transfer.RightFootMm>=250,"mirrored right bay");
         // Search tie-breaks may choose different phases, so check the force transfer independently rather than requiring identical geometry.
-        Near(mirror.Transfer.SlabLoadKn,9.4*mirror.Transfer.RightUpperStockMm/1000*mirror.Transfer.TributaryWidthsMm.Sum()/2000,"right covered-area reaction");
+        Near(mirror.Transfer.SlabLoadKn,9.4*3900/1000*mirror.Transfer.TributaryWidthsMm.Sum()/2000,"right covered-area reaction");
         input.TransferredSlab.LeftBayMm=3900;input.TransferredSlab.LeftAreaLoadKnM2=9.4;input.Exclude600Standalone=true;
         var both=TowerOptimizer.Optimize(input);Check(both.Transfer.CaseNames.Length==4,"beam, each one-sided stage and combined load");
         Check(both.Transfer.LowerCases.All(c=>c.All(m=>m.Analysis.Reactions.All(r=>r>=-1e-7))),"two-sided cases reject bearing uplift");

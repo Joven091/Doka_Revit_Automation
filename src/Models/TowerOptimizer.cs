@@ -8,6 +8,7 @@ namespace EngineeringDashboard
     public sealed class TowerInput
     {
         public TransferredSlabInput TransferredSlab { get; set; }
+        public TransferNetworkInput Network {get;set;}
         public double LengthMm { get; set; }
         public double LegCapacityKn { get; set; }
         public double TotalLineLoad { get; set; }
@@ -83,6 +84,7 @@ namespace EngineeringDashboard
         public const double PairEI = 2 * 449.8756, PairMoment = 10, PairShear = 22;
         public static TowerLayout Optimize(TowerInput input)
         {
+            if(input?.Network!=null)return TransferNetworkOptimizer.Optimize(input,input.Network).Beams[0];
             if (input?.TransferredSlab != null) return TransferredSlabOptimizer.Optimize(input);
             Validate(input);
             if (input.MaximumConcreteEndOverhangMm == 0) return OptimizeCovered(input);

@@ -45,7 +45,7 @@
           </Border>
           <Border Style="{StaticResource Card}">
             <StackPanel>
-              <Grid>
+              <Grid IsEnabled="{Binding ShowSingleGeometry}" Visibility="{Binding ShowSingleGeometry, Converter={StaticResource BoolToVis}}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition/>
                   <ColumnDefinition Width="12"/>
@@ -64,7 +64,7 @@
                   </StackPanel>
                 </ContentControl>
               </Grid>
-              <Grid>
+              <Grid IsEnabled="{Binding ShowSingleGeometry}" Visibility="{Binding ShowSingleGeometry, Converter={StaticResource BoolToVis}}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition/>
                   <ColumnDefinition Width="12"/>
@@ -97,6 +97,26 @@
               <StackPanel IsEnabled="{Binding IsTransferMode}" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="Upper support spacing along beam (mm)"/>
                 <TextBox Text="{Binding UpperSupportSpacingMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                <CheckBox x:Name="BeamNetworkCheckBox" Content="Individual beams and slab bays" IsChecked="{Binding UseBeamNetwork}"/>
+                <StackPanel x:Name="NetworkInputs" IsEnabled="{Binding IsNetworkMode}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}">
+                  <TextBlock Text="Beams, left to right · width / depth (mm)" FontWeight="SemiBold"/>
+                  <ItemsControl ItemsSource="{Binding NetworkBeams}"><ItemsControl.ItemTemplate><DataTemplate>
+                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                      <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                      <TextBox Grid.Column="1" ToolTip="Beam width (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                      <TextBox Grid.Column="3" ToolTip="Beam depth (mm)" Text="{Binding DepthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                    </Grid>
+                  </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                  <TextBlock Text="Slab bays · clear width / thickness (mm)" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                  <ItemsControl ItemsSource="{Binding NetworkBays}"><ItemsControl.ItemTemplate><DataTemplate>
+                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                      <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                      <TextBox Grid.Column="1" ToolTip="Clear slab bay (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                      <TextBox Grid.Column="3" ToolTip="Slab thickness (mm)" Text="{Binding ThicknessMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                    </Grid>
+                  </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                </StackPanel>
+                <WrapPanel><Button x:Name="AddBeamBayButton" Content="Add slab + beam" Click="AddBeamBay_Click" IsEnabled="{Binding CanAddNetworkBay}"/><Button x:Name="RemoveBeamBayButton" Content="Remove last bay" Click="RemoveBeamBay_Click" IsEnabled="{Binding CanRemoveNetworkBay}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/></WrapPanel>
                 <StackPanel IsEnabled="{Binding ShowLeftBay}" Visibility="{Binding ShowLeftBay, Converter={StaticResource BoolToVis}}">
                   <TextBlock Text="Left clear slab bay (mm)"/><TextBox Text="{Binding LeftSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                 </StackPanel>
@@ -280,7 +300,7 @@
               <TextBlock Style="{StaticResource Hint}" Text="Schematic · secondary H20 perpendicular to primary H20" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
               <TextBlock Style="{StaticResource Subheading}" Text="Tower layout · plan" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
               <ScrollViewer x:Name="TowerPlanScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
-              <local:BeamSupportDiagram x:Name="SupportDiagram" Margin="0,4">
+              <local:BeamSupportDiagram x:Name="SupportDiagram" Margin="0,4"><local:BeamSupportDiagram.Visibility><Binding Path="ShowSingleGeometry" Converter="{StaticResource BoolToVis}"/></local:BeamSupportDiagram.Visibility>
                 <local:BeamSupportDiagram.Style>
                   <Style TargetType="local:BeamSupportDiagram">
                     <Setter Property="Height" Value="300"/>
@@ -289,8 +309,12 @@
                 </local:BeamSupportDiagram.Style>
               </local:BeamSupportDiagram>
               </ScrollViewer>
+              <ScrollViewer x:Name="NetworkPlanScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"><local:TransferNetworkPlan x:Name="NetworkPlan"/></ScrollViewer>
+              <TextBlock Text="{Binding NetworkSummary}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/>
+              <TextBlock Text="{Binding NetworkSelectedLabel}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/>
               <TextBlock x:Name="DiagramCaption" Style="{StaticResource Hint}"/>
               <TextBlock Text="{Binding TransferSummary}" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0"/>
+              <Expander Header="All beams: legs and H20s" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"><TextBlock Text="{Binding NetworkSchedule}" TextWrapping="Wrap"/></Expander>
               <Expander Header="Transferred load details" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}"><TextBlock Text="{Binding TransferSchedule}" TextWrapping="Wrap"/></Expander>
             </StackPanel>
           </Border>

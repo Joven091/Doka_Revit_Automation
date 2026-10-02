@@ -55,7 +55,7 @@ namespace EngineeringDashboard
             }
             // Long plans scroll horizontally so stock length labels remain readable.
             MinWidth = shortest < double.MaxValue ? Math.Max(50 + 78 * model.TowerResult.LengthMm / shortest, 50 + 190 * model.TowerResult.StockPlan.Pieces.Length) : 0;
-            if (model?.TowerResult?.Transfer != null) MinWidth = Math.Max(1000, Math.Max(MinWidth, 60 + model.TowerResult.Transfer.RowsMm.Length * 65));
+            if (model?.TowerResult?.Transfer != null) MinWidth = Math.Max(1000, Math.Max(MinWidth, 60 + model.TowerResult.PositionsMm.Length * 90));
             Cursor = IsSelectionEnabled ? Cursors.Hand : Cursors.Arrow;
             InvalidateVisual();
         }
@@ -132,32 +132,13 @@ namespace EngineeringDashboard
             double scale = (ActualWidth - 50) / layout.LengthMm;
             double planHeight = layout.Transfer == null ? ActualHeight : 350;
             double x0 = 25, cy = planHeight / 2 - 30;
-            double extent = layout.Transfer == null ? Math.Max(layout.WidthMm, model.Width) : Math.Max(Math.Abs(layout.Transfer.LowerStockStartMm), Math.Abs(layout.Transfer.LowerStockStartMm + layout.Transfer.LowerStockLengthMm)) * 2;
+            double extent = Math.Max(layout.WidthMm,model.Width);
             double transverseScale = Math.Min(scale, (planHeight - 200) / extent);
             double top = cy - layout.WidthMm * transverseScale / 2, bottom = cy + layout.WidthMm * transverseScale / 2;
             var frame = new Pen(SteelSide, 2); var cross = new Pen(Steel, 1.5) { DashStyle = DashStyles.Dash };
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
             dc.DrawRectangle(ConcreteTop, null, new Rect(x0, cy - model.Width * transverseScale / 2, layout.LengthMm * scale, model.Width * transverseScale));
-            if (layout.Transfer != null)
-            {
-                var t=layout.Transfer;
-                for (int row=0; row<t.RowsMm.Length; row++)
-                {
-                    double x=x0+t.RowsMm[row]*scale, a=cy+t.LowerStockStartMm*transverseScale, b=a+t.LowerStockLengthMm*transverseScale;
-                    int run=layout.StockPlan.Pieces.Length+row;
-                    foreach (double offset in new[] {-3.0,3.0}) dc.DrawLine(new Pen(selectedRun==run ? Brushes.DodgerBlue : Gold,3),new Point(x+offset,a),new Point(x+offset,b));
-                    // Transverse members take priority where their hit area crosses a longitudinal pair.
-                    MemberTargets.Add(Tuple.Create(new Rect(x-7,a,14,b-a),run,0,0)); DrawnTransferRowCount++;
-                    Label(dc,"T"+(row+1),x,b+3,true);
-                    foreach (double foot in new[] { t.LeftUpperStockMm>0 ? -model.Width/2-t.LeftFootMm : double.NaN,t.RightUpperStockMm>0 ? model.Width/2+t.RightFootMm : double.NaN })
-                        if (!double.IsNaN(foot)) { dc.DrawEllipse(Brushes.DarkRed,null,new Point(x,cy+foot*transverseScale),4,4);DrawnFootCount++; }
-                    if(row>0) { double previous=x0+t.RowsMm[row-1]*scale;
-                        dc.DrawLine(new Pen(Steel,1),new Point(previous,42),new Point(x,42));
-                        foreach(double end in new[] {previous,x}) dc.DrawLine(new Pen(Steel,1),new Point(end,39),new Point(end,45));
-                        Label(dc,(t.RowsMm[row]-t.RowsMm[row-1]).ToString("0.###"),(x+previous)/2,26,true); }
-                }
-                Label(dc,"T: paired transverse H20 · red: upper feet · row spacing (mm)",x0,10);
-            }
+            if(layout.Transfer!=null) Label(dc,$"Secondary spacing {layout.Transfer.EnteredUpperSpacingMm:0} mm",x0,10);
             for (int i = 0; i < layout.StockPlan.Pieces.Length; i++)
             {
                 var piece = layout.StockPlan.Pieces[i];
@@ -179,8 +160,8 @@ namespace EngineeringDashboard
                     Label(dc, Math.Abs(ends[end] - legs[end]).ToString("0.###") + " mm", (a + b) / 2, dimY - 16, true);
                     DrawnEndDimensionCount++;
                 }
-                Label(dc, "P" + (i + 1) + "\n" + piece.StockLengthMm.ToString("0.###") + " mm",
-                    x0 + (piece.StartMm + piece.StockLengthMm / 2) * scale, bottom + (layout.Transfer == null ? 12 : 42), true);
+                Label(dc, "P" + (i + 1) + "\n2 × " + piece.StockLengthMm.ToString("0.###") + " mm",
+                    x0 + (piece.StartMm + piece.StockLengthMm / 2) * scale, bottom + 12, true);
                 if (i > 0) dc.DrawLine(new Pen(ConcreteSide, 1) { DashStyle = DashStyles.Dot }, new Point(x0 + piece.StartMm * scale, top - 8), new Point(x0 + piece.StartMm * scale, bottom + 15));
             }
             for (int i = 0; i < layout.PositionsMm.Length; i++)
@@ -188,7 +169,7 @@ namespace EngineeringDashboard
                 double x = x0 + layout.PositionsMm[i] * scale;
                 dc.DrawLine(layout.Rotated ? cross : frame, new Point(x, top), new Point(x, bottom));
                 foreach (double y in new[] { top, bottom }) { dc.DrawEllipse(SteelSide, null, new Point(x, y), 3.5, 3.5); DrawnTowerLegCount++; }
-                Label(dc, (i + 1).ToString(), x - 4, top - 22);
+                if(layout.Transfer==null)Label(dc, (i + 1).ToString(), x - 4, top - 22);
                 if (i < layout.Joined.Length && layout.Joined[i])
                 {
                     double next = x0 + layout.PositionsMm[i + 1] * scale;
@@ -196,7 +177,7 @@ namespace EngineeringDashboard
                 }
                 if (i < layout.Joined.Length)
                 {
-                    double next = x0 + layout.PositionsMm[i + 1] * scale, y = top - 32;
+                    double next = x0 + layout.PositionsMm[i + 1] * scale, y = top - (layout.Transfer==null ? 32 : 14);
                     dc.DrawLine(new Pen(Steel, 1), new Point(x, y), new Point(next, y));
                     foreach (double end in new[] { x, next }) dc.DrawLine(new Pen(Steel, 1), new Point(end, y - 3), new Point(end, y + 3));
                     string type = layout.Joined[i] ? (layout.Rotated ? "Frame" : "Cross") : "Gap";
@@ -233,6 +214,9 @@ namespace EngineeringDashboard
                 Label(dc,label,(xx(a)+xx(b))/2,y+3,true);
             };
             int maxRow=Array.IndexOf(t.TributaryWidthsMm,System.Linq.Enumerable.Max(t.TributaryWidthsMm));
+            int lowerEncoded=layout.StockPlan.Pieces.Length+maxRow;
+            MemberTargets.Add(Tuple.Create(new Rect(xx(t.LowerStockStartMm),beamBottom, t.LowerStockLengthMm*scale,12),lowerEncoded,0,0));
+            dim(t.LowerStockStartMm,t.LowerStockStartMm+t.LowerStockLengthMm,beamBottom+107,$"Secondary 2 × {t.LowerStockLengthMm:0} mm · spacing {t.EnteredUpperSpacingMm:0} mm");
             for(int side=0;side<2;side++)
             {
                 double bay=side==0 ? leftBay : rightBay;if(bay==0)continue;
@@ -246,6 +230,12 @@ namespace EngineeringDashboard
                     dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x)-4,beamBottom),new Point(xx(x),beamBottom+6));
                     dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x)+4,beamBottom),new Point(xx(x),beamBottom+6));
                 }
+                foreach(double shutter in new[] {face+sign*100,face+sign*(bay-100)})
+                {
+                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter),beamTop-10),new Point(xx(shutter),beamBottom+6));
+                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter)-4,beamBottom),new Point(xx(shutter),beamBottom+6));
+                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter)+4,beamBottom),new Point(xx(shutter),beamBottom+6));
+                }
                 int encoded=layout.StockPlan.Pieces.Length+t.RowsMm.Length+maxRow*2+side;
                 bool selected=encoded==selectedRun;
                 foreach(double dy in new[] {2.0,7.0}) dc.DrawLine(new Pen(selected ? Brushes.DodgerBlue : Gold,3),new Point(xx(a),beamTop+dy),new Point(xx(b),beamTop+dy));
@@ -257,7 +247,7 @@ namespace EngineeringDashboard
             }
             dim(t.LowerStockStartMm,-layout.WidthMm/2,beamBottom+78,$"End → primary {-layout.WidthMm/2-t.LowerStockStartMm:0}");
             dim(layout.WidthMm/2,t.LowerStockStartMm+t.LowerStockLengthMm,beamBottom+78,$"{t.LowerStockStartMm+t.LowerStockLengthMm-layout.WidthMm/2:0}");
-            Label(dc,$"Lower 2 × {t.LowerStockLengthMm:0} · primaries {layout.WidthMm:0} apart · upper diagram uses row T{maxRow+1}",30,beamBottom+103);
+
         }
         private void Label(DrawingContext dc, string value, double x, double y, bool centered = false)
         {

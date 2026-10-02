@@ -39,13 +39,15 @@ namespace EngineeringDashboard
             return result;
         }
         /// <summary>Exact peak absolute displacement after an equal prescribed displacement of every support.</summary>
-        public double DeflectionWithOffsetMm(double offset)
+        public double DeflectionWithOffsetMm(double offset) => DeflectionWithAffineOffsetMm(offset,offset,0,(elements.Last().X+elements.Last().L)*1000);
+        public double DeflectionWithAffineOffsetMm(double near,double far,double nearSupportMm,double farSupportMm)
         {
-            if (!Finite(offset)) throw new ArgumentException("Support displacement must be finite.");
+            if (new[] {near,far,nearSupportMm,farSupportMm}.Any(x=>!Finite(x)) || farSupportMm<=nearSupportMm) throw new ArgumentException("Support displacement or span is invalid.");
+            double slopeOffset=(far-near)/(farSupportMm-nearSupportMm)*1000;
             double result=0;
             foreach(var e in elements)
             {
-                Func<double,double> slope=x=>e.T+2*e.C2*x+3*e.C3*x*x+4*e.C4*x*x*x;
+                Func<double,double> slope=x=>e.T-slopeOffset/1000+2*e.C2*x+3*e.C3*x*x+4*e.C4*x*x*x;
                 var cuts=new List<double> {0,e.L}; double disc=36*e.C3*e.C3-96*e.C4*e.C2;
                 if(Math.Abs(e.C4)>1e-20 && disc>=0) foreach(double root in new[] {(-6*e.C3-Math.Sqrt(disc))/(24*e.C4),(-6*e.C3+Math.Sqrt(disc))/(24*e.C4)}) {if(root>0 && root<e.L)cuts.Add(root);}
                 else if(Math.Abs(e.C3)>1e-20) {double root=-e.C2/(3*e.C3);if(root>0 && root<e.L)cuts.Add(root);}
@@ -55,7 +57,7 @@ namespace EngineeringDashboard
                     double lo=cuts[i-1],hi=cuts[i],sign=slope(lo);if(sign*slope(hi)>=0)continue;
                     for(int j=0;j<42;j++) {double mid=(lo+hi)/2;if(sign*slope(mid)>0)lo=mid;else hi=mid;}peaks.Add((lo+hi)/2);
                 }
-                result=Math.Max(result,peaks.Max(x=>Math.Abs(offset-(e.U+e.T*x+e.C2*x*x+e.C3*x*x*x+e.C4*x*x*x*x)*1000)));
+                result=Math.Max(result,peaks.Max(x=>Math.Abs(near+slopeOffset*(e.X+x-nearSupportMm/1000)-(e.U+e.T*x+e.C2*x*x+e.C3*x*x*x+e.C4*x*x*x*x)*1000)));
             }
             return result;
         }
