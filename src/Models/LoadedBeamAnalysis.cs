@@ -18,13 +18,18 @@ namespace EngineeringDashboard
         public double GoverningLengthMm { get; private set; }
         private sealed class Element { public double X, L, Q, U, T, C2, C3, C4; }
         private readonly List<Element> elements = new List<Element>();
-        public double[] Response(double mm, bool rightSide = true)
+        // The one-argument API returns the interior response at stock ends, preserving existing callers.
+        public double[] Response(double mm) => Response(mm,mm < (elements.Last().X+elements.Last().L)*1000-1e-7);
+        public double[] Response(double mm, bool rightSide)
         {
             if (!Finite(mm) || mm < 0 || mm > (elements.Last().X + elements.Last().L) * 1000 + 1e-7) throw new ArgumentOutOfRangeException(nameof(mm));
             var e = (rightSide ? elements.LastOrDefault(v => mm >= v.X * 1000 - 1e-7) : elements.FirstOrDefault(v => mm <= (v.X+v.L)*1000+1e-7)) ?? elements[0];
             double x = Math.Max(0, Math.Min(e.L, mm / 1000 - e.X));
-            return new[] { -(6*e.C3+24*e.C4*x)*rigidity, -(2*e.C2+6*e.C3*x+12*e.C4*x*x)*rigidity,
+            var response = new[] { -(6*e.C3+24*e.C4*x)*rigidity, -(2*e.C2+6*e.C3*x+12*e.C4*x*x)*rigidity,
                 -(e.U+e.T*x+e.C2*x*x+e.C3*x*x*x+e.C4*x*x*x*x)*1000 };
+            // Outside a stock end there is no internal force; include support/load jumps at end stations too.
+            if (!rightSide && mm <= 1e-7 || rightSide && Math.Abs(mm-(elements.Last().X+elements.Last().L)*1000)<=1e-7) response[0]=response[1]=0;
+            return response;
         }
         public LoadedBeamAnalysis Scale(double factor)
         {

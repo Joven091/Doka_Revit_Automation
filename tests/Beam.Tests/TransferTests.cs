@@ -42,6 +42,10 @@ internal static class TransferTests
         Near(simple.DeflectionWithOffsetMm(-2),2+5.0*10*16/384/900*1000,"closed-form support-settlement displacement");
         var point=LoadedBeamAnalysis.Analyze(2000,new[] {0.0,2000},null,new[] {new BeamPointLoad {PositionMm=1000,Kn=10}},900,350);
         Near(point.Response(1000,false)[0]-point.Response(1000,true)[0],10,"point-load shear jump");
+        Near(point.Response(0,false)[0],0,"zero external shear before stock start");
+        Near(point.Response(2000,true)[0],0,"zero external shear after stock end");
+        Near(point.Response(0,true)[0]-point.Response(0,false)[0],point.Reactions[0],"support jump at stock start");
+        Near(point.Response(2000,true)[0]-point.Response(2000,false)[0],point.Reactions[1],"support jump at stock end");
         Console.WriteLine($"Transfer sample: {layout.LegCount} legs, width {layout.WidthMm}, {t.LeftUpperStockMm} mm upper, {t.LowerStockLengthMm} mm transverse, peak {layout.MaxLegKn:0.00} kN, movement {t.SlabMovementMm:0.00} mm");
         var vm=new BeamCalculatorViewModel {UseTowers=true,HasLeftSlab=true,Depth=1750,Width=1100,BeamLengthMm=6750,TowerLegCapacityKn=70,TransferSlabLoads=true,UpperSupportSpacingMm=275};
         vm.ValidateTowerInputs(); Check(vm.IsTransferMode && !vm.ShowSlabStrip,"mode selection");
