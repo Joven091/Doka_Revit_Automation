@@ -210,6 +210,30 @@ internal static class Program
    var networkHit=networkPlan.MemberTargets.First(h=>h.Item2==1 && h.Item3==0 && h.Item4==0);
    Check(networkPlan.SelectAt(new Point(networkHit.Item1.X+networkHit.Item1.Width/2,networkHit.Item1.Y+networkHit.Item1.Height/2)),"select B2 primary directly from full plan");Pump();
    Check(vm.SelectedNetworkBeam==1 && window.TowerDiagrams.LoadedAnalysis==vm.NetworkResult.Beams[1].Transfer.PrimaryCases.Last()[0].Analysis,"diagrams use the selected beam's own load analysis");
+   for(int selectedBeam=0;selectedBeam<vm.NetworkResult.Beams.Length;selectedBeam++)
+   {
+    var layout=vm.NetworkResult.Beams[selectedBeam];int runs=layout.StockPlan.Pieces.Length;
+    var primaryHit=networkPlan.MemberTargets.First(h=>h.Item2==selectedBeam && h.Item3==0 && h.Item4==1);
+    Check(networkPlan.SelectAt(new Point(primaryHit.Item1.X+primaryHit.Item1.Width/2,primaryHit.Item1.Y+primaryHit.Item1.Height/2)),"select each network beam's right primary from plan");Pump();
+    Check(vm.SelectedNetworkBeam==selectedBeam && window.TowerDiagrams.LoadedAnalysis==layout.Transfer.PrimaryCases.Last()[runs].Analysis,"primary diagrams match the actual selected beam and line");
+    Check(window.TowerDiagrams.SelectedTransferMember.H20Count==2 && window.TowerDiagrams.SelectedTransferMember.ShearLimitKn==22,"primary diagrams keep paired capacity");
+    var beamCase=Find<Button>(window.TowerDiagrams).Single(b=>Equals(b.Content,"Beam"));beamCase.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+    Check(window.TowerDiagrams.SelectedLoadCase==0 && window.TowerDiagrams.LoadedAnalysis==layout.Transfer.PrimaryCases[0][runs].Analysis,"beam-only load-case button changes actual plotted analysis");
+    var allCase=Find<Button>(window.TowerDiagrams).Single(b=>Equals(b.Content,layout.Transfer.CaseNames.Last()));allCase.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+    var secondaryHit=networkPlan.MemberTargets.First(h=>h.Item2==selectedBeam && h.Item3>=runs && h.Item3<runs+layout.Transfer.RowsMm.Length);
+    Check(networkPlan.SelectAt(new Point(secondaryHit.Item1.X+secondaryHit.Item1.Width/2,secondaryHit.Item1.Y+secondaryHit.Item1.Height/2)),"select each lower transverse pair from section");Pump();
+    Check(window.TowerDiagrams.LoadedAnalysis==layout.Transfer.LowerCases.Last()[secondaryHit.Item3-runs].Analysis && window.TowerDiagrams.SelectedTransferMember.H20Count==2,"lower transverse diagrams use their point loads and paired capacity");
+   }
+   for(int bay=0;bay<vm.NetworkResult.Bays.Length;bay++)
+   {
+    var layout=vm.NetworkResult.Beams[bay];int firstUpper=layout.StockPlan.Pieces.Length+layout.Transfer.RowsMm.Length;
+    var slabHit=networkPlan.MemberTargets.First(h=>h.Item2==bay && h.Item3>=firstUpper);
+    Check(networkPlan.SelectAt(new Point(slabHit.Item1.X+slabHit.Item1.Width/2,slabHit.Item1.Y+slabHit.Item1.Height/2)),"select single slab H20 directly from main section");Pump();
+    var original=layout.Transfer.UpperMembers.Single(m=>m.Name=="Upper right");var selected=window.TowerDiagrams.SelectedTransferMember;
+    Check(window.TowerDiagrams.Title.Contains("single H20") && selected.H20Count==1 && selected.ShearLimitKn==11 && selected.MomentLimitKnM==5,"slab diagram title and capacities are single H20");
+    Check(Math.Abs(window.TowerDiagrams.LoadedAnalysis.DeflectionMm-original.Analysis.DeflectionMm)<1e-8 && Math.Abs(selected.Uniform[0].KnPerM-original.Uniform[0].KnPerM)<1e-8,"slab diagram uses the optimizer's loaded row and single-member deflection");
+    Check(!Find<Button>(window.TowerDiagrams).Any(),"slab selection clears lower-member loading-stage buttons");
+   }
    if(args.Length>0){var bitmap=new RenderTargetBitmap((int)Math.Ceiling(networkPlan.ActualWidth),(int)Math.Ceiling(networkPlan.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(networkPlan);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"network-plan.png")))encoder.Save(file);File.WriteAllText(Path.ChangeExtension(args[0],"network-report.html"),networkReport);}
    vm.NetworkBeams[1].DepthMm=1000;Check(!vm.IsCalculationValid && window.TowerDiagrams==null,"editing any beam invalidates network diagrams");
    window.RestoreCalculation(networkSaved);Pump();Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBeams[1].DepthMm==1200,"network save/load round trip retains per-beam depth and all bays");

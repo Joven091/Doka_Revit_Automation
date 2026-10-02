@@ -238,12 +238,12 @@ namespace EngineeringDashboard
                 }
                 int encoded=layout.StockPlan.Pieces.Length+t.RowsMm.Length+maxRow*2+side;
                 bool selected=encoded==selectedRun;
-                foreach(double dy in new[] {2.0,7.0}) dc.DrawLine(new Pen(selected ? Brushes.DodgerBlue : Gold,3),new Point(xx(a),beamTop+dy),new Point(xx(b),beamTop+dy));
+                dc.DrawLine(new Pen(selected ? Brushes.DodgerBlue : Gold,3),new Point(xx(a),beamTop+5),new Point(xx(b),beamTop+5));
                 MemberTargets.Add(Tuple.Create(new Rect(Math.Min(xx(a),xx(b)),beamTop-2,stock*scale,16),encoded,0,0));
                 dim(face,near,beamBottom+45,$"Face → foot {foot:0}");
                 dim(face+sign*bay,far,beamBottom+45,$"{foot:0}");
                 dim(a,near,beamTop-36,$"End → foot {foot-edge:0}");
-                dim(a,b,beamTop-64,$"Upper 2 × {stock:0} · bay {bay:0}");
+                dim(a,b,beamTop-64,$"Slab H20 1 × {stock:0} · bay {bay:0}");
             }
             dim(t.LowerStockStartMm,-layout.WidthMm/2,beamBottom+78,$"End → primary {-layout.WidthMm/2-t.LowerStockStartMm:0}");
             dim(layout.WidthMm/2,t.LowerStockStartMm+t.LowerStockLengthMm,beamBottom+78,$"{t.LowerStockStartMm+t.LowerStockLengthMm-layout.WidthMm/2:0}");

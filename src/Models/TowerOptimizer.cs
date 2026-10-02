@@ -57,8 +57,17 @@ namespace EngineeringDashboard
         public string SearchNote => MinimumLegCountProven
             ? "Minimum leg count meets the load/stock lower bound. Group count/layout are best found in a bounded search."
             : "Best valid layout found in a bounded search; global minimum leg/group count is not proven.";
-        public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\nMoment {7:0.00}/10 kNm · shear {8:0.00}/22 kN\nPeak deflection {9:0.00} mm · criterion {11} (each span/overhang)",
-            LegCount, GroupCount, BayCount, Rotated ? "Rotated isolated towers" : "1524 mm frames across beam", WidthMm, MaxLegKn, Utilization * 100, MomentKnM, ShearKn, DeflectionMm, LegCapacityKn, DeflectionDenominator == 0 ? $"{DeflectionLimitMm:0.00} mm" : $"L/{DeflectionDenominator}")
+        private string MemberDemandSummary
+        {
+            get
+            {
+                if(Transfer==null)return $"Moment {MomentKnM:0.00}/10 kNm · shear {ShearKn:0.00}/22 kN";
+                var members=Transfer.PrimaryCases.SelectMany(c=>c).Concat(Transfer.LowerCases.SelectMany(c=>c)).Concat(Transfer.UpperMembers).ToArray();
+                return $"Moment utilization {members.Max(m=>m.Analysis.MomentKnM/m.MomentLimitKnM)*100:0.0}% · shear utilization {members.Max(m=>m.Analysis.ShearKn/m.ShearLimitKn)*100:0.0}%";
+            }
+        }
+        public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\n{12}\nPeak deflection {9:0.00} mm · criterion {11} (each span/overhang)",
+            LegCount, GroupCount, BayCount, Rotated ? "Rotated isolated towers" : "1524 mm frames across beam", WidthMm, MaxLegKn, Utilization * 100, MomentKnM, ShearKn, DeflectionMm, LegCapacityKn, DeflectionDenominator == 0 ? $"{DeflectionLimitMm:0.00} mm" : $"L/{DeflectionDenominator}", MemberDemandSummary)
             + string.Format(CultureInfo.CurrentCulture, "\nPrimary H20s: {0} pieces · no overlaps\nConcrete beyond H20: {1:0.###} mm per end", StockPlan.TotalH20Count, ConcreteEndOverhangMm);
         public string Schedule
         {

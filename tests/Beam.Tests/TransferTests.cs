@@ -15,6 +15,16 @@ internal static class TransferTests
         Check(t!=null && t.RowsMm.Length>0,"transfer result");
         Check(t.LeftFootMm>=250 && t.RightFootMm==0,"clearance measured from concrete face to foot centre");
         Check(t.LeftUpperEdgeMm>=200 && t.LeftUpperEdgeMm<=350,"slab edge coverage");
+        Check(t.UpperMembers.All(m=>m.H20Count==1 && m.MomentLimitKnM==5 && m.ShearLimitKn==11),"single slab H20 capacity");
+        Check(t.PrimaryCases.SelectMany(c=>c).Concat(t.LowerCases.SelectMany(c=>c)).All(m=>m.H20Count==2 && m.MomentLimitKnM==10 && m.ShearLimitKn==22),"lower beam formwork keeps paired H20 capacities");
+        foreach(var member in t.UpperMembers)
+        {
+            var pair=LoadedBeamAnalysis.Analyze(member.LengthMm,member.SupportsMm,member.Uniform,member.Points,TowerOptimizer.PairEI,input.DeflectionDenominator);
+            Near(member.Analysis.DeflectionMm,2*pair.DeflectionMm,"single slab H20 has twice the pair deflection under the same load");
+            Near(member.Analysis.MomentKnM,pair.MomentKnM,"changing timber count keeps determinate bending moment");
+            Near(member.Analysis.ShearKn,pair.ShearKn,"changing timber count keeps determinate shear");
+        }
+        Near(t.AdditionalH20Count,t.RowsMm.Length*(2+t.UpperMembers.Length),"single slab H20 quantities");
         Check(layout.LegCount==layout.PositionsMm.Length*2 && layout.MaxLegKn<=70,"individual permissible leg checks");
         Near(t.TributaryWidthsMm.Sum(),input.LengthMm-2*layout.ConcreteEndOverhangMm,"closing tributary strips");
         Near(t.SlabLoadKn,9.4*3900/1000*t.TributaryWidthsMm.Sum()/1000/2,"covered stock plus shutter edges reach receiving beam");
@@ -29,7 +39,7 @@ internal static class TransferTests
                 Near(m.Analysis.Reactions.Sum(),m.Analysis.TotalLoadKn,"member equilibrium");
                 double loadMoment=m.Points.Sum(p=>p.Kn*p.PositionMm/1000)+m.Uniform.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000*(q.EndMm+q.StartMm)/2000);
                 Near(m.Analysis.Reactions.Select((r,i)=>r*m.SupportsMm[i]/1000).Sum(),loadMoment,"independent moment equilibrium");
-                Check(m.Utilization<=1+1e-8,"paired H20 shear/moment/deflection");
+                Check(m.Utilization<=1+1e-8,"selected single/pair H20 shear/moment/deflection");
             }
         }
         Check(TowerBeamAnalysis.Finite(t.SlabMovementMm) && t.SlabMovementMm>0,"soffit movement includes lower formwork displacement");

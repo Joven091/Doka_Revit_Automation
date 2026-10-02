@@ -121,7 +121,7 @@ namespace EngineeringDashboard
                 dc.DrawRectangle(Brushes.LightSteelBlue,null,new Rect(xx(face),top,slab.WidthMm*scale,slab.ThicknessMm*depthScale));
                 int row=Array.IndexOf(result.Beams[bay].Transfer.TributaryWidthsMm,result.Beams[bay].Transfer.TributaryWidthsMm.Max());
                 int encoded=result.Beams[bay].StockPlan.Pieces.Length+result.Beams[bay].Transfer.RowsMm.Length+row*2+1;
-                foreach(double dy in new[] {5.0,10.0})dc.DrawLine(new Pen(bay==selectedBeam && selectedRun==encoded ? Brushes.DodgerBlue : Timber,3),new Point(xx(a),soffit+dy),new Point(xx(b),soffit+dy));
+                dc.DrawLine(new Pen(bay==selectedBeam && selectedRun==encoded ? Brushes.DodgerBlue : Timber,3),new Point(xx(a),soffit+7),new Point(xx(b),soffit+7));
                 MemberTargets.Add(Tuple.Create(new Rect(xx(a),soffit,plan.StockLengthMm*scale,15),bay,encoded,0));
                 for(int side=0;side<2;side++)
                 {
@@ -131,7 +131,7 @@ namespace EngineeringDashboard
                     Label(dc,$"{plan.EdgeMm:0} → shutter",xx(shutter),top-40,true);
                     Dim(dc,xx(side==0 ? face : far),xx(side==0 ? near : other),soffit+29,$"Foot { (side==0 ? plan.NearFootMm : plan.FarFootMm):0}");
                 }
-                Dim(dc,xx(a),xx(b),top-59,$"S{bay+1} · upper 2 × {plan.StockLengthMm:0} mm");
+                Dim(dc,xx(a),xx(b),top-59,$"S{bay+1} · slab H20 1 × {plan.StockLengthMm:0} mm");
             }
         }
         private static void Arrow(DrawingContext dc,double x,double y,Brush colour) {dc.DrawLine(new Pen(colour,2),new Point(x-4,y-6),new Point(x,y));dc.DrawLine(new Pen(colour,2),new Point(x+4,y-6),new Point(x,y));}

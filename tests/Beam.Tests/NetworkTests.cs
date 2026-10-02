@@ -34,8 +34,10 @@ internal static class NetworkTests
             Near(left.Analysis.Reactions[0],right.Analysis.Reactions[1],"same physical upper-left reaction at both analyses");
             Near(left.Analysis.Reactions[1],right.Analysis.Reactions[0],"same physical upper-right reaction at both analyses");
         }
-        double expectedTimber=result.Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*2*b.Transfer.LowerStockLengthMm)+result.Bays.Sum(b=>b.StockLengthMm)*2*result.Beams[0].Transfer.RowsMm.Length;
+        double expectedTimber=result.Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*2*b.Transfer.LowerStockLengthMm)+result.Bays.Sum(b=>b.StockLengthMm)*result.Beams[0].Transfer.RowsMm.Length;
         Near(result.TimberMm,expectedTimber,"shared upper timber counted once");
+        Check(result.Beams.All(b=>b.Transfer.UpperMembers.All(m=>m.H20Count==1 && m.MomentLimitKnM==5 && m.ShearLimitKn==11 && m.Utilization<=1+1e-8)),"slab H20s use single-member capacities in every network bay");
+        Near(result.H20Count,result.Beams.Sum(b=>b.StockPlan.TotalH20Count+2*b.Transfer.RowsMm.Length)+result.Bays.Length*result.Beams[0].Transfer.RowsMm.Length,"single slab H20 quantities counted once per shared row");
         Check(result.SlabMovementMm>0 && TowerBeamAnalysis.Finite(result.SlabMovementMm),"different lower-beam movements propagated into slab");
         var free=LoadedBeamAnalysis.Analyze(2000,new[] {0.0,2000},null,new BeamPointLoad[0],900,350);
         Near(free.DeflectionWithAffineOffsetMm(-2,-5,0,2000),5,"different prescribed foot movements");

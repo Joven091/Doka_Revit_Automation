@@ -59,8 +59,8 @@ namespace EngineeringDashboard
         public int Tested;
         public int LegCount=>Beams.Sum(b=>b.LegCount);
         public int UpperFootCount=>Bays.Length*2*Beams[0].Transfer.RowsMm.Length;
-        public double TimberMm=>Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*2*b.Transfer.LowerStockLengthMm)+Bays.Sum(b=>b.StockLengthMm)*2*Beams[0].Transfer.RowsMm.Length;
-        public int H20Count=>Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.RowsMm.Length*2)+Bays.Length*2*Beams[0].Transfer.RowsMm.Length;
+        public double TimberMm=>Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*2*b.Transfer.LowerStockLengthMm)+Bays.Sum(b=>b.StockLengthMm)*Beams[0].Transfer.RowsMm.Length;
+        public int H20Count=>Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.RowsMm.Length*2)+Bays.Length*Beams[0].Transfer.RowsMm.Length;
         public double PeakLegKn=>Beams.Max(b=>b.MaxLegKn);
         public string Summary=>$"{Beams.Length} beams · {Bays.Length} slab bays · {LegCount} tower legs\n{H20Count} H20s · {TimberMm/1000:0.00} m timber · peak leg {PeakLegKn:0.00} kN\nSlab movement {SlabMovementMm:0.00} mm · best found in bounded search";
         public string Schedule=>string.Join("\n\n",Beams.Select((b,i)=>$"B{i+1}: {Input.Beams[i].WidthMm:0} × {Input.Beams[i].DepthMm:0} mm · {b.LegCount} legs\n{b.Schedule}\n{b.StockSchedule}"));
@@ -83,7 +83,7 @@ namespace EngineeringDashboard
                 for(int option=0;option<options[0].Length;option++)
                 {
                     tested++;var beam=Solve(common,input,0,null,options[0][option],cover,phase,stockCovers);if(beam==null)continue;
-                    states[option]=new State {Beams=new[] {beam},Bays=new[] {options[0][option]},Legs=beam.LegCount,Timber=LowerTimber(beam)+options[0][option].StockLengthMm*2*rows};
+                    states[option]=new State {Beams=new[] {beam},Bays=new[] {options[0][option]},Legs=beam.LegCount,Timber=LowerTimber(beam)+options[0][option].StockLengthMm*rows};
                 }
                 for(int i=1;i<input.Bays.Length && states.Count>0;i++)
                 {
@@ -91,7 +91,7 @@ namespace EngineeringDashboard
                     foreach(var previous in states.Values) for(int option=0;option<options[i].Length;option++)
                     {
                         tested++;var beam=Solve(common,input,i,previous.Bays.Last(),options[i][option],cover,phase,stockCovers);if(beam==null)continue;
-                        int legs=previous.Legs+beam.LegCount;double timber=previous.Timber+LowerTimber(beam)+options[i][option].StockLengthMm*2*rows;
+                        int legs=previous.Legs+beam.LegCount;double timber=previous.Timber+LowerTimber(beam)+options[i][option].StockLengthMm*rows;
                         if(!next.TryGetValue(option,out var old) || Better(legs,timber,old.Legs,old.Timber))next[option]=new State {Beams=previous.Beams.Concat(new[] {beam}).ToArray(),Bays=previous.Bays.Concat(new[] {options[i][option]}).ToArray(),Legs=legs,Timber=timber};
                     }
                     states=next;
@@ -120,8 +120,8 @@ namespace EngineeringDashboard
                 Func<double,IEnumerable<double>> feet=width=>new[] {min,max}.Concat(new[] {600.0,1000,1500,1524,2000}.Select(w=>(w-width)/2)).Concat(Enumerable.Range(0,Math.Max(0,(int)((max-min)/250)+1)).Select(i=>min+i*250)).Where(x=>x>=min && x<=max).Distinct();
                 foreach(double a in feet(input.Beams[bay].WidthMm))foreach(double b in feet(input.Beams[bay+1].WidthMm))
                 {
-                    var analysis=LoadedBeamAnalysis.Analyze(stock,new[] {a-edge,row.WidthMm-b-edge},new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock,KnPerM=input.AreaLoad(row.ThicknessMm)*tributary/1000}},null,TowerOptimizer.PairEI,common.DeflectionDenominator);
-                    if(analysis.MomentKnM>10+1e-8 || analysis.ShearKn>22+1e-8 || analysis.DeflectionUtilization>1+1e-8 || analysis.Reactions.Any(r=>r< -1e-7))continue;
+                    var analysis=LoadedBeamAnalysis.Analyze(stock,new[] {a-edge,row.WidthMm-b-edge},new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock,KnPerM=input.AreaLoad(row.ThicknessMm)*tributary/1000}},null,TowerOptimizer.PairEI/2,common.DeflectionDenominator);
+                    if(analysis.MomentKnM>TowerOptimizer.PairMoment/2+1e-8 || analysis.ShearKn>TowerOptimizer.PairShear/2+1e-8 || analysis.DeflectionUtilization>1+1e-8 || analysis.Reactions.Any(r=>r< -1e-7))continue;
                     result.Add(Tuple.Create(new UpperTransferPlan {StockLengthMm=stock,EdgeMm=edge,NearFootMm=a,FarFootMm=b},analysis.DeflectionUtilization));
                 }
             }
