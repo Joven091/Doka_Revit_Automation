@@ -199,7 +199,16 @@ namespace EngineeringDashboard
                 if (Math.Abs(e.C4) > 1e-20 && disc >= 0) { foreach (double root in new[] { (-6 * e.C3 - Math.Sqrt(disc)) / (24 * e.C4), (-6 * e.C3 + Math.Sqrt(disc)) / (24 * e.C4) }) if (root > 0 && root < l) cuts.Add(root); }
                 else if (Math.Abs(e.C3) > 1e-20) { double root = -e.C2 / (3 * e.C3); if (root > 0 && root < l) cuts.Add(root); }
                 cuts.Sort(); var peaks = new List<double> { 0, l };
-                for (int i = 1; i < cuts.Count; i++) { double lo = cuts[i - 1], hi = cuts[i], sign = slope(lo); if (sign * slope(hi) >= 0) continue; for (int j = 0; j < 42; j++) { double middle = (lo + hi) / 2; if (sign * slope(middle) > 0) lo = middle; else hi = middle; } peaks.Add((lo + hi) / 2); }
+                for(int i=1;i<cuts.Count;i++)
+                {
+                    double lo=cuts[i-1],hi=cuts[i],sign=slope(lo);if(sign*slope(hi)>=0)continue;
+                    // Point-only members have a quadratic slope. Use stable roots of the
+                    // same displacement polynomial; retain bisection for UDLs or an
+                    // ill-conditioned root that fails its residual/interval checks.
+                    if(banded && uniform.Length==0 && TryQuadraticRoot(3*e.C3,2*e.C2,e.T,lo,hi,out double root)) {peaks.Add(root);continue;}
+                    for(int j=0;j<42;j++) {double middle=(lo+hi)/2;if(sign*slope(middle)>0)lo=middle;else hi=middle;}
+                    peaks.Add((lo+hi)/2);
+                }
                 double peak = peaks.Max(x => Math.Abs(e.U + e.T * x + e.C2 * x * x + e.C3 * x * x * x + e.C4 * x * x * x * x)) * 1000;
                 double middleMm = (nodes[index] + nodes[index + 1]) / 2; int span = Array.FindLastIndex(supports, s => s < middleMm);
                 double region = span < 0 ? supports[0] : span == supports.Length - 1 ? lengthMm - supports.Last() : supports[span + 1] - supports[span];
@@ -208,6 +217,24 @@ namespace EngineeringDashboard
             }
             result.DeflectionEvaluated=true;
             return result;
+        }
+        internal static bool TryQuadraticRoot(double a,double b,double c,double lo,double hi,out double root)
+        {
+            root=double.NaN;
+            if(a==0) {if(b!=0)root=-c/b;}
+            else
+            {
+                double disc=b*b-4*a*c;
+                if(disc<0 || !Finite(disc))return false;
+                // This form avoids subtracting nearly equal values. The second root
+                // follows from the product c/a; zero q is the repeated zero root.
+                double q=-.5*(b+(b>=0 ? Math.Sqrt(disc) : -Math.Sqrt(disc)));
+                double first=q/a,second=q==0 ? 0 : c/q;
+                root=first>lo && first<hi ? first : second;
+            }
+            if(!Finite(root) || root<=lo || root>=hi)return false;
+            double ar=a*root*root,br=b*root;
+            return Math.Abs(ar+br+c)<=1e-12*(Math.Abs(ar)+Math.Abs(br)+Math.Abs(c));
         }
         private static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
     }
