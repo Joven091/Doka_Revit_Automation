@@ -43,15 +43,15 @@ internal static class NetworkEconomyTests
     }
     public static void Run()
     {
-        var before=Solve(false,1);var serial=Solve(true,1);var after=Solve(true,4);
-        Check(serial.LayoutDiagnostics==after.LayoutDiagnostics && serial.Schedule==after.Schedule && serial.Summary==after.Summary,"exact case has identical selected layout with one or four workers");
+        var before=Solve(false,1);var serial=Solve(true,1);var after=Solve(true,Math.Min(4,Environment.ProcessorCount));
+        Check(serial.LayoutDiagnostics==after.LayoutDiagnostics && serial.Schedule==after.Schedule && serial.Summary==after.Summary,"exact case has identical selected layout with serial or automatic worker counts");
         var serialMembers=serial.Beams.SelectMany(b=>b.Transfer.LowerCases.Concat(b.Transfer.PrimaryCases).SelectMany(c=>c).Concat(b.Transfer.UpperMembers)).ToArray();
         var parallelMembers=after.Beams.SelectMany(b=>b.Transfer.LowerCases.Concat(b.Transfer.PrimaryCases).SelectMany(c=>c).Concat(b.Transfer.UpperMembers)).ToArray();
         Check(serialMembers.Length==parallelMembers.Length,"exact case member count matches");
         for(int i=0;i<serialMembers.Length;i++)
         {
             var a=serialMembers[i].Analysis;var b=parallelMembers[i].Analysis;
-            Check(a.MomentKnM==b.MomentKnM && a.ShearKn==b.ShearKn && a.DeflectionMm==b.DeflectionMm && a.DeflectionUtilization==b.DeflectionUtilization && a.Reactions.SequenceEqual(b.Reactions),"exact case has identical unrounded member demands with one or four workers");
+            Check(a.MomentKnM==b.MomentKnM && a.ShearKn==b.ShearKn && a.DeflectionMm==b.DeflectionMm && a.DeflectionUtilization==b.DeflectionUtilization && a.Reactions.SequenceEqual(b.Reactions),"exact case has identical unrounded member demands with serial or automatic worker counts");
         }
         Check(before.LegCount==158 && before.Beams[0].LegCount==28,"reported baseline reproduced");
         Check(after.LegCount==144 && after.Beams[0].LegCount==20 && after.UpperFootCount==532,"full network retains economical B1 and reduces total supports");

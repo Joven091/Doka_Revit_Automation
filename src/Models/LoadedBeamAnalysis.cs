@@ -63,6 +63,11 @@ namespace EngineeringDashboard
         }
         private double rigidity;
         public static LoadedBeamAnalysis Analyze(double lengthMm, double[] supportMm, BeamDistributedLoad[] uniform, BeamPointLoad[] points, double ei, int denominator)
+            => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,true);
+        // Retain the former dense storage path for exact numerical regression comparisons.
+        internal static LoadedBeamAnalysis AnalyzeDenseReference(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator)
+            => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,false);
+        private static LoadedBeamAnalysis AnalyzeCore(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool banded)
         {
             if (!Finite(lengthMm) || lengthMm <= 0 || !Finite(ei) || ei <= 0 || supportMm == null || supportMm.Length < 2
                 || supportMm.Any(v => !Finite(v) || v < 0 || v > lengthMm) || supportMm.Distinct().Count() != supportMm.Length
@@ -73,28 +78,30 @@ namespace EngineeringDashboard
             var supports = supportMm.OrderBy(v => v).ToArray();
             var nodes = new[] { 0.0, lengthMm }.Concat(supports).Concat(uniform.SelectMany(v => new[] { v.StartMm, v.EndMm })).Concat(points.Select(v => v.PositionMm)).OrderBy(v => v).ToList();
             for (int i = nodes.Count - 1; i > 0; i--) if (nodes[i] - nodes[i - 1] < 1e-7) nodes.RemoveAt(i);
-            int n = 2 * nodes.Count; var k = new double[n, n]; var f = new double[n];
+            int n = 2 * nodes.Count; var k = new double[n, banded ? 7 : n]; var f = new double[n];
             for (int e = 0; e < nodes.Count - 1; e++)
             {
                 double l = (nodes[e + 1] - nodes[e]) / 1000, q = uniform.Where(v => v.StartMm < (nodes[e] + nodes[e + 1]) / 2 && v.EndMm > (nodes[e] + nodes[e + 1]) / 2).Sum(v => v.KnPerM), c = ei / (l * l * l);
                 var ke = new double[,] { { 12, 6 * l, -12, 6 * l }, { 6 * l, 4 * l * l, -6 * l, 2 * l * l }, { -12, -6 * l, 12, -6 * l }, { 6 * l, 2 * l * l, -6 * l, 4 * l * l } };
                 var fe = new[] { q * l / 2, q * l * l / 12, q * l / 2, -q * l * l / 12 };
-                for (int i = 0; i < 4; i++) { f[2 * e + i] += fe[i]; for (int j = 0; j < 4; j++) k[2 * e + i, 2 * e + j] += c * ke[i, j]; }
+                for (int i = 0; i < 4; i++) { f[2 * e + i] += fe[i]; for (int j = 0; j < 4; j++) k[2 * e + i, banded ? j-i+3 : 2 * e + j] += c * ke[i, j]; }
             }
             foreach (var p in points) f[2 * nodes.FindIndex(v => Math.Abs(v - p.PositionMm) < 1e-7)] += p.Kn;
             var original = (double[,])k.Clone(); var originalF = (double[])f.Clone();
             var fixedDof = supports.Select(s => 2 * nodes.FindIndex(v => Math.Abs(v - s) < 1e-7)).ToArray();
-            foreach (int index in fixedDof) { for (int j = Math.Max(0, index - 3); j <= Math.Min(n - 1, index + 3); j++) { k[index, j] = 0; k[j, index] = 0; } k[index, index] = 1; f[index] = 0; }
-            // Cholesky factorization retains the assembled half-bandwidth of three.
-            var factor = new double[n, n];
+            foreach (int index in fixedDof) { for (int j = Math.Max(0, index - 3); j <= Math.Min(n - 1, index + 3); j++) { k[index, banded ? j-index+3 : j] = 0; k[j, banded ? index-j+3 : index] = 0; } k[index, banded ? 3 : index] = 1; f[index] = 0; }
+            // The stiffness matrix has half-bandwidth three. Compact storage retains
+            // every coefficient and the exact assembly/factorization arithmetic order,
+            // avoiding three quadratic-sized arrays for each member analysis.
+            var factor = new double[n, banded ? 4 : n];
             for (int i = 0; i < n; i++) for (int j = Math.Max(0, i - 3); j <= i; j++)
                 {
-                    double value = k[i, j]; for (int h = Math.Max(0, i - 3); h < j; h++) value -= factor[i, h] * factor[j, h];
-                    if (i == j) { if (value <= 0 || !Finite(value)) throw new ArgumentException("Unstable beam supports."); factor[i, j] = Math.Sqrt(value); } else factor[i, j] = value / factor[j, j];
+                    double value = k[i, banded ? j-i+3 : j]; for (int h = Math.Max(0, i - 3); h < j; h++) value -= factor[i, banded ? i-h : h] * factor[j, banded ? j-h : h];
+                    if (i == j) { if (value <= 0 || !Finite(value)) throw new ArgumentException("Unstable beam supports."); factor[i, banded ? i-j : j] = Math.Sqrt(value); } else factor[i, banded ? i-j : j] = value / factor[j, banded ? 0 : j];
                 }
-            var d = new double[n]; for (int i = 0; i < n; i++) { double value = f[i]; for (int j = Math.Max(0, i - 3); j < i; j++) value -= factor[i, j] * d[j]; d[i] = value / factor[i, i]; }
-            for (int i = n - 1; i >= 0; i--) { double value = d[i]; for (int j = i + 1; j <= Math.Min(n - 1, i + 3); j++) value -= factor[j, i] * d[j]; d[i] = value / factor[i, i]; }
-            var result = new LoadedBeamAnalysis { rigidity = ei, Reactions = fixedDof.Select(i => originalF[i] - Enumerable.Range(Math.Max(0, i - 3), Math.Min(n - 1, i + 3) - Math.Max(0, i - 3) + 1).Sum(j => original[i, j] * d[j])).ToArray(), TotalLoadKn = uniform.Sum(v => (v.EndMm - v.StartMm) / 1000 * v.KnPerM) + points.Sum(v => v.Kn) };
+            var d = new double[n]; for (int i = 0; i < n; i++) { double value = f[i]; for (int j = Math.Max(0, i - 3); j < i; j++) value -= factor[i, banded ? i-j : j] * d[j]; d[i] = value / factor[i, banded ? 0 : i]; }
+            for (int i = n - 1; i >= 0; i--) { double value = d[i]; for (int j = i + 1; j <= Math.Min(n - 1, i + 3); j++) value -= factor[j, banded ? j-i : i] * d[j]; d[i] = value / factor[i, banded ? 0 : i]; }
+            var result = new LoadedBeamAnalysis { rigidity = ei, Reactions = fixedDof.Select(i => originalF[i] - Enumerable.Range(Math.Max(0, i - 3), Math.Min(n - 1, i + 3) - Math.Max(0, i - 3) + 1).Sum(j => original[i, banded ? j-i+3 : j] * d[j])).ToArray(), TotalLoadKn = uniform.Sum(v => (v.EndMm - v.StartMm) / 1000 * v.KnPerM) + points.Sum(v => v.Kn) };
             for (int index = 0; index < nodes.Count - 1; index++)
             {
                 double l = (nodes[index + 1] - nodes[index]) / 1000, u = d[2 * index], v = d[2 * index + 2], t = d[2 * index + 1], z = d[2 * index + 3];
@@ -123,3 +130,4 @@ namespace EngineeringDashboard
         private static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
     }
 }
+

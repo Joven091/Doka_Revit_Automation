@@ -33,6 +33,7 @@ internal static class SearchReuseTests
     }
     public static void Run()
     {
+        BandedAnalysisTests.Run();
         Compare(false,false);Compare(true,false);Compare(true,true);
         foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})CompareWorkers(custom,crossing);
         foreach(bool reuse in new[] {false,true})
