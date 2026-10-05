@@ -8,7 +8,7 @@ internal static class NetworkSizeComparison
 {
     static TowerInput Common(CancellationToken token) => new TowerInput {LengthMm=10600,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,Exclude600Standalone=true,DeflectionDenominator=270,AllowCustomH20Lengths=true,Trace=new BeamSearchTrace("2026-10-05 network size comparison",token)};
     static double Coverage(TransferNetworkResult r) => r.Beams[0].LengthMm-2*r.Beams[0].ConcreteEndOverhangMm;
-    static double Phase(TransferNetworkResult r) => r.Beams[0].Transfer.RowsMm[0]-(10600-(r.Beams[0].Transfer.RowsMm.Length-1)*275)/2;
+    static double Phase(TransferNetworkResult r) => r.Beams[0].Transfer.RowsMm[0]-(10600-(r.Beams[0].Transfer.RowsMm.Length-1)*275)/2.0;
     static void Describe(string name,TransferNetworkResult r,Stopwatch timer)
     {
         Console.WriteLine($"COMPARISON {name}: {timer.Elapsed.TotalSeconds:0.000}s; legs={r.LegCount}; upper feet={r.UpperFootCount}; objective={r.LegCount+r.UpperFootCount}; timber={r.TimberMm:R}; coverage={Coverage(r):R}; phase={Phase(r):R}; legs by beam={string.Join(",",r.Beams.Select(b=>b.LegCount))}");
