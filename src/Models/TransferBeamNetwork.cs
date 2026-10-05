@@ -65,8 +65,8 @@ namespace EngineeringDashboard
         public double UpperSpacingMm, LiveKnM2, FormworkKnM2;
         public bool CustomLoads;
         // Investigation-only constraints; this branch is not merged into the add-in.
-        internal double? ComparisonCoveredLengthMm, ComparisonRowPhaseMm;
-        internal UpperTransferPlan ComparisonFirstBay;
+        internal double? ComparisonCoveredLengthMm = null, ComparisonRowPhaseMm = null;
+        internal UpperTransferPlan ComparisonFirstBay = null;
         public double AreaLoad(double thickness) => 25*thickness/1000+(CustomLoads ? LiveKnM2+FormworkKnM2 : BeamCalculatorViewModel.HeapingLoad(25*thickness/1000)+.75+.4);
         public void Validate(TowerInput common)
         {
