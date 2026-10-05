@@ -41,6 +41,7 @@ namespace EngineeringDashboard
         private bool changing,refreshQueued,closed;
         private bool sectionMode;
         private object selectedObject;
+        internal BeamDiagnosticWindow Diagnostics {get;private set;}
         private sealed class NumberEditor {public TextBox Box;public Func<double> Get;public Action<double> Set;public double Minimum;public bool Dirty;}
         private sealed class StringEditor {public TextBox Box;public Func<string> Get;public Action<string> Set;public bool Dirty;}
         private sealed class State
@@ -70,6 +71,7 @@ namespace EngineeringDashboard
             var dimensions=new CheckBox {Content="All dimensions",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,8,0)};
             dimensions.Checked+=(s,e)=> {Drawing.AllDimensions=true;Drawing.InvalidateVisual();};dimensions.Unchecked+=(s,e)=> {Drawing.AllDimensions=false;Drawing.InvalidateVisual();};toolbar.Children.Add(dimensions);
             toolbar.Children.Add(Button("Calculate","Calculate",async()=>await CalculateAsync()));
+            toolbar.Children.Add(Button("Diagnose","Diagnose",ShowDiagnostics));
             toolbar.Children.Add(Button("Save","Save",()=> {if(CommitFields())save?.Invoke();}));
             toolbar.Children.Add(Button("Load","Load",()=> {if(CommitFields()){var old=Capture();load?.Invoke();if(closed)return;if(!Same(old,Capture())){undo.Push(old);redo.Clear();}BuildProperties();Refresh();Drawing.Fit();}}));
             toolbar.Children.Add(Button("Export","Export",()=> {if(CommitFields())export?.Invoke();}));root.Children.Add(toolbar);
@@ -90,13 +92,19 @@ namespace EngineeringDashboard
             Drawing.CrossingRequested+=(bay,x)=> {if(!CommitFields())return;Mutate(()=> {Model.AddCrossingBeam();var c=Model.CrossingBeams.Last();c.BayNumber=bay+1;c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,x));Drawing.SelectedKind=FormworkObject.Crossing;Drawing.SelectedIndex=Model.CrossingBeams.Count-1;});Drawing.Cursor=Cursors.Arrow;};
             Drawing.MoveRequested+=(kind,index,delta)=> {if(!CommitFields())return;Mutate(()=> {if(kind==FormworkObject.Crossing) {var c=Model.CrossingBeams[index];c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,c.PositionMm+delta));}else Model.NetworkBays[index-1].WidthMm=Math.Max(500,Model.NetworkBays[index-1].WidthMm+delta);});};
             Model.PropertyChanged+=ModelChanged;
-            Loaded+=(s,e)=>Drawing.Fit();Closed+=(s,e)=> {closed=true;Model.PropertyChanged-=ModelChanged;Model.SetAdditionalTextInputErrors(this,false);ClearDiagrams();};
+            Loaded+=(s,e)=>Drawing.Fit();Closed+=(s,e)=> {closed=true;Diagnostics?.Close();Model.PropertyChanged-=ModelChanged;Model.SetAdditionalTextInputErrors(this,false);ClearDiagrams();};
             PreviewKeyDown+=(s,e)=> {if(e.Key==Key.Escape){Drawing.AddCrossing=false;Drawing.Cursor=Cursors.Arrow;}if(Keyboard.FocusedElement is TextBox)return;if(Keyboard.Modifiers==ModifierKeys.Control && e.Key==Key.Z){History(undo,redo);e.Handled=true;}if(Keyboard.Modifiers==ModifierKeys.Control && e.Key==Key.Y){History(redo,undo);e.Handled=true;}};
             BuildProperties();Refresh();
         }
         private Button Button(string name,string text,Action action)
         {
             var b=new Button {Content=text,Name="Workspace"+name,Padding=new Thickness(10,5,10,5),Margin=new Thickness(3),MinHeight=30};b.Click+=(s,e)=>action();Buttons[name]=b;return b;
+        }
+        private void ShowDiagnostics()
+        {
+            if(Diagnostics!=null){Diagnostics.RefreshReport();Diagnostics.Activate();return;}
+            Diagnostics=new BeamDiagnosticWindow(remarks=>Model.BuildDiagnosticReport(remarks,"Source: Drawing workspace; selected "+Drawing.SelectedKind+" index "+Drawing.SelectedIndex+" (zero based)\n"+string.Join("\n",Fields.Select(f=>f.Key+" = "+f.Value.Text+"; enabled="+f.Value.IsEnabled))));
+            Diagnostics.Closed+=(s,e)=>Diagnostics=null;if(IsVisible)Diagnostics.Owner=this;Diagnostics.Show();
         }
         private void Geometry()
         {sectionMode=false;Drawing.Formwork=false;Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;Drawing.InvalidateVisual();UpdateViewButtons();}

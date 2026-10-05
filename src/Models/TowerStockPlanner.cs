@@ -65,14 +65,15 @@ namespace EngineeringDashboard
         // Evaluate the previous stock search as well. Candidate caps must never replace a better stock solution.
         internal static T SearchWithCustom<T>(TowerInput input, Func<T> search, Func<T,T,bool> better) where T : class
         {
-            if (!input.AllowCustomH20Lengths) return search();
+            if (!input.AllowCustomH20Lengths) return RunPass(input,false,search);
             T stock = null;
             input.AllowCustomH20Lengths = false;
-            try { stock = search(); } catch (ArgumentException) { }
+            try { stock = RunPass(input,false,search); } catch (ArgumentException) { }
             finally { input.AllowCustomH20Lengths = true; }
-            try { var custom = search(); return stock == null || better(custom,stock) ? custom : stock; }
+            try { var custom = RunPass(input,true,search); return stock == null || better(custom,stock) ? custom : stock; }
             catch (ArgumentException) { if (stock != null) return stock; throw; }
         }
+        private static T RunPass<T>(TowerInput input,bool custom,Func<T> search)=>input.Trace==null ? search() : input.Trace.RunPass(custom,search);
         internal static int[] CoverageCounts(int total, double[] stocks)
         {
             var counts = Enumerable.Repeat(int.MaxValue,total+1).ToArray(); counts[0]=0;
@@ -122,6 +123,7 @@ namespace EngineeringDashboard
                     if (last <= first || end - positions[last] < setback - 1e-7) continue;
                     if (last + 1 < n && positions[last + 1] < end + setback - 1e-7) continue;
                     if (end < length - 1e-7 && last + 1 == n || Math.Abs(end - length) < 1e-7 && last + 1 != n) continue;
+                    input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
                     analyzed=true;var response = TowerBeamAnalysis.Analyze(stock / 1000,
                         positions.Skip(first).Take(last - first + 1).Select(x => (x - start) / 1000).ToArray(), load, TowerOptimizer.PairEI);
                     var u = new[] { response.Reactions.Max() / input.LegCapacityKn, response.Moment / TowerOptimizer.PairMoment,
@@ -146,3 +148,4 @@ namespace EngineeringDashboard
         }
     }
 }
+

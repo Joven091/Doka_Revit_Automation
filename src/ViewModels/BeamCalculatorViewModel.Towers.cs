@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace EngineeringDashboard
@@ -74,20 +75,27 @@ namespace EngineeringDashboard
         public async Task OptimizeTowersAsync()
         {
             if (!UseTowers || IsOptimizing) return;
+            var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs());
             int revision = towerRevision; IsOptimizing = true; TowerResult = null; NetworkResult=null; TowerFailureDetails=""; IsCalculationValid = false;
             WarningMessage = "Searching tower layouts…"; NotifyTower();
             try
             {
                 var input = CreateTowerInput();
+                input.Trace=trace;
+                trace.DerivedInputs(System.FormattableString.Invariant($"Mode: {(input.Network!=null ? "Network" : input.TransferredSlab!=null ? "Transferred slab" : "Beam-only")}; initial beam line load={input.TotalLineLoad:R} kN/m; transverse load moment={input.TransverseLoadMoment:R} kN")
+                    +(input.TransferredSlab==null ? "" : System.FormattableString.Invariant($"\nTransfer beam load={input.TransferredSlab.BeamLineLoadKnM:R} kN/m; slab area loads L/R={input.TransferredSlab.LeftAreaLoadKnM2:R}/{input.TransferredSlab.RightAreaLoadKnM2:R} kN/m²"))
+                    +(input.Network==null ? "" : "\n"+string.Join("\n",input.Network.Beams.Select((b,i)=>System.FormattableString.Invariant($"B{i+1}: area load={input.Network.AreaLoad(b.DepthMm):R} kN/m²; beam line load={input.Network.AreaLoad(b.DepthMm)*b.WidthMm/1000:R} kN/m")).Concat(input.Network.Bays.Select((s,i)=>System.FormattableString.Invariant($"S{i+1}: area load={input.Network.AreaLoad(s.ThicknessMm):R} kN/m²"))))));
                 TransferNetworkResult networkResult=null;
                 var result = await Task.Run(() => { if(input.Network==null)return TowerOptimizer.Optimize(input);networkResult=TransferNetworkOptimizer.Optimize(input,input.Network);return networkResult.Beams[0]; });
-                if (revision != towerRevision || !UseTowers) return;
+                if (revision != towerRevision || !UseTowers) {trace.Complete("Discarded: inputs changed during search",summary:networkResult?.Summary??result.Summary);return;}
                 NetworkResult=networkResult;SelectedNetworkBeam=0;TowerResult = result; LeftLineLoad = result.LeftLineLoad; RightLineLoad = result.RightLineLoad;
                 TotalLineLoad = result.LeftLineLoad + result.RightLineLoad; LimitingFactor = result.Governing;
                 IsCalculationValid = true; WarningMessage = "";
+                trace.Complete("Succeeded",summary:networkResult?.Summary??result.Summary);
             }
-            catch (TowerOptimizationException ex) {if(revision==towerRevision) {WarningMessage=ex.Message;TowerFailureDetails=ex.Details;}}
-            catch (ArgumentException ex) { if (revision == towerRevision) WarningMessage = ex.Message; }
+            catch (TowerOptimizationException ex) {trace.Complete("No solution",ex.ToString()+"\n"+ex.Details);if(revision==towerRevision) {WarningMessage=ex.Message;TowerFailureDetails=ex.Details;}}
+            catch (ArgumentException ex) {trace.Complete("Rejected input/search",ex.ToString());if (revision == towerRevision) WarningMessage = ex.Message; }
+            catch (Exception ex) {trace.Complete("Unexpected error",ex.ToString());if(revision==towerRevision)WarningMessage="Unexpected search error. Select Diagnose to copy the details.";}
             finally { IsOptimizing = false; NotifyTower(); }
         }
         private void NotifyTower()

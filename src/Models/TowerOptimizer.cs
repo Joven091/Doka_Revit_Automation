@@ -18,21 +18,23 @@ namespace EngineeringDashboard
         private readonly int denominator;
         private readonly double fixedLimit;
         private int checks;
-        public TowerSearchDiagnostics(int denominator,double fixedLimit=0) {this.denominator=denominator;this.fixedLimit=fixedLimit;}
+        private readonly BeamSearchTrace trace;
+        public TowerSearchDiagnostics(int denominator,double fixedLimit=0,BeamSearchTrace trace=null) {this.denominator=denominator;this.fixedLimit=fixedLimit;this.trace=trace;}
         private void Add(string key,int stage,double score,string text,string advice,string summary=null,bool blocker=false)
         {
+            trace?.Increment(BeamSearchCounter.RejectionChecks);
             if(!failures.TryGetValue(key,out var f)) failures[key]=f=new Failure {Stage=stage,Score=double.PositiveInfinity};
             f.Count++;if(score<f.Score) {f.Score=score;f.Text=text;f.Advice=advice;f.Summary=summary??text;f.Blocker=blocker;}
         }
         public void Geometry(string key,string text,string advice,double score=0,string summary=null,bool blocker=false)=>Add(key,0,score,text,advice,summary,blocker);
         public void Limit(string scope,string check,int stage,double demand,double limit,string units,string location,string advice,double tolerance=1e-8)
         {
-            checks++;if(demand<=limit+tolerance)return;
+            trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(demand<=limit+tolerance)return;
             Add(scope+"/"+check,stage,demand/limit,$"{scope} · {check}: {demand:0.###} / {limit:0.###} {units} ({demand/limit*100:0.0}%). {location}",advice,$"{scope} · {check}: {demand:0.###} / {limit:0.###} {units} ({demand/limit*100:0.0}%).");
         }
         public void Bearing(string scope,int stage,double reaction,string location,double tolerance=1e-7)
         {
-            checks++;if(reaction>=-tolerance)return;
+            trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(reaction>=-tolerance)return;
             Add(scope+"/uplift",stage,Math.Abs(reaction),$"{scope} · uplift: reaction {reaction:G6} kN; minimum 0 kN. {location}","Review foot positions, primary-line/tower width and one-sided loading balance.");
         }
         public void Analysis(LoadedBeamAnalysis a,double scale,int count,string scope,int stage,string location)
@@ -73,6 +75,7 @@ namespace EngineeringDashboard
     public sealed class TowerInput
     {
         internal TowerSearchDiagnostics Diagnostics;
+        internal BeamSearchTrace Trace;
         internal string DiagnosticScope="";
         internal double DiagnosticOffsetMm;
         public TransferredSlabInput TransferredSlab { get; set; }
@@ -170,21 +173,24 @@ namespace EngineeringDashboard
         private static TowerLayout OptimizeCore(TowerInput input)
         {
             Validate(input);
-            input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm);
+            input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm,input.Trace);
             if (input.MaximumConcreteEndOverhangMm == 0) return OptimizeCovered(input);
+            input.Trace?.Work("Beam-only primary coverage DP");
             // Reachable stock totals; allow only symmetric concrete end overhang, never internal stock gaps.
             int total = (int)Math.Floor(input.LengthMm);
             var counts = TowerStockPlanner.CoverageCounts(total,TowerStockPlanner.CandidateLengths(input,25,total));
             var covers = Enumerable.Range(1, total).Where(x => x >= input.LengthMm - 2 * input.MaximumConcreteEndOverhangMm && counts[x] != int.MaxValue)
                 .OrderBy(x => counts[x]).ThenByDescending(x => x).ToArray();
+            input.Trace?.Increment(BeamSearchCounter.CoveragePlans,covers.Length);
             TowerLayout best = null; int tested = 0;
             foreach (int covered in covers)
             {
+                input.Trace?.Increment(BeamSearchCounter.CoverageVariants);input.Trace?.Context("Covered length "+covered+" mm");
                 if (best != null && counts[covered] * 4 > best.LegCount) continue;
                 double overhang = (input.LengthMm - covered) / 2;
                 var candidateInput = new TowerInput { LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
                     TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator,
-                    AllowCustomH20Lengths = input.AllowCustomH20Lengths, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
+                    Trace = input.Trace, AllowCustomH20Lengths = input.AllowCustomH20Lengths, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
                 TowerLayout candidate;
                 try { candidate = OptimizeCovered(candidateInput); }
                 catch (TowerOptimizationException) {continue;}
@@ -206,6 +212,7 @@ namespace EngineeringDashboard
         private static TowerLayout OptimizeCovered(TowerInput input)
         {
             Validate(input); var random = new Random(1524); int tested = 0, attempts = 0;
+            input.Trace?.Work("Beam-only coverage/member candidates");
             var lengths = TowerStockPlanner.CandidateLengths(input,25,input.LengthMm);
             int minimumPieces = TowerStockPlanner.MinimumPieces(input.LengthMm, lengths);
             if (minimumPieces == int.MaxValue) throw new ArgumentException("The available uncut H20 stock lengths cannot cover this beam length exactly without overlaps or projection beyond its ends. Change the length or available stock; no partial coverage is accepted.");
@@ -219,6 +226,7 @@ namespace EngineeringDashboard
             double longest = 1000 * Math.Min(Math.Sqrt(16 * PairMoment / w), 2 * PairShear / w);
             double tail = 1000 * Math.Min(Math.Sqrt(2 * PairMoment / w), PairShear / w);
             lower = Math.Max(lower, 1 + (int)Math.Ceiling(Math.Max(0, length - 2 * tail) / longest - 1e-10));
+            input.Trace?.Work("Beam-only tower layout enumeration");
             TowerLayout best = null;
             // Seed isolated towers directly from stock runs. Random gap placement can miss simple two-tower solutions.
             if (minimumPieces <= 2)
@@ -291,7 +299,7 @@ namespace EngineeringDashboard
                 }
                 if (best != null) break;
             }
-            if (best == null) throw (input.Diagnostics??new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm)).Exception("No valid tower layout found within the bounded search (up to 80 legs).");
+            if (best == null) throw (input.Diagnostics??new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm,input.Trace)).Exception("No valid tower layout found within the bounded search (up to 80 legs).");
             best.Tested = tested;
             int capacityBound = Math.Max(2, (int)Math.Ceiling((input.TotalLineLoad / 2 + Math.Abs(input.TransverseLoadMoment) / 2) * length / 1000 / input.LegCapacityKn - 1e-10));
             best.MinimumLegCountProven = best.PositionsMm.Length == Math.Max(capacityBound, minimumPieces * 2); return best;
@@ -299,6 +307,7 @@ namespace EngineeringDashboard
         public static TowerLayout Evaluate(TowerInput input, double[] positions, bool[] joined, double width, bool rotated)
         {
             Validate(input);
+            input.Trace?.Increment(BeamSearchCounter.TowerCandidates);
             if (positions == null || joined == null || positions.Length < 2 || joined.Length != positions.Length - 1 || !TowerBeamAnalysis.Finite(width) || width <= 0) throw new ArgumentException("Invalid tower layout.");
             if (positions.Any(x => !TowerBeamAnalysis.Finite(x) || x < 0 || x > input.LengthMm) || positions.Skip(1).Where((x, i) => x <= positions[i]).Any()) throw new ArgumentException("Support positions must increase within the beam length.");
             if (rotated ? !BaysMm.Contains(width) : width != 1524) return null;
@@ -364,3 +373,4 @@ namespace EngineeringDashboard
         }
     }
 }
+

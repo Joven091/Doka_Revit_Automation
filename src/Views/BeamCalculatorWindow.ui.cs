@@ -19,6 +19,14 @@ namespace EngineeringDashboard
         private void RemoveBeamBay_Click(object sender,RoutedEventArgs e)=>observedModel?.RemoveNetworkBay();
         internal TowerDiagramWindow TowerDiagrams { get; private set; }
         internal BeamFormworkWorkspace FormworkWorkspace {get;private set;}
+        internal BeamDiagnosticWindow Diagnostics {get;private set;}
+        private void DiagnoseBeam_Click(object sender,RoutedEventArgs e)
+        {
+            if(observedModel==null)return;
+            if(Diagnostics!=null){Diagnostics.RefreshReport();Diagnostics.Activate();return;}
+            Diagnostics=new BeamDiagnosticWindow(remarks=>observedModel.BuildDiagnosticReport(remarks,"Source: Beam calculator\n"+string.Join("\n",TextInputs(this).Select(box=>(box.Name.Length>0 ? box.Name : box.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path?.Path??"Field")+" = "+box.Text+"; enabled="+box.IsEnabled+"; visible="+box.IsVisible))));
+            Diagnostics.Closed+=(s,args)=>Diagnostics=null;if(IsVisible)Diagnostics.Owner=this;Diagnostics.Show();
+        }
         private void DrawingWorkspace_Click(object sender,RoutedEventArgs e)
         {
             if(observedModel==null || !observedModel.UseTowers)return;
