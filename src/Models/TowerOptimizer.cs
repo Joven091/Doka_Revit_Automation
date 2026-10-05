@@ -76,6 +76,8 @@ namespace EngineeringDashboard
     {
         internal TowerSearchDiagnostics Diagnostics;
         internal BeamSearchTrace Trace;
+        // Tests can replay the original search without reuse; production searches reuse work.
+        internal bool ReuseSearchWork = true;
         internal string DiagnosticScope="";
         internal double DiagnosticOffsetMm;
         public TransferredSlabInput TransferredSlab { get; set; }
