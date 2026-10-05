@@ -1,5 +1,5 @@
 name: Beam search reuse and reported-case benchmark
-on: [push, pull_request]
+on: [pull_request]
 jobs:
   beam-search:
     runs-on: windows-latest
