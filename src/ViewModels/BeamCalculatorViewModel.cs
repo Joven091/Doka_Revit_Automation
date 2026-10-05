@@ -82,8 +82,19 @@ namespace EngineeringDashboard
 
         public void SetTextInputErrors(bool value)
         {
-            if (textErrors == value) return;
-            textErrors = value; Calculate();
+            calculatorTextErrors=value;RefreshTextInputErrors();
+        }
+        private bool calculatorTextErrors;
+        private readonly HashSet<object> additionalTextErrors=new HashSet<object>();
+        internal void SetAdditionalTextInputErrors(object source,bool value)
+        {
+            if(value)additionalTextErrors.Add(source);else additionalTextErrors.Remove(source);
+            RefreshTextInputErrors();
+        }
+        private void RefreshTextInputErrors()
+        {
+            bool value=calculatorTextErrors || additionalTextErrors.Count>0;
+            if(textErrors==value)return;textErrors=value;Calculate();
         }
         private static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
         private static void Check(double value, string label, bool positive = false)

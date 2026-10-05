@@ -70,6 +70,26 @@ namespace EngineeringDashboard
             foreach(var c in CrossingBeams.Where(c=>c.BayNumber>NetworkBays.Count).ToArray())RemoveCrossingBeam(c);
             Changed();NotifyNetwork();
         }
+        public void InsertNetworkBay(int beamIndex,bool before)
+        {
+            if(!CanAddNetworkBay || beamIndex<0 || beamIndex>=NetworkBeams.Count)return;
+            var source=NetworkBeams[beamIndex];int bayIndex=beamIndex;
+            var bay=NetworkBays[Math.Min(bayIndex,NetworkBays.Count-1)];
+            UnsubscribeNetwork();
+            NetworkBeams.Insert(before ? beamIndex : beamIndex+1,new TransferBeamRow {WidthMm=source.WidthMm,DepthMm=source.DepthMm});
+            NetworkBays.Insert(bayIndex,new TransferBayRow {WidthMm=bay.WidthMm,ThicknessMm=bay.ThicknessMm});
+            foreach(var c in CrossingBeams)if(c.BayNumber>bayIndex)c.BayNumber++;
+            SubscribeNetwork();Changed();NotifyNetwork();
+        }
+        public void RemoveNetworkBeam(int beamIndex)
+        {
+            if(!CanRemoveNetworkBay || beamIndex<0 || beamIndex>=NetworkBeams.Count)return;
+            int bayIndex=Math.Max(0,beamIndex-1);UnsubscribeNetwork();
+            foreach(var c in CrossingBeams.Where(c=>c.BayNumber==bayIndex+1).ToArray())CrossingBeams.Remove(c);
+            foreach(var c in CrossingBeams)if(c.BayNumber>bayIndex+1)c.BayNumber--;
+            NetworkBeams.RemoveAt(beamIndex);NetworkBays.RemoveAt(bayIndex);
+            SubscribeNetwork();Changed();NotifyNetwork();
+        }
         public void AddCrossingBeam()
         {
             UseBeamNetwork=true;if(CrossingBeams.Count>=30)return;

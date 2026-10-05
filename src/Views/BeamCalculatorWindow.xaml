@@ -94,6 +94,7 @@
                 </ContentControl>
               </Grid>
               <CheckBox x:Name="TransferredSlabCheckBox" Content="Transfer slab loads through beam supports" IsChecked="{Binding TransferSlabLoads}" IsEnabled="{Binding CanSelectTransfer}" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
+              <Button x:Name="DrawingWorkspaceButton" Content="Open drawing workspace" Click="DrawingWorkspace_Click" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}" Margin="0,8"/>
               <StackPanel IsEnabled="{Binding IsTransferMode}" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="Upper support spacing along beam (mm)"/>
                 <TextBox Text="{Binding UpperSupportSpacingMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>

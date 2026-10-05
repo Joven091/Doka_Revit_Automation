@@ -18,6 +18,20 @@ namespace EngineeringDashboard
         private void RemoveCrossingBeam_Click(object sender,RoutedEventArgs e)=>observedModel?.RemoveCrossingBeam((sender as Button)?.Tag as TransferCrossingBeamRow);
         private void RemoveBeamBay_Click(object sender,RoutedEventArgs e)=>observedModel?.RemoveNetworkBay();
         internal TowerDiagramWindow TowerDiagrams { get; private set; }
+        internal BeamFormworkWorkspace FormworkWorkspace {get;private set;}
+        private void DrawingWorkspace_Click(object sender,RoutedEventArgs e)
+        {
+            if(observedModel==null || !observedModel.UseTowers)return;
+            if(FormworkWorkspace!=null){FormworkWorkspace.Activate();return;}
+            CloseTowerDiagrams();
+            FormworkWorkspace=new BeamFormworkWorkspace(observedModel,
+                ()=>CalculationFiles.Run(FormworkWorkspace,()=>CalculationFiles.Save(FormworkWorkspace,CaptureDrawingInputs(),"Beam")),
+                ()=>CalculationFiles.Run(FormworkWorkspace,()=> {var path=CalculationFiles.ChooseLoad(FormworkWorkspace);if(path!=null)RestoreCalculation(CalculationFiles.Read<CalculationRecord>(path));}),
+                ()=>CalculationFiles.Run(FormworkWorkspace,()=>CalculationFiles.ExportHtml(FormworkWorkspace,"Beam",BuildReport())));
+            FormworkWorkspace.Closed+=(s,args)=>FormworkWorkspace=null;
+            if(IsVisible)FormworkWorkspace.Owner=this;
+            FormworkWorkspace.Show();
+        }
         private void PickProps_Click(object sender, RoutedEventArgs e) => SelectSupportSystem(false);
         private void PickTowers_Click(object sender, RoutedEventArgs e) => SelectSupportSystem(true);
         private void SelectSupportSystem(bool towers)
@@ -76,12 +90,13 @@ namespace EngineeringDashboard
             };
             AddHandler(Validation.ErrorEvent, new EventHandler<ValidationErrorEventArgs>(InputValidation_Error));
             DataContextChanged += (s,e) => {
+                FormworkWorkspace?.Close();
                 CloseTowerDiagrams(); if(observedModel != null) observedModel.PropertyChanged -= ModelChanged;
                 observedModel = DataContext as BeamCalculatorViewModel;
                 if(observedModel != null) observedModel.PropertyChanged += ModelChanged;
                 RefreshInputValidity(); UpdateDiagram();
             };
-            Closed += (s,e) => { CloseTowerDiagrams(); if(observedModel != null) observedModel.PropertyChanged -= ModelChanged; };
+            Closed += (s,e) => { FormworkWorkspace?.Close();CloseTowerDiagrams(); if(observedModel != null) observedModel.PropertyChanged -= ModelChanged; };
         }
         private void ModelChanged(object sender, PropertyChangedEventArgs e)
         {
@@ -134,9 +149,13 @@ namespace EngineeringDashboard
             if (observedModel != null) await observedModel.OptimizeTowersAsync();
         }
         private const string FileInputs = "Depth,Width,FloorHeight,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,SlabStripWidthMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad,NumberOfProps";
-        internal CalculationRecord CaptureCalculation()
+        internal CalculationRecord CaptureCalculation()=>CaptureInputs(true);
+        internal CalculationRecord CaptureDrawingInputs()=>CaptureInputs(false);
+        private CalculationRecord CaptureInputs(bool requireResult)
         {
-            if(!TryGetValidCalculation(out var vm)) throw new ArgumentException("Correct the inputs before saving or exporting.");
+            var vm=DataContext as BeamCalculatorViewModel;
+            if(requireResult){if(!TryGetValidCalculation(out vm))throw new ArgumentException("Correct the inputs before saving or exporting.");}
+            else {RefreshInputValidity();if(vm==null || !vm.HasSelectedSupportSystem || !vm.UseTowers)throw new ArgumentException("Select D3 before saving drawing inputs.");vm.ValidateTowerInputs();}
             var record = CalculationFiles.Capture("Beam", vm, FileInputs);
             foreach (var field in CalculationFiles.Capture("Beam", vm, "TransferSlabLoads,UpperSupportSpacingMm,LeftSlabBayMm,RightSlabBayMm").Inputs) record.Inputs.Add(field);
             record.Inputs.Add(CalculationFiles.Field("UseTowers", vm.UseTowers));
