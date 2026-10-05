@@ -37,6 +37,7 @@ internal static class SearchReuseTests
     {
         BandedAnalysisTests.Run();
         Compare(false,false);Compare(true,false);Compare(true,true);
+        foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})ComparePruning(custom,crossing);
         foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})CompareWorkers(custom,crossing);
         foreach(bool reuse in new[] {false,true})
         {
@@ -77,6 +78,16 @@ internal static class SearchReuseTests
             try {TransferNetworkOptimizer.Optimize(input,Network(true));}catch(OperationCanceledException) {cancelled=true;}
             cancel.GetAwaiter().GetResult();Check(cancelled,"cancellation while workers are running stays an OperationCanceledException");
         }
+    }
+    static void ComparePruning(bool custom,bool crossing)
+    {
+        var plain=Common(true,custom);plain.PruneUneconomicCandidates=false;plain.NetworkSearchWorkers=1;
+        var pruned=Common(true,custom);pruned.NetworkSearchWorkers=1;
+        var network=Network(crossing);
+        var a=TransferNetworkOptimizer.Optimize(plain,network);var b=TransferNetworkOptimizer.Optimize(pruned,network);
+        Check(Signature(a)==Signature(b),"economy bound preserves exact layout and ranking");
+        Check(Demands(a).SequenceEqual(Demands(b)),"economy bound preserves unrounded selected member demands");
+        Check(a.Tested==b.Tested && Counter(pruned.Trace,"Candidates pruned by economy bounds")>0,"all ranked candidates still visited; unable-to-win candidates skip member solving");
     }
     public static void Benchmark()
     {

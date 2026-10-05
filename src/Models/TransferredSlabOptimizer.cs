@@ -240,7 +240,15 @@ namespace EngineeringDashboard
                             foreach (var cross in crosses)
                             {
                                 input.Trace?.Work("Transfer layout load-case checks");input.Trace?.Increment(BeamSearchCounter.TransferCandidates);
-                                tested++; var candidate = Evaluate(input,geometry,width,rotated,cross,grid,edge,primaryCache,matrixCache);
+                                tested++;
+                                if(input.PruneUneconomicCandidates && best!=null && geometry.Positions.Length*2==best.LegCount)
+                                {
+                                    double timber=geometry.Stock.Sum(s=>s.StockLengthMm)*4+grid.Rows.Length*(cross.Stock+(cross.Left?.Stock??0)+(cross.Right?.Stock??0));
+                                    // Exact ranking bound: fewer legs still merit full checking,
+                                    // and equal timber retains the utilization tie-breaker.
+                                    if(timber>Timber(best)+.01) {input.Trace?.Increment(BeamSearchCounter.EconomyPruned);continue;}
+                                }
+                                var candidate = Evaluate(input,geometry,width,rotated,cross,grid,edge,primaryCache,matrixCache);
                                 if (candidate != null && (best == null || candidate.LegCount < best.LegCount || candidate.LegCount == best.LegCount
                                     && (Timber(candidate) < Timber(best)-.01 || Math.Abs(Timber(candidate)-Timber(best)) < .01 && candidate.Utilization < best.Utilization))) best = candidate;
                             }

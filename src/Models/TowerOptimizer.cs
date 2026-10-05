@@ -101,6 +101,7 @@ namespace EngineeringDashboard
         // Regression tests can replay the former common-primary-coverage restriction.
         internal bool IndependentNetworkPrimaryCoverage = true;
         internal int NetworkSearchWorkers = Math.Min(4,Environment.ProcessorCount);
+        internal bool PruneUneconomicCandidates = true;
         internal TowerInput CopyForSearch() => (TowerInput)MemberwiseClone();
         internal string DiagnosticScope="";
         internal double DiagnosticOffsetMm;
