@@ -36,6 +36,7 @@ internal static class SearchReuseTests
     public static void Run()
     {
         BandedAnalysisTests.Run();
+        CompareNetworkSpeed();
         Compare(false,false);Compare(true,false);Compare(true,true);
         foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})ComparePruning(custom,crossing);
         foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})CompareStaging(custom,crossing);
@@ -53,6 +54,22 @@ internal static class SearchReuseTests
             Check(cancelled,"cancellation remains observable with reuse enabled");
         }
         Console.WriteLine($"Passed {checks} search reuse checks.");
+    }
+    static void CompareNetworkSpeed()
+    {
+        foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})
+        {
+            var plain=Common(true,custom);plain.ReuseNetworkNumerics=false;plain.DeferTransferLayout=false;plain.NetworkSearchWorkers=1;
+            var network=Network(crossing);var reference=TransferNetworkOptimizer.Optimize(plain,network);
+            foreach(int variant in new[] {1,2,3})
+            {
+                var optimized=Common(true,custom);optimized.ReuseNetworkNumerics=(variant&1)!=0;optimized.DeferTransferLayout=(variant&2)!=0;optimized.NetworkSearchWorkers=1;
+                var result=TransferNetworkOptimizer.Optimize(optimized,network);
+                Check(Signature(reference)==Signature(result) && Demands(reference).SequenceEqual(Demands(result)),"each speed feature preserves exact schedules, quantities and demands");
+                Check(reference.Tested==result.Tested,"speed features retain the complete candidate traversal");
+                Check(plain.Diagnostics.Exception("comparison").Details==optimized.Diagnostics.Exception("comparison").Details,"wide cache retains beam-specific diagnostic examples and counts");
+            }
+        }
     }
     static void CompareWorkers(bool custom,bool crossing)
     {
