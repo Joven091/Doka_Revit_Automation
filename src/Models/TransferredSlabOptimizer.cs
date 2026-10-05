@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 
 namespace EngineeringDashboard
 {
@@ -81,7 +83,13 @@ namespace EngineeringDashboard
         // Created for one pass only: stock, setback and exclusion settings are constant.
         internal sealed class GeometryCache
         {
-            internal readonly Dictionary<string,Geometry[]> Items = new Dictionary<string,Geometry[]>();
+            private readonly ConcurrentDictionary<string,Lazy<Geometry[]>> items = new ConcurrentDictionary<string,Lazy<Geometry[]>>();
+            internal Geometry[] Get(string key,Func<Geometry[]> build,out bool hit)
+            {
+                if(items.TryGetValue(key,out var found)) {hit=true;return found.Value;}
+                var created=new Lazy<Geometry[]>(build,LazyThreadSafetyMode.ExecutionAndPublication);
+                found=items.GetOrAdd(key,created);hit=!ReferenceEquals(found,created);return found.Value;
+            }
         }
         private sealed class Upper { public double Stock, Edge, Foot, OtherFoot, Bay, Load; public bool Custom; public LoadedBeamAnalysis Analysis; }
         private sealed class CrossOption
@@ -99,6 +107,33 @@ namespace EngineeringDashboard
             public string Key;
         }
         private sealed class PrimaryCheck { public LoadedBeamAnalysis Analysis; public bool Passed; }
+        private sealed class PrimaryKey : IEquatable<PrimaryKey>
+        {
+            private readonly double length;
+            private readonly double[] supports;
+            private readonly BeamPointLoad[] points;
+            private readonly int hash;
+            internal PrimaryKey(double length,double[] supports,BeamPointLoad[] points)
+            {
+                this.length=length;this.supports=supports;this.points=points;
+                unchecked
+                {
+                    int h=length.GetHashCode();
+                    for(int i=0;i<supports.Length;i++)h=h*31+supports[i].GetHashCode();
+                    for(int i=0;i<points.Length;i++) {h=h*31+points[i].PositionMm.GetHashCode();h=h*31+points[i].Kn.GetHashCode();}
+                    hash=h;
+                }
+            }
+            public override int GetHashCode()=>hash;
+            public override bool Equals(object other)=>Equals(other as PrimaryKey);
+            public bool Equals(PrimaryKey other)
+            {
+                if(other==null || hash!=other.hash || length!=other.length || supports.Length!=other.supports.Length || points.Length!=other.points.Length)return false;
+                for(int i=0;i<supports.Length;i++)if(supports[i]!=other.supports[i])return false;
+                for(int i=0;i<points.Length;i++)if(points[i].PositionMm!=other.points[i].PositionMm || points[i].Kn!=other.points[i].Kn)return false;
+                return true;
+            }
+        }
         private static string Values(IEnumerable<double> values) => string.Join(";",values.Select(x=>x.ToString("R",CultureInfo.InvariantCulture)));
         public static TowerLayout Optimize(TowerInput input,bool shareDiagnostics=false)
         {
@@ -117,7 +152,7 @@ namespace EngineeringDashboard
             // Different tower combinations often repeat an identical local primary member.
             // Include every support, point position and force, without rounding. This cache
             // lives only in one receiving-beam solve and retains at most 4096 checks.
-            var primaryCache = input.ReuseSearchWork ? new Dictionary<string,PrimaryCheck>(StringComparer.Ordinal) : null;
+            var primaryCache = input.ReuseSearchWork ? new Dictionary<PrimaryKey,PrimaryCheck>() : null;
             if(!shareDiagnostics || input.Diagnostics==null)input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace);var diag=input.Diagnostics;
             input.Trace?.Work("Transfer primary cover generation");
             var covers=Covers(input).ToArray();
@@ -151,14 +186,15 @@ namespace EngineeringDashboard
                     input.Trace?.Work("Transfer tower/support geometry");
                     string geometryKey = (rotated ? "R:" : "N:") + Values(cover);
                     input.Trace?.CheckCancellation();
-                    Geometry[] geometries;
-                    if (geometryCache==null || !geometryCache.Items.TryGetValue(geometryKey,out geometries))
+                    Func<Geometry[]> buildGeometry=()=>
                     {
-                        geometries=Geometries(cover,rotated,input).ToArray();
+                        var generated=Geometries(cover,rotated,input).ToArray();
                         input.Trace?.Increment(BeamSearchCounter.GeometryBuilds);
-                        if (geometryCache!=null) geometryCache.Items[geometryKey]=geometries;
-                    }
-                    else input.Trace?.Increment(BeamSearchCounter.GeometryCacheHits);
+                        return generated;
+                    };
+                    bool hit=false;
+                    var geometries=geometryCache==null ? buildGeometry() : geometryCache.Get(geometryKey,buildGeometry,out hit);
+                    if(hit)input.Trace?.Increment(BeamSearchCounter.GeometryCacheHits);
                     if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
                     foreach (var geometry in geometries)
                     {
@@ -381,7 +417,7 @@ namespace EngineeringDashboard
             }
             cross.LowerCaseComputed[c]=true;return cross.LowerByCase[c]=lower.ToArray();
         }
-        private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,Dictionary<string,PrimaryCheck> primaryCache)
+        private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,Dictionary<PrimaryKey,PrimaryCheck> primaryCache)
         {
             var rows=grid.Rows;var trib=grid.Tributaries;var ls=grid.LeftScales;var rs=grid.RightScales;
             if(ls.Length!=rows.Length || rs.Length!=rows.Length)throw new ArgumentException("Crossing beam row loads do not match the support rows.");
@@ -397,7 +433,7 @@ namespace EngineeringDashboard
                     var supports=g.Positions.Skip(stock.FirstSupport).Take(stock.LastSupport-stock.FirstSupport+1).Select(x=>x-stock.StartMm).ToArray();
                     var points=Enumerable.Range(0,rows.Length).Where(i=>rows[i]>=stock.StartMm && rows[i]<stock.EndMm).Select(i=>new BeamPointLoad {PositionMm=rows[i]-stock.StartMm,Kn=lower[i].Analysis.Reactions[line]}).ToArray();
                     input.Trace?.CheckCancellation();
-                    string key=primaryCache==null ? null : stock.StockLengthMm.ToString("R",CultureInfo.InvariantCulture)+"|"+Values(supports)+"|"+Values(points.SelectMany(p=>new[] {p.PositionMm,p.Kn}));
+                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,points);
                     PrimaryCheck check;
                     if(primaryCache==null || !primaryCache.TryGetValue(key,out check))
                     {

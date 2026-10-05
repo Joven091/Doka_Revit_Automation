@@ -10,14 +10,14 @@ internal static class NetworkEconomyTests
     static void Near(double actual,double expected,string message) => Check(Math.Abs(actual-expected)<1e-6*Math.Max(1,Math.Abs(expected)),message);
     static TowerInput Common(bool independent) => new TowerInput {LengthMm=10600,LegCapacityKn=70,StockLengthsMm=TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths),StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,Exclude600Standalone=true,DeflectionDenominator=270,AllowCustomH20Lengths=true,IndependentNetworkPrimaryCoverage=independent};
     static TransferNetworkInput Network() => new TransferNetworkInput {UpperSpacingMm=275,Beams=Enumerable.Range(0,8).Select(i=>new TransferBeamRow {WidthMm=i%2==0 ? 800 : 650,DepthMm=i%2==0 ? 1750 : 1150}).ToArray(),Bays=new[] {2677.0,1874,3276,2274,2278,2272,2252}.Select(w=>new TransferBayRow {WidthMm=w,ThicknessMm=300}).ToArray()};
-    static TransferNetworkResult Solve(bool independent)
+    static TransferNetworkResult Solve(bool independent,int workers)
     {
-        var common=Common(independent);var network=Network();var timer=Stopwatch.StartNew();
+        var common=Common(independent);common.NetworkSearchWorkers=workers;var network=Network();var timer=Stopwatch.StartNew();
         using(var source=new CancellationTokenSource(TimeSpan.FromMinutes(6)))
         {
             common.Trace=new BeamSearchTrace("eight-beam economy regression",source.Token);
             var result=TransferNetworkOptimizer.Optimize(common,network);
-            Console.WriteLine($"ECONOMY independent={independent} seconds={timer.Elapsed.TotalSeconds:0.000} legs={result.LegCount} feet={result.UpperFootCount} timber={result.TimberMm:0.###} coverage={result.SlabCoveredLengthMm} phase={result.RowPhaseMm} legsByBeam={string.Join(",",result.Beams.Select(b=>b.LegCount))}");
+            Console.WriteLine($"ECONOMY independent={independent} workers={workers} processors={Environment.ProcessorCount} seconds={timer.Elapsed.TotalSeconds:0.000} legs={result.LegCount} feet={result.UpperFootCount} timber={result.TimberMm:0.###} coverage={result.SlabCoveredLengthMm} phase={result.RowPhaseMm} legsByBeam={string.Join(",",result.Beams.Select(b=>b.LegCount))}");
             foreach(var beam in result.Beams)
             {
                 var index=Array.IndexOf(result.Beams,beam);double beamLength=common.LengthMm-2*beam.ConcreteEndOverhangMm;
@@ -43,7 +43,16 @@ internal static class NetworkEconomyTests
     }
     public static void Run()
     {
-        var before=Solve(false);var after=Solve(true);
+        var before=Solve(false,1);var serial=Solve(true,1);var after=Solve(true,4);
+        Check(serial.LayoutDiagnostics==after.LayoutDiagnostics && serial.Schedule==after.Schedule && serial.Summary==after.Summary,"exact case has identical selected layout with one or four workers");
+        var serialMembers=serial.Beams.SelectMany(b=>b.Transfer.LowerCases.Concat(b.Transfer.PrimaryCases).SelectMany(c=>c).Concat(b.Transfer.UpperMembers)).ToArray();
+        var parallelMembers=after.Beams.SelectMany(b=>b.Transfer.LowerCases.Concat(b.Transfer.PrimaryCases).SelectMany(c=>c).Concat(b.Transfer.UpperMembers)).ToArray();
+        Check(serialMembers.Length==parallelMembers.Length,"exact case member count matches");
+        for(int i=0;i<serialMembers.Length;i++)
+        {
+            var a=serialMembers[i].Analysis;var b=parallelMembers[i].Analysis;
+            Check(a.MomentKnM==b.MomentKnM && a.ShearKn==b.ShearKn && a.DeflectionMm==b.DeflectionMm && a.DeflectionUtilization==b.DeflectionUtilization && a.Reactions.SequenceEqual(b.Reactions),"exact case has identical unrounded member demands with one or four workers");
+        }
         Check(before.LegCount==158 && before.Beams[0].LegCount==28,"reported baseline reproduced");
         Check(after.LegCount==144 && after.Beams[0].LegCount==20 && after.UpperFootCount==532,"full network retains economical B1 and reduces total supports");
         Near(after.TimberMm,1429400,"verified economical timber quantity retained");

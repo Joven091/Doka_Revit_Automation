@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using EngineeringDashboard;
 
 internal static class SearchReuseTests
@@ -33,6 +34,7 @@ internal static class SearchReuseTests
     public static void Run()
     {
         Compare(false,false);Compare(true,false);Compare(true,true);
+        foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})CompareWorkers(custom,crossing);
         foreach(bool reuse in new[] {false,true})
         {
             var input=Common(reuse);input.LegCapacityKn=.01;bool rejected=false;
@@ -46,6 +48,32 @@ internal static class SearchReuseTests
             Check(cancelled,"cancellation remains observable with reuse enabled");
         }
         Console.WriteLine($"Passed {checks} search reuse checks.");
+    }
+    static void CompareWorkers(bool custom,bool crossing)
+    {
+        var serial=Common(true,custom);serial.NetworkSearchWorkers=1;
+        var parallel=Common(true,custom);parallel.NetworkSearchWorkers=4;
+        var network=Network(crossing);
+        var a=TransferNetworkOptimizer.Optimize(serial,network);var b=TransferNetworkOptimizer.Optimize(parallel,network);
+        Check(Signature(a)==Signature(b),"serial and parallel schedules, quantities and movement match");
+        var before=Demands(a);var after=Demands(b);
+        Check(before.Length==after.Length && before.Zip(after,(x,y)=>Math.Abs(x-y)<=1e-12*Math.Max(1,Math.Abs(x))).All(x=>x),"serial and parallel unrounded demands match");
+        Check(a.Tested==b.Tested,"serial and parallel searches visit the same candidates");
+        Check(serial.Diagnostics.Exception("comparison").Details==parallel.Diagnostics.Exception("comparison").Details,"parallel diagnostic merge preserves closest examples and counts");
+        parallel.LegCapacityKn=.01;serial.LegCapacityKn=.01;
+        string failureA="",failureB="";
+        try {TransferNetworkOptimizer.Optimize(serial,network);}catch(TowerOptimizationException ex) {failureA=ex.Details;}
+        try {TransferNetworkOptimizer.Optimize(parallel,network);}catch(TowerOptimizationException ex) {failureB=ex.Details;}
+        Check(failureA.Length>0 && failureA==failureB,"parallel rejected search retains the serial failure report");
+        if(!custom || !crossing)return;
+        using(var source=new CancellationTokenSource())
+        {
+            var input=Common(true,true);input.NetworkSearchWorkers=4;input.Trace=new BeamSearchTrace("active parallel cancellation",source.Token);
+            var cancel=Task.Run(()=> {SpinWait.SpinUntil(()=>Counter(input.Trace,"Receiving-beam solves")>0,1000);source.Cancel();});
+            bool cancelled=false;
+            try {TransferNetworkOptimizer.Optimize(input,Network(true));}catch(OperationCanceledException) {cancelled=true;}
+            cancel.GetAwaiter().GetResult();Check(cancelled,"cancellation while workers are running stays an OperationCanceledException");
+        }
     }
     public static void Benchmark()
     {
