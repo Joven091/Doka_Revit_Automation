@@ -25,6 +25,8 @@ internal static class SearchReuseTests
         Check(Counter(cached.Trace,"Tower geometry cache hits")>0,"geometry reused across receiving beams");
         Check(Counter(cached.Trace,"Lower row-case cache hits")>0,"checked row cases reused across tower layouts");
         Check(Counter(cached.Trace,"Primary member cache hits")>0 && Counter(cached.Trace,"Primary member analyses")<Counter(plain.Trace,"Primary member analyses"),"identical complete primary member checks reused");
+        Check(Counter(cached.Trace,"Primary matrix cache hits")>0,"new primary load vectors reuse checked structural preparation");
+        Check(Counter(cached.Trace,"Lower response cache hits")>0,"identical exact row tributaries reuse transverse responses");
         Check(Counter(cached.Trace,"Numerical checks")<Counter(plain.Trace,"Numerical checks"),"repeated numerical checks reduced");
         Check(b.Beams.All(x=>x.Utilization<=1+1e-8 && x.MaxLegKn<=cached.LegCapacityKn+1e-8),"engineering limits retained");
         // Reusing the caller's input for another invocation must create a fresh pass cache.

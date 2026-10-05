@@ -62,12 +62,57 @@ namespace EngineeringDashboard
             return result;
         }
         private double rigidity;
+        internal sealed class MatrixKey : IEquatable<MatrixKey>
+        {
+            private readonly double length,ei;
+            private readonly double[] supports,positions;
+            private readonly int hash;
+            internal MatrixKey(double length,double[] supports,BeamPointLoad[] points,double ei)
+            {
+                this.length=length;this.ei=ei;this.supports=supports;positions=points.Select(p=>p.PositionMm).ToArray();
+                unchecked
+                {
+                    int h=length.GetHashCode()*31+ei.GetHashCode();
+                    for(int i=0;i<supports.Length;i++)h=h*31+supports[i].GetHashCode();
+                    for(int i=0;i<positions.Length;i++)h=h*31+positions[i].GetHashCode();hash=h;
+                }
+            }
+            public override int GetHashCode()=>hash;
+            public override bool Equals(object other)=>Equals(other as MatrixKey);
+            public bool Equals(MatrixKey other)
+            {
+                if(other==null || hash!=other.hash || length!=other.length || ei!=other.ei || supports.Length!=other.supports.Length || positions.Length!=other.positions.Length)return false;
+                for(int i=0;i<supports.Length;i++)if(supports[i]!=other.supports[i])return false;
+                for(int i=0;i<positions.Length;i++)if(positions[i]!=other.positions[i])return false;
+                return true;
+            }
+        }
+        internal sealed class PreparedBeam
+        {
+            internal List<double> Nodes;
+            internal double[] Supports;
+            internal double[,] Stiffness,Factor;
+            internal int[] FixedDof,PointDof;
+        }
+        internal sealed class MatrixCache
+        {
+            private readonly Dictionary<MatrixKey,PreparedBeam> shapes=new Dictionary<MatrixKey,PreparedBeam>();
+            internal long Hits;
+            internal PreparedBeam Get(MatrixKey key)
+            {
+                if(!shapes.TryGetValue(key,out var prepared))return null;
+                Hits++;return prepared;
+            }
+            internal void Store(MatrixKey key,PreparedBeam prepared) {if(shapes.Count<1024)shapes[key]=prepared;}
+        }
+        internal static LoadedBeamAnalysis AnalyzePointsCached(double lengthMm,double[] supportMm,BeamPointLoad[] points,double ei,int denominator,MatrixCache cache)
+            =>AnalyzeCore(lengthMm,supportMm,null,points,ei,denominator,true,cache);
         public static LoadedBeamAnalysis Analyze(double lengthMm, double[] supportMm, BeamDistributedLoad[] uniform, BeamPointLoad[] points, double ei, int denominator)
             => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,true);
         // Retain the former dense storage path for exact numerical regression comparisons.
         internal static LoadedBeamAnalysis AnalyzeDenseReference(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator)
             => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,false);
-        private static LoadedBeamAnalysis AnalyzeCore(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool banded)
+        private static LoadedBeamAnalysis AnalyzeCore(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool banded,MatrixCache matrixCache=null)
         {
             if (!Finite(lengthMm) || lengthMm <= 0 || !Finite(ei) || ei <= 0 || supportMm == null || supportMm.Length < 2
                 || supportMm.Any(v => !Finite(v) || v < 0 || v > lengthMm) || supportMm.Distinct().Count() != supportMm.Length
@@ -75,30 +120,60 @@ namespace EngineeringDashboard
             uniform = uniform ?? new BeamDistributedLoad[0]; points = points ?? new BeamPointLoad[0];
             if (uniform.Any(v => v == null || !Finite(v.StartMm) || !Finite(v.EndMm) || v.StartMm < 0 || v.EndMm > lengthMm || v.EndMm <= v.StartMm || !Finite(v.KnPerM) || v.KnPerM < 0)
                 || points.Any(v => v == null || !Finite(v.PositionMm) || v.PositionMm < 0 || v.PositionMm > lengthMm || !Finite(v.Kn) || v.Kn < 0)) throw new ArgumentException("Invalid beam loads.");
-            var supports = supportMm.OrderBy(v => v).ToArray();
-            var nodes = new[] { 0.0, lengthMm }.Concat(supports).Concat(uniform.SelectMany(v => new[] { v.StartMm, v.EndMm })).Concat(points.Select(v => v.PositionMm)).OrderBy(v => v).ToList();
-            for (int i = nodes.Count - 1; i > 0; i--) if (nodes[i] - nodes[i - 1] < 1e-7) nodes.RemoveAt(i);
-            int n = 2 * nodes.Count; var k = new double[n, banded ? 7 : n]; var f = new double[n];
-            for (int e = 0; e < nodes.Count - 1; e++)
+            // Primary pairs reuse only their immutable structure. Each load vector and
+            // displacement solution is new; forces are never rounded or omitted from checks.
+            var shapeKey=matrixCache==null || uniform.Length!=0 ? null : new MatrixKey(lengthMm,supportMm,points,ei);
+            var prepared=shapeKey==null ? null : matrixCache.Get(shapeKey);
+            double[] supports;List<double> nodes;double[,] original,factor;int[] fixedDof,pointDof;
+            if(prepared!=null)
             {
-                double l = (nodes[e + 1] - nodes[e]) / 1000, q = uniform.Where(v => v.StartMm < (nodes[e] + nodes[e + 1]) / 2 && v.EndMm > (nodes[e] + nodes[e + 1]) / 2).Sum(v => v.KnPerM), c = ei / (l * l * l);
-                var ke = new double[,] { { 12, 6 * l, -12, 6 * l }, { 6 * l, 4 * l * l, -6 * l, 2 * l * l }, { -12, -6 * l, 12, -6 * l }, { 6 * l, 2 * l * l, -6 * l, 4 * l * l } };
-                var fe = new[] { q * l / 2, q * l * l / 12, q * l / 2, -q * l * l / 12 };
-                for (int i = 0; i < 4; i++) { f[2 * e + i] += fe[i]; for (int j = 0; j < 4; j++) k[2 * e + i, banded ? j-i+3 : 2 * e + j] += c * ke[i, j]; }
+                supports=prepared.Supports;nodes=prepared.Nodes;original=prepared.Stiffness;factor=prepared.Factor;fixedDof=prepared.FixedDof;pointDof=prepared.PointDof;
             }
-            foreach (var p in points) f[2 * nodes.FindIndex(v => Math.Abs(v - p.PositionMm) < 1e-7)] += p.Kn;
-            var original = (double[,])k.Clone(); var originalF = (double[])f.Clone();
-            var fixedDof = supports.Select(s => 2 * nodes.FindIndex(v => Math.Abs(v - s) < 1e-7)).ToArray();
-            foreach (int index in fixedDof) { for (int j = Math.Max(0, index - 3); j <= Math.Min(n - 1, index + 3); j++) { k[index, banded ? j-index+3 : j] = 0; k[j, banded ? index-j+3 : index] = 0; } k[index, banded ? 3 : index] = 1; f[index] = 0; }
-            // The stiffness matrix has half-bandwidth three. Compact storage retains
-            // every coefficient and the exact assembly/factorization arithmetic order,
-            // avoiding three quadratic-sized arrays for each member analysis.
-            var factor = new double[n, banded ? 4 : n];
-            for (int i = 0; i < n; i++) for (int j = Math.Max(0, i - 3); j <= i; j++)
+            else
+            {
+                supports=supportMm.OrderBy(v=>v).ToArray();
+                nodes=new[] {0.0,lengthMm}.Concat(supports).Concat(uniform.SelectMany(v=>new[] {v.StartMm,v.EndMm})).Concat(points.Select(v=>v.PositionMm)).OrderBy(v=>v).ToList();
+                for(int i=nodes.Count-1;i>0;i--)if(nodes[i]-nodes[i-1]<1e-7)nodes.RemoveAt(i);
+                fixedDof=supports.Select(v=>2*nodes.FindIndex(x=>Math.Abs(x-v)<1e-7)).ToArray();
+                pointDof=points.Select(p=>2*nodes.FindIndex(x=>Math.Abs(x-p.PositionMm)<1e-7)).ToArray();
+                original=null;factor=null;
+            }
+            int n=2*nodes.Count;var f=new double[n];
+            var k=prepared==null ? new double[n,banded ? 7 : n] : null;
+            // On a cached point-only structure, this loop would add only zero UDL forces.
+            if(prepared==null || uniform.Length!=0)for(int e=0;e<nodes.Count-1;e++)
+            {
+                double l=(nodes[e+1]-nodes[e])/1000,q=uniform.Where(v=>v.StartMm<(nodes[e]+nodes[e+1])/2 && v.EndMm>(nodes[e]+nodes[e+1])/2).Sum(v=>v.KnPerM),c=ei/(l*l*l);
+                var ke=new double[,] {{12,6*l,-12,6*l},{6*l,4*l*l,-6*l,2*l*l},{-12,-6*l,12,-6*l},{6*l,2*l*l,-6*l,4*l*l}};
+                var fe=new[] {q*l/2,q*l*l/12,q*l/2,-q*l*l/12};
+                for(int i=0;i<4;i++)
                 {
-                    double value = k[i, banded ? j-i+3 : j]; for (int h = Math.Max(0, i - 3); h < j; h++) value -= factor[i, banded ? i-h : h] * factor[j, banded ? j-h : h];
-                    if (i == j) { if (value <= 0 || !Finite(value)) throw new ArgumentException("Unstable beam supports."); factor[i, banded ? i-j : j] = Math.Sqrt(value); } else factor[i, banded ? i-j : j] = value / factor[j, banded ? 0 : j];
+                    f[2*e+i]+=fe[i];
+                    if(k!=null)for(int j=0;j<4;j++)k[2*e+i,banded ? j-i+3 : 2*e+j]+=c*ke[i,j];
                 }
+            }
+            for(int i=0;i<points.Length;i++)f[pointDof[i]]+=points[i].Kn;
+            var originalF=(double[])f.Clone();
+            if(k!=null)
+            {
+                original=(double[,])k.Clone();
+                foreach(int index in fixedDof)
+                {
+                    for(int j=Math.Max(0,index-3);j<=Math.Min(n-1,index+3);j++) {k[index,banded ? j-index+3 : j]=0;k[j,banded ? index-j+3 : index]=0;}
+                    k[index,banded ? 3 : index]=1;
+                }
+                // All coefficients and the original arithmetic order are retained in the band.
+                factor=new double[n,banded ? 4 : n];
+                for(int i=0;i<n;i++)for(int j=Math.Max(0,i-3);j<=i;j++)
+                {
+                    double value=k[i,banded ? j-i+3 : j];
+                    for(int h=Math.Max(0,i-3);h<j;h++)value-=factor[i,banded ? i-h : h]*factor[j,banded ? j-h : h];
+                    if(i==j) {if(value<=0 || !Finite(value))throw new ArgumentException("Unstable beam supports.");factor[i,banded ? 0 : i]=Math.Sqrt(value);}
+                    else factor[i,banded ? i-j : j]=value/factor[j,banded ? 0 : j];
+                }
+                if(shapeKey!=null)matrixCache.Store(shapeKey,new PreparedBeam {Nodes=nodes,Supports=supports,Stiffness=original,Factor=factor,FixedDof=fixedDof,PointDof=pointDof});
+            }
+            foreach(int index in fixedDof)f[index]=0;
             var d = new double[n]; for (int i = 0; i < n; i++) { double value = f[i]; for (int j = Math.Max(0, i - 3); j < i; j++) value -= factor[i, banded ? i-j : j] * d[j]; d[i] = value / factor[i, banded ? 0 : i]; }
             for (int i = n - 1; i >= 0; i--) { double value = d[i]; for (int j = i + 1; j <= Math.Min(n - 1, i + 3); j++) value -= factor[j, banded ? j-i : i] * d[j]; d[i] = value / factor[i, banded ? 0 : i]; }
             var result = new LoadedBeamAnalysis { rigidity = ei, Reactions = fixedDof.Select(i => originalF[i] - Enumerable.Range(Math.Max(0, i - 3), Math.Min(n - 1, i + 3) - Math.Max(0, i - 3) + 1).Sum(j => original[i, banded ? j-i+3 : j] * d[j])).ToArray(), TotalLoadKn = uniform.Sum(v => (v.EndMm - v.StartMm) / 1000 * v.KnPerM) + points.Sum(v => v.Kn) };
@@ -130,4 +205,3 @@ namespace EngineeringDashboard
         private static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
     }
 }
-

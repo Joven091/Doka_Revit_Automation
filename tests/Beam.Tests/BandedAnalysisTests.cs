@@ -25,6 +25,19 @@ internal static class BandedAnalysisTests
                 foreach(double station in new[] {0.0,150,length*.25,length*.5,length-150,length})
                     foreach(bool right in new[] {false,true})Check(dense.Response(station,right).SequenceEqual(banded.Response(station,right)),"exact displacement, shear and moment responses match dense storage");
                 Check(dense.DeflectionWithAffineOffsetMm(-2,-5,supports[0],supports.Last())==banded.DeflectionWithAffineOffsetMm(-2,-5,supports[0],supports.Last()),"support movement response matches dense storage");
+                if(pointOnly)
+                {
+                    var cache=new LoadedBeamAnalysis.MatrixCache();
+                    LoadedBeamAnalysis.AnalyzePointsCached(length,supports,points,TowerOptimizer.PairEI,denominator,cache);
+                    foreach(double scale in new[] {.45,1.7})
+                    {
+                        var changed=points.Select(p=>new BeamPointLoad {PositionMm=p.PositionMm,Kn=p.Kn*scale}).ToArray();
+                        var reference=LoadedBeamAnalysis.AnalyzeDenseReference(length,supports,null,changed,TowerOptimizer.PairEI,denominator);
+                        var reused=LoadedBeamAnalysis.AnalyzePointsCached(length,supports,changed,TowerOptimizer.PairEI,denominator,cache);
+                        Check(reference.Reactions.SequenceEqual(reused.Reactions) && reference.MomentKnM==reused.MomentKnM && reference.ShearKn==reused.ShearKn && reference.DeflectionMm==reused.DeflectionMm && reference.DeflectionUtilization==reused.DeflectionUtilization,"prepared matrix with new forces matches dense numerical results exactly");
+                    }
+                    Check(cache.Hits==2,"load changes reuse only immutable matrix preparation");
+                }
             }
         }
         Console.WriteLine($"Passed {checks} dense/banded exact numerical comparisons.");
