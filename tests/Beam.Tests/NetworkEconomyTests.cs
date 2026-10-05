@@ -45,6 +45,8 @@ internal static class NetworkEconomyTests
     {
         var before=Solve(false);var after=Solve(true);
         Check(before.LegCount==158 && before.Beams[0].LegCount==28,"reported baseline reproduced");
+        Check(after.LegCount==144 && after.Beams[0].LegCount==20 && after.UpperFootCount==532,"full network retains economical B1 and reduces total supports");
+        Near(after.TimberMm,1429400,"verified economical timber quantity retained");
         Check(after.LegCount+after.UpperFootCount<=before.LegCount+before.UpperFootCount,"network supports do not increase");
         Check(after.LegCount+after.UpperFootCount<before.LegCount+before.UpperFootCount || after.TimberMm<=before.TimberMm,"network cost ranking improves or retains baseline");
         Console.WriteLine("Network economy checks passed.");

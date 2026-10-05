@@ -98,6 +98,7 @@ namespace EngineeringDashboard
             public double[] Rows, Tributaries, LeftScales, RightScales;
             public string Key;
         }
+        private sealed class PrimaryCheck { public LoadedBeamAnalysis Analysis; public bool Passed; }
         private static string Values(IEnumerable<double> values) => string.Join(";",values.Select(x=>x.ToString("R",CultureInfo.InvariantCulture)));
         public static TowerLayout Optimize(TowerInput input,bool shareDiagnostics=false)
         {
@@ -113,6 +114,10 @@ namespace EngineeringDashboard
             // depend on transverse width and tributary size, not the primary stock cover.
             var crossCache = new Dictionary<Tuple<double,double>,CrossOption[]>();
             var rowCache = new Dictionary<Tuple<double,double>,RowGrid>();
+            // Different tower combinations often repeat an identical local primary member.
+            // Include every support, point position and force, without rounding. This cache
+            // lives only in one receiving-beam solve and retains at most 4096 checks.
+            var primaryCache = input.ReuseSearchWork ? new Dictionary<string,PrimaryCheck>(StringComparer.Ordinal) : null;
             if(!shareDiagnostics || input.Diagnostics==null)input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace);var diag=input.Diagnostics;
             input.Trace?.Work("Transfer primary cover generation");
             var covers=Covers(input).ToArray();
@@ -184,7 +189,7 @@ namespace EngineeringDashboard
                             foreach (var cross in crosses)
                             {
                                 input.Trace?.Work("Transfer layout load-case checks");input.Trace?.Increment(BeamSearchCounter.TransferCandidates);
-                                tested++; var candidate = Evaluate(input,geometry,width,rotated,cross,grid,edge);
+                                tested++; var candidate = Evaluate(input,geometry,width,rotated,cross,grid,edge,primaryCache);
                                 if (candidate != null && (best == null || candidate.LegCount < best.LegCount || candidate.LegCount == best.LegCount
                                     && (Timber(candidate) < Timber(best)-.01 || Math.Abs(Timber(candidate)-Timber(best)) < .01 && candidate.Utilization < best.Utilization))) best = candidate;
                             }
@@ -376,7 +381,7 @@ namespace EngineeringDashboard
             }
             cross.LowerCaseComputed[c]=true;return cross.LowerByCase[c]=lower.ToArray();
         }
-        private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge)
+        private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,Dictionary<string,PrimaryCheck> primaryCache)
         {
             var rows=grid.Rows;var trib=grid.Tributaries;var ls=grid.LeftScales;var rs=grid.RightScales;
             if(ls.Length!=rows.Length || rs.Length!=rows.Length)throw new ArgumentException("Crossing beam row loads do not match the support rows.");
@@ -391,12 +396,22 @@ namespace EngineeringDashboard
                 {
                     var supports=g.Positions.Skip(stock.FirstSupport).Take(stock.LastSupport-stock.FirstSupport+1).Select(x=>x-stock.StartMm).ToArray();
                     var points=Enumerable.Range(0,rows.Length).Where(i=>rows[i]>=stock.StartMm && rows[i]<stock.EndMm).Select(i=>new BeamPointLoad {PositionMm=rows[i]-stock.StartMm,Kn=lower[i].Analysis.Reactions[line]}).ToArray();
-                    input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
-                    var a=LoadedBeamAnalysis.Analyze(stock.StockLengthMm,supports,null,points,TowerOptimizer.PairEI,input.DeflectionDenominator);
-                    bool memberPass=Pass(a,1,2,input.Diagnostics,input.DiagnosticScope+"Primary pair",3,$"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · stock {stock.StockLengthMm:0} mm · x={stock.StartMm+edge:0.###}–{stock.EndMm+edge:0.###} mm");
-                    int peakLeg=Array.IndexOf(a.Reactions,a.Reactions.Max());
-                    input.Diagnostics?.Legs(a.Reactions,input.LegCapacityKn,input.DiagnosticScope+"Tower legs",$"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · peak leg x={g.Positions[stock.FirstSupport+peakLeg]+edge:0.###} mm");
-                    if(!memberPass || a.Reactions.Max()>input.LegCapacityKn+1e-8) return null;
+                    input.Trace?.CheckCancellation();
+                    string key=primaryCache==null ? null : stock.StockLengthMm.ToString("R",CultureInfo.InvariantCulture)+"|"+Values(supports)+"|"+Values(points.SelectMany(p=>new[] {p.PositionMm,p.Kn}));
+                    PrimaryCheck check;
+                    if(primaryCache==null || !primaryCache.TryGetValue(key,out check))
+                    {
+                        input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
+                        var analysis=LoadedBeamAnalysis.Analyze(stock.StockLengthMm,supports,null,points,TowerOptimizer.PairEI,input.DeflectionDenominator);
+                        bool memberPass=Pass(analysis,1,2,input.Diagnostics,input.DiagnosticScope+"Primary pair",3,$"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · stock {stock.StockLengthMm:0} mm · x={stock.StartMm+edge:0.###}–{stock.EndMm+edge:0.###} mm");
+                        int peakLeg=Array.IndexOf(analysis.Reactions,analysis.Reactions.Max());
+                        input.Diagnostics?.Legs(analysis.Reactions,input.LegCapacityKn,input.DiagnosticScope+"Tower legs",$"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · peak leg x={g.Positions[stock.FirstSupport+peakLeg]+edge:0.###} mm");
+                        check=new PrimaryCheck {Analysis=analysis,Passed=memberPass && analysis.Reactions.Max()<=input.LegCapacityKn+1e-8};
+                        if(primaryCache!=null && primaryCache.Count<4096)primaryCache[key]=check;
+                    }
+                    else input.Trace?.Increment(BeamSearchCounter.PrimaryCacheHits);
+                    if(!check.Passed)return null;
+                    var a=check.Analysis;
                     for(int i=0;i<a.Reactions.Length;i++) { var envelope=line==0 ? left : right; envelope[stock.FirstSupport+i]=Math.Max(envelope[stock.FirstSupport+i],a.Reactions[i]); }
                     members.Add(new TransferMember {Name="P"+(Array.IndexOf(g.Stock,stock)+1)+(line==0 ? " L" : " R"),LoadCase=cross.Names[c],StartMm=stock.StartMm+edge,LengthMm=stock.StockLengthMm,SupportsMm=supports,Points=points,Uniform=new BeamDistributedLoad[0],Analysis=a});
                 }
