@@ -1,0 +1,14 @@
+name: Investigate network leg count differences
+on:
+  push:
+    branches: [diagnose/beam-network-leg-count]
+jobs:
+  compare:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release -- --network-size-comparison

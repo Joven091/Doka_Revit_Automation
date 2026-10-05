@@ -64,6 +64,9 @@ namespace EngineeringDashboard
         public TransferCrossingBeamRow[] CrossingBeams = new TransferCrossingBeamRow[0];
         public double UpperSpacingMm, LiveKnM2, FormworkKnM2;
         public bool CustomLoads;
+        // Investigation-only constraints; this branch is not merged into the add-in.
+        internal double? ComparisonCoveredLengthMm, ComparisonRowPhaseMm;
+        internal UpperTransferPlan ComparisonFirstBay;
         public double AreaLoad(double thickness) => 25*thickness/1000+(CustomLoads ? LiveKnM2+FormworkKnM2 : BeamCalculatorViewModel.HeapingLoad(25*thickness/1000)+.75+.4);
         public void Validate(TowerInput common)
         {
@@ -120,6 +123,7 @@ namespace EngineeringDashboard
             if(stockCovers.Length==0)diag.Geometry("primary coverage",$"Primary coverage: no available stock combination totals {common.LengthMm-2*common.MaximumConcreteEndOverhangMm:0.###}–{common.LengthMm:0.###} mm.","Review available primary stocks and the maximum concrete end allowance.");
             foreach(double cover in stockCovers.Select(c=>c.Sum()).Distinct()) foreach(double phase in new[] {0.0,-50,50})
             {
+                if(input.ComparisonCoveredLengthMm.HasValue && Math.Abs(cover-input.ComparisonCoveredLengthMm.Value)>1e-7 || input.ComparisonRowPhaseMm.HasValue && Math.Abs(phase-input.ComparisonRowPhaseMm.Value)>1e-7)continue;
                 common.Trace?.Increment(BeamSearchCounter.CoverageVariants);common.Trace?.Work("Network shared slab H20 options");
                 common.Trace?.Context(System.FormattableString.Invariant($"Coverage={cover:R} mm; row phase={phase:R} mm"));
                 int rows=(int)Math.Ceiling(cover/input.UpperSpacingMm);double first=(cover-(rows-1)*input.UpperSpacingMm)/2+phase;
@@ -129,7 +133,9 @@ namespace EngineeringDashboard
                 if(outside!=null) {diag.Geometry("crossing coverage",$"X{Array.IndexOf(input.CrossingBeams,outside)+1} in S{outside.BayNumber}: footprint {outside.PositionMm-outside.WidthMm/2:0.###}–{outside.PositionMm+outside.WidthMm/2:0.###} mm is outside primary coverage {edge:0.###}–{edge+cover:0.###} mm.","Review crossing position/width and primary stock end coverage.");continue;}
                 var rowLoads=input.Bays.Select((b,i)=>EffectiveWidthsMm(common,input,i,cover,phase)).ToArray();
                 if(rowLoads.Any(r=>r==null))continue;
-                var options=input.Bays.Select((b,i)=>Options(common,input,i,rowLoads[i].Max(),$"T{Array.IndexOf(rowLoads[i],rowLoads[i].Max())+1} · x={edge+first+Array.IndexOf(rowLoads[i],rowLoads[i].Max())*input.UpperSpacingMm:0.###} mm").ToArray()).ToArray();if(options.Any(o=>o.Length==0))continue;
+                var options=input.Bays.Select((b,i)=>Options(common,input,i,rowLoads[i].Max(),$"T{Array.IndexOf(rowLoads[i],rowLoads[i].Max())+1} · x={edge+first+Array.IndexOf(rowLoads[i],rowLoads[i].Max())*input.UpperSpacingMm:0.###} mm").ToArray()).ToArray();
+                if(input.ComparisonFirstBay!=null) {var wanted=input.ComparisonFirstBay;options[0]=options[0].Where(o=>o.StockLengthMm==wanted.StockLengthMm && o.NearFootMm==wanted.NearFootMm && o.FarFootMm==wanted.FarFootMm).ToArray();}
+                if(options.Any(o=>o.Length==0))continue;
                 var states=new Dictionary<int,State>();
                 for(int option=0;option<options[0].Length;option++)
                 {
