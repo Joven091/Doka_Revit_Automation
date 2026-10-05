@@ -48,6 +48,9 @@ namespace EngineeringDashboard
         {
             internal readonly Dictionary<PropertyInfo,object> Values=new Dictionary<PropertyInfo,object>();
             internal string Network;
+            internal Tuple<FormworkObject,int>[] Selection;
+            internal FormworkObject SelectedKind;
+            internal int SelectedIndex;
         }
         private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,UpperSupportSpacingMm,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,Exclude600Standalone,DeflectionLimit,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
         internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport)
@@ -62,7 +65,7 @@ namespace EngineeringDashboard
             toolbar.Children.Add(Button("AddAbove","+ Bay above",()=>AddBay(true)));
             toolbar.Children.Add(Button("AddBelow","+ Bay below",()=>AddBay(false)));
             toolbar.Children.Add(Button("AddCrossing","+ Crossing beam",()=> {if(CommitFields() && Model.IsNetworkMode){Drawing.AddCrossing=true;Geometry();Drawing.Cursor=Cursors.Cross;}}));
-            toolbar.Children.Add(Button("Delete","Remove",RemoveSelected));
+            toolbar.Children.Add(Button("Delete","Delete selection",RemoveSelected));
             toolbar.Children.Add(Button("Undo","Undo",()=>History(undo,redo)));
             toolbar.Children.Add(Button("Redo","Redo",()=>History(redo,undo)));
             toolbar.Children.Add(Button("Fit","Fit",()=> {if(sectionMode)SectionViewport.Fit();else Drawing.Fit();}));
@@ -79,8 +82,8 @@ namespace EngineeringDashboard
             var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition());body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(285)});Grid.SetRow(body,1);root.Children.Add(body);
             var main=new Grid {Background=Brushes.White};main.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});main.RowDefinitions.Add(new RowDefinition());main.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});body.Children.Add(main);
             var tabs=new StackPanel {Orientation=Orientation.Horizontal,Margin=new Thickness(10,0,10,6)};
-            tabs.Children.Add(Button("Geometry","Geometry",Geometry));tabs.Children.Add(Button("Formwork","Formwork",()=> {if(!CommitFields())return;sectionMode=false;Drawing.Formwork=true;Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;Drawing.InvalidateVisual();Drawing.Fit();UpdateViewButtons();}));
-            tabs.Children.Add(Button("Section","Section",()=> {if(!CommitFields())return;sectionMode=true;Drawing.Visibility=Visibility.Collapsed;sectionHost.Visibility=Visibility.Visible;UpdateViewButtons();}));
+            tabs.Children.Add(Button("Geometry","Geometry",Geometry));tabs.Children.Add(Button("Formwork","Formwork",()=> {if(!CommitFields())return;sectionMode=false;Drawing.Formwork=true;Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;Drawing.InvalidateVisual();Drawing.Fit();Refresh();}));
+            tabs.Children.Add(Button("Section","Section",()=> {if(!CommitFields())return;sectionMode=true;Drawing.Visibility=Visibility.Collapsed;sectionHost.Visibility=Visibility.Visible;Refresh();}));
             tabs.Children.Add(new TextBlock {Text="mm · select an object to edit",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0),Foreground=Brushes.SlateGray});main.Children.Add(tabs);
             Grid.SetRow(Drawing,1);main.Children.Add(Drawing);sectionHost.Child=SectionViewport;Grid.SetRow(sectionHost,1);main.Children.Add(sectionHost);
             analysisExpander.Content=analysis;analysis.MaxHeight=280;Grid.SetRow(analysisExpander,2);main.Children.Add(analysisExpander);
@@ -90,11 +93,18 @@ namespace EngineeringDashboard
             Drawing.SelectionChanged+=()=> {BuildProperties();Refresh();};
             Drawing.DimensionSelected+=(kind,index,field)=> {if(Fields.TryGetValue(field,out var box)){box.Focus();box.SelectAll();}};
             Drawing.MemberSelected+=ShowMember;Section.MemberSelected+=ShowMember;
-            Drawing.CrossingRequested+=(bay,x)=> {if(!CommitFields())return;Mutate(()=> {Model.AddCrossingBeam();var c=Model.CrossingBeams.Last();c.BayNumber=bay+1;c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,x));Drawing.SelectedKind=FormworkObject.Crossing;Drawing.SelectedIndex=Model.CrossingBeams.Count-1;});Drawing.Cursor=Cursors.Arrow;};
+            Drawing.CrossingRequested+=(bay,x)=> {if(!CommitFields())return;Mutate(()=> {Model.AddCrossingBeam();var c=Model.CrossingBeams.Last();c.BayNumber=bay+1;c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,x));Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});Drawing.Cursor=Cursors.Arrow;};
             Drawing.MoveRequested+=(kind,index,delta)=> {if(!CommitFields())return;Mutate(()=> {if(kind==FormworkObject.Crossing) {var c=Model.CrossingBeams[index];c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,c.PositionMm+delta));}else Model.NetworkBays[index-1].WidthMm=Math.Max(500,Model.NetworkBays[index-1].WidthMm+delta);});};
             Model.PropertyChanged+=ModelChanged;
             Loaded+=(s,e)=>Drawing.Fit();Closed+=(s,e)=> {closed=true;Diagnostics?.Close();Model.PropertyChanged-=ModelChanged;Model.SetAdditionalTextInputErrors(this,false);ClearDiagrams();};
-            PreviewKeyDown+=(s,e)=> {if(e.Key==Key.Escape){Drawing.AddCrossing=false;Drawing.Cursor=Cursors.Arrow;}if(Keyboard.FocusedElement is TextBox)return;if(Keyboard.Modifiers==ModifierKeys.Control && e.Key==Key.Z){History(undo,redo);e.Handled=true;}if(Keyboard.Modifiers==ModifierKeys.Control && e.Key==Key.Y){History(redo,undo);e.Handled=true;}};
+            PreviewKeyDown+=(s,e)=>
+            {
+                if(e.Key==Key.Escape){Drawing.AddCrossing=false;Drawing.Cursor=Cursors.Arrow;Drawing.CancelSelectionGesture();}
+                if(Keyboard.FocusedElement is TextBox)return;
+                if(HandleGeometryKey(e.Key,Keyboard.Modifiers,!Drawing.IsKeyboardFocusWithin)){e.Handled=true;return;}
+                if(Keyboard.Modifiers==ModifierKeys.Control && e.Key==Key.Z){History(undo,redo);e.Handled=true;}
+                if(Keyboard.Modifiers==ModifierKeys.Control && e.Key==Key.Y){History(redo,undo);e.Handled=true;}
+            };
             BuildProperties();Refresh();
         }
         private Button Button(string name,string text,Action action)
@@ -108,7 +118,7 @@ namespace EngineeringDashboard
             Diagnostics.Closed+=(s,e)=>Diagnostics=null;if(IsVisible)Diagnostics.Owner=this;Diagnostics.Show();
         }
         private void Geometry()
-        {sectionMode=false;Drawing.Formwork=false;Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;Drawing.InvalidateVisual();UpdateViewButtons();}
+        {sectionMode=false;Drawing.Formwork=false;Drawing.CancelSelectionGesture();Drawing.Cursor=Cursors.Arrow;Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;Drawing.InvalidateVisual();Refresh();}
         private void Zoom(double factor)
         {if(sectionMode)SectionViewport.ZoomAt(factor,new Point(SectionViewport.ActualWidth/2,SectionViewport.ActualHeight/2));else Drawing.ZoomAt(factor,new Point(Drawing.ActualWidth/2,Drawing.ActualHeight/2));}
         private void UpdateViewButtons()
@@ -119,7 +129,7 @@ namespace EngineeringDashboard
         }
         private State Capture()
         {
-            var state=new State {Network=Model.NetworkBeams.Count>=2 ? Model.NetworkConfigurationXml : null};
+            var state=new State {Network=Model.NetworkBeams.Count>=2 ? Model.NetworkConfigurationXml : null,Selection=Drawing.SelectedObjects,SelectedKind=Drawing.SelectedKind,SelectedIndex=Drawing.SelectedIndex};
             foreach(var name in StateProperties.Split(',')) {var p=typeof(BeamCalculatorViewModel).GetProperty(name);state.Values[p]=p.GetValue(Model);}
             return state;
         }
@@ -127,6 +137,7 @@ namespace EngineeringDashboard
         private void Apply(State state)
         {
             changing=true;try {foreach(var v in state.Values)v.Key.SetValue(Model,v.Value);if(state.Network!=null)Model.NetworkConfigurationXml=state.Network;}finally {changing=false;}
+            Drawing.SetSelection(state.Selection,state.SelectedKind,state.SelectedIndex,false);
             BuildProperties();Refresh();Drawing.Fit();
         }
         private void Mutate(Action change)
@@ -144,7 +155,7 @@ namespace EngineeringDashboard
                     Model.NetworkConfigurationXml=SerializeInitialNetwork();Drawing.SelectedIndex=before ? 0 : 1;
                 }
                 else {Model.InsertNetworkBay(selected,before);Drawing.SelectedIndex=before ? selected : selected+1;}
-                Drawing.SelectedKind=FormworkObject.Beam;
+                Drawing.Select(FormworkObject.Beam,Drawing.SelectedIndex,false);
             });Geometry();
         }
         private string SerializeInitialNetwork()
@@ -152,11 +163,59 @@ namespace EngineeringDashboard
             var config=new TransferNetworkConfiguration {Beams=new[] {new TransferBeamRow {WidthMm=Model.Width,DepthMm=Model.Depth},new TransferBeamRow {WidthMm=Model.Width,DepthMm=Model.Depth}},Bays=new[] {new TransferBayRow {WidthMm=Model.RightSlabBayMm,ThicknessMm=Model.RightSlabThickness}},CrossingBeams=new TransferCrossingBeamRow[0]};
             using(var text=new System.IO.StringWriter(CultureInfo.InvariantCulture)){new System.Xml.Serialization.XmlSerializer(typeof(TransferNetworkConfiguration)).Serialize(text,config);return text.ToString();}
         }
+        private sealed class RemovalPlan
+        {
+            internal int[] Beams=new int[0];
+            internal TransferCrossingBeamRow[] Crossings=new TransferCrossingBeamRow[0];
+            internal bool Allowed;
+            internal string Message;
+        }
+        private RemovalPlan PlanRemoval()
+        {
+            var plan=new RemovalPlan();var selected=Drawing.SelectedObjects;
+            if(selected.Length==0){plan.Message="Select objects to remove.";return plan;}
+            var beams=new SortedSet<int>();var crosses=new HashSet<TransferCrossingBeamRow>();
+            foreach(var item in selected)
+            {
+                if(item.Item1==FormworkObject.Crossing && item.Item2>=0 && item.Item2<Model.CrossingBeams.Count)crosses.Add(Model.CrossingBeams[item.Item2]);
+                else if(Model.IsNetworkMode && item.Item1==FormworkObject.Beam && item.Item2>=0 && item.Item2<Model.NetworkBeams.Count)beams.Add(item.Item2);
+                else if(Model.IsNetworkMode && item.Item1==FormworkObject.Slab && item.Item2>=0 && item.Item2<Model.NetworkBays.Count)beams.Add(item.Item2+1);
+                else if(!Model.IsNetworkMode && item.Item1==FormworkObject.Beam){plan.Message="Keep at least one beam in the drawing.";return plan;}
+            }
+            if(Model.IsNetworkMode && Model.NetworkBeams.Count-beams.Count<2)
+            {plan.Message="Keep at least two beams and one slab bay in a connected layout. Narrow the selection.";return plan;}
+            var remainingBeams=Enumerable.Range(0,Model.NetworkBeams.Count).ToList();
+            var remainingBays=Enumerable.Range(0,Model.NetworkBays.Count).ToList();var removedBays=new List<int>();
+            foreach(int original in beams.Reverse())
+            {
+                int current=remainingBeams.IndexOf(original),bay=Math.Max(0,current-1);
+                removedBays.Add(remainingBays[bay]);remainingBays.RemoveAt(bay);remainingBeams.RemoveAt(current);
+            }
+            foreach(var crossing in Model.CrossingBeams.Where(c=>removedBays.Contains(c.BayNumber-1)))crosses.Add(crossing);
+            plan.Beams=beams.Reverse().ToArray();plan.Crossings=crosses.ToArray();plan.Allowed=beams.Count>0 || crosses.Count>0;
+            var names=beams.Select(i=>"B"+(i+1)).Concat(removedBays.OrderBy(i=>i).Select(i=>"S"+(i+1))).Concat(crosses.Select(c=>"X"+(Model.CrossingBeams.IndexOf(c)+1)).OrderBy(x=>x)).ToArray();
+            plan.Message=plan.Allowed ? "Delete removes "+string.Join(", ",names)+". Beam/slab pairs stay connected; Ctrl+Z restores the whole edit." : "Select objects to remove.";
+            return plan;
+        }
+        internal string RemovalPreview=>PlanRemoval().Message;
+        internal bool HandleGeometryKey(Key key,ModifierKeys modifiers,bool editingText=false)
+        {
+            if(editingText || sectionMode || Drawing.Formwork || modifiers!=ModifierKeys.None)return false;
+            if(key==Key.Escape){Drawing.ClearSelection();return true;}
+            if(key!=Key.Delete)return false;
+            RemoveSelected();return true;
+        }
         internal void RemoveSelected()
         {
-            if(!CommitFields() || Model.IsOptimizing)return;
-            if(Drawing.SelectedKind==FormworkObject.Crossing)Mutate(()=> {Model.RemoveCrossingBeam(Model.CrossingBeams[Drawing.SelectedIndex]);Drawing.SelectedKind=FormworkObject.Beam;Drawing.SelectedIndex=0;});
-            else if(Model.CanRemoveNetworkBay)Mutate(()=> {Model.RemoveNetworkBeam(Drawing.SelectedKind==FormworkObject.Slab ? Drawing.SelectedIndex+1 : Drawing.SelectedIndex);Drawing.SelectedKind=FormworkObject.Beam;Drawing.SelectedIndex=0;});
+            if(sectionMode || Drawing.Formwork || !CommitFields() || Model.IsOptimizing)return;
+            var plan=PlanRemoval();if(!plan.Allowed){status.Text=plan.Message;return;}
+            Mutate(()=>
+            {
+                foreach(var crossing in plan.Crossings)Model.RemoveCrossingBeam(crossing);
+                foreach(int beam in plan.Beams)Model.RemoveNetworkBeam(beam);
+                Drawing.SetSelection(new Tuple<FormworkObject,int>[0],FormworkObject.Beam,0,false);
+            });
+            status.Text="Selection removed. Ctrl+Z restores the whole edit.";
         }
         private void Text(string value,bool bold=false)=>properties.Children.Add(new TextBlock {Text=value,TextWrapping=TextWrapping.Wrap,FontWeight=bold ? FontWeights.SemiBold : FontWeights.Normal,Margin=new Thickness(0,4,0,8)});
         private void Number(string name,string label,Func<double> get,Action<double> set,double minimum=.001)
@@ -191,9 +250,10 @@ namespace EngineeringDashboard
             try
             {
                 int count=Model.IsNetworkMode ? Model.NetworkBeams.Count : 1;
-                if(Drawing.SelectedKind==FormworkObject.Crossing && Drawing.SelectedIndex>=Model.CrossingBeams.Count || Drawing.SelectedKind==FormworkObject.Slab && Drawing.SelectedIndex>=Model.NetworkBays.Count || Drawing.SelectedKind==FormworkObject.Beam && Drawing.SelectedIndex>=count){Drawing.SelectedKind=FormworkObject.Beam;Drawing.SelectedIndex=0;}
+                if(Drawing.SelectedKind==FormworkObject.Crossing && Drawing.SelectedIndex>=Model.CrossingBeams.Count || Drawing.SelectedKind==FormworkObject.Slab && Drawing.SelectedIndex>=Model.NetworkBays.Count || Drawing.SelectedKind==FormworkObject.Beam && Drawing.SelectedIndex>=count){Drawing.Select(FormworkObject.Beam,0,false);}
                 int index=Drawing.SelectedIndex;selectedObject=SelectedObject();
-                if(Drawing.SelectedKind==FormworkObject.Beam)
+                if(!Drawing.Formwork && Drawing.SelectedObjects.Length==0)Text("Select a beam or slab in the drawing to edit it.",true);
+                else if(Drawing.SelectedKind==FormworkObject.Beam)
                 {
                     Text("B"+(index+1)+" · beam",true);
                     if(Model.IsNetworkMode){var b=Model.NetworkBeams[index];Number("WidthMm","Width (mm)",()=>b.WidthMm,v=>b.WidthMm=v);Number("DepthMm","Depth (mm)",()=>b.DepthMm,v=>b.DepthMm=v);}
@@ -203,6 +263,7 @@ namespace EngineeringDashboard
                 {var s=Model.NetworkBays[index];Text("S"+(index+1)+" · slab",true);Number("WidthMm","Clear span (mm)",()=>s.WidthMm,v=>s.WidthMm=v);Number("ThicknessMm","Thickness (mm)",()=>s.ThicknessMm,v=>s.ThicknessMm=v);}
                 else
                 {var c=Model.CrossingBeams[index];Text("X"+(index+1)+" · crossing beam",true);Number("PositionMm","Position along beam (mm)",()=>c.PositionMm,v=>c.PositionMm=v,0);Number("WidthMm","Width (mm)",()=>c.WidthMm,v=>c.WidthMm=v);Number("DepthMm","Total depth (mm)",()=>c.DepthMm,v=>c.DepthMm=v);Text("Slab bay");var bay=new ComboBox {ItemsSource=Model.NetworkBays.Select(s=>s.Label).ToArray(),SelectedIndex=c.BayNumber-1,Margin=new Thickness(0,0,0,12)};bay.SelectionChanged+=(s,e)=> {if(changing || bay.SelectedIndex<0)return;int choice=bay.SelectedIndex;if(CommitFields())Mutate(()=>c.BayNumber=choice+1);else Refresh();};syncControls.Add(()=>bay.SelectedIndex=c.BayNumber-1);properties.Children.Add(bay);}
+                if(Drawing.SelectedObjects.Length>1)Text(Drawing.SelectedObjects.Length+" objects selected. Shift-click toggles selection; Delete removes the selected areas.");
                 Text("Shared settings",true);Number("BeamLengthMm","Beam length (mm)",()=>Model.BeamLengthMm,v=>Model.BeamLengthMm=v);Number("UpperSupportSpacingMm","Secondary row spacing (mm)",()=>Model.UpperSupportSpacingMm,v=>Model.UpperSupportSpacingMm=v);Number("TowerLegCapacityKn","Permissible leg load (kN)",()=>Model.TowerLegCapacityKn,v=>Model.TowerLegCapacityKn=v);
                 Text("Deflection criterion");var ratio=new ComboBox {ItemsSource=Model.DeflectionOptions,SelectedItem=Model.DeflectionLimit,DisplayMemberPath="Label",Margin=new Thickness(0,0,0,12)};
                 ratio.SelectionChanged+=(s,e)=> {if(changing || !(ratio.SelectedItem is BeamDeflectionOption option))return;if(CommitFields())Mutate(()=>Model.DeflectionLimit=option);else Refresh();};syncControls.Add(()=>ratio.SelectedItem=Model.DeflectionLimit);properties.Children.Add(ratio);
@@ -244,7 +305,8 @@ namespace EngineeringDashboard
             Buttons["Section"].IsEnabled=Model.IsCalculationValid && Model.NetworkResult!=null && !pending;
             Buttons["AddAbove"].IsEnabled=Buttons["AddBelow"].IsEnabled=!Model.IsOptimizing && (!Model.IsNetworkMode || Model.CanAddNetworkBay);
             Buttons["AddCrossing"].IsEnabled=Model.IsNetworkMode && Model.CrossingBeams.Count<30 && !Model.IsOptimizing;
-            Buttons["Delete"].IsEnabled=!Model.IsOptimizing && (Drawing.SelectedKind==FormworkObject.Crossing || Model.IsNetworkMode && Model.CanRemoveNetworkBay);
+            Buttons["Delete"].IsEnabled=!sectionMode && !Drawing.Formwork && !Model.IsOptimizing && PlanRemoval().Allowed;
+            Buttons["Delete"].ToolTip=RemovalPreview;
             Buttons["Undo"].IsEnabled=undo.Count>0 && !Model.IsOptimizing;Buttons["Redo"].IsEnabled=redo.Count>0 && !Model.IsOptimizing;
             Buttons["Save"].IsEnabled=valid && !Model.IsOptimizing;Buttons["Export"].IsEnabled=Model.IsCalculationValid && !pending;Buttons["Load"].IsEnabled=!Model.IsOptimizing;
             UpdateViewButtons();
@@ -252,6 +314,7 @@ namespace EngineeringDashboard
             else Section.SetResult(Model.NetworkResult);
             Drawing.RefitIfNeeded();
             status.Text=pending ? (valid ? "Finish editing, then calculate." : "Correct the red input before continuing.") : Model.IsOptimizing ? Model.WarningMessage : Model.IsCalculationValid ? (Model.NetworkResult?.Summary??Model.TowerResult.CompactSummary+" · "+Model.TowerResult.LegLoadSummary).Replace("\n"," · ") : Model.HasTowerFailure ? "No solution found · open calculation failure details." : "Needs recalculation · "+Model.WarningMessage;
+            if(!sectionMode && !Drawing.Formwork && !pending && !Model.IsOptimizing && Drawing.SelectedObjects.Length>0)status.Text+=" · "+RemovalPreview;
             failureExpander.Visibility=Model.HasTowerFailure ? Visibility.Visible : Visibility.Collapsed;
             if(Model.HasTowerFailure && (failure.Text!=Model.TowerFailureDetails || failures.Children.Count==0))
             {
@@ -269,14 +332,14 @@ namespace EngineeringDashboard
         internal async Task CalculateAsync()
         {
             if(!CommitFields())return;await Model.OptimizeTowersAsync();Refresh();
-            if(Model.IsCalculationValid){Drawing.Formwork=true;Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;sectionMode=false;Drawing.Fit();}
+            if(Model.IsCalculationValid){Drawing.Formwork=true;Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;sectionMode=false;Drawing.Fit();Refresh();}
             else {Geometry();failureExpander.IsExpanded=Model.HasTowerFailure;}
         }
         internal void ShowMember(int beam,int run,int line)
         {
             if(!Model.IsCalculationValid || !CommitFields())return;
             if(Model.IsNetworkMode)Model.SelectNetworkBeam(beam);
-            Drawing.SelectedKind=FormworkObject.Beam;Drawing.SelectedIndex=beam;BuildProperties();
+            Drawing.Select(FormworkObject.Beam,beam,false);BuildProperties();
             ClearDiagrams();Diagrams=new TowerDiagramWindow(Model);Diagrams.SelectMember(run,line,-1);
             var content=(FrameworkElement)Diagrams.Content;Diagrams.Content=null;analysis.Content=content;
             analysisExpander.Header=Diagrams.Title;analysisExpander.IsExpanded=true;Drawing.SelectMember(beam,run,line);Section.SelectMember(beam,run,line);
