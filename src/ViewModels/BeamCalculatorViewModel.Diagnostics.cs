@@ -50,6 +50,7 @@ namespace EngineeringDashboard
                 text.AppendLine("\nEXACT INPUTS CAPTURED AT SEARCH START\n"+beamSearchTrace.Inputs);
             }
             if(IsCalculationValid)text.AppendLine("\nCURRENT RESULT\n"+(NetworkResult?.Summary??TowerResult?.Summary??("Prop spacing mm: "+MaximumPropSpacing.ToString("R",CultureInfo.InvariantCulture))));
+            if(IsCalculationValid && NetworkResult!=null)text.AppendLine("\nSELECTED NETWORK LAYOUT\n"+NetworkResult.LayoutDiagnostics);
             if(!string.IsNullOrEmpty(TowerFailureDetails))text.AppendLine("\nCURRENT FAILURE DETAILS\n"+TowerFailureDetails);
             text.AppendLine("\nSEARCH LIMITS / RANKING");
             text.AppendLine("Beam-only: ≤80 legs / 200000 sampled attempts; rank legs, braced bays, H20 quantity, utilization. Transfer: bounded covers, geometries and cross options; rank legs, timber, utilization. Network: bounded shared upper options and row phases; rank tower legs + upper feet, then timber. Custom mode compares catalogue and custom passes. Global optimality is not proven.");

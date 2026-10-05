@@ -78,6 +78,7 @@ namespace EngineeringDashboard
         internal BeamSearchTrace Trace;
         // Tests can replay the original search without reuse; production searches reuse work.
         internal bool ReuseSearchWork = true;
+        // Regression tests can replay the former common-primary-coverage restriction.
         internal bool IndependentNetworkPrimaryCoverage = true;
         internal string DiagnosticScope="";
         internal double DiagnosticOffsetMm;

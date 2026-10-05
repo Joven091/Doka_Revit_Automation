@@ -95,6 +95,7 @@ internal static class NetworkTests
         Near(customResult.Bays[0].StockLengthMm,2175,"2575 bay custom length");Near(customResult.Bays[0].EdgeMm,200,"custom length leaves minimum edge strips");
         Check(customResult.Bays[0].IsCustomLength && customResult.Beams[0].Transfer.RightUpperCustom && customResult.Beams[1].Transfer.LeftUpperCustom && customResult.Schedule.Contains("2175 mm custom"),"custom identity survives reversal and is visible in report");
         Near(customResult.SlabLoadKn,9.4*2.575*customResult.SlabCoveredLengthMm/1000,"custom-covered slab plus shutter strips conserve full bay load");
+        Check(failureVm.BuildDiagnosticReport().Contains("SELECTED NETWORK LAYOUT") && customResult.LayoutDiagnostics.Contains("B1: legs=") && customResult.LayoutDiagnostics.Contains("primary runs=") && customResult.LayoutDiagnostics.Contains("S1: H20="),"diagnosis includes selected grid, per-beam legs and actual stocks and shared feet");
         foreach(var beam in customResult.Beams)
         {
             Check(beam.MaxLegKn<=70 && beam.StockPlan.Pieces.All(piece=>common.StockLengthsMm.Contains(piece.StockLengthMm)),"custom fallback does not change leg capacity or primary catalogue");
@@ -136,4 +137,3 @@ internal static class NetworkTests
         Console.WriteLine($"Network: {checks} checks passed · {result.LegCount} tower legs · {result.TimberMm/1000:0.0} m timber · {timer.Elapsed.TotalSeconds:0.00} s");
     }
 }
-
