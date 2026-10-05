@@ -79,7 +79,7 @@ namespace EngineeringDashboard
     /// <summary>Explicit downward force transfer; no equivalent UDL is used to check the primaries.</summary>
     public static class TransferredSlabOptimizer
     {
-        internal sealed class Geometry { public TowerStockPiece[] Stock; public double[] Positions; public bool[] Joined; }
+        internal sealed class Geometry { public TowerStockPiece[] Stock; public double[] Positions; public bool[] Joined; public double[][] MemberSupports; }
         // Created for one pass only: stock, setback and exclusion settings are constant.
         internal sealed class GeometryCache
         {
@@ -105,22 +105,34 @@ namespace EngineeringDashboard
         {
             public double[] Rows, Tributaries, LeftScales, RightScales;
             public string Key;
+            internal readonly Dictionary<Tuple<double,double>,RowSlice> Slices=new Dictionary<Tuple<double,double>,RowSlice>();
+            internal RowSlice Slice(TowerStockPiece stock)
+            {
+                var key=Tuple.Create(stock.StartMm,stock.StockLengthMm);
+                if(!Slices.TryGetValue(key,out var slice))
+                {
+                    var indices=Enumerable.Range(0,Rows.Length).Where(i=>Rows[i]>=stock.StartMm && Rows[i]<stock.EndMm).ToArray();
+                    slice=new RowSlice {Indices=indices,Positions=indices.Select(i=>Rows[i]-stock.StartMm).ToArray()};Slices[key]=slice;
+                }
+                return slice;
+            }
         }
-        private sealed class PrimaryCheck { public LoadedBeamAnalysis Analysis; public bool Passed; }
+        private sealed class RowSlice { internal int[] Indices; internal double[] Positions; }
+        private sealed class PrimaryCheck { public LoadedBeamAnalysis Analysis; public bool Passed; public BeamPointLoad[] Points; }
         private sealed class PrimaryKey : IEquatable<PrimaryKey>
         {
             private readonly double length;
             private readonly double[] supports;
-            private readonly BeamPointLoad[] points;
+            private readonly double[] positions,forces;
             private readonly int hash;
-            internal PrimaryKey(double length,double[] supports,BeamPointLoad[] points)
+            internal PrimaryKey(double length,double[] supports,double[] positions,double[] forces)
             {
-                this.length=length;this.supports=supports;this.points=points;
+                this.length=length;this.supports=supports;this.positions=positions;this.forces=forces;
                 unchecked
                 {
                     int h=length.GetHashCode();
                     for(int i=0;i<supports.Length;i++)h=h*31+supports[i].GetHashCode();
-                    for(int i=0;i<points.Length;i++) {h=h*31+points[i].PositionMm.GetHashCode();h=h*31+points[i].Kn.GetHashCode();}
+                    for(int i=0;i<positions.Length;i++) {h=h*31+positions[i].GetHashCode();h=h*31+forces[i].GetHashCode();}
                     hash=h;
                 }
             }
@@ -128,9 +140,9 @@ namespace EngineeringDashboard
             public override bool Equals(object other)=>Equals(other as PrimaryKey);
             public bool Equals(PrimaryKey other)
             {
-                if(other==null || hash!=other.hash || length!=other.length || supports.Length!=other.supports.Length || points.Length!=other.points.Length)return false;
+                if(other==null || hash!=other.hash || length!=other.length || supports.Length!=other.supports.Length || positions.Length!=other.positions.Length)return false;
                 for(int i=0;i<supports.Length;i++)if(supports[i]!=other.supports[i])return false;
-                for(int i=0;i<points.Length;i++)if(points[i].PositionMm!=other.points[i].PositionMm || points[i].Kn!=other.points[i].Kn)return false;
+                for(int i=0;i<positions.Length;i++)if(positions[i]!=other.positions[i] || forces[i]!=other.forces[i])return false;
                 return true;
             }
         }
@@ -308,6 +320,7 @@ namespace EngineeringDashboard
                 }
                 states=next.GroupBy(x=>x.Positions.Length).SelectMany(g=>g.OrderBy(x=>x.Stock.Sum(s=>x.Positions[s.FirstSupport]-s.StartMm)).Take(12)).OrderBy(x=>x.Positions.Length).Take(84).ToList();
             }
+            foreach(var geometry in states)geometry.MemberSupports=geometry.Stock.Select(s=>geometry.Positions.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(x=>x-s.StartMm).ToArray()).ToArray();
             return states;
         }
         private static IEnumerable<Upper> UpperOptions(double bay,double load,double width,TowerInput input,double tributaryMm,UpperTransferPlan fixedPlan)
@@ -430,26 +443,31 @@ namespace EngineeringDashboard
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {
-                    var supports=g.Positions.Skip(stock.FirstSupport).Take(stock.LastSupport-stock.FirstSupport+1).Select(x=>x-stock.StartMm).ToArray();
-                    var points=Enumerable.Range(0,rows.Length).Where(i=>rows[i]>=stock.StartMm && rows[i]<stock.EndMm).Select(i=>new BeamPointLoad {PositionMm=rows[i]-stock.StartMm,Kn=lower[i].Analysis.Reactions[line]}).ToArray();
+                    var supports=g.MemberSupports[Array.IndexOf(g.Stock,stock)];
+                    var slice=grid.Slice(stock);var forces=new double[slice.Indices.Length];
+                    for(int i=0;i<forces.Length;i++)forces[i]=lower[slice.Indices[i]].Analysis.Reactions[line];
                     input.Trace?.CheckCancellation();
-                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,points);
+                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,slice.Positions,forces);
                     PrimaryCheck check;
                     if(primaryCache==null || !primaryCache.TryGetValue(key,out check))
                     {
+                        // Cache hits need no temporary point-load objects. Positions and
+                        // support vectors are immutable and reused within this search.
+                        var points=new BeamPointLoad[forces.Length];
+                        for(int i=0;i<points.Length;i++)points[i]=new BeamPointLoad {PositionMm=slice.Positions[i],Kn=forces[i]};
                         input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
                         var analysis=LoadedBeamAnalysis.Analyze(stock.StockLengthMm,supports,null,points,TowerOptimizer.PairEI,input.DeflectionDenominator);
                         bool memberPass=Pass(analysis,1,2,input.Diagnostics,input.DiagnosticScope+"Primary pair",3,$"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · stock {stock.StockLengthMm:0} mm · x={stock.StartMm+edge:0.###}–{stock.EndMm+edge:0.###} mm");
                         int peakLeg=Array.IndexOf(analysis.Reactions,analysis.Reactions.Max());
                         input.Diagnostics?.Legs(analysis.Reactions,input.LegCapacityKn,input.DiagnosticScope+"Tower legs",$"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · peak leg x={g.Positions[stock.FirstSupport+peakLeg]+edge:0.###} mm");
-                        check=new PrimaryCheck {Analysis=analysis,Passed=memberPass && analysis.Reactions.Max()<=input.LegCapacityKn+1e-8};
+                        check=new PrimaryCheck {Analysis=analysis,Points=points,Passed=memberPass && analysis.Reactions.Max()<=input.LegCapacityKn+1e-8};
                         if(primaryCache!=null && primaryCache.Count<4096)primaryCache[key]=check;
                     }
                     else input.Trace?.Increment(BeamSearchCounter.PrimaryCacheHits);
                     if(!check.Passed)return null;
                     var a=check.Analysis;
                     for(int i=0;i<a.Reactions.Length;i++) { var envelope=line==0 ? left : right; envelope[stock.FirstSupport+i]=Math.Max(envelope[stock.FirstSupport+i],a.Reactions[i]); }
-                    members.Add(new TransferMember {Name="P"+(Array.IndexOf(g.Stock,stock)+1)+(line==0 ? " L" : " R"),LoadCase=cross.Names[c],StartMm=stock.StartMm+edge,LengthMm=stock.StockLengthMm,SupportsMm=supports,Points=points,Uniform=new BeamDistributedLoad[0],Analysis=a});
+                    members.Add(new TransferMember {Name="P"+(Array.IndexOf(g.Stock,stock)+1)+(line==0 ? " L" : " R"),LoadCase=cross.Names[c],StartMm=stock.StartMm+edge,LengthMm=stock.StockLengthMm,SupportsMm=supports,Points=check.Points,Uniform=new BeamDistributedLoad[0],Analysis=a});
                 }
                 primaryCases.Add(members.ToArray()); lowerCases.Add(lower.ToArray());
             }
