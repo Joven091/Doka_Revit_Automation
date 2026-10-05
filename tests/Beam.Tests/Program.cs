@@ -7,7 +7,7 @@ internal static class Program
  static void Check(bool value,string name) {count++;if(!value)throw new Exception(name);}
  static void Equal(double a,double b,string name) => Check(!double.IsNaN(b)&&Math.Abs(a-b)<1e-8,name+": "+b);
  static void Invalid(BeamCalculatorViewModel v,string name){Check(!v.IsCalculationValid,name);Equal(0,v.MaximumPropSpacing,name+" spacing");Equal(0,v.MaximumPropLoad,name+" load");Check(!string.IsNullOrEmpty(v.WarningMessage),name+" warning");}
- static int Main(){try{Run();TowerTests.Run();TransferTests.Run();NetworkTests.Run();NetworkEditTests.Run();return 0;}catch(Exception ex){Console.Error.WriteLine(ex);return 1;}}
+ static int Main(){try{Run();TowerTests.Run();TransferTests.Run();NetworkTests.Run();NetworkEditTests.Run();CustomH20Tests.Run();return 0;}catch(Exception ex){Console.Error.WriteLine(ex);return 1;}}
  static void Run()
  {
   var v=new BeamCalculatorViewModel();Check(v.DeflectionLimit.Label=="L/350","slab-aligned default");Check(v.DeflectionOptions.Select(x=>x.Label).SequenceEqual(new[]{"L/500","L/350","L/270"}),"slab-aligned criteria");Equal(2000,v.MaximumPropSpacing,"default");Check(v.LimitingFactor=="Max Spacing Limit","two-prop cap");

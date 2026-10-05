@@ -10,17 +10,22 @@ namespace EngineeringDashboard
         public double StockLengthMm, EdgeMm, NearFootMm, FarFootMm;
         public bool IsCustomLength;
         // Custom fallback keeps edge strips closest to 200 mm, without changing primary/lower stocks.
-        public static double[] SlabLengths(double bay,double[] stocks)
+        public static double[] SlabLengths(double bay,double[] stocks,bool allowCustom=false)
         {
             var fitting=stocks.Where(stock=>(bay-stock)/2>=200 && (bay-stock)/2<=350).ToArray();
+            if(allowCustom)
+            {
+                int first=(int)Math.Ceiling(Math.Max(25,bay-700)/25),last=(int)Math.Floor(Math.Min(50000,bay-400)/25);
+                return fitting.Concat(Enumerable.Range(first,Math.Max(0,last-first+1)).Select(x=>x*25.0)).Distinct().OrderBy(x=>x).ToArray();
+            }
             if(fitting.Length>0)return fitting;
             double custom=Math.Floor((bay-400)/25)*25;
             return custom>0 && (bay-custom)/2<=350 ? new[] {custom} : new double[0];
         }
         public UpperTransferPlan Reverse() => new UpperTransferPlan {StockLengthMm=StockLengthMm,EdgeMm=EdgeMm,NearFootMm=FarFootMm,FarFootMm=NearFootMm,IsCustomLength=IsCustomLength};
-        public void Validate(double bay,double[] stocks)
+        public void Validate(double bay,double[] stocks,bool allowCustom=false)
         {
-            if(new[] {StockLengthMm,EdgeMm,NearFootMm,FarFootMm}.Any(x=>!TowerBeamAnalysis.Finite(x)) || !SlabLengths(bay,stocks).Contains(StockLengthMm) || IsCustomLength!=!stocks.Contains(StockLengthMm)
+            if(new[] {StockLengthMm,EdgeMm,NearFootMm,FarFootMm}.Any(x=>!TowerBeamAnalysis.Finite(x)) || !SlabLengths(bay,stocks,allowCustom).Contains(StockLengthMm) || IsCustomLength!=!stocks.Contains(StockLengthMm)
                 || Math.Abs(bay-StockLengthMm-2*EdgeMm)>1e-7 || EdgeMm<200 || EdgeMm>350 || NearFootMm<Math.Max(250,EdgeMm+150)
                 || FarFootMm<Math.Max(250,EdgeMm+150) || bay-NearFootMm-FarFootMm<300) throw new ArgumentException("Invalid shared upper H20 stock or foot positions.");
         }
@@ -100,6 +105,11 @@ namespace EngineeringDashboard
         private static bool Better(int legs,double timber,int oldLegs,double oldTimber)=>legs<oldLegs || legs==oldLegs && timber<oldTimber-.01;
         public static TransferNetworkResult Optimize(TowerInput common,TransferNetworkInput input)
         {
+            input.Validate(common);
+            return TowerStockPlanner.SearchWithCustom(common,()=>OptimizeCore(common,input),(a,b)=>Better(a.LegCount+a.UpperFootCount,a.TimberMm,b.LegCount+b.UpperFootCount,b.TimberMm));
+        }
+        private static TransferNetworkResult OptimizeCore(TowerInput common,TransferNetworkInput input)
+        {
             input.Validate(common); TransferNetworkResult best=null;int tested=0;
             common.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator);var diag=common.Diagnostics;
             var stockCovers=TransferredSlabOptimizer.StockCovers(common);
@@ -170,7 +180,7 @@ namespace EngineeringDashboard
         private static IEnumerable<UpperTransferPlan> Options(TowerInput common,TransferNetworkInput input,int bay,double tributary,string rowLocation)
         {
             var row=input.Bays[bay];var result=new List<Tuple<UpperTransferPlan,double>>();
-            var lengths=UpperTransferPlan.SlabLengths(row.WidthMm,common.StockLengthsMm);
+            var lengths=UpperTransferPlan.SlabLengths(row.WidthMm,common.StockLengthsMm,common.AllowCustomH20Lengths);
             if(lengths.Length==0)common.Diagnostics.Geometry("S"+(bay+1)+" length",$"S{bay+1}: no positive 25 mm slab H20 length fits clear bay {row.WidthMm:0.###} mm with 200–350 mm edge strips.","Review the clear bay width and required edge clearance.",blocker:true);
             foreach(double stock in lengths)
             {
@@ -194,7 +204,7 @@ namespace EngineeringDashboard
             var b=network.Beams[beam];var t=new TransferredSlabInput {IsNetwork=true,StockCovers=stockCovers,BeamWidthMm=b.WidthMm,BeamLineLoadKnM=network.AreaLoad(b.DepthMm)*b.WidthMm/1000,UpperSpacingMm=network.UpperSpacingMm,FixedCoveredLengthMm=cover,FixedRowPhaseMm=phase,
                 LeftBayMm=left==null ? 0 : network.Bays[beam-1].WidthMm,RightBayMm=right==null ? 0 : network.Bays[beam].WidthMm,LeftAreaLoadKnM2=left==null ? 0 : network.AreaLoad(network.Bays[beam-1].ThicknessMm),RightAreaLoadKnM2=right==null ? 0 : network.AreaLoad(network.Bays[beam].ThicknessMm),LeftPlan=left?.Reverse(),RightPlan=right,
                 LeftEffectiveWidthsMm=left==null ? null : EffectiveWidthsMm(common,network,beam-1,cover,phase),RightEffectiveWidthsMm=right==null ? null : EffectiveWidthsMm(common,network,beam,cover,phase)};
-            var input=new TowerInput {LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
+            var input=new TowerInput {AllowCustomH20Lengths=common.AllowCustomH20Lengths,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
             try{return TransferredSlabOptimizer.Optimize(input,true);}catch(TowerOptimizationException){return null;}
             catch(ArgumentException ex) {common.Diagnostics.Geometry("B"+(beam+1)+" geometry",$"B{beam+1}: {ex.Message}","Review this beam's geometry and transfer inputs.");return null;}
         }

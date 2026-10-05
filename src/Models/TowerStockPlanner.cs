@@ -8,6 +8,7 @@ namespace EngineeringDashboard
     public sealed class TowerStockPiece
     {
         public double StockLengthMm { get; internal set; }
+        public bool IsCustomLength { get; internal set; }
         public double StartMm { get; internal set; }
         public double EndMm => StartMm + StockLengthMm;
         public int FirstSupport { get; internal set; }
@@ -40,7 +41,7 @@ namespace EngineeringDashboard
                 {
                     var p = Pieces[i];
                     lines.Add(string.Format(CultureInfo.CurrentCulture, "P{0}: 4 × {1:0.###} mm · x={2:0.###}–{3:0.###} mm · supports {4}–{5}\n  M {6:0.00} kNm · V {7:0.00} kN · d {8:0.00} mm",
-                        i + 1, p.StockLengthMm, p.StartMm, p.EndMm, p.FirstSupport + 1, p.LastSupport + 1, p.MomentKnM, p.ShearKn, p.DeflectionMm));
+                        i + 1, p.StockLengthMm, p.StartMm, p.EndMm, p.FirstSupport + 1, p.LastSupport + 1, p.MomentKnM, p.ShearKn, p.DeflectionMm) + (p.IsCustomLength ? " · custom length (25 mm increments)" : ""));
                     lines.Add($"  Deflection: {p.GoverningDeflectionMm:0.00}/{p.GoverningDeflectionLimitMm:0.00} mm · {p.GoverningDeflectionRegion}");
                 }
                 lines.Add("Stock quantities: " + string.Join("; ", Pieces.GroupBy(p => p.StockLengthMm).OrderBy(g => g.Key).Select(g => string.Format(CultureInfo.CurrentCulture, "{0} × {1:0.###} mm", g.Count() * 4, g.Key))));
@@ -53,6 +54,35 @@ namespace EngineeringDashboard
     public static class TowerStockPlanner
     {
         public const string DefaultLengths = "1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900";
+        // Keep the entered catalogue separate: only additional lengths must be multiples of 25 mm.
+        internal static double[] CandidateLengths(TowerInput input, double minimum, double maximum)
+        {
+            var stocks = input.StockLengthsMm.Where(x => x >= minimum && x <= maximum);
+            if (!input.AllowCustomH20Lengths) return stocks.OrderBy(x => x).ToArray();
+            int first = (int)Math.Ceiling(Math.Max(25, minimum) / 25), last = (int)Math.Floor(Math.Min(50000, maximum) / 25);
+            return stocks.Concat(Enumerable.Range(first, Math.Max(0, last-first+1)).Select(x => x*25.0)).Distinct().OrderBy(x => x).ToArray();
+        }
+        // Evaluate the previous stock search as well. Candidate caps must never replace a better stock solution.
+        internal static T SearchWithCustom<T>(TowerInput input, Func<T> search, Func<T,T,bool> better) where T : class
+        {
+            if (!input.AllowCustomH20Lengths) return search();
+            T stock = null;
+            input.AllowCustomH20Lengths = false;
+            try { stock = search(); } catch (ArgumentException) { }
+            finally { input.AllowCustomH20Lengths = true; }
+            try { var custom = search(); return stock == null || better(custom,stock) ? custom : stock; }
+            catch (ArgumentException) { if (stock != null) return stock; throw; }
+        }
+        internal static int[] CoverageCounts(int total, double[] stocks)
+        {
+            var counts = Enumerable.Repeat(int.MaxValue,total+1).ToArray(); counts[0]=0;
+            int step=0;
+            foreach(double stock in stocks) {int b=(int)stock;while(b!=0){int r=step%b;step=b;b=r;}}
+            if(step==0)return counts;
+            for(int end=step;end<=total;end+=step) foreach(double stock in stocks)
+                if(stock<=end && counts[end-(int)stock]!=int.MaxValue) counts[end]=Math.Min(counts[end],counts[end-(int)stock]+1);
+            return counts;
+        }
         public static double[] ParseLengths(string text)
         {
             var tokens = (text ?? "").Split(new[] { ';', ',', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
@@ -69,17 +99,13 @@ namespace EngineeringDashboard
         public static int MinimumPieces(double length, double[] stocks)
         {
             if (!TowerBeamAnalysis.Finite(length) || length <= 0 || length > 50000 || Math.Abs(length - Math.Round(length)) > 1e-7) return int.MaxValue;
-            int total = (int)Math.Round(length); var count = Enumerable.Repeat(int.MaxValue, total + 1).ToArray(); count[0] = 0;
-            for (int end = 1; end <= total; end++) foreach (double stock in stocks)
-            {
-                int s = (int)stock; if (s <= end && count[end - s] != int.MaxValue) count[end] = Math.Min(count[end], count[end - s] + 1);
-            }
-            return count[total];
+            if(stocks.Contains(length))return 1;
+            return CoverageCounts((int)Math.Round(length),stocks)[(int)Math.Round(length)];
         }
         public static TowerStockPlan Find(TowerInput input, double[] positions, double load)
         {
             bool analyzed=false; int n = positions.Length; double length = input.LengthMm, setback = input.StockEndSetbackMm;
-            var stocks = input.StockLengthsMm.Where(s => s <= length + 1e-7).OrderBy(s => s).ToArray();
+            var stocks = CandidateLengths(input,25,length);
             var states = new Dictionary<int, TowerStockPlan>();
             states[0] = new TowerStockPlan { Pieces = new TowerStockPiece[0], Reactions = new double[n] };
             var pending = new SortedSet<int> { 0 };
@@ -103,7 +129,7 @@ namespace EngineeringDashboard
                     input.Diagnostics?.Primary(response,input,$"stock {stock:0} mm · x={start+input.DiagnosticOffsetMm:0.###}–{end+input.DiagnosticOffsetMm:0.###} mm · support x={string.Join(", ",positions.Skip(first).Take(last-first+1).Select(x=>(x+input.DiagnosticOffsetMm).ToString("0.###")))} mm · governing loaded line");
                     if (response.Reactions.Min() < -1e-9 * response.Reactions.Max() || u.Any(x => !TowerBeamAnalysis.Finite(x) || x > 1 + 1e-10)) continue;
                     var region = response.GoverningDeflection(input.DeflectionLimitMm, input.DeflectionDenominator);
-                    var piece = new TowerStockPiece { StartMm = start, StockLengthMm = stock, FirstSupport = first, LastSupport = last,
+                    var piece = new TowerStockPiece { StartMm = start, StockLengthMm = stock, IsCustomLength = !input.StockLengthsMm.Contains(stock), FirstSupport = first, LastSupport = last,
                         MomentKnM = response.Moment, ShearKn = response.Shear, DeflectionMm = response.DeflectionMm, DeflectionUtilization = u[3], GoverningDeflectionMm = region.PeakMm,
                         GoverningDeflectionLimitMm = region.AllowableMm(input.DeflectionLimitMm, input.DeflectionDenominator),
                         GoverningDeflectionRegion = $"{(region.IsOverhang ? "overhang" : "span")} {region.EndMm-region.StartMm:0.###} mm" };
