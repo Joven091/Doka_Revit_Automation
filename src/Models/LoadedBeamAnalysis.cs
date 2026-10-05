@@ -34,7 +34,7 @@ namespace EngineeringDashboard
         public LoadedBeamAnalysis Scale(double factor)
         {
             if (!Finite(factor) || factor <= 0) throw new ArgumentException("Load scale must be positive.");
-            var result = new LoadedBeamAnalysis { rigidity = rigidity, Reactions = Reactions.Select(v => v * factor).ToArray(), MomentKnM = MomentKnM * factor, ShearKn = ShearKn * factor, DeflectionMm = DeflectionMm * factor, DeflectionUtilization = DeflectionUtilization * factor, TotalLoadKn = TotalLoadKn * factor, GoverningLengthMm = GoverningLengthMm };
+            var result = new LoadedBeamAnalysis { rigidity = rigidity, DeflectionEvaluated=DeflectionEvaluated, Reactions = Reactions.Select(v => v * factor).ToArray(), MomentKnM = MomentKnM * factor, ShearKn = ShearKn * factor, DeflectionMm = DeflectionMm * factor, DeflectionUtilization = DeflectionUtilization * factor, TotalLoadKn = TotalLoadKn * factor, GoverningLengthMm = GoverningLengthMm };
             foreach (var e in elements) result.elements.Add(new Element { X = e.X, L = e.L, Q = e.Q * factor, U = e.U * factor, T = e.T * factor, C2 = e.C2 * factor, C3 = e.C3 * factor, C4 = e.C4 * factor });
             return result;
         }
@@ -61,6 +61,7 @@ namespace EngineeringDashboard
             }
             return result;
         }
+        internal bool DeflectionEvaluated {get;private set;}
         private double rigidity;
         internal sealed class MatrixKey : IEquatable<MatrixKey>
         {
@@ -105,14 +106,14 @@ namespace EngineeringDashboard
             }
             internal void Store(MatrixKey key,PreparedBeam prepared) {if(shapes.Count<1024)shapes[key]=prepared;}
         }
-        internal static LoadedBeamAnalysis AnalyzePointsCached(double lengthMm,double[] supportMm,BeamPointLoad[] points,double ei,int denominator,MatrixCache cache)
-            =>AnalyzeCore(lengthMm,supportMm,null,points,ei,denominator,true,cache);
+        internal static LoadedBeamAnalysis AnalyzePointsCached(double lengthMm,double[] supportMm,BeamPointLoad[] points,double ei,int denominator,MatrixCache cache,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false)
+            =>AnalyzeCore(lengthMm,supportMm,null,points,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary);
         public static LoadedBeamAnalysis Analyze(double lengthMm, double[] supportMm, BeamDistributedLoad[] uniform, BeamPointLoad[] points, double ei, int denominator)
             => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,true);
         // Retain the former dense storage path for exact numerical regression comparisons.
         internal static LoadedBeamAnalysis AnalyzeDenseReference(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator)
             => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,false);
-        private static LoadedBeamAnalysis AnalyzeCore(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool banded,MatrixCache matrixCache=null)
+        private static LoadedBeamAnalysis AnalyzeCore(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool banded,MatrixCache matrixCache=null,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false)
         {
             if (!Finite(lengthMm) || lengthMm <= 0 || !Finite(ei) || ei <= 0 || supportMm == null || supportMm.Length < 2
                 || supportMm.Any(v => !Finite(v) || v < 0 || v > lengthMm) || supportMm.Distinct().Count() != supportMm.Length
@@ -183,6 +184,15 @@ namespace EngineeringDashboard
                 double q = uniform.Where(w => w.StartMm < (nodes[index] + nodes[index + 1]) / 2 && w.EndMm > (nodes[index] + nodes[index + 1]) / 2).Sum(w => w.KnPerM);
                 var e = new Element { X = nodes[index] / 1000, L = l, Q = q, U = u, T = t, C2 = (-3 * u + 3 * v) / (l * l) - (2 * t + z) / l + q * l * l / (24 * ei), C3 = (2 * u - 2 * v) / (l * l * l) + (t + z) / (l * l) - q * l / (12 * ei), C4 = q / (24 * ei) };
                 result.elements.Add(e);
+                var momentPoints = new List<double> { 0, l }; if (Math.Abs(e.C4) > 1e-20) { double x = -e.C3 / (4 * e.C4); if (x > 0 && x < l) momentPoints.Add(x); }
+                result.MomentKnM = Math.Max(result.MomentKnM, momentPoints.Max(x => Math.Abs(ei * (2 * e.C2 + 6 * e.C3 * x + 12 * e.C4 * x * x))));
+                result.ShearKn = Math.Max(result.ShearKn, Math.Max(Math.Abs(ei * 6 * e.C3), Math.Abs(ei * (6 * e.C3 + 24 * e.C4 * l))));
+            }
+            if (Math.Abs(result.Reactions.Sum() - result.TotalLoadKn) > 1e-6 * Math.Max(1, result.TotalLoadKn)) throw new ArgumentException("Beam load equilibrium failed.");
+            if(rejectFailedPrimary && (result.MomentKnM>TowerOptimizer.PairMoment+1e-8 || result.ShearKn>TowerOptimizer.PairShear+1e-8 || result.Reactions.Any(r=>r< -1e-7 || r>reactionCapacity+1e-8)))return result;
+            for(int index=0;index<result.elements.Count;index++)
+            {
+                var e=result.elements[index];double l=e.L;
                 Func<double, double> slope = x => e.T + 2 * e.C2 * x + 3 * e.C3 * x * x + 4 * e.C4 * x * x * x;
                 var cuts = new List<double> { 0, l };
                 double disc = 36 * e.C3 * e.C3 - 96 * e.C4 * e.C2;
@@ -195,11 +205,8 @@ namespace EngineeringDashboard
                 double region = span < 0 ? supports[0] : span == supports.Length - 1 ? lengthMm - supports.Last() : supports[span + 1] - supports[span];
                 double use = peak / (region / denominator); if (use > result.DeflectionUtilization) { result.DeflectionUtilization = use; result.GoverningLengthMm = region; }
                 result.DeflectionMm = Math.Max(result.DeflectionMm, peak);
-                var momentPoints = new List<double> { 0, l }; if (Math.Abs(e.C4) > 1e-20) { double x = -e.C3 / (4 * e.C4); if (x > 0 && x < l) momentPoints.Add(x); }
-                result.MomentKnM = Math.Max(result.MomentKnM, momentPoints.Max(x => Math.Abs(ei * (2 * e.C2 + 6 * e.C3 * x + 12 * e.C4 * x * x))));
-                result.ShearKn = Math.Max(result.ShearKn, Math.Max(Math.Abs(ei * 6 * e.C3), Math.Abs(ei * (6 * e.C3 + 24 * e.C4 * l))));
             }
-            if (Math.Abs(result.Reactions.Sum() - result.TotalLoadKn) > 1e-6 * Math.Max(1, result.TotalLoadKn)) throw new ArgumentException("Beam load equilibrium failed.");
+            result.DeflectionEvaluated=true;
             return result;
         }
         private static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);

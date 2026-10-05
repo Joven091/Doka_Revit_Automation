@@ -43,7 +43,7 @@ namespace EngineeringDashboard
             Limit(scope,"moment",stage,a.MomentKnM*scale,TowerOptimizer.PairMoment*count/2,"kNm",location,advice);
             Limit(scope,"shear",stage,a.ShearKn*scale,TowerOptimizer.PairShear*count/2,"kN",location,advice);
             double allowable=a.GoverningLengthMm/denominator;
-            Limit(scope,"deflection",stage,a.DeflectionUtilization*allowable*scale,allowable,"mm",location+$" · governing span/overhang {a.GoverningLengthMm:0.###} mm (L/{denominator})",advice,allowable*1e-8);
+            if(a.DeflectionEvaluated)Limit(scope,"deflection",stage,a.DeflectionUtilization*allowable*scale,allowable,"mm",location+$" · governing span/overhang {a.GoverningLengthMm:0.###} mm (L/{denominator})",advice,allowable*1e-8);
             Bearing(scope,stage,a.Reactions.Min()*scale,location);
         }
         public void Primary(TowerBeamAnalysis a,TowerInput input,string location)
@@ -102,6 +102,7 @@ namespace EngineeringDashboard
         internal bool IndependentNetworkPrimaryCoverage = true;
         internal int NetworkSearchWorkers = Math.Min(4,Environment.ProcessorCount);
         internal bool PruneUneconomicCandidates = true;
+        internal bool StagePrimaryChecks = true;
         internal TowerInput CopyForSearch() => (TowerInput)MemberwiseClone();
         internal string DiagnosticScope="";
         internal double DiagnosticOffsetMm;

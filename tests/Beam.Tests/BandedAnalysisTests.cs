@@ -40,6 +40,12 @@ internal static class BandedAnalysisTests
                 }
             }
         }
+        var failed=LoadedBeamAnalysis.AnalyzePointsCached(1000,new[] {0.0,1000},new[] {new BeamPointLoad {PositionMm=500,Kn=80}},TowerOptimizer.PairEI,270,new LoadedBeamAnalysis.MatrixCache(),70,true);
+        Check(!failed.DeflectionEvaluated && failed.MomentKnM>10 && failed.ShearKn>22,"known capacity failure skips costly deflection extrema");
+        var passing=LoadedBeamAnalysis.AnalyzePointsCached(1000,new[] {0.0,1000},new[] {new BeamPointLoad {PositionMm=500,Kn=20}},TowerOptimizer.PairEI,270,new LoadedBeamAnalysis.MatrixCache(),70,true);
+        Check(passing.DeflectionEvaluated && passing.DeflectionMm>0,"candidate passing moment/shear/leg checks receives complete deflection evaluation");
+        var diagnostic=new TowerSearchDiagnostics(270);diagnostic.Analysis(failed,1,2,"Rejected primary",3,"test");
+        Check(!diagnostic.Exception("rejected").Details.Contains("deflection"),"unevaluated deflection is not reported as passing or as a computed failure");
         Console.WriteLine($"Passed {checks} dense/banded exact numerical comparisons.");
     }
 }

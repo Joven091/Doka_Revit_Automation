@@ -38,6 +38,7 @@ internal static class SearchReuseTests
         BandedAnalysisTests.Run();
         Compare(false,false);Compare(true,false);Compare(true,true);
         foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})ComparePruning(custom,crossing);
+        foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})CompareStaging(custom,crossing);
         foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})CompareWorkers(custom,crossing);
         foreach(bool reuse in new[] {false,true})
         {
@@ -88,6 +89,14 @@ internal static class SearchReuseTests
         Check(Signature(a)==Signature(b),"economy bound preserves exact layout and ranking");
         Check(Demands(a).SequenceEqual(Demands(b)),"economy bound preserves unrounded selected member demands");
         Check(a.Tested==b.Tested && Counter(pruned.Trace,"Candidates pruned by economy bounds")>0,"all ranked candidates still visited; unable-to-win candidates skip member solving");
+    }
+    static void CompareStaging(bool custom,bool crossing)
+    {
+        var full=Common(true,custom);full.StagePrimaryChecks=false;full.NetworkSearchWorkers=1;
+        var staged=Common(true,custom);staged.NetworkSearchWorkers=1;
+        var network=Network(crossing);var a=TransferNetworkOptimizer.Optimize(full,network);var b=TransferNetworkOptimizer.Optimize(staged,network);
+        Check(Signature(a)==Signature(b) && Demands(a).SequenceEqual(Demands(b)),"staged rejection preserves selected layouts and all exact member demands");
+        Check(b.Beams.SelectMany(x=>x.Transfer.LowerCases.Concat(x.Transfer.PrimaryCases).SelectMany(c=>c).Concat(x.Transfer.UpperMembers)).All(m=>m.Analysis.DeflectionEvaluated),"every selected member has complete deflection checks");
     }
     public static void Benchmark()
     {

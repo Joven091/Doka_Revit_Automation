@@ -474,7 +474,8 @@ namespace EngineeringDashboard
                         for(int i=0;i<points.Length;i++)points[i]=new BeamPointLoad {PositionMm=slice.Positions[i],Kn=forces[i]};
                         input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
                         long priorHits=matrixCache?.Hits??0;
-                        var analysis=LoadedBeamAnalysis.AnalyzePointsCached(stock.StockLengthMm,supports,points,TowerOptimizer.PairEI,input.DeflectionDenominator,matrixCache);
+                        var analysis=LoadedBeamAnalysis.AnalyzePointsCached(stock.StockLengthMm,supports,points,TowerOptimizer.PairEI,input.DeflectionDenominator,matrixCache,input.LegCapacityKn,input.StagePrimaryChecks);
+                        if(!analysis.DeflectionEvaluated)input.Trace?.Increment(BeamSearchCounter.PrimaryDeflectionSkipped);
                         if(matrixCache!=null && matrixCache.Hits>priorHits)input.Trace?.Increment(BeamSearchCounter.PrimaryMatrixCacheHits);
                         bool memberPass=Pass(analysis,1,2,input.Diagnostics,input.DiagnosticScope+"Primary pair",3,$"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · stock {stock.StockLengthMm:0} mm · x={stock.StartMm+edge:0.###}–{stock.EndMm+edge:0.###} mm");
                         int peakLeg=Array.IndexOf(analysis.Reactions,analysis.Reactions.Max());

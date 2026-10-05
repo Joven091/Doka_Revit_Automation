@@ -31,7 +31,7 @@ internal static class NetworkEconomyTests
                 Check(beam.MaxLegKn<=70+1e-8 && beam.LeftReactions.Concat(beam.RightReactions).All(r=>r>=-1e-7 && r<=70+1e-8),"individual leg capacity and no uplift");
                 foreach(var member in beam.Transfer.LowerCases.Concat(beam.Transfer.PrimaryCases).SelectMany(c=>c).Concat(beam.Transfer.UpperMembers))
                 {
-                    Check(member.Utilization<=1+1e-8 && member.Analysis.Reactions.All(r=>r>=-1e-7),"all members pass every loading stage");
+                    Check(member.Analysis.DeflectionEvaluated && member.Utilization<=1+1e-8 && member.Analysis.Reactions.All(r=>r>=-1e-7),"all members pass every loading stage, including complete deflection evaluation");
                     Near(member.Analysis.Reactions.Sum(),member.Analysis.TotalLoadKn,"member equilibrium");
                 }
                 Console.WriteLine($"ECONOMY B{index+1} legs={beam.LegCount} primaryCoverage={beamLength} primaryRuns={string.Join(",",beam.StockPlan.Pieces.Select(p=>p.StockLengthMm))} maxBeamTributary={beam.Transfer.TributaryWidthsMm.Max():0.###}");
