@@ -69,6 +69,7 @@ internal static class NetworkTests
             Near(crossed.Beams[0].Transfer.UpperScale(false,r),crossed.Beams[1].Transfer.UpperScale(true,r),"both main beams use the same physical crossing row loads");
             foreach(var beam in crossed.Beams)Near(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.Reactions.Sum()),beam.Transfer.LowerCases.Last().Sum(m=>m.Analysis.TotalLoadKn),"crossing row point reactions conserved through primaries to legs");
         }
+        foreach(var beam in crossed.Beams)Near(beam.Transfer.CoveredSlabAreaM2,crossed.SlabCoveredLengthMm*(beam.Transfer.LeftUpperStockMm+beam.Transfer.RightUpperStockMm)/1e6,"reported slab stock area uses physical coverage, without weighting the crossing load");
         Check(crossed.Schedule.Contains("X1: S1") && crossed.Schedule.Contains("extra bay load"),"crossing geometry and added load retained in schedule");
         vm.UseBeamNetwork=true;vm.AddCrossingBeam();vm.CrossingBeams[0].DepthMm=800;
         other.NetworkConfigurationXml=vm.NetworkConfigurationXml;Near(other.CrossingBeams[0].DepthMm,800,"crossing beam XML round trip");
