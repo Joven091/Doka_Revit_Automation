@@ -9,12 +9,13 @@ namespace EngineeringDashboard
     internal enum BeamSearchCounter
     {
         CoveragePlans, CoverageVariants, UpperAnalyses, LowerAnalyses, PrimaryAnalyses,
-        TowerCandidates, TransferCandidates, NetworkSolves, NumericalChecks, RejectionChecks
+        TowerCandidates, TransferCandidates, NetworkSolves, NumericalChecks, RejectionChecks,
+        GeometryBuilds, GeometryCacheHits, CrossCacheHits, LowerCaseCacheHits
     }
     // A single search writes progress; the UI reads atomic snapshots without touching solver collections.
     internal sealed class BeamSearchTrace
     {
-        private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)"};
+        private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits"};
         private readonly long[] counters=new long[CounterNames.Length];
         private readonly long started=Stopwatch.GetTimestamp();
         private long ended, catalogueTicks, customTicks;
