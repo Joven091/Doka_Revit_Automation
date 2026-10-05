@@ -19,6 +19,14 @@ namespace EngineeringDashboard
         private void RemoveBeamBay_Click(object sender,RoutedEventArgs e)=>observedModel?.RemoveNetworkBay();
         internal TowerDiagramWindow TowerDiagrams { get; private set; }
         internal BeamFormworkWorkspace FormworkWorkspace {get;private set;}
+        internal BeamDiagnosticWindow Diagnostics {get;private set;}
+        private void DiagnoseBeam_Click(object sender,RoutedEventArgs e)
+        {
+            if(observedModel==null)return;
+            if(Diagnostics!=null){Diagnostics.RefreshReport();Diagnostics.Activate();return;}
+            Diagnostics=new BeamDiagnosticWindow(remarks=>observedModel.BuildDiagnosticReport(remarks,"Source: Beam calculator\n"+string.Join("\n",TextInputs(this).Select(box=>(box.Name.Length>0 ? box.Name : box.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path?.Path??"Field")+" = "+box.Text+"; enabled="+box.IsEnabled+"; visible="+box.IsVisible))));
+            Diagnostics.Closed+=(s,args)=>Diagnostics=null;if(IsVisible)Diagnostics.Owner=this;Diagnostics.Show();
+        }
         private void DrawingWorkspace_Click(object sender,RoutedEventArgs e)
         {
             if(observedModel==null || !observedModel.UseTowers)return;
@@ -143,6 +151,7 @@ namespace EngineeringDashboard
                 : observedModel.UseTowers ? $"Plan view · {observedModel.BeamLengthMm:0.###} mm beam · {observedModel.TowerResult.LegCount} legs\nP labels: H20 stock pieces · dotted: free member breaks\nSolid: frames · dashed: cross sides · gaps measured between leg planes"
                 : $"Beam {observedModel.Width:0.##} × {observedModel.Depth:0.##} mm · {observedModel.NumberOfProps} props per primary line\nPrimary lines {observedModel.PrimaryLineSpacingMm:0.##} mm apart";
         }
+        private void CancelBeamAnalysis_Click(object sender,RoutedEventArgs e)=>observedModel?.CancelOptimization();
         private async void OptimizeTowers_Click(object sender, RoutedEventArgs e)
         {
             RefreshInputValidity();
