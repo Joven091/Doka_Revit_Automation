@@ -151,6 +151,7 @@ namespace EngineeringDashboard
                 : observedModel.UseTowers ? $"Plan view · {observedModel.BeamLengthMm:0.###} mm beam · {observedModel.TowerResult.LegCount} legs\nP labels: H20 stock pieces · dotted: free member breaks\nSolid: frames · dashed: cross sides · gaps measured between leg planes"
                 : $"Beam {observedModel.Width:0.##} × {observedModel.Depth:0.##} mm · {observedModel.NumberOfProps} props per primary line\nPrimary lines {observedModel.PrimaryLineSpacingMm:0.##} mm apart";
         }
+        private void CancelBeamAnalysis_Click(object sender,RoutedEventArgs e)=>observedModel?.CancelOptimization();
         private async void OptimizeTowers_Click(object sender, RoutedEventArgs e)
         {
             RefreshInputValidity();

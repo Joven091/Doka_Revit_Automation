@@ -205,6 +205,7 @@
                 <CheckBox x:Name="CustomH20LengthsCheckBox" Content="Allow custom H20 lengths (25 mm)" IsChecked="{Binding AllowCustomH20Lengths}" ToolTip="Optimize primary, lower secondary and slab H20s using catalogue or custom lengths in 25 mm increments."/>
                 <CheckBox x:Name="Exclude600StandaloneCheckBox" Content="Exclude standalone 600 mm towers" IsChecked="{Binding Exclude600Standalone}" ToolTip="Applies in either orientation. Joined 600 mm bays remain allowed."/>
                 <Button x:Name="OptimizeTowersButton" Content="Optimize towers" IsEnabled="{Binding CanOptimizeTowers}" Click="OptimizeTowers_Click" Margin="0,8"/>
+                <Button x:Name="CancelBeamAnalysisButton" Content="Cancel analysis" IsEnabled="{Binding CanCancelOptimization}" Click="CancelBeamAnalysis_Click" ToolTip="Stop the current tower, custom H20 or beam/slab network search." Margin="0,0,0,8"/>
                 <Button x:Name="DiagnoseBeamButton" Content="Diagnose" Click="DiagnoseBeam_Click" ToolTip="Copy inputs, live search timing and progress, and failure details for review."/>
               </StackPanel>
               <Grid>

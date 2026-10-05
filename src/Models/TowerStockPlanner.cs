@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 
 namespace EngineeringDashboard
 {
@@ -74,14 +75,19 @@ namespace EngineeringDashboard
             catch (ArgumentException) { if (stock != null) return stock; throw; }
         }
         private static T RunPass<T>(TowerInput input,bool custom,Func<T> search)=>input.Trace==null ? search() : input.Trace.RunPass(custom,search);
-        internal static int[] CoverageCounts(int total, double[] stocks)
+        internal static int[] CoverageCounts(int total, double[] stocks,CancellationToken cancellationToken=default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var counts = Enumerable.Repeat(int.MaxValue,total+1).ToArray(); counts[0]=0;
             int step=0;
             foreach(double stock in stocks) {int b=(int)stock;while(b!=0){int r=step%b;step=b;b=r;}}
             if(step==0)return counts;
-            for(int end=step;end<=total;end+=step) foreach(double stock in stocks)
-                if(stock<=end && counts[end-(int)stock]!=int.MaxValue) counts[end]=Math.Min(counts[end],counts[end-(int)stock]+1);
+            for(int end=step;end<=total;end+=step)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                foreach(double stock in stocks)
+                    if(stock<=end && counts[end-(int)stock]!=int.MaxValue) counts[end]=Math.Min(counts[end],counts[end-(int)stock]+1);
+            }
             return counts;
         }
         public static double[] ParseLengths(string text)
@@ -97,11 +103,11 @@ namespace EngineeringDashboard
             }
             return result.Distinct().OrderBy(x => x).ToArray();
         }
-        public static int MinimumPieces(double length, double[] stocks)
+        public static int MinimumPieces(double length, double[] stocks,CancellationToken cancellationToken=default)
         {
             if (!TowerBeamAnalysis.Finite(length) || length <= 0 || length > 50000 || Math.Abs(length - Math.Round(length)) > 1e-7) return int.MaxValue;
             if(stocks.Contains(length))return 1;
-            return CoverageCounts((int)Math.Round(length),stocks)[(int)Math.Round(length)];
+            return CoverageCounts((int)Math.Round(length),stocks,cancellationToken)[(int)Math.Round(length)];
         }
         public static TowerStockPlan Find(TowerInput input, double[] positions, double load)
         {
@@ -112,11 +118,13 @@ namespace EngineeringDashboard
             var pending = new SortedSet<int> { 0 };
             while (pending.Count > 0)
             {
+                input.Trace?.CheckCancellation();
                 int start = pending.Min; pending.Remove(start); var previous = states[start];
                 int first = previous.Pieces.Length == 0 ? 0 : previous.Pieces.Last().LastSupport + 1;
                 if (first >= n) continue;
                 foreach (double stock in stocks)
                 {
+                    input.Trace?.CheckCancellation();
                     double end = start + stock;
                     if (end > length + 1e-7 || positions[first] - start < setback - 1e-7) continue;
                     int last = first; while (last + 1 < n && positions[last + 1] < end - 1e-7) last++;

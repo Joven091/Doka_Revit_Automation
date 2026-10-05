@@ -178,7 +178,7 @@ namespace EngineeringDashboard
             input.Trace?.Work("Beam-only primary coverage DP");
             // Reachable stock totals; allow only symmetric concrete end overhang, never internal stock gaps.
             int total = (int)Math.Floor(input.LengthMm);
-            var counts = TowerStockPlanner.CoverageCounts(total,TowerStockPlanner.CandidateLengths(input,25,total));
+            var counts = TowerStockPlanner.CoverageCounts(total,TowerStockPlanner.CandidateLengths(input,25,total),input.Trace?.CancellationToken??default);
             var covers = Enumerable.Range(1, total).Where(x => x >= input.LengthMm - 2 * input.MaximumConcreteEndOverhangMm && counts[x] != int.MaxValue)
                 .OrderBy(x => counts[x]).ThenByDescending(x => x).ToArray();
             input.Trace?.Increment(BeamSearchCounter.CoveragePlans,covers.Length);
@@ -214,7 +214,7 @@ namespace EngineeringDashboard
             Validate(input); var random = new Random(1524); int tested = 0, attempts = 0;
             input.Trace?.Work("Beam-only coverage/member candidates");
             var lengths = TowerStockPlanner.CandidateLengths(input,25,input.LengthMm);
-            int minimumPieces = TowerStockPlanner.MinimumPieces(input.LengthMm, lengths);
+            int minimumPieces = TowerStockPlanner.MinimumPieces(input.LengthMm, lengths,input.Trace?.CancellationToken??default);
             if (minimumPieces == int.MaxValue) throw new ArgumentException("The available uncut H20 stock lengths cannot cover this beam length exactly without overlaps or projection beyond its ends. Change the length or available stock; no partial coverage is accepted.");
             if (minimumPieces > 20) throw new ArgumentException("The stock cover requires more than the search's 80-leg limit (at least four legs per independent stock run).");
             double length = input.LengthMm, w = input.TotalLineLoad / 2 + Math.Abs(input.TransverseLoadMoment) / 2.0;
@@ -233,6 +233,7 @@ namespace EngineeringDashboard
             {
                 foreach (double first in lengths)
                 {
+                    input.Trace?.CheckCancellation();
                     double second = length - first;
                     if (second < 0 || second > 0 && !lengths.Contains(second)) continue;
                     var runs = second == 0 ? new[] { first } : new[] { first, second };
@@ -263,6 +264,7 @@ namespace EngineeringDashboard
                         int trials = Math.Min(4096, Math.Max(256, sequences * 4));
                         for (int trial = 0; trial < trials && attempts < 200000; trial++)
                         {
+                            input.Trace?.CheckCancellation();
                             attempts++;
                             var sizes = Enumerable.Repeat(2, groups).ToArray();
                             for (int j = 0; j < count - groups * 2; j++) sizes[trial < sequences ? j % groups : random.Next(groups)]++;

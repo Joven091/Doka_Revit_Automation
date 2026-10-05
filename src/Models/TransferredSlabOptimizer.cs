@@ -141,13 +141,17 @@ namespace EngineeringDashboard
             if(input.TransferredSlab?.StockCovers!=null)return input.TransferredSlab.StockCovers;
             int max=(int)Math.Floor(input.LengthMm), min=(int)Math.Ceiling(input.LengthMm-2*input.MaximumConcreteEndOverhangMm);
             var states = new Dictionary<int,List<double[]>> { { 0,new List<double[]> { new double[0] } } };
-            for (int total=1;total<=max;total++) foreach (double stock in input.StockLengthsMm.OrderByDescending(x=>x))
+            for (int total=1;total<=max;total++)
+            {
+                input.Trace?.CheckCancellation();
+                foreach (double stock in input.StockLengthsMm.OrderByDescending(x=>x))
                 if (stock<=total && states.TryGetValue(total-(int)stock,out var previous))
                 {
                     if (!states.TryGetValue(total,out var list)) states[total]=list=new List<double[]>();
                     list.AddRange(previous.Where(x=>x.Length<10).Select(x=>x.Concat(new[] {stock}).ToArray()));
                     states[total]=list.OrderBy(x=>x.Length).ThenByDescending(x=>x[0]).Take(3).ToList();
                 }
+            }
             var catalogue = states.Where(x=>x.Key>=min && x.Key<=max).OrderBy(x=>x.Value.Min(y=>y.Length)).ThenBy(x=>x.Key).SelectMany(x=>x.Value).Take(18).ToArray();
             if(!input.AllowCustomH20Lengths) {input.Trace?.Increment(BeamSearchCounter.CoveragePlans,catalogue.Length);return catalogue;}
             // Bounded balanced runs, including small joint shifts to avoid transverse rows at member breaks.
@@ -189,6 +193,7 @@ namespace EngineeringDashboard
                 var next=new List<Geometry>();
                 foreach(var state in states) foreach(var bays in patterns)
                 {
+                    input.Trace?.CheckCancellation();
                     double start=state.Stock.Sum(x=>x.StockLengthMm), inset=(length-bays.Sum())/2; int first=state.Positions.Length;
                     var p=new List<double> {start+inset}; foreach(double bay in bays) p.Add(p.Last()+bay);
                     bool keep=p.Count%2!=0 || !rotated && input.Exclude600Standalone && (bays[0]==600 || bays.Last()==600);
@@ -283,6 +288,7 @@ namespace EngineeringDashboard
                 var members=new List<TransferMember>(); var lower=new List<TransferMember>();
                 for(int row=0;row<rows.Length;row++)
                 {
+                    input.Trace?.CheckCancellation();
                     var a=cross.Cases[c].Scale(trib[row]/1000);
                     var points=new List<BeamPointLoad>(); bool hasLeft=cross.Names[c].Contains("left") || cross.Names[c].Contains("both"), hasRight=cross.Names[c].Contains("right") || cross.Names[c].Contains("both");
                     if(hasLeft) points.Add(new BeamPointLoad {PositionMm=-input.TransferredSlab.BeamWidthMm/2-cross.Left.Foot-cross.Start,Kn=cross.Left.Analysis.Reactions[0]*ls[row]});
@@ -332,6 +338,7 @@ namespace EngineeringDashboard
             // Two-support lower and upper bearers are statically determinate: support movement adds an affine displacement without altering reactions.
             if(!input.TransferredSlab.IsNetwork) for(int c=0;c<cross.Cases.Length;c++) for(int row=0;row<rows.Length;row++) foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null))
             {
+                input.Trace?.CheckCancellation();
                 bool isLeft=u==cross.Left; if(!(cross.Names[c].Contains(isLeft ? "left" : "right") || cross.Names[c].Contains("both"))) continue;
                 int run=Array.FindIndex(g.Stock,s=>rows[row]>=s.StartMm && rows[row]<s.EndMm);
                 double dl=primaryCases[c][run].Analysis.Response(rows[row]-g.Stock[run].StartMm)[2],dr=primaryCases[c][run+g.Stock.Length].Analysis.Response(rows[row]-g.Stock[run].StartMm)[2];

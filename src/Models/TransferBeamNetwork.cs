@@ -151,7 +151,7 @@ namespace EngineeringDashboard
                     if(best!=null && !Better(legs+input.Bays.Length*2*rows,timber,best.LegCount+best.UpperFootCount,best.TimberMm))continue;
                     var centres=new double[beams.Length];for(int i=1;i<centres.Length;i++)centres[i]=centres[i-1]+input.Beams[i-1].WidthMm/2+input.Bays[i-1].WidthMm+input.Beams[i].WidthMm/2;
                     best=new TransferNetworkResult {Input=input,Beams=beams,Bays=state.Bays,BeamCentresMm=centres,SlabLoadKn=beams.Sum(b=>b.Transfer.SlabLoadKn)};
-                    CalculateMovement(best);
+                    CalculateMovement(best,common.Trace);
                 }
             }
             if(best==null)throw diag.Exception("No valid beam/slab network found within the bounded search.");
@@ -221,7 +221,7 @@ namespace EngineeringDashboard
             return t.LowerCases[loadCase][row].Analysis.Response(x-t.LowerStockStartMm)[2]+dl+(dr-dl)*(x+beam.WidthMm/2)/beam.WidthMm;
         }
         private static int Case(TowerLayout b,bool left,bool right)=>Array.IndexOf(b.Transfer.CaseNames,left && right ? "Beam + both slabs" : left ? "Beam + left slab" : right ? "Beam + right slab" : "Beam");
-        private static void CalculateMovement(TransferNetworkResult result)
+        private static void CalculateMovement(TransferNetworkResult result,BeamSearchTrace trace)
         {
             for(int bay=0;bay<result.Bays.Length;bay++)for(int mask=0;mask<4;mask++)
             {
@@ -230,6 +230,7 @@ namespace EngineeringDashboard
                 int lc=Case(left,(mask&1)!=0,true),rc=Case(right,true,(mask&2)!=0);
                 for(int row=0;row<left.Transfer.RowsMm.Length;row++)
                 {
+                    trace?.CheckCancellation();
                     double dl=FootDisplacement(left,result.Input.Beams[bay].WidthMm,lc,row,false),dr=FootDisplacement(right,result.Input.Beams[bay+1].WidthMm,rc,row,true);
                     var analysis=upper.Analysis.Scale(left.Transfer.UpperScale(false,row)/left.Transfer.RightUpperScales.Max());
                     double movement=analysis.DeflectionWithAffineOffsetMm(dl,dr,upper.SupportsMm[0],upper.SupportsMm[1]);

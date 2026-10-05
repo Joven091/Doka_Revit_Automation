@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace EngineeringDashboard
@@ -28,7 +29,14 @@ namespace EngineeringDashboard
         public string StockLengthsText { get => stockLengthsText; set { stockLengthsText = value; Changed(); } }
         public double StockEndSetbackMm { get => stockEndSetbackMm; set { stockEndSetbackMm = value; Changed(); } }
         public TowerLayout TowerResult { get; private set; }
+        private CancellationTokenSource towerCancellation;
         public bool IsOptimizing { get; private set; }
+        public bool CanCancelOptimization => IsOptimizing && towerCancellation!=null && !towerCancellation.IsCancellationRequested;
+        public void CancelOptimization()
+        {
+            if(!CanCancelOptimization)return;
+            towerCancellation.Cancel();WarningMessage="Cancelling tower analysis…";NotifyTower();
+        }
         public string TowerFailureDetails {get;private set;}="";
         public bool HasTowerFailure=>!string.IsNullOrEmpty(TowerFailureDetails);
         public bool CanOptimizeTowers => UseTowers && !IsOptimizing && !textErrors;
@@ -75,7 +83,8 @@ namespace EngineeringDashboard
         public async Task OptimizeTowersAsync()
         {
             if (!UseTowers || IsOptimizing) return;
-            var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs());
+            var cancellation=towerCancellation=new CancellationTokenSource();
+            var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs(),cancellation.Token);
             int revision = towerRevision; IsOptimizing = true; TowerResult = null; NetworkResult=null; TowerFailureDetails=""; IsCalculationValid = false;
             WarningMessage = "Searching tower layouts…"; NotifyTower();
             try
@@ -87,21 +96,27 @@ namespace EngineeringDashboard
                     +(input.Network==null ? "" : "\n"+string.Join("\n",input.Network.Beams.Select((b,i)=>System.FormattableString.Invariant($"B{i+1}: area load={input.Network.AreaLoad(b.DepthMm):R} kN/m²; beam line load={input.Network.AreaLoad(b.DepthMm)*b.WidthMm/1000:R} kN/m")).Concat(input.Network.Bays.Select((s,i)=>System.FormattableString.Invariant($"S{i+1}: area load={input.Network.AreaLoad(s.ThicknessMm):R} kN/m²"))))));
                 TransferNetworkResult networkResult=null;
                 var result = await Task.Run(() => { if(input.Network==null)return TowerOptimizer.Optimize(input);networkResult=TransferNetworkOptimizer.Optimize(input,input.Network);return networkResult.Beams[0]; });
+                cancellation.Token.ThrowIfCancellationRequested();
                 if (revision != towerRevision || !UseTowers) {trace.Complete("Discarded: inputs changed during search",summary:networkResult?.Summary??result.Summary);return;}
                 NetworkResult=networkResult;SelectedNetworkBeam=0;TowerResult = result; LeftLineLoad = result.LeftLineLoad; RightLineLoad = result.RightLineLoad;
                 TotalLineLoad = result.LeftLineLoad + result.RightLineLoad; LimitingFactor = result.Governing;
                 IsCalculationValid = true; WarningMessage = "";
                 trace.Complete("Succeeded",summary:networkResult?.Summary??result.Summary);
             }
+            catch (OperationCanceledException) when(cancellation.IsCancellationRequested)
+            {
+                trace.Complete("Cancelled", "User cancelled the analysis. Search stopped; no partial result was applied.");
+                WarningMessage="Tower analysis cancelled. Select Diagnose to copy the search details.";
+            }
             catch (TowerOptimizationException ex) {trace.Complete("No solution",ex.ToString()+"\n"+ex.Details);if(revision==towerRevision) {WarningMessage=ex.Message;TowerFailureDetails=ex.Details;}}
             catch (ArgumentException ex) {trace.Complete("Rejected input/search",ex.ToString());if (revision == towerRevision) WarningMessage = ex.Message; }
             catch (Exception ex) {trace.Complete("Unexpected error",ex.ToString());if(revision==towerRevision)WarningMessage="Unexpected search error. Select Diagnose to copy the details.";}
-            finally { IsOptimizing = false; NotifyTower(); }
+            finally { IsOptimizing = false;towerCancellation=null;cancellation.Dispose();NotifyTower(); }
         }
         private void NotifyTower()
         {
             NotifyTransfer();
-            foreach (string name in new[] { nameof(TowerFailureDetails),nameof(HasTowerFailure),nameof(IsOptimizing), nameof(CanOptimizeTowers), nameof(CanImport), nameof(ShowPropResults), nameof(ShowTowerResults), nameof(TowerSummary), nameof(TowerSchedule), nameof(TowerStockSchedule), nameof(TowerSearchNote), nameof(TowerResult), nameof(WarningMessage), nameof(PrimaryLineSpacingMm), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(LimitingFactor), nameof(IsCalculationValid) }) OnPropertyChanged(name);
+            foreach (string name in new[] { nameof(TowerFailureDetails),nameof(HasTowerFailure),nameof(IsOptimizing), nameof(CanCancelOptimization), nameof(CanOptimizeTowers), nameof(CanImport), nameof(ShowPropResults), nameof(ShowTowerResults), nameof(TowerSummary), nameof(TowerSchedule), nameof(TowerStockSchedule), nameof(TowerSearchNote), nameof(TowerResult), nameof(WarningMessage), nameof(PrimaryLineSpacingMm), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(LimitingFactor), nameof(IsCalculationValid) }) OnPropertyChanged(name);
         }
     }
 }

@@ -22,17 +22,19 @@ namespace EngineeringDashboard
         private string rejectedPass="";
         internal string Inputs {get;}
         internal DateTime StartedUtc {get;}=DateTime.UtcNow;
-        internal BeamSearchTrace(string inputs) {Inputs=inputs;}
-        internal void Increment(BeamSearchCounter counter,long amount=1)=>Interlocked.Add(ref counters[(int)counter],amount);
-        internal void Work(string name)=>Volatile.Write(ref work,name);
+        internal CancellationToken CancellationToken {get;}
+        internal BeamSearchTrace(string inputs,CancellationToken cancellationToken=default) {Inputs=inputs;CancellationToken=cancellationToken;}
+        internal void CheckCancellation()=>CancellationToken.ThrowIfCancellationRequested();
+        internal void Increment(BeamSearchCounter counter,long amount=1) {CheckCancellation();Interlocked.Add(ref counters[(int)counter],amount);}
+        internal void Work(string name) {CheckCancellation();Volatile.Write(ref work,name);}
         internal void Context(string name)=>Volatile.Write(ref context,name);
         internal void DerivedInputs(string text)=>Volatile.Write(ref derivedInputs,text);
         internal T RunPass<T>(bool custom,Func<T> search)
         {
-            Volatile.Write(ref pass,custom ? "Custom lengths enabled" : "Catalogue lengths");Context("");
+            CheckCancellation();Volatile.Write(ref pass,custom ? "Custom lengths enabled" : "Catalogue lengths");Context("");
             long start=Stopwatch.GetTimestamp();
-            try {return search();}
-            catch(Exception ex)
+            try {var found=search();CheckCancellation();return found;}
+            catch(Exception ex) when (!(ex is OperationCanceledException))
             {
                 string details=(custom ? "Custom" : "Catalogue")+" pass: "+ex.ToString()+(ex is TowerOptimizationException failure ? "\n"+failure.Details : "");
                 Volatile.Write(ref rejectedPass,details.Length<=16000 ? details : details.Substring(0,16000)+"\n[Pass detail truncated]");throw;
@@ -49,6 +51,7 @@ namespace EngineeringDashboard
             long end=Interlocked.Read(ref ended);var text=new StringBuilder();
             text.AppendLine("Search started UTC: "+StartedUtc.ToString("o",CultureInfo.InvariantCulture));
             text.AppendLine("Search outcome: "+Volatile.Read(ref outcome));
+            text.AppendLine("Cancellation requested: "+CancellationToken.IsCancellationRequested);
             text.AppendLine("Elapsed seconds: "+((end==0 ? Stopwatch.GetTimestamp()-started : end-started)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture));
             text.AppendLine("Current/last pass: "+Volatile.Read(ref pass));text.AppendLine("Current/last work: "+Volatile.Read(ref work));
             text.AppendLine("Current/last context: "+Volatile.Read(ref context));

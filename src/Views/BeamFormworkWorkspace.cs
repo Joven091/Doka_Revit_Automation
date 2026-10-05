@@ -71,6 +71,7 @@ namespace EngineeringDashboard
             var dimensions=new CheckBox {Content="All dimensions",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,8,0)};
             dimensions.Checked+=(s,e)=> {Drawing.AllDimensions=true;Drawing.InvalidateVisual();};dimensions.Unchecked+=(s,e)=> {Drawing.AllDimensions=false;Drawing.InvalidateVisual();};toolbar.Children.Add(dimensions);
             toolbar.Children.Add(Button("Calculate","Calculate",async()=>await CalculateAsync()));
+            toolbar.Children.Add(Button("Cancel","Cancel",()=> {Model.CancelOptimization();Refresh();}));
             toolbar.Children.Add(Button("Diagnose","Diagnose",ShowDiagnostics));
             toolbar.Children.Add(Button("Save","Save",()=> {if(CommitFields())save?.Invoke();}));
             toolbar.Children.Add(Button("Load","Load",()=> {if(CommitFields()){var old=Capture();load?.Invoke();if(closed)return;if(!Same(old,Capture())){undo.Push(old);redo.Clear();}BuildProperties();Refresh();Drawing.Fit();}}));
@@ -238,6 +239,7 @@ namespace EngineeringDashboard
             bool pending=editors.Any(e=>e.Dirty && e.Box.IsEnabled) || stringEditors.Any(e=>e.Dirty),valid=editors.Where(e=>e.Box.IsEnabled).All(ValidateEditor) && stringEditors.All(ValidateStock);
             Model.SetAdditionalTextInputErrors(this,pending);
             Buttons["Calculate"].IsEnabled=valid && !Model.IsOptimizing;
+            Buttons["Cancel"].IsEnabled=Model.CanCancelOptimization;
             Buttons["Formwork"].IsEnabled=Model.IsCalculationValid && !pending;
             Buttons["Section"].IsEnabled=Model.IsCalculationValid && Model.NetworkResult!=null && !pending;
             Buttons["AddAbove"].IsEnabled=Buttons["AddBelow"].IsEnabled=!Model.IsOptimizing && (!Model.IsNetworkMode || Model.CanAddNetworkBay);
@@ -249,7 +251,7 @@ namespace EngineeringDashboard
             if(!Model.IsCalculationValid || pending) {ClearDiagrams();Section.SetResult(null);if(sectionMode)Geometry();}
             else Section.SetResult(Model.NetworkResult);
             Drawing.RefitIfNeeded();
-            status.Text=pending ? (valid ? "Finish editing, then calculate." : "Correct the red input before continuing.") : Model.IsOptimizing ? "Searching tower layouts…" : Model.IsCalculationValid ? (Model.NetworkResult?.Summary??Model.TowerResult.CompactSummary+" · "+Model.TowerResult.LegLoadSummary).Replace("\n"," · ") : Model.HasTowerFailure ? "No solution found · open calculation failure details." : "Needs recalculation · "+Model.WarningMessage;
+            status.Text=pending ? (valid ? "Finish editing, then calculate." : "Correct the red input before continuing.") : Model.IsOptimizing ? Model.WarningMessage : Model.IsCalculationValid ? (Model.NetworkResult?.Summary??Model.TowerResult.CompactSummary+" · "+Model.TowerResult.LegLoadSummary).Replace("\n"," · ") : Model.HasTowerFailure ? "No solution found · open calculation failure details." : "Needs recalculation · "+Model.WarningMessage;
             failureExpander.Visibility=Model.HasTowerFailure ? Visibility.Visible : Visibility.Collapsed;
             if(Model.HasTowerFailure && (failure.Text!=Model.TowerFailureDetails || failures.Children.Count==0))
             {
