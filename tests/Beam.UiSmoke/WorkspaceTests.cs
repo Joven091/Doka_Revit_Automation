@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -33,6 +34,63 @@ internal static class WorkspaceTests
     static Point Centre(Rect r)=>new Point(r.Left+r.Width/2,r.Top+r.Height/2);
     static IEnumerable<T> Controls<T>(DependencyObject root) where T:DependencyObject
     {foreach(object item in LogicalTreeHelper.GetChildren(root))if(item is DependencyObject child){if(child is T match)yield return match;foreach(var value in Controls<T>(child))yield return value;}}
+    static void CadSelection(BeamCalculatorViewModel model)
+    {
+        var drawing=workspace.Drawing;var original=model.NetworkConfigurationXml;
+        Click("Geometry");drawing.ClearSelection();Render();
+        var beam=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Beam && h.Item3==1).Item1;
+        drawing.HighlightAt(Centre(beam));Render();
+        Check(drawing.HoveredObject.Item1==FormworkObject.Beam && drawing.HoveredObject.Item2==1 && drawing.SelectedObjects.Length==0,"hover preselection never creates a deletion selection");
+        Check(workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None) && model.NetworkConfigurationXml==original,"delete with no selection retains all geometry");
+        drawing.SelectWindow(new Point(beam.Left-2,beam.Top-2),new Point(beam.Right+2,beam.Bottom+2));Render();
+        Check(drawing.SelectedObjects.Length==1 && drawing.SelectedObjects[0].Equals(Tuple.Create(FormworkObject.Beam,1)),"left-to-right window selects fully enclosed objects");
+        var centre=Centre(beam);var left=new Point(centre.X-15,centre.Y-2);var right=new Point(centre.X+15,centre.Y+2);
+        drawing.SelectWindow(left,right);Render();Check(drawing.SelectedObjects.Length==0,"window excludes partially enclosed objects");
+        drawing.SelectWindow(right,left);Render();Check(drawing.SelectedObjects.Length==1 && drawing.SelectedIndex==1,"right-to-left crossing selects touched objects");
+        var slab=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Slab && h.Item3==0).Item1;
+        Check(drawing.SelectAt(Centre(slab),true) && drawing.SelectedObjects.Length==2,"shift-click adds a slab to the selection");Render();
+        Check(drawing.SelectAt(Centre(beam),true) && drawing.SelectedObjects.Length==1 && drawing.SelectedKind==FormworkObject.Slab,"shift-click removes an already selected object");Render();
+        drawing.SelectWindow(new Point(beam.Left-2,beam.Top-2),new Point(beam.Right+2,beam.Bottom+2),true);Render();
+        Check(drawing.SelectedObjects.Length==2,"additive window selection retains previous objects");
+        Check(workspace.HandleGeometryKey(Key.Escape,ModifierKeys.None) && drawing.SelectedObjects.Length==0,"escape clears selection");Render();
+        model.AddCrossingBeam();model.CrossingBeams.Last().BayNumber=1;
+        model.AddCrossingBeam();model.CrossingBeams.Last().BayNumber=2;Pump();Render();
+        var withCrossings=model.NetworkConfigurationXml;
+        drawing.Select(FormworkObject.Beam,1);Render();
+        slab=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Slab && h.Item3==0).Item1;
+        drawing.SelectAt(new Point(slab.Left+10,slab.Top+slab.Height/2),true);Render();
+        Check(workspace.RemovalPreview.Contains("B2") && workspace.RemovalPreview.Contains("S1") && workspace.RemovalPreview.Contains("X1") && !workspace.RemovalPreview.Contains("X2"),"deletion preview names coupled geometry and dependent crossing beams");
+        // Exercise the actual WPF preview-key route with drawing focus.
+        drawing.Focus();var delete=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(workspace),Environment.TickCount,Key.Delete){RoutedEvent=Keyboard.PreviewKeyDownEvent};drawing.RaiseEvent(delete);Pump();Render();
+        Check(delete.Handled && model.NetworkBeams.Count==2 && model.NetworkBays.Count==1,"delete key removes a selected beam/slab pair only once");
+        Check(model.CrossingBeams.Count==1 && model.CrossingBeams[0].BayNumber==1 && drawing.SelectedObjects.Length==0,"dependent crossing is removed and the retained crossing is correctly reindexed");
+        Click("Undo");Render();Check(model.NetworkConfigurationXml==withCrossings && drawing.SelectedObjects.Length==2,"one undo restores the entire batch and its selection");
+        Click("Redo");Render();Check(model.NetworkBeams.Count==2 && model.CrossingBeams.Count==1,"one redo reapplies the entire batch");
+        var two=model.NetworkConfigurationXml;drawing.Select(FormworkObject.Beam,0);Render();
+        Check(!workspace.Buttons["Delete"].IsEnabled && workspace.RemovalPreview.Contains("at least two"),"minimum connected-network geometry blocks deletion visibly");
+        workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None);Check(model.NetworkConfigurationXml==two,"minimum-network deletion never partially removes geometry");
+        Click("Undo");Render();Check(model.NetworkConfigurationXml==withCrossings,"rejected deletion creates no extra undo entry");
+        drawing.Select(FormworkObject.Beam,1);Render();var depth=workspace.Fields["DepthMm"];
+        depth.Focus();var textDelete=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(workspace),Environment.TickCount,Key.Delete){RoutedEvent=Keyboard.PreviewKeyDownEvent};depth.RaiseEvent(textDelete);Pump();
+        Check(model.NetworkConfigurationXml==withCrossings,"delete while editing numeric text does not remove drawing geometry");
+        Check(!workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None,true),"text editing bypasses drawing shortcuts");
+        depth.Text="bad";Pump();drawing.Focus();workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None);
+        Check(model.NetworkConfigurationXml==withCrossings && drawing.SelectedObjects.Length==1,"invalid pending text prevents a deletion batch");
+        depth.Text=model.NetworkBeams[1].DepthMm.ToString();Check(workspace.CommitFields(),"corrected text releases deletion validation");Pump();Render();
+        drawing.Formwork=true;Check(!workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None) && model.NetworkConfigurationXml==withCrossings,"member inspection cannot delete geometry");drawing.Formwork=false;
+        model.AddNetworkBay();model.AddNetworkBay();Pump();Render();
+        var five=model.NetworkConfigurationXml;
+        drawing.SetSelection(new[] {Tuple.Create(FormworkObject.Beam,1),Tuple.Create(FormworkObject.Beam,3)},FormworkObject.Beam,3);Render();
+        Check(workspace.RemovalPreview.Contains("S1") && workspace.RemovalPreview.Contains("S3") && !workspace.RemovalPreview.Contains("S2"),"batch deletion previews each removed original slab bay");
+        workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None);Pump();Render();
+        Check(model.NetworkBeams.Count==3 && model.NetworkBays.Count==2 && model.CrossingBeams.Count==1 && model.CrossingBeams[0].BayNumber==1,"distinct selected beams are removed without shifted-index errors");
+        Click("Undo");Render();Check(model.NetworkConfigurationXml==five && drawing.SelectedObjects.Length==2,"one undo restores distinct beams and crossing attachments");
+        drawing.SetSelection(Enumerable.Range(0,5).Select(i=>Tuple.Create(FormworkObject.Beam,i)).Concat(new[] {Tuple.Create(FormworkObject.Crossing,0)}),FormworkObject.Beam,4);Render();
+        workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None);Pump();Render();
+        Check(model.NetworkConfigurationXml==five,"oversized selection preserves selected crossing beams as well as the network");
+        model.NetworkConfigurationXml=original;drawing.Select(FormworkObject.Beam,0);Pump();Render();
+        Check(model.NetworkConfigurationXml==original,"CAD interaction checks restore the original drawing inputs");
+    }
     internal static int Run(BeamCalculatorWindow parent,BeamCalculatorViewModel model,CalculationRecord customSetup,string output)
     {
         try
@@ -80,6 +138,7 @@ internal static class WorkspaceTests
             Click("Delete");Check(model.NetworkBeams.Count==3 && model.CrossingBeams[0].BayNumber==1,"removing first beam/slab preserves remaining crossing attachment");
             drawing.Select(FormworkObject.Crossing,0);Click("Delete");Check(model.CrossingBeams.Count==0,"selected crossing beam can be removed");
             Click("Undo");Check(model.CrossingBeams.Count==1,"undo restores crossing geometry");Click("Redo");Check(model.CrossingBeams.Count==0,"redo removes crossing geometry");
+            CadSelection(model);
             var customH20=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow custom H20 lengths (25 mm)"));
             Check(customH20.IsChecked==false,"custom H20 checkbox defaults off");customH20.IsChecked=true;customH20.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
             Check(model.AllowCustomH20Lengths && !model.IsCalculationValid,"workspace custom toggle updates shared model and invalidates result");
@@ -143,5 +202,4 @@ internal static class WorkspaceTests
         finally {workspace?.Close();}
     }
 }
-
 

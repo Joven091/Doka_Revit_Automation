@@ -16,6 +16,11 @@ namespace EngineeringDashboard
         internal FormworkObject SelectedKind=FormworkObject.Beam;
         internal int SelectedIndex;
         internal bool Formwork, AllDimensions, AddCrossing;
+        private readonly HashSet<Tuple<FormworkObject,int>> selection=new HashSet<Tuple<FormworkObject,int>> {Tuple.Create(FormworkObject.Beam,0)};
+        internal Tuple<FormworkObject,int>[] SelectedObjects=>selection.OrderBy(x=>x.Item1).ThenBy(x=>x.Item2).ToArray();
+        internal Tuple<FormworkObject,int> HoveredObject {get;private set;}
+        private bool selecting,addWindow;
+        private Point windowEnd;
         internal double Zoom {get;private set;}=.06;
         internal Point Pan {get;private set;}=new Point(80,100);
         internal Rect SceneBounds {get;private set;}
@@ -79,7 +84,54 @@ namespace EngineeringDashboard
             if(SelectedKind==FormworkObject.Crossing || SelectedKind==FormworkObject.Beam && SelectedIndex>0)
                 MoveRequested?.Invoke(SelectedKind,SelectedIndex,Math.Round(deltaMm/25)*25);
         }
-        internal void Select(FormworkObject kind,int index) {SelectedKind=kind;SelectedIndex=index;memberBeam=-1;InvalidateVisual();SelectionChanged?.Invoke();}
+        internal void Select(FormworkObject kind,int index,bool notify=true)
+        {SetSelection(new[] {Tuple.Create(kind,index)},kind,index,notify);}
+        internal void SetSelection(IEnumerable<Tuple<FormworkObject,int>> objects,FormworkObject kind,int index,bool notify=true)
+        {
+            selection.Clear();foreach(var item in objects)selection.Add(item);
+            SelectedKind=kind;SelectedIndex=index;memberBeam=-1;HoveredObject=null;InvalidateVisual();if(notify)SelectionChanged?.Invoke();
+        }
+        internal void ClearSelection()
+        {SetSelection(new Tuple<FormworkObject,int>[0],SelectedKind,SelectedIndex);}
+        private void Toggle(FormworkObject kind,int index)
+        {
+            var item=Tuple.Create(kind,index);
+            if(!selection.Remove(item))selection.Add(item);
+            var active=selection.Contains(item) ? item : SelectedObjects.LastOrDefault();
+            if(active!=null){SelectedKind=active.Item1;SelectedIndex=active.Item2;}
+            memberBeam=-1;InvalidateVisual();SelectionChanged?.Invoke();
+        }
+        internal void SelectWindow(Point start,Point end,bool add=false)
+        {
+            if(Formwork || AddCrossing || CanInteract!=null && !CanInteract())return;
+            var window=new Rect(start,end);bool crossing=end.X<start.X;
+            var hits=ObjectTargets.Where(h=>crossing ? window.IntersectsWith(h.Item1) : window.Contains(h.Item1)).Select(h=>Tuple.Create(h.Item2,h.Item3)).Distinct().OrderBy(h=>h.Item1).ThenBy(h=>h.Item2).ToArray();
+            if(!add)selection.Clear();foreach(var hit in hits)selection.Add(hit);
+            var active=hits.LastOrDefault()??SelectedObjects.LastOrDefault();
+            if(active!=null){SelectedKind=active.Item1;SelectedIndex=active.Item2;}
+            memberBeam=-1;InvalidateVisual();SelectionChanged?.Invoke();
+        }
+        internal void HighlightAt(Point point)
+        {
+            var hit=Formwork || AddCrossing || Model.IsOptimizing ? null : ObjectTargets.FirstOrDefault(h=>h.Item1.Contains(point));
+            var next=hit==null ? null : Tuple.Create(hit.Item2,hit.Item3);
+            if(Equals(next,HoveredObject))return;HoveredObject=next;InvalidateVisual();
+        }
+        internal void CancelSelectionGesture()
+        {selecting=dragging=false;HoveredObject=null;if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
+        private bool IsSelected(FormworkObject kind,int index,Rect rect)
+        {
+            bool selected=selection.Contains(Tuple.Create(kind,index));
+            if(!selecting || (windowEnd-mouseStart).Length<=4)return selected;
+            var window=new Rect(mouseStart,windowEnd);bool hit=windowEnd.X<mouseStart.X ? window.IntersectsWith(rect) : window.Contains(rect);
+            return hit || addWindow && selected;
+        }
+        private Pen ObjectPen(FormworkObject kind,int index,Rect rect,Brush normal,double width=1)
+        {
+            if(IsSelected(kind,index,rect))return new Pen(Brushes.DodgerBlue,2.5);
+            if(Equals(HoveredObject,Tuple.Create(kind,index)))return new Pen(Brushes.DarkOrange,2){DashStyle=DashStyles.Dash};
+            return new Pen(normal,width);
+        }
         internal void SelectMember(int beam,int run,int line) {memberBeam=beam;memberRun=run;memberLine=line;InvalidateVisual();}
         private void Label(DrawingContext dc,string text,Point at,Brush colour=null,bool centre=false)
         {
@@ -106,27 +158,27 @@ namespace EngineeringDashboard
             {
                 double top=ys[i]+beams[i].WidthMm/2,bottom=ys[i+1]-beams[i+1].WidthMm/2;
                 var rect=new Rect(Screen(0,top),Screen(Model.BeamLengthMm,bottom));
-                dc.DrawRectangle(Brushes.AliceBlue,new Pen(SelectedKind==FormworkObject.Slab && SelectedIndex==i ? Brushes.DodgerBlue : Brushes.LightSteelBlue,1),rect);
+                dc.DrawRectangle(Brushes.AliceBlue,ObjectPen(FormworkObject.Slab,i,rect,Brushes.LightSteelBlue),rect);
                 ObjectTargets.Add(Tuple.Create(rect,FormworkObject.Slab,i));
                 Label(dc,$"S{i+1} · {Model.NetworkBays[i].WidthMm:0} · t {Model.NetworkBays[i].ThicknessMm:0}",new Point(rect.Left+18,rect.Top+rect.Height/2-8));
-                if(AllDimensions || SelectedKind==FormworkObject.Slab && SelectedIndex==i)
+                if(AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Slab && SelectedIndex==i)
                     Dimension(dc,new Point(rect.Right+24,rect.Top),new Point(rect.Right+24,rect.Bottom),Model.NetworkBays[i].WidthMm.ToString("0.###"),FormworkObject.Slab,i,"WidthMm");
             }
             if(Model.IsNetworkMode)for(int i=0;i<Model.CrossingBeams.Count;i++)
             {
                 var c=Model.CrossingBeams[i];int bay=c.BayNumber-1;if(bay<0 || bay>=beams.Length-1 || !TowerBeamAnalysis.Finite(c.PositionMm) || !TowerBeamAnalysis.Finite(c.WidthMm) || c.WidthMm<=0)continue;
                 var rect=new Rect(Screen(c.PositionMm-c.WidthMm/2,ys[bay]+beams[bay].WidthMm/2),Screen(c.PositionMm+c.WidthMm/2,ys[bay+1]-beams[bay+1].WidthMm/2));
-                dc.DrawRectangle(Brushes.LightGray,new Pen(SelectedKind==FormworkObject.Crossing && SelectedIndex==i ? Brushes.DodgerBlue : Brushes.SlateGray,2),rect);
+                dc.DrawRectangle(Brushes.LightGray,ObjectPen(FormworkObject.Crossing,i,rect,Brushes.SlateGray,2),rect);
                 ObjectTargets.Insert(0,Tuple.Create(rect,FormworkObject.Crossing,i));
                 Label(dc,$"X{i+1} · {c.WidthMm:0}×{c.DepthMm:0}",new Point(rect.Right+7,rect.Top+rect.Height/2-8));
-                if(AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==i)
+                if(AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Crossing && SelectedIndex==i)
                     Dimension(dc,Screen(0,ys[bay]+beams[bay].WidthMm/2+200),Screen(c.PositionMm,ys[bay]+beams[bay].WidthMm/2+200),$"x {c.PositionMm:0.###}",FormworkObject.Crossing,i,"PositionMm");
             }
             for(int i=0;i<beams.Length;i++)
             {
                 var b=beams[i];var rect=new Rect(Screen(0,ys[i]-b.WidthMm/2),Screen(Model.BeamLengthMm,ys[i]+b.WidthMm/2));
-                bool selected=SelectedKind==FormworkObject.Beam && SelectedIndex==i;
-                dc.DrawRectangle(Brushes.LightGray,new Pen(selected ? Brushes.DodgerBlue : Brushes.SlateGray,selected ? 2 : 1),rect);
+                bool selected=IsSelected(FormworkObject.Beam,i,rect);
+                dc.DrawRectangle(Brushes.LightGray,ObjectPen(FormworkObject.Beam,i,rect,Brushes.SlateGray),rect);
                 ObjectTargets.Insert(0,Tuple.Create(rect,FormworkObject.Beam,i));
                 Label(dc,$"B{i+1} · {b.WidthMm:0}×{b.DepthMm:0}",new Point(rect.Left+8,rect.Top+5));
                 if(Formwork && Layout(i)!=null)DrawSupports(dc,Layout(i),i,ys[i],selected || AllDimensions);
@@ -134,7 +186,12 @@ namespace EngineeringDashboard
             double bottomY=Pan.Y+SceneBounds.Bottom*Zoom+42;
             Dimension(dc,new Point(Screen(0,0).X,bottomY),new Point(Screen(Model.BeamLengthMm,0).X,bottomY),$"Beam length {Model.BeamLengthMm:0.###} mm",FormworkObject.Beam,0,"BeamLengthMm");
             if(dragging && Math.Abs(dragDelta)>2)Label(dc,$"Move {Math.Round(dragDelta/Zoom/25)*25:0} mm",mouseStart+new Vector(15,15),Brushes.DodgerBlue);
-            Label(dc,AddCrossing ? "Click a slab bay to place a crossing beam." : "Wheel: zoom · middle drag: pan · double-click: fit · dimensions: edit",new Point(16,ActualHeight-25),Brushes.SlateGray);
+            if(selecting && (windowEnd-mouseStart).Length>4)
+            {
+                var colour=windowEnd.X<mouseStart.X ? Colors.SeaGreen : Colors.DodgerBlue;
+                dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(25,colour.R,colour.G,colour.B)),new Pen(new SolidColorBrush(colour),1){DashStyle=windowEnd.X<mouseStart.X ? DashStyles.Dash : DashStyles.Solid},new Rect(mouseStart,windowEnd));
+            }
+            Label(dc,AddCrossing ? "Click a slab bay to place a crossing beam." : Formwork ? "Wheel: zoom · middle drag: pan · double-click: fit · click H20: diagrams" : "Click: select · Shift-click: toggle · drag blank space: window/crossing selection · Delete: remove · Esc: clear",new Point(16,ActualHeight-25),Brushes.SlateGray);
         }
         private void DrawSupports(DrawingContext dc,TowerLayout layout,int beam,double centre,bool dims)
         {
@@ -167,7 +224,7 @@ namespace EngineeringDashboard
             }
             if(dims)Label(dc,$"{layout.LegCount} legs · {(layout.Rotated ? "Cross" : "Frame")} {layout.WidthMm:0} across · peak {layout.MaxLegKn:0.##}/{layout.LegCapacityKn:0.##} kN",Screen(0,a)+new Vector(0,-58));
         }
-        internal bool SelectAt(Point point)
+        internal bool SelectAt(Point point,bool toggle=false)
         {
             if(CanInteract!=null && !CanInteract())return false;
             if(AddCrossing)
@@ -177,8 +234,12 @@ namespace EngineeringDashboard
             }
             if(Formwork)foreach(var hit in MemberTargets)if(hit.Item1.Contains(point)) {SelectMember(hit.Item2,hit.Item3,hit.Item4);MemberSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}
             foreach(var hit in dimensions)if(hit.Item1.Contains(point)){Select(hit.Item2,hit.Item3);DimensionSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}
-            foreach(var hit in ObjectTargets)if(hit.Item1.Contains(point)){Select(hit.Item2,hit.Item3);return true;}return false;
+            foreach(var hit in ObjectTargets)if(hit.Item1.Contains(point)){if(toggle)Toggle(hit.Item2,hit.Item3);else Select(hit.Item2,hit.Item3);return true;}return false;
         }
+        protected override void OnMouseLeave(MouseEventArgs e)
+        {base.OnMouseLeave(e);HoveredObject=null;InvalidateVisual();}
+        protected override void OnLostMouseCapture(MouseEventArgs e)
+        {base.OnLostMouseCapture(e);panning=dragging=selecting=false;InvalidateVisual();}
         protected override void OnMouseWheel(MouseWheelEventArgs e) {ZoomAt(e.Delta>0 ? 1.2 : 1/1.2,e.GetPosition(this));e.Handled=true;}
         protected override void OnMouseDown(MouseButtonEventArgs e)
         {
@@ -187,7 +248,16 @@ namespace EngineeringDashboard
             else if(e.ChangedButton==MouseButton.Left)
             {
                 if(e.ClickCount==2) {Fit();e.Handled=true;return;}
-                if(SelectAt(mouseStart)) {dragging=!Formwork && (SelectedKind==FormworkObject.Crossing || SelectedKind==FormworkObject.Beam && SelectedIndex>0);dragDelta=0;if(dragging)CaptureMouse();e.Handled=true;}
+                bool toggle=(Keyboard.Modifiers&ModifierKeys.Shift)!=0;
+                bool dimension=dimensions.Any(h=>h.Item1.Contains(mouseStart));
+                if(SelectAt(mouseStart,toggle))
+                {
+                    if(!dimension)Focus();
+                    dragging=!dimension && !toggle && !Formwork && selection.Count==1 && (SelectedKind==FormworkObject.Crossing || SelectedKind==FormworkObject.Beam && SelectedIndex>0);
+                    dragDelta=0;if(dragging)CaptureMouse();e.Handled=true;
+                }
+                else if(!Formwork && !AddCrossing && (CanInteract==null || CanInteract()))
+                {selecting=true;addWindow=toggle;windowEnd=mouseStart;HoveredObject=null;CaptureMouse();e.Handled=true;}
             }
         }
         protected override void OnMouseMove(MouseEventArgs e)
@@ -195,12 +265,20 @@ namespace EngineeringDashboard
             base.OnMouseMove(e);var p=e.GetPosition(this);
             if(panning) {Pan=panStart+(p-mouseStart);fitted=false;InvalidateVisual();}
             if(dragging) {dragDelta=SelectedKind==FormworkObject.Crossing ? p.X-mouseStart.X : p.Y-mouseStart.Y;InvalidateVisual();}
-            if(!panning && !dragging){var tooltip=LegTargets.FirstOrDefault(h=>h.Item1.Contains(p))?.Item2;if(!Equals(ToolTip,tooltip))ToolTip=tooltip;}
+            if(selecting) {windowEnd=p;InvalidateVisual();}
+            if(!panning && !dragging && !selecting)
+            {
+                HighlightAt(p);
+                var tooltip=LegTargets.FirstOrDefault(h=>h.Item1.Contains(p))?.Item2;
+                if(!Equals(ToolTip,tooltip))ToolTip=tooltip;
+            }
         }
         protected override void OnMouseUp(MouseButtonEventArgs e)
         {
-            base.OnMouseUp(e);bool moved=dragging && Math.Abs(dragDelta)>4;
-            if(panning || dragging) {panning=dragging=false;ReleaseMouseCapture();}
+            base.OnMouseUp(e);bool moved=dragging && Math.Abs(dragDelta)>4,window=selecting;
+            var end=e.GetPosition(this);
+            if(panning || dragging || selecting) {panning=dragging=selecting=false;ReleaseMouseCapture();}
+            if(window) {if((end-mouseStart).Length>4)SelectWindow(mouseStart,end,addWindow);else if(!addWindow)ClearSelection();}
             if(moved)MoveSelection(dragDelta/Zoom);
             InvalidateVisual();
         }
