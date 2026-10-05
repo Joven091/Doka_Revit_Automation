@@ -103,6 +103,9 @@ namespace EngineeringDashboard
         internal int NetworkSearchWorkers = Math.Min(4,Environment.ProcessorCount);
         internal bool PruneUneconomicCandidates = true;
         internal bool StagePrimaryChecks = true;
+        internal bool ReuseNetworkNumerics = true;
+        internal bool DeferTransferLayout = true;
+        internal TransferredSlabOptimizer.SearchWorkCache NetworkNumerics;
         internal TowerInput CopyForSearch() => (TowerInput)MemberwiseClone();
         internal string DiagnosticScope="";
         internal double DiagnosticOffsetMm;

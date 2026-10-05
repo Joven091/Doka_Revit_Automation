@@ -99,12 +99,21 @@ namespace EngineeringDashboard
         {
             private readonly Dictionary<MatrixKey,PreparedBeam> shapes=new Dictionary<MatrixKey,PreparedBeam>();
             internal long Hits;
+            private readonly int capacity;
+            private readonly bool evict;
+            private readonly Queue<MatrixKey> order=new Queue<MatrixKey>();
+            internal MatrixCache(int capacity=1024,bool evict=false) {this.capacity=capacity;this.evict=evict;}
             internal PreparedBeam Get(MatrixKey key)
             {
                 if(!shapes.TryGetValue(key,out var prepared))return null;
                 Hits++;return prepared;
             }
-            internal void Store(MatrixKey key,PreparedBeam prepared) {if(shapes.Count<1024)shapes[key]=prepared;}
+            internal void Store(MatrixKey key,PreparedBeam prepared)
+            {
+                if(shapes.ContainsKey(key))return;
+                if(shapes.Count>=capacity) {if(!evict)return;shapes.Remove(order.Dequeue());}
+                shapes.Add(key,prepared);if(evict)order.Enqueue(key);
+            }
         }
         internal static LoadedBeamAnalysis AnalyzePointsCached(double lengthMm,double[] supportMm,BeamPointLoad[] points,double ei,int denominator,MatrixCache cache,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false)
             =>AnalyzeCore(lengthMm,supportMm,null,points,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary);
