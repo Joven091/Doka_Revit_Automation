@@ -48,7 +48,7 @@ namespace EngineeringDashboard
             internal readonly Dictionary<PropertyInfo,object> Values=new Dictionary<PropertyInfo,object>();
             internal string Network;
         }
-        private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,UpperSupportSpacingMm,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,Exclude600Standalone,DeflectionLimit,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
+        private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,UpperSupportSpacingMm,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,Exclude600Standalone,DeflectionLimit,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
         internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport)
         {
             Model=model;save=saveInputs;load=loadInputs;export=exportReport;
@@ -199,6 +199,8 @@ namespace EngineeringDashboard
                 ratio.SelectionChanged+=(s,e)=> {if(changing || !(ratio.SelectedItem is BeamDeflectionOption option))return;if(CommitFields())Mutate(()=>Model.DeflectionLimit=option);else Refresh();};syncControls.Add(()=>ratio.SelectedItem=Model.DeflectionLimit);properties.Children.Add(ratio);
                 var exclude=new CheckBox {Content="Exclude standalone 600 mm towers",IsChecked=Model.Exclude600Standalone,Margin=new Thickness(0,0,0,14),ToolTip="Applies in either orientation; joined 600 mm bays remain allowed."};
                 exclude.Click+=(s,e)=> {bool value=exclude.IsChecked==true;if(CommitFields())Mutate(()=>Model.Exclude600Standalone=value);else Refresh();};syncControls.Add(()=>exclude.IsChecked=Model.Exclude600Standalone);properties.Children.Add(exclude);
+                var customH20=new CheckBox {Content="Allow custom H20 lengths (25 mm)",IsChecked=Model.AllowCustomH20Lengths,Margin=new Thickness(0,0,0,14),ToolTip="Optimize primary, lower secondary and slab H20s using catalogue or custom lengths in 25 mm increments."};
+                customH20.Click+=(s,e)=> {bool value=customH20.IsChecked==true;if(CommitFields())Mutate(()=>Model.AllowCustomH20Lengths=value);else Refresh();};syncControls.Add(()=>customH20.IsChecked=Model.AllowCustomH20Lengths);properties.Children.Add(customH20);
                 var advanced=new Expander {Header="Stock and load settings",IsExpanded=false,Margin=new Thickness(0,6,0,10)};var advancedPanel=new StackPanel();
                 int first=properties.Children.Count;
                 Text("H20 stocks (mm)");var stock=new TextBox {Text=Model.StockLengthsText,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,10)};properties.Children.Add(stock);Fields["StockLengthsText"]=stock;
@@ -271,3 +273,4 @@ namespace EngineeringDashboard
         }
     }
 }
+

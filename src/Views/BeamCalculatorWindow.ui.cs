@@ -167,6 +167,7 @@ namespace EngineeringDashboard
             record.Inputs.Add(CalculationFiles.Field("StockEndSetbackMm", vm.StockEndSetbackMm));
             record.Inputs.Add(CalculationFiles.Field("MaximumConcreteEndOverhangMm", vm.MaximumConcreteEndOverhangMm));
             record.Inputs.Add(CalculationFiles.Field("Exclude600Standalone", vm.Exclude600Standalone));
+            record.Inputs.Add(CalculationFiles.Field("AllowCustomH20Lengths", vm.AllowCustomH20Lengths));
             record.Inputs.Add(CalculationFiles.Field("PropConfiguration", vm.SelectedProp?.CapacityKey ?? BeamPropOption.All[0].CapacityKey));
             record.Inputs.Add(CalculationFiles.Field("DeflectionCriterion", vm.DeflectionLimit.Label));
             if (vm.DeflectionLimit.Denominator == 0) record.Inputs.Add(CalculationFiles.Field("DeflectionLimitMm", vm.DeflectionLimit.Millimetres));
@@ -189,6 +190,7 @@ namespace EngineeringDashboard
             target.TransferSlabLoads=candidate.TransferSlabLoads; target.UpperSupportSpacingMm=candidate.UpperSupportSpacingMm; target.LeftSlabBayMm=candidate.LeftSlabBayMm; target.RightSlabBayMm=candidate.RightSlabBayMm;
             target.UseBeamNetwork=candidate.UseBeamNetwork;if(candidate.NetworkBeams.Count>=2)target.NetworkConfigurationXml=candidate.NetworkConfigurationXml;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
+            target.AllowCustomH20Lengths = candidate.AllowCustomH20Lengths;
             target.Exclude600Standalone = candidate.Exclude600Standalone; target.MaximumConcreteEndOverhangMm = candidate.MaximumConcreteEndOverhangMm; target.StockLengthsText = candidate.StockLengthsText; target.StockEndSetbackMm = candidate.StockEndSetbackMm;
             foreach(var box in TextInputs(this)) box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
             target.HasSelectedSupportSystem = true;
@@ -199,6 +201,8 @@ namespace EngineeringDashboard
             foreach (string field in new[] { "TransferSlabLoads", "UpperSupportSpacingMm", "LeftSlabBayMm", "RightSlabBayMm" })
                 if (record.Inputs.Any(f=>f.Name==field)) CalculationFiles.Apply(record,"Beam",vm,field);
             foreach(string field in new[] {"UseBeamNetwork","NetworkConfigurationXml"})if(record.Inputs.Any(f=>f.Name==field))CalculationFiles.Apply(record,"Beam",vm,field);
+            vm.AllowCustomH20Lengths = false;
+            if (record.Inputs.Any(f => f.Name == "AllowCustomH20Lengths")) CalculationFiles.Apply(record, "Beam", vm, "AllowCustomH20Lengths");
             vm.Exclude600Standalone = false;
             if (record.Inputs.Any(f => f.Name == "Exclude600Standalone")) CalculationFiles.Apply(record, "Beam", vm, "Exclude600Standalone");
             vm.MaximumConcreteEndOverhangMm = 0;
@@ -237,3 +241,4 @@ namespace EngineeringDashboard
         }
     }
 }
+
