@@ -43,7 +43,7 @@ namespace EngineeringDashboard
             Limit(scope,"moment",stage,a.MomentKnM*scale,TowerOptimizer.PairMoment*count/2,"kNm",location,advice);
             Limit(scope,"shear",stage,a.ShearKn*scale,TowerOptimizer.PairShear*count/2,"kN",location,advice);
             double allowable=a.GoverningLengthMm/denominator;
-            Limit(scope,"deflection",stage,a.DeflectionUtilization*allowable*scale,allowable,"mm",location+$" · governing span/overhang {a.GoverningLengthMm:0.###} mm (L/{denominator})",advice,allowable*1e-8);
+            if(a.DeflectionEvaluated)Limit(scope,"deflection",stage,a.DeflectionUtilization*allowable*scale,allowable,"mm",location+$" · governing span/overhang {a.GoverningLengthMm:0.###} mm (L/{denominator})",advice,allowable*1e-8);
             Bearing(scope,stage,a.Reactions.Min()*scale,location);
         }
         public void Primary(TowerBeamAnalysis a,TowerInput input,string location)
@@ -71,6 +71,26 @@ namespace EngineeringDashboard
                 +$"\n\nNumerical checks recorded: {checks}. Rejected layouts are not approved or displayed as solutions.";
             return new TowerOptimizationException(summary,details);
         }
+        // Workers own their diagnostics. Merge in original scenario order after they finish,
+        // preserving counts, nearest failures and the first example when scores tie.
+        internal void Merge(TowerSearchDiagnostics other)
+        {
+            checks+=other.checks;
+            foreach(var entry in other.failures)
+            {
+                if(!failures.TryGetValue(entry.Key,out var current))
+                {
+                    var f=entry.Value;
+                    failures[entry.Key]=new Failure {Stage=f.Stage,Count=f.Count,Score=f.Score,Text=f.Text,Advice=f.Advice,Summary=f.Summary,Blocker=f.Blocker};
+                    continue;
+                }
+                current.Count+=entry.Value.Count;
+                if(entry.Value.Score<current.Score)
+                {
+                    var f=entry.Value;current.Stage=f.Stage;current.Score=f.Score;current.Text=f.Text;current.Advice=f.Advice;current.Summary=f.Summary;current.Blocker=f.Blocker;
+                }
+            }
+        }
     }
     public sealed class TowerInput
     {
@@ -80,6 +100,10 @@ namespace EngineeringDashboard
         internal bool ReuseSearchWork = true;
         // Regression tests can replay the former common-primary-coverage restriction.
         internal bool IndependentNetworkPrimaryCoverage = true;
+        internal int NetworkSearchWorkers = Math.Min(4,Environment.ProcessorCount);
+        internal bool PruneUneconomicCandidates = true;
+        internal bool StagePrimaryChecks = true;
+        internal TowerInput CopyForSearch() => (TowerInput)MemberwiseClone();
         internal string DiagnosticScope="";
         internal double DiagnosticOffsetMm;
         public TransferredSlabInput TransferredSlab { get; set; }
