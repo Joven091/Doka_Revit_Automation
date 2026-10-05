@@ -1,0 +1,22 @@
+name: Manual leg estimate search-order benchmark
+on: [pull_request]
+jobs:
+  net48:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build tests/Beam.Net48/Beam.Net48.csproj -c Release --warnaserror
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --manual-leg-benchmark
+  net10:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release -- --manual-leg-benchmark

@@ -157,7 +157,7 @@ namespace EngineeringDashboard
         }
         private static TowerLayout OptimizeCore(TowerInput input,bool shareDiagnostics)
         {
-            var t = input.TransferredSlab; t.Validate(input); TowerLayout best = null; int tested = 0;
+            var t = input.TransferredSlab; t.Validate(input); TowerLayout best = null; int tested = 0; long nextOrder=0,bestOrder=long.MaxValue;
             var geometryCache = input.ReuseSearchWork ? t.SharedGeometryCache ?? new GeometryCache() : null;
             // A receiving-beam solve has fixed beam loads and upper-foot plans. These options
             // depend on transverse width and tributary size, not the primary stock cover.
@@ -211,13 +211,30 @@ namespace EngineeringDashboard
                     var geometries=geometryCache==null ? buildGeometry() : geometryCache.Get(geometryKey,buildGeometry,out hit);
                     if(hit)input.Trace?.Increment(BeamSearchCounter.GeometryCacheHits);
                     if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
-                    foreach (var geometry in geometries)
+                    var phases=t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] {0.0,-50,50,-100,100};
+                    long orderBase=nextOrder;nextOrder+=(long)geometries.Length*phases.Length*crosses.Length;
+                    IEnumerable<int> geometryOrder=Enumerable.Range(0,geometries.Length);
+                    if(t.IsNetwork && input.ManualLegTargetKn>0 && TowerBeamAnalysis.Finite(input.ManualLegTargetKn))
                     {
+                        // Use actual assigned upper reactions, including shutter strips and
+                        // crossing-beam row increments. Full concrete length is used only to
+                        // estimate the starting count; the analysis load model is unchanged.
+                        var cross=crosses[0];
+                        double load=t.BeamLineLoadKnM*input.LengthMm/1000;
+                        if(cross.Left!=null)load+=(cross.Left.Analysis.Reactions[0]+cross.Left.Load*cross.Left.Edge/1000)*(t.LeftEffectiveWidthsMm?.Sum()??rowCoverage)/1000;
+                        if(cross.Right!=null)load+=(cross.Right.Analysis.Reactions[0]+cross.Right.Load*cross.Right.Edge/1000)*(t.RightEffectiveWidthsMm?.Sum()??rowCoverage)/1000;
+                        double target=2*Math.Ceiling(load/input.ManualLegTargetKn/2);
+                        geometryOrder=geometryOrder.OrderBy(i=>Math.Abs(geometries[i].Positions.Length*2-target)).ThenBy(i=>i).ToArray();
+                    }
+                    foreach(int geometryIndex in geometryOrder)
+                    {
+                        var geometry=geometries[geometryIndex];
                         if (best != null && geometry.Positions.Length*2 > best.LegCount) continue;
                         // Try centred rows and phase shifts. Independent primary coverage adds beam load
                         // at the end rows without increasing the shared slab tributaries.
-                        foreach (double phase in t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })
+                        for(int phaseIndex=0;phaseIndex<phases.Length;phaseIndex++)
                         {
+                            double phase=phases[phaseIndex];
                             var rowKey = Tuple.Create(covered,phase);
                             if (!rowCache.TryGetValue(rowKey,out var grid))
                             {
@@ -237,8 +254,10 @@ namespace EngineeringDashboard
                             // A transverse row must bear on both longitudinal stocks, away from independent member breaks.
                             var conflicting=rows.FirstOrDefault(r=>geometry.Stock.Skip(1).Any(s=>Math.Abs(s.StartMm-r)<40));
                             if(conflicting>0) {double joint=geometry.Stock.Skip(1).OrderBy(s=>Math.Abs(s.StartMm-conflicting)).First().StartMm;diag.Geometry(input.DiagnosticScope+"row/joint",$"{input.DiagnosticScope}support row x={conflicting+edge:0.###} mm is {Math.Abs(joint-conflicting):0.###} mm from primary joint x={joint+edge:0.###} mm; minimum 40 mm.","Review upper row spacing and the primary stock combination.",40-Math.Abs(joint-conflicting));continue;}
-                            foreach (var cross in crosses)
+                            for(int crossIndex=0;crossIndex<crosses.Length;crossIndex++)
                             {
+                                var cross=crosses[crossIndex];
+                                long originalOrder=orderBase+((long)geometryIndex*phases.Length+phaseIndex)*crosses.Length+crossIndex;
                                 input.Trace?.Work("Transfer layout load-case checks");input.Trace?.Increment(BeamSearchCounter.TransferCandidates);
                                 tested++;
                                 if(input.PruneUneconomicCandidates && best!=null && geometry.Positions.Length*2==best.LegCount)
@@ -250,7 +269,8 @@ namespace EngineeringDashboard
                                 }
                                 var candidate = Evaluate(input,geometry,width,rotated,cross,grid,edge,primaryCache,matrixCache);
                                 if (candidate != null && (best == null || candidate.LegCount < best.LegCount || candidate.LegCount == best.LegCount
-                                    && (Timber(candidate) < Timber(best)-.01 || Math.Abs(Timber(candidate)-Timber(best)) < .01 && candidate.Utilization < best.Utilization))) best = candidate;
+                                    && (Timber(candidate) < Timber(best)-.01 || Math.Abs(Timber(candidate)-Timber(best)) < .01 && (candidate.Utilization < best.Utilization || candidate.Utilization==best.Utilization && originalOrder<bestOrder))))
+                                {best=candidate;bestOrder=originalOrder;}
                             }
                         }
                     }

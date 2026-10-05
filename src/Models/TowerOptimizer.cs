@@ -103,6 +103,8 @@ namespace EngineeringDashboard
         internal int NetworkSearchWorkers = Math.Min(4,Environment.ProcessorCount);
         internal bool PruneUneconomicCandidates = true;
         internal bool StagePrimaryChecks = true;
+        // Benchmark-only guidance: zero preserves production traversal. Not a capacity limit.
+        internal double ManualLegTargetKn;
         internal TowerInput CopyForSearch() => (TowerInput)MemberwiseClone();
         internal string DiagnosticScope="";
         internal double DiagnosticOffsetMm;
