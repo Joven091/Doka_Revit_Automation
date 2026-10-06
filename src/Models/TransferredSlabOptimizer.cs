@@ -634,11 +634,14 @@ namespace EngineeringDashboard
             // transverse reaction is therefore the equivalent primary line load in kN/m.
             // Both lines have identical stock/support geometry: unit-UDL moment, shear,
             // deflection and reaction demands all scale with this line load. Ordering
-            // highest line load first needs no additional beam solve or rounded forces.
+            // highest slab-loaded line first needs no extra beam solve or rounded forces.
             // This is a heuristic for nonuniform/end/crossing rows, never a pass/fail bound.
+            // Preserve beam-only checks first: they reuse exact failures/responses across
+            // different slab options. Then prioritize heavily loaded slab stages.
             // Every surviving candidate still checks every original point-load vector.
             if(cross.UniformPrimaryOrder==null)cross.UniformPrimaryOrder=Enumerable.Range(0,cross.Cases.Length*2)
-                .OrderByDescending(i=>cross.Cases[i/2].Reactions[i%2]).ToArray();
+                .OrderBy(i=>i/2==0 ? 0 : 1)
+                .ThenByDescending(i=>i/2==0 ? 0 : cross.Cases[i/2].Reactions[i%2]).ToArray();
             input.Trace?.Increment(BeamSearchCounter.UniformGuidedCandidates);
             return cross.UniformPrimaryOrder;
         }
