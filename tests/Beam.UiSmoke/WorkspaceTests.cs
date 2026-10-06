@@ -21,7 +21,7 @@ internal static class WorkspaceTests
     static void Render(string path=null,int width=1280,int height=860)
     {
         Pump();var root=(FrameworkElement)workspace.Content;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();
-        if(path!=null){var bitmap=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);var backdrop=new DrawingVisual();using(var dc=backdrop.RenderOpen())dc.DrawRectangle(Brushes.WhiteSmoke,null,new Rect(0,0,width,height));bitmap.Render(backdrop);bitmap.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}
+        if(path!=null){int imageWidth=(int)Math.Ceiling(root.ActualWidth),imageHeight=(int)Math.Ceiling(root.ActualHeight);var bitmap=new RenderTargetBitmap(imageWidth,imageHeight,96,96,PixelFormats.Pbgra32);var backdrop=new DrawingVisual();using(var dc=backdrop.RenderOpen())dc.DrawRectangle(Brushes.WhiteSmoke,null,new Rect(0,0,imageWidth,imageHeight));bitmap.Render(backdrop);bitmap.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}
     }
     static void Calculate()
     {
@@ -101,8 +101,8 @@ internal static class WorkspaceTests
             workspace.WindowState=WindowState.Normal;workspace.Width=1280;workspace.Height=860;Render();
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-geometry.png"));
             workspace.InspectorTabs.SelectedIndex=1;Render(output==null ? null : Path.ChangeExtension(output,"workspace-settings.png"));
-            Render(output==null ? null : Path.ChangeExtension(output,"workspace-compact.png"),980,620);
-            workspace.InspectorTabs.SelectedIndex=0;Render();
+            workspace.Width=980;workspace.Height=620;Render(output==null ? null : Path.ChangeExtension(output,"workspace-compact.png"),980,620);
+            workspace.Width=1280;workspace.Height=860;workspace.InspectorTabs.SelectedIndex=0;Render();
             Check(workspace.Buttons["Save"] is MenuItem && workspace.Buttons["Load"] is MenuItem && workspace.Buttons["AddAbove"] is MenuItem,"file and add actions use compact menus");
             Check(workspace.InspectorTabs.Items.Count==2 && ((TabItem)workspace.InspectorTabs.Items[1]).Header.Equals("Shared settings"),"object properties and shared settings have separate inspector tabs");
             var originalResult=model.TowerResult;Click("Diagnose");var diagnosis=workspace.Diagnostics;
@@ -128,6 +128,8 @@ internal static class WorkspaceTests
             Check(workspace.Diagrams!=null && workspace.Diagrams.SelectedTransferMember.H20Count==2,"primary pair diagrams are embedded in workspace");
             Check(Math.Abs(workspace.Diagrams.LoadedAnalysis.TotalLoadKn-model.NetworkResult.Beams[hit.Item2].Transfer.PrimaryCases.Last()[hit.Item3].Analysis.TotalLoadKn)<1e-8,"plan selection displays actual member load");
             Check(Controls<Border>(workspace).Count(b=>b.CornerRadius.TopLeft==8)==3,"tower response diagrams use three chart cards like the slab and beam calculators");
+            var loadDetails=Controls<Expander>(workspace).Single(e=>Equals(e.Header,"Support reactions and point loads"));
+            Check(!loadDetails.IsExpanded && ((TextBlock)loadDetails.Content).Text.Contains("Point loads from stock end"),"long load details remain available without pushing the graph below the viewport");
             Check(workspace.SelectedResultText.Contains("Selected beam · B"+(hit.Item2+1)),"member picking updates the selected result without changing network totals");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-diagrams.png"));
             Click("Geometry");Render();var beam=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Beam && h.Item3==1);

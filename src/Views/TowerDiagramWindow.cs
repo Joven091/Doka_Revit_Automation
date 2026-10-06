@@ -26,7 +26,6 @@ namespace EngineeringDashboard
             Title = "Select H20 — shear, moment and deflection"; Width = 900; Height = 850;
             var panel = new StackPanel { Margin = new Thickness(16), Background=Brushes.WhiteSmoke };
             panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = (layout.Transfer != null ? "Primary members are H20 pairs: M=10 kNm, V=22 kN. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. Use the case buttons to check beam/slab loading stages. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents a double-H20 pair with equal load sharing: M=10 kNm, V=22 kN. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; red arrows mark point loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
-            panel.Children.Add(new TextBlock {Text="Select an H20 in the plan or section. These plots show that member and its selected loading stage.",TextWrapping=TextWrapping.Wrap,Foreground=Brushes.SlateGray,Margin=new Thickness(0,10,0,12)});
             panel.Children.Add(charts);
             Background=Brushes.WhiteSmoke;
             Content = new ScrollViewer { Content = panel, Background = Brushes.WhiteSmoke, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -41,7 +40,8 @@ namespace EngineeringDashboard
             Title = $"P{SelectedRun + 1} · {(SelectedLine == 0 ? "Left" : "Right")} · double H20 — response diagrams";
             Analysis = TowerBeamAnalysis.Analyze(piece.StockLengthMm / 1000, supports, q, TowerOptimizer.PairEI);
             charts.Children.Clear();
-            charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · loaded length: {piece.StockLengthMm:0.###} mm\n" + string.Join("   ", Analysis.Reactions.Select((v, i) => $"Support {piece.FirstSupport + i + 1}: leg load {v:0.00} kN")), TextWrapping = TextWrapping.Wrap });
+            charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · loaded length: {piece.StockLengthMm:0.###} mm", TextWrapping = TextWrapping.Wrap,Margin=new Thickness(0,8,0,4) });
+            AddLoadDetails(string.Join("   ",Analysis.Reactions.Select((v,i)=>$"Support {piece.FirstSupport+i+1}: leg load {v:0.00} kN")));
             string[] names = { "Shear (kN)", "Moment (kNm)", "Deflection (mm)" };
             double[] peaks = { Analysis.Shear, Analysis.Moment, Analysis.DeflectionMm }, limits = { TowerOptimizer.PairShear, TowerOptimizer.PairMoment, Analysis.DeflectionRegions.Max(x => x.AllowableMm(layout.DeflectionLimitMm, layout.DeflectionDenominator)) };
             for (int i = 0; i < 3; i++)
@@ -81,9 +81,9 @@ namespace EngineeringDashboard
                 }
                 charts.Children.Add(choices);
             }
-            charts.Children.Add(new TextBlock {Text=m.LoadCase+(m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN\n"
-                +string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
-                +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))),TextWrapping=TextWrapping.Wrap});
+            charts.Children.Add(new TextBlock {Text=m.LoadCase+(m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
+            AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
+                +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))));
             string[] names={"Shear (kN)","Moment (kNm)","Relative member deflection (mm)"};
             double[] peaks={m.Analysis.ShearKn,m.Analysis.MomentKnM,m.Analysis.DeflectionMm};
             for(int i=0;i<3;i++)
@@ -92,6 +92,8 @@ namespace EngineeringDashboard
                 AddChart(caption,new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
             }
         }
+        private void AddLoadDetails(string text)
+        {charts.Children.Add(new Expander {Header="Support reactions and point loads",Margin=new Thickness(0,4,0,4),Content=new TextBlock {Text=text,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,6,4,8)}});}
         private void AddChart(string caption,FrameworkElement plot)
         {
             var panel=new StackPanel();
