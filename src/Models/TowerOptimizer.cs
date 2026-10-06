@@ -128,6 +128,8 @@ namespace EngineeringDashboard
         internal bool PruneNetworkBounds = true;
         internal bool ReuseTransverseNumerics = true;
         internal bool LazySearchDiagnostics = true;
+        // Equivalent longitudinal UDL guides the order of exact checks only.
+        internal bool GuidePrimaryByUniformLoad = true;
         // A caller may restrict a solve only when larger leg counts cannot win.
         internal int NetworkLegCeiling = int.MaxValue;
         internal TransferredSlabOptimizer.SearchWorkCache NetworkNumerics;

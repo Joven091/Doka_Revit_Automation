@@ -41,6 +41,7 @@ internal static class ColdBenchmarkHost
         }
         using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(text.ToString()))).Replace("-","");
     }
+    static string Count(BeamSearchTrace trace,string name)=>trace.Snapshot().Split('\n').Single(x=>x.StartsWith(name+": ")).Substring(name.Length+2).Trim();
     static int Main(string[] args)
     {
         try
@@ -54,7 +55,7 @@ internal static class ColdBenchmarkHost
             {
                 common.Trace=new BeamSearchTrace("actual source-tree benchmark",source.Token);
                 var timer=Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,Network(scenario));timer.Stop();
-                Console.WriteLine(FormattableString.Invariant($"ACTUAL scenario={scenario} version={version} seconds={timer.Elapsed.TotalSeconds:0.000} processors={Environment.ProcessorCount} legs={result.LegCount} feet={result.UpperFootCount} timber={result.TimberMm:0.###} B1={result.Beams[0].LegCount} signature={Signature(result)}"));
+                Console.WriteLine(FormattableString.Invariant($"ACTUAL scenario={scenario} version={version} seconds={timer.Elapsed.TotalSeconds:0.000} processors={Environment.ProcessorCount} legs={result.LegCount} feet={result.UpperFootCount} timber={result.TimberMm:0.###} B1={result.Beams[0].LegCount} signature={Signature(result)} primary={Count(common.Trace,"Primary member analyses")} lower={Count(common.Trace,"Lower secondary analyses")}"));
             }
             return 0;
         }

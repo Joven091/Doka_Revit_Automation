@@ -10,7 +10,7 @@ jobs:
           path: candidate
       - uses: actions/checkout@v4
         with:
-          ref: 58840f3c45c744c47fc4cc13e093663750f9458d
+          ref: e74e767160ac3f1870453071e05a3467efc55c03
           path: baseline
       - uses: actions/setup-dotnet@v4
         with:

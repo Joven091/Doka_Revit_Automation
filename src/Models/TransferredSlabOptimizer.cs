@@ -96,6 +96,7 @@ namespace EngineeringDashboard
         private sealed class CrossOption
         {
             public double Start, Stock; public Upper Left, Right; public LoadedBeamAnalysis[] Cases; public string[] Names;
+            public int[] UniformPrimaryOrder;
             // Only the latest grid is retained, keeping memory bounded in single-beam searches.
             public string RowKey;
             public TransferMember[][] LowerByCase;
@@ -626,6 +627,21 @@ namespace EngineeringDashboard
             cross.LowerCaseComputed[c]=true;return cross.LowerByCase[c]=lower.ToArray();
         }
         private static double PrimaryUtilization(LoadedBeamAnalysis analysis)=>Math.Max(analysis.DeflectionUtilization,Math.Max(analysis.MomentKnM/TowerOptimizer.PairMoment,analysis.ShearKn/TowerOptimizer.PairShear));
+        private static IEnumerable<int> PrimaryCheckOrder(TowerInput input,CrossOption cross)
+        {
+            if(!input.GuidePrimaryByUniformLoad)return Enumerable.Range(0,cross.Cases.Length*2);
+            // Cross.Cases is analysed for one metre of longitudinal tributary. Each
+            // transverse reaction is therefore the equivalent primary line load in kN/m.
+            // Both lines have identical stock/support geometry: unit-UDL moment, shear,
+            // deflection and reaction demands all scale with this line load. Ordering
+            // highest line load first needs no additional beam solve or rounded forces.
+            // This is a heuristic for nonuniform/end/crossing rows, never a pass/fail bound.
+            // Every surviving candidate still checks every original point-load vector.
+            if(cross.UniformPrimaryOrder==null)cross.UniformPrimaryOrder=Enumerable.Range(0,cross.Cases.Length*2)
+                .OrderByDescending(i=>cross.Cases[i/2].Reactions[i%2]).ToArray();
+            input.Trace?.Increment(BeamSearchCounter.UniformGuidedCandidates);
+            return cross.UniformPrimaryOrder;
+        }
         private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,Dictionary<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent)
         {
             if(!input.DeferTransferLayout)return EvaluateReference(input,g,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared);
@@ -633,12 +649,14 @@ namespace EngineeringDashboard
             if(ls.Length!=rows.Length || rs.Length!=rows.Length)throw new ArgumentException("Crossing beam row loads do not match the support rows.");
             if(cross.Left!=null && !Pass(cross.Left.Analysis,ls.Max(),1,input.Diagnostics,input.DiagnosticScope+"Left slab H20",1,()=> $"governing row T{Array.IndexOf(ls,ls.Max())+1} · stock {cross.Left.Stock:0} mm") || cross.Right!=null && !Pass(cross.Right.Analysis,rs.Max(),1,input.Diagnostics,input.DiagnosticScope+"Right slab H20",1,()=> $"governing row T{Array.IndexOf(rs,rs.Max())+1} · stock {cross.Right.Stock:0} mm"))return null;
             int n=g.Positions.Length; var left=new double[n]; var right=new double[n];
-            var checkedCases=new List<PrimaryCheck[]>(); var lowerCases=new List<TransferMember[]>();
-            for(int c=0;c<cross.Cases.Length;c++)
+            var checkedCases=new PrimaryCheck[cross.Cases.Length][]; var lowerCases=new TransferMember[cross.Cases.Length][];
+            foreach(int encoded in PrimaryCheckOrder(input,cross))
             {
-                var checks=new PrimaryCheck[g.Stock.Length*2];
-                var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
-                for(int line=0;line<2;line++) foreach(var stock in g.Stock)
+                int c=encoded/2,line=encoded%2;
+                var checks=checkedCases[c]??(checkedCases[c]=new PrimaryCheck[g.Stock.Length*2]);
+                var lower=lowerCases[c];
+                if(lower==null) {lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;lowerCases[c]=lower;}
+                foreach(var stock in g.Stock)
                 {
                     var supports=g.MemberSupports[Array.IndexOf(g.Stock,stock)];
                     var slice=grid.Slice(stock);var forces=new double[slice.Indices.Length];
@@ -680,7 +698,6 @@ namespace EngineeringDashboard
                     for(int i=0;i<a.Reactions.Length;i++) { var envelope=line==0 ? left : right; envelope[stock.FirstSupport+i]=Math.Max(envelope[stock.FirstSupport+i],a.Reactions[i]); }
                     checks[line*g.Stock.Length+Array.IndexOf(g.Stock,stock)]=check;
                 }
-                checkedCases.Add(checks); lowerCases.Add(lower);
             }
             // Ranking uses the identical member utilization arithmetic. Preserve strict
             // original-order ties; no lower-leg candidate is dropped by this materialization gate.
@@ -693,7 +710,7 @@ namespace EngineeringDashboard
             {input.Trace?.Increment(BeamSearchCounter.TransferLayoutsDeferred);return null;}
             input.Trace?.Increment(BeamSearchCounter.TransferLayoutsBuilt);
             var primaryCases=new List<TransferMember[]>();
-            for(int c=0;c<checkedCases.Count;c++)
+            for(int c=0;c<checkedCases.Length;c++)
             {
                 var members=new TransferMember[g.Stock.Length*2];
                 for(int line=0;line<2;line++)for(int i=0;i<g.Stock.Length;i++)
