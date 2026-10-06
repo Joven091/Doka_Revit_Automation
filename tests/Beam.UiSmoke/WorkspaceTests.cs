@@ -220,7 +220,7 @@ internal static class WorkspaceTests
             model.DeflectionLimit=model.DeflectionOptions.Single(d=>d.Label=="L/350");model.Exclude600Standalone=false;
             while(model.NetworkBeams.Count<3)model.AddNetworkBay();while(model.NetworkBeams.Count>3)model.RemoveNetworkBay();
             foreach(var crossing in model.CrossingBeams.ToArray())model.RemoveCrossingBeam(crossing);
-            foreach(var beam in model.NetworkBeams){beam.WidthMm=400;beam.DepthMm=500;}
+            foreach(var fallbackBeam in model.NetworkBeams){fallbackBeam.WidthMm=400;fallbackBeam.DepthMm=500;}
             model.NetworkBays[0].WidthMm=10000;model.NetworkBays[1].WidthMm=2500;
             foreach(var bay in model.NetworkBays)bay.ThicknessMm=300;
             Pump();Render();Calculate();
