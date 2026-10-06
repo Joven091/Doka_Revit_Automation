@@ -7,7 +7,7 @@ using System.Windows.Media;
 
 namespace EngineeringDashboard
 {
-    /// <summary>Read-only response plots for the exact stock members used by the optimizer.</summary>
+    /// <summary>Read-only response plots and labelled equivalent-UDL views of optimized stock members.</summary>
     public sealed class TowerDiagramWindow : Window
     {
         internal int SelectedRun { get; private set; } = -1;
@@ -17,6 +17,10 @@ namespace EngineeringDashboard
         internal TowerBeamAnalysis Analysis { get; private set; }
         internal LoadedBeamAnalysis LoadedAnalysis { get; private set; }
         internal TransferMember SelectedTransferMember { get; private set; }
+        internal TransferMember DisplayedTransferMember { get; private set; }
+        internal LoadedBeamAnalysis ActualLoadedAnalysis { get; private set; }
+        internal bool UseEquivalentUdlForPrimary {get;private set;}=true;
+        internal bool IsEquivalentUdlView {get;private set;}
         internal int SelectedLoadCase { get; private set; } = -1;
         private readonly TowerLayout layout;
         private readonly StackPanel charts = new StackPanel();
@@ -25,7 +29,7 @@ namespace EngineeringDashboard
             layout = model.TowerResult ?? throw new ArgumentException("Optimize the tower layout first.");
             Title = "Select H20 — shear, moment and deflection"; Width = 900; Height = 850;
             var panel = new StackPanel { Margin = new Thickness(16), Background=Brushes.WhiteSmoke };
-            panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = (layout.Transfer != null ? "Primary members are H20 pairs: M=10 kNm, V=22 kN. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. Use the case buttons to check beam/slab loading stages. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents a double-H20 pair with equal load sharing: M=10 kNm, V=22 kN. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; red arrows mark point loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
+            panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = (layout.Transfer != null ? "Primary members are H20 pairs: M=10 kNm, V=22 kN. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. Use the case buttons to check beam/slab loading stages. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents a double-H20 pair with equal load sharing: M=10 kNm, V=22 kN. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; red arrows mark applied loads. Primary pairs open in an equivalent UDL view; clear its checkbox to show the actual concentrated reactions. The UDL approximation is for viewing only; layout checks, quantities and reported utilization use the actual loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
             panel.Children.Add(charts);
             Background=Brushes.WhiteSmoke;
             Content = new ScrollViewer { Content = panel, Background = Brushes.WhiteSmoke, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -68,7 +72,11 @@ namespace EngineeringDashboard
                 m=new TransferMember {Name=original.Name+" · T"+(row+1),LoadCase=original.LoadCase,LengthMm=original.LengthMm,SupportsMm=original.SupportsMm,Points=original.Points,
                     H20Count=original.H20Count,Uniform=original.Uniform.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM*scale}).ToArray(),Analysis=original.Analysis.Scale(scale)};
             }
-            SelectedTransferMember=m; LoadedAnalysis=m.Analysis; Analysis=null;
+            SelectedTransferMember=m; ActualLoadedAnalysis=m.Analysis; Analysis=null;
+            bool primary=SelectedRun<runs;
+            IsEquivalentUdlView=primary && UseEquivalentUdlForPrimary;
+            if(IsEquivalentUdlView)m=EquivalentUniformMember(m,layout.DeflectionDenominator);
+            DisplayedTransferMember=m;LoadedAnalysis=m.Analysis;
             Title=m.Name+(m.H20Count==1 ? " · single H20" : " · double H20")+" — response diagrams";
             charts.Children.Clear();
             if(!upper)
@@ -81,19 +89,45 @@ namespace EngineeringDashboard
                 }
                 charts.Children.Add(choices);
             }
+            if(primary)
+            {
+                var view=new CheckBox {Content="Equivalent UDL view",IsChecked=UseEquivalentUdlForPrimary,Margin=new Thickness(0,4,0,6)};
+                view.Checked+=(sender,args)=> {UseEquivalentUdlForPrimary=true;RefreshTransfer();};
+                view.Unchecked+=(sender,args)=> {UseEquivalentUdlForPrimary=false;RefreshTransfer();};
+                charts.Children.Add(view);
+                if(IsEquivalentUdlView)
+                {
+                    double q=m.Uniform[0].KnPerM;
+                    charts.Children.Add(new Border {Background=new SolidColorBrush(Color.FromRgb(255,246,219)),Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
+                        Child=new TextBlock {Text=$"Equivalent UDL approximation · {q:0.000} kN/m over {m.LengthMm:0.###} mm. Same total load and supports; reactions, peaks and curves below are approximate. Layout checks and reported quantities use the actual point loads.",TextWrapping=TextWrapping.Wrap}});
+                }
+            }
             charts.Children.Add(new TextBlock {Text=m.LoadCase+(m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
+            if(IsEquivalentUdlView)charts.Children.Add(new TextBlock {Text=$"Actual checked peaks: shear {ActualLoadedAnalysis.ShearKn:0.000} kN · moment {ActualLoadedAnalysis.MomentKnM:0.000} kNm · deflection {ActualLoadedAnalysis.DeflectionMm:0.000} mm. These demands govern the layout.",TextWrapping=TextWrapping.Wrap,Foreground=Brushes.DimGray,Margin=new Thickness(0,0,0,4)});
             AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
-                +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))));
+                +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))),
+                IsEquivalentUdlView ? "Approximate UDL support reactions (view only)" : "Support reactions and point loads");
             string[] names={"Shear (kN)","Moment (kNm)","Relative member deflection (mm)"};
             double[] peaks={m.Analysis.ShearKn,m.Analysis.MomentKnM,m.Analysis.DeflectionMm};
             for(int i=0;i<3;i++)
             {
                 string caption=i==2 ? $"{names[i]} · peak {peaks[i]:0.000} · L/{layout.DeflectionDenominator} · utilization {m.Analysis.DeflectionUtilization*100:0.0}%" : $"{names[i]} · peak {peaks[i]:0.000} / {(i==0 ? m.ShearLimitKn : m.MomentLimitKnM):0.000}";
-                AddChart(caption,new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
+                AddChart((IsEquivalentUdlView ? "Equivalent UDL · " : "")+caption,new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
             }
         }
-        private void AddLoadDetails(string text)
-        {charts.Children.Add(new Expander {Header="Support reactions and point loads",Margin=new Thickness(0,4,0,4),Content=new TextBlock {Text=text,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,6,4,8)}});}
+        internal static TransferMember EquivalentUniformMember(TransferMember actual,int denominator)
+        {
+            // Preserve the selected stock's total applied load and actual supports.
+            // This creates a separate display response; no optimizer member is mutated.
+            double q=actual.Analysis.TotalLoadKn*1000/actual.LengthMm;
+            var uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=actual.LengthMm,KnPerM=q}};
+            return new TransferMember {Name=actual.Name,LoadCase=actual.LoadCase,StartMm=actual.StartMm,
+                LengthMm=actual.LengthMm,SupportsMm=(double[])actual.SupportsMm.Clone(),H20Count=actual.H20Count,
+                Points=new BeamPointLoad[0],Uniform=uniform,
+                Analysis=LoadedBeamAnalysis.Analyze(actual.LengthMm,actual.SupportsMm,uniform,null,TowerOptimizer.PairEI*actual.H20Count/2,denominator)};
+        }
+        private void AddLoadDetails(string text,string header="Support reactions and point loads")
+        {charts.Children.Add(new Expander {Header=header,Margin=new Thickness(0,4,0,4),Content=new TextBlock {Text=text,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,6,4,8)}});}
         private void AddChart(string caption,FrameworkElement plot)
         {
             var panel=new StackPanel();
@@ -140,6 +174,17 @@ namespace EngineeringDashboard
                     label($"{stations[i]-stations[i-1]:0.###}",(xx(stations[i-1])+xx(stations[i]))/2-14,y+5);
                 }
                 foreach(double s in member.SupportsMm) dc.DrawLine(new Pen(Brushes.LightGray,1){DashStyle=DashStyles.Dash},new Point(xx(s),top),new Point(xx(s),bottom));
+                foreach(var q in member.Uniform)
+                {
+                    for(int i=0;i<=12;i++)
+                    {
+                        double x=xx(q.StartMm+(q.EndMm-q.StartMm)*i/12);
+                        dc.DrawLine(new Pen(Brushes.DarkRed,1),new Point(x,top),new Point(x,top+14));
+                        dc.DrawLine(new Pen(Brushes.DarkRed,1),new Point(x,top+14),new Point(x-3,top+9));
+                        dc.DrawLine(new Pen(Brushes.DarkRed,1),new Point(x,top+14),new Point(x+3,top+9));
+                    }
+                    label($"UDL {q.KnPerM:0.###} kN/m",(xx(q.StartMm)+xx(q.EndMm))/2-45,top-14);
+                }
                 foreach(var p in member.Points) {dc.DrawLine(new Pen(Brushes.DarkRed,1),new Point(xx(p.PositionMm),top),new Point(xx(p.PositionMm),top+14));label($"{p.Kn:0.#}",xx(p.PositionMm)-8,top-14);}
                 var jumps=member.SupportsMm.Concat(member.Points.Select(p=>p.PositionMm)).Distinct().ToArray();
                 var positions=Enumerable.Range(0,401).Select(i=>member.LengthMm*i/400).Concat(jumps).Distinct().OrderBy(x=>x);Point? previous=null;
@@ -147,7 +192,7 @@ namespace EngineeringDashboard
                 {
                     var point=new Point(xx(x),yy(member.Analysis.Response(x,side)[index]));if(previous.HasValue)dc.DrawLine(new Pen(Brushes.SteelBlue,2),previous.Value,point);previous=point;
                 }
-                label("0",left,bottom+4);label($"{member.LengthMm:0} mm",right-60,bottom+4);label("End offsets and support spans (mm); red arrows: point loads (kN)",left,bottom+56);
+                label("0",left,bottom+4);label($"{member.LengthMm:0} mm",right-60,bottom+4);label(member.Points.Length==0 ? "End offsets and support spans (mm); UDL in kN/m" : "End offsets and support spans (mm); point loads in kN",left,bottom+56);
             }
         }
         private sealed class ResponsePlot : FrameworkElement
@@ -199,3 +244,4 @@ namespace EngineeringDashboard
         }
     }
 }
+
