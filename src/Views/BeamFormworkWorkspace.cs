@@ -98,7 +98,7 @@ namespace EngineeringDashboard
             tabs.Children.Add(new Border {Width=1,Height=24,Background=Brushes.LightGray,Margin=new Thickness(10,0,10,0)});
             tabs.Children.Add(Button("Fit","Fit",()=> {if(sectionMode)SectionViewport.Fit();else Drawing.Fit();}));
             tabs.Children.Add(Button("ZoomOut","−",()=>Zoom(1/1.25)));tabs.Children.Add(Button("ZoomIn","+",()=>Zoom(1.25)));
-            var dimensions=new CheckBox {Content="All dimensions",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,8,0)};
+            var dimensions=new CheckBox {Content="All dimensions",ToolTip="Show dimension chains for all members. Zoom in to reveal labels where space is limited.",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,8,0)};
             dimensions.Checked+=(s,e)=> {Drawing.AllDimensions=true;Section.ShowAllDimensions=true;Drawing.InvalidateVisual();Section.InvalidateVisual();};dimensions.Unchecked+=(s,e)=> {Drawing.AllDimensions=false;Section.ShowAllDimensions=false;Drawing.InvalidateVisual();Section.InvalidateVisual();};tabs.Children.Add(dimensions);main.Children.Add(tabs);
             Grid.SetRow(Drawing,1);main.Children.Add(Drawing);sectionHost.Child=SectionViewport;Grid.SetRow(sectionHost,1);main.Children.Add(sectionHost);
             var inspector=new Grid {Background=Brushes.White};inspector.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});inspector.RowDefinitions.Add(new RowDefinition());Grid.SetColumn(inspector,1);body.Children.Add(inspector);

@@ -166,7 +166,7 @@ namespace EngineeringDashboard
             internal int DrawnUniformCount {get;private set;}
             internal readonly System.Collections.Generic.List<Rect> LabelBounds=new System.Collections.Generic.List<Rect>();
             internal MemberLoadingPlot(double l,double[] s,double[] r,BeamDistributedLoad[] u,BeamPointLoad[] p)
-            {length=l;supports=s;reactions=r;uniform=u;points=p;Height=215;}
+            {length=l;supports=s;reactions=r;uniform=u;points=p;Height=230;}
             protected override void OnRender(DrawingContext dc)
             {
                 base.OnRender(dc);LabelBounds.Clear();DrawnSupportCount=DrawnPointCount=DrawnUniformCount=0;
@@ -211,7 +211,7 @@ namespace EngineeringDashboard
                     foreach(double x in new[] {a,b})dc.DrawLine(new Pen(Brushes.Gray,1),new Point(x,y-4),new Point(x,y+4));
                     string value=$"{stations[i]-stations[i-1]:0.###}";if(b-a>value.Length*7+8)label(value,(a+b)/2,y+5);
                 }
-                label("0",left,200);label($"{length:0.###} mm",right,200);
+                label("0",left,210);label($"{length:0.###} mm",right,210);
             }
         }
         private sealed class LoadedResponsePlot : FrameworkElement

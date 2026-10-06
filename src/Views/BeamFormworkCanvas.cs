@@ -189,7 +189,6 @@ namespace EngineeringDashboard
             for(int i=0;i<beams.Length;i++)
             {
                 var b=beams[i];var rect=new Rect(Screen(0,ys[i]-b.WidthMm/2),Screen(Model.BeamLengthMm,ys[i]+b.WidthMm/2));
-                bool selected=IsSelected(FormworkObject.Beam,i,rect);
                 dc.DrawRectangle(Brushes.LightGray,ObjectPen(FormworkObject.Beam,i,rect,Brushes.SlateGray),rect);
                 ObjectTargets.Insert(0,Tuple.Create(rect,FormworkObject.Beam,i));
                 Label(dc,$"B{i+1} · {b.WidthMm:0}×{b.DepthMm:0}",new Point(rect.Left+8,rect.Top+5));

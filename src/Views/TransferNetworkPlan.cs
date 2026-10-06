@@ -140,7 +140,7 @@ namespace EngineeringDashboard
                 dc.DrawLine(new Pen(beam==selectedBeam && selectedRun==encoded ? Brushes.DodgerBlue : Timber,3),new Point(start,bottom+7),new Point(end,bottom+7));
                 MemberTargets.Add(Tuple.Create(new Rect(start,bottom,end-start,15),beam,encoded,0));
                 foreach(double support in new[] {-b.WidthMm/2,b.WidthMm/2})dc.DrawLine(new Pen(Steel,3),new Point(xx(centre+support),bottom+13),new Point(xx(centre+support),bottom+33));
-                Dim(dc,start,end,bottom+43,$"Secondary {t.LowerStockLengthMm:0}");DrawnSecondaryLengthCount++;
+                Dim(dc,start,end,bottom+43,$"H20 {t.LowerStockLengthMm:0}");DrawnSecondaryLengthCount++;
 
             }
             for(int bay=0;bay<result.Bays.Length;bay++)
