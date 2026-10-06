@@ -38,7 +38,7 @@ internal static class Program
   Check(Math.Abs(shown.Uniform[0].KnPerM-actual.Analysis.TotalLoadKn*1000/actual.LengthMm)<1e-10,"UDL intensity uses selected stock, beam, line and loading case");
   var reference=LoadedBeamAnalysis.Analyze(actual.LengthMm,actual.SupportsMm,shown.Uniform,null,TowerOptimizer.PairEI,denominator);
   Check(shown.Analysis.MomentKnM==reference.MomentKnM && shown.Analysis.ShearKn==reference.ShearKn && shown.Analysis.DeflectionMm==reference.DeflectionMm,"plotted peaks belong to the displayed UDL calculation");
-  Check(Find<TextBlock>(diagrams).Any(t=>t.Text.Contains("Equivalent UDL approximation")) && Find<TextBlock>(diagrams).Count(t=>t.Text.StartsWith("Equivalent UDL · "))==3,"approximation is labelled above the plots and in each chart");
+  Check(Find<TextBlock>(diagrams).Any(t=>t.Text.Contains("Equivalent UDL approximation")) && Find<TextBlock>(diagrams).Any(t=>t.Text.StartsWith("Actual checked peaks: ")) && Find<TextBlock>(diagrams).Count(t=>t.Text.StartsWith("Equivalent UDL · "))==3,"approximation is labelled above the plots and in each chart");
   var toggle=Find<CheckBox>(diagrams).Single(c=>Equals(c.Content,"Equivalent UDL view"));toggle.IsChecked=false;Pump();
   Check(!diagrams.IsEquivalentUdlView && diagrams.LoadedAnalysis==actual.Analysis && diagrams.DisplayedTransferMember==actual,"actual point-load view remains selectable");
   Check(actual.Points.Select(p=>p.Kn).SequenceEqual(points),"switching diagram views never mutates optimizer loads");
@@ -204,8 +204,8 @@ internal static class Program
    Check(diagram.SelectAt(new Point(lowerHit.Item1.X+lowerHit.Item1.Width/2,lowerHit.Item1.Y+lowerHit.Item1.Height/2)),"select lower paired bearer in main plan");Pump();
    Check(window.TowerDiagrams.LoadedAnalysis!=null && window.TowerDiagrams.Analysis==null,"transfer diagrams use point-loaded analysis");
    window.TowerDiagrams.SelectMember(0,0,-1);Pump();CheckEquivalentPrimary(window.TowerDiagrams,vm.DeflectionLimit.Denominator);Check(window.TowerDiagrams.ActualLoadedAnalysis==transferred.PrimaryCases.Last()[0].Analysis,"selected primary retains exact design reactions alongside its UDL view");
-   if(args.Length>0){var content=(FrameworkElement)window.TowerDiagrams.Content;content.Measure(new Size(900,1120));content.Arrange(new Rect(0,0,900,1120));content.UpdateLayout();
-    var bitmap=new RenderTargetBitmap(900,1120,96,96,PixelFormats.Pbgra32);bitmap.Render(content);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"primary-udl.png")))encoder.Save(file);}
+   if(args.Length>0){var content=(FrameworkElement)((ScrollViewer)window.TowerDiagrams.Content).Content;content.Measure(new Size(868,double.PositiveInfinity));content.Arrange(new Rect(0,0,868,content.DesiredSize.Height));content.UpdateLayout();
+    var bitmap=new RenderTargetBitmap((int)Math.Ceiling(content.ActualWidth),(int)Math.Ceiling(content.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(content);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"primary-udl.png")))encoder.Save(file);}
    var upperHit=diagram.MemberTargets.First(h=>h.Item2>=vm.TowerResult.StockPlan.Pieces.Length+transferred.RowsMm.Length);
    Check(diagram.SelectAt(new Point(upperHit.Item1.X+upperHit.Item1.Width/2,upperHit.Item1.Y+upperHit.Item1.Height/2)),"select upper pair from main section");Pump();Check(window.TowerDiagrams.Title.Contains("Upper left"),"upper pair diagram selection");
    if(args.Length>0){SavePreview(Path.ChangeExtension(args[0],"transferred.png"),1040,860);File.WriteAllText(Path.ChangeExtension(args[0],"transferred-report.html"),window.BuildReport());

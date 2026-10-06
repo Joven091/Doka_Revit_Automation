@@ -103,6 +103,7 @@ namespace EngineeringDashboard
                 }
             }
             charts.Children.Add(new TextBlock {Text=m.LoadCase+(m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
+            if(IsEquivalentUdlView)charts.Children.Add(new TextBlock {Text=$"Actual checked peaks: shear {ActualLoadedAnalysis.ShearKn:0.000} kN · moment {ActualLoadedAnalysis.MomentKnM:0.000} kNm · deflection {ActualLoadedAnalysis.DeflectionMm:0.000} mm. These demands govern the layout.",TextWrapping=TextWrapping.Wrap,Foreground=Brushes.DimGray,Margin=new Thickness(0,0,0,4)});
             AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
                 +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))),
                 IsEquivalentUdlView ? "Approximate UDL support reactions (view only)" : "Support reactions and point loads");
