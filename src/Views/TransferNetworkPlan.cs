@@ -63,9 +63,10 @@ namespace EngineeringDashboard
             for(int bay=0;bay<result.Bays.Length;bay++)
             {
                 double a=ys[bay]+result.Input.Beams[bay].WidthMm*.055/2,b=ys[bay+1]-result.Input.Beams[bay+1].WidthMm*.055/2;
-                dc.DrawRectangle(Brushes.AliceBlue,null,new Rect(40,a,ActualWidth-80,b-a));
+                bool separate=result.Bays[bay]==null;
+                dc.DrawRectangle(separate ? Brushes.Moccasin : Brushes.AliceBlue,null,new Rect(40,a,ActualWidth-80,b-a));
                 bool crossed=result.Input.CrossingBeams.Any(c=>c.BayNumber==bay+1);
-                Label(dc,$"S{bay+1} · bay {result.Input.Bays[bay].WidthMm:0} · t {result.Input.Bays[bay].ThicknessMm:0}",crossed ? 45 : ActualWidth/2,(a+b)/2,!crossed);
+                Label(dc,$"S{bay+1} · bay {result.Input.Bays[bay].WidthMm:0} · t {result.Input.Bays[bay].ThicknessMm:0}{(separate ? " · separate formwork (not calculated)" : "")}",crossed ? 45 : ActualWidth/2,(a+b)/2,!crossed);
             }
             for(int i=0;i<result.Input.CrossingBeams.Length;i++)
             {
@@ -140,7 +141,15 @@ namespace EngineeringDashboard
             }
             for(int bay=0;bay<result.Bays.Length;bay++)
             {
-                var slab=result.Input.Bays[bay];var plan=result.Bays[bay];double face=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2,other=face+slab.WidthMm;
+                var slab=result.Input.Bays[bay];var plan=result.Bays[bay];
+                if(plan==null)
+                {
+                    double midpoint=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2+slab.WidthMm/2;
+                    Label(dc,$"S{bay+1}: separate slab formwork required",xx(midpoint),top-40,true);
+                    Label(dc,"Not calculated; no load transfer to these beams",xx(midpoint),top-22,true);
+                    continue;
+                }
+                double face=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2,other=face+slab.WidthMm;
                 double a=face+plan.EdgeMm,b=a+plan.StockLengthMm,near=face+plan.NearFootMm,far=other-plan.FarFootMm,soffit=top+slab.ThicknessMm*depthScale;
                 dc.DrawRectangle(Brushes.LightSteelBlue,null,new Rect(xx(face),top,slab.WidthMm*scale,slab.ThicknessMm*depthScale));
                 int row=Array.IndexOf(result.Beams[bay].Transfer.RightUpperScales,result.Beams[bay].Transfer.RightUpperScales.Max());
@@ -161,3 +170,4 @@ namespace EngineeringDashboard
         private static void Arrow(DrawingContext dc,double x,double y,Brush colour) {dc.DrawLine(new Pen(colour,2),new Point(x-4,y-6),new Point(x,y));dc.DrawLine(new Pen(colour,2),new Point(x+4,y-6),new Point(x,y));}
     }
 }
+

@@ -31,7 +31,7 @@ namespace EngineeringDashboard
                 throw new ArgumentException("Concrete end allowance must be between 0 and 500 mm.");
             if (new[] { LeftBayMm, RightBayMm, LeftAreaLoadKnM2, RightAreaLoadKnM2 }.Any(x => !TowerBeamAnalysis.Finite(x) || x < 0)
                 || LeftBayMm > 0 && LeftAreaLoadKnM2 <= 0 || RightBayMm > 0 && RightAreaLoadKnM2 <= 0
-                || LeftBayMm > 30000 || RightBayMm > 30000 || LeftBayMm == 0 && LeftAreaLoadKnM2 != 0 || RightBayMm == 0 && RightAreaLoadKnM2 != 0 || LeftBayMm + RightBayMm == 0)
+                || LeftBayMm > 30000 || RightBayMm > 30000 || LeftBayMm == 0 && LeftAreaLoadKnM2 != 0 || RightBayMm == 0 && RightAreaLoadKnM2 != 0 || !IsNetwork && LeftBayMm + RightBayMm == 0)
                 throw new ArgumentException("Select at least one slab bay, with positive clear width and slab load.");
             if (input.StockLengthsMm == null || input.StockLengthsMm.Length == 0 || input.StockLengthsMm.Length > 30
                 || input.StockLengthsMm.Any(x => !TowerBeamAnalysis.Finite(x) || x < 300 || x > 50000 || x != Math.Round(x))) throw new ArgumentException("Invalid available H20 lengths.");
@@ -52,6 +52,7 @@ namespace EngineeringDashboard
     }
     public sealed class TransferredSlabResult
     {
+        internal TransferredSlabResult CopyNetworkResult() => (TransferredSlabResult)MemberwiseClone();
         public double[] RowsMm, TributaryWidthsMm;
         public double[] LeftUpperScales, RightUpperScales;
         public double UpperScale(bool left,int row)=>(left ? LeftUpperScales : RightUpperScales)?[row]??TributaryWidthsMm[row]/1000;
@@ -171,7 +172,14 @@ namespace EngineeringDashboard
             if(shareDiagnostics)return OptimizeCore(input,true);
             return TowerStockPlanner.SearchWithCustom(input,()=>OptimizeCore(input,false),(a,b)=>a.LegCount<b.LegCount || a.LegCount==b.LegCount && (Timber(a)<Timber(b)-.01 || Math.Abs(Timber(a)-Timber(b))<.01 && a.Utilization<b.Utilization));
         }
+        private sealed class LayoutWork
+        {
+            internal Geometry Geometry;internal double Width,Edge;internal bool Rotated;
+            internal CrossOption[] Crosses;internal RowGrid Grid;
+        }
         private static TowerLayout OptimizeCore(TowerInput input,bool shareDiagnostics)
+            => input.SearchByLegTier ? OptimizeCoreByLegTier(input,shareDiagnostics) : OptimizeCoreReference(input,shareDiagnostics);
+        private static TowerLayout OptimizeCoreReference(TowerInput input,bool shareDiagnostics)
         {
             var t = input.TransferredSlab; t.Validate(input); TowerLayout best = null; int tested = 0;
             var geometryCache = input.ReuseSearchWork ? t.SharedGeometryCache ?? new GeometryCache() : null;
@@ -192,7 +200,7 @@ namespace EngineeringDashboard
             foreach (var cover in covers)
             {
                 input.Trace?.Increment(BeamSearchCounter.CoverageVariants);
-                if(best!=null && cover.Length*4>best.LegCount)continue;
+                if(cover.Length*4>input.NetworkLegCeiling || best!=null && cover.Length*4>best.LegCount)continue;
                 double covered = cover.Sum(), edge = (input.LengthMm-covered)/2;
                 double rowCoverage=t.FixedCoveredLengthMm??covered;
                 bool independent=t.IsNetwork && t.AllowLongerPrimaryCoverage && t.FixedCoveredLengthMm.HasValue;
@@ -230,7 +238,7 @@ namespace EngineeringDashboard
                     if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
                     foreach (var geometry in geometries)
                     {
-                        if (best != null && geometry.Positions.Length*2 > best.LegCount) continue;
+                        if (geometry.Positions.Length*2>input.NetworkLegCeiling || best != null && geometry.Positions.Length*2 > best.LegCount) continue;
                         // Try centred rows and phase shifts. Independent primary coverage adds beam load
                         // at the end rows without increasing the shared slab tributaries.
                         foreach (double phase in t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })
@@ -271,6 +279,118 @@ namespace EngineeringDashboard
                             }
                         }
                     }
+                }
+            }
+            if (best == null) throw diag.Exception("No valid transferred-slab layout found within the bounded search.");
+            best.Tested = tested; return best;
+        }
+        private static TowerLayout OptimizeCoreByLegTier(TowerInput input,bool shareDiagnostics)
+        {
+            var t = input.TransferredSlab; t.Validate(input); TowerLayout best = null; int tested = 0;
+            var work=new List<LayoutWork>();
+            var geometryCache = input.ReuseSearchWork ? t.SharedGeometryCache ?? new GeometryCache() : null;
+            // A receiving-beam solve has fixed beam loads and upper-foot plans. These options
+            // depend on transverse width and tributary size, not the primary stock cover.
+            var crossCache = new Dictionary<Tuple<double,double>,CrossOption[]>();
+            var rowCache = new Dictionary<Tuple<double,double>,RowGrid>();
+            // Different tower combinations often repeat an identical local primary member.
+            // Include every support, point position and force, without rounding. This cache
+            // lives only in one receiving-beam solve and retains at most 4096 checks.
+            var primaryCache = input.ReuseSearchWork ? new Dictionary<PrimaryKey,PrimaryCheck>() : null;
+            var shared = input.ReuseSearchWork && input.ReuseNetworkNumerics ? t.SharedSearchWork : null;
+            var matrixCache = input.ReuseSearchWork ? shared?.Matrix ?? new LoadedBeamAnalysis.MatrixCache() : null;
+            if(!shareDiagnostics || input.Diagnostics==null)input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace);var diag=input.Diagnostics;
+            input.Trace?.Work("Transfer primary cover generation");
+            var covers=Covers(input).ToArray();
+            if(covers.Length==0)diag.Geometry(input.DiagnosticScope+"coverage",$"{input.DiagnosticScope}primary coverage: no available stock combination totals {input.LengthMm-2*input.MaximumConcreteEndOverhangMm:0.###}–{input.LengthMm:0.###} mm.","Review stock lengths and the concrete end allowance.");
+            foreach (var cover in covers)
+            {
+                input.Trace?.Increment(BeamSearchCounter.CoverageVariants);
+                if(cover.Length*4>input.NetworkLegCeiling)continue;
+                double covered = cover.Sum(), edge = (input.LengthMm-covered)/2;
+                double rowCoverage=t.FixedCoveredLengthMm??covered;
+                bool independent=t.IsNetwork && t.AllowLongerPrimaryCoverage && t.FixedCoveredLengthMm.HasValue;
+                if(t.FixedCoveredLengthMm.HasValue && (independent ? covered<rowCoverage-1e-7 : Math.Abs(covered-rowCoverage)>1e-7)) continue;
+                int count = (int)Math.Ceiling(rowCoverage/t.UpperSpacingMm);
+                // Slab rows stay aligned in absolute coordinates across the network. Primary
+                // stock may extend farther toward the concrete ends on an individual beam.
+                double first = (rowCoverage-(count-1)*t.UpperSpacingMm)/2+(input.LengthMm-rowCoverage)/2-edge;
+                foreach (bool rotated in new[] { false, true }) foreach (double width in rotated ? TowerOptimizer.BaysMm : new[] { 1524.0 })
+                {
+                    if (rotated && input.Exclude600Standalone && width == 600) continue;
+                    input.Trace?.Work("Transfer slab and lower secondary options");
+                    double tributary = count>2 ? t.UpperSpacingMm : rowCoverage/count;
+                    var crossKey = Tuple.Create(width,tributary);
+                    input.Trace?.CheckCancellation();
+                    if (!input.ReuseSearchWork || !crossCache.TryGetValue(crossKey,out var crosses))
+                    {
+                        crosses = CrossOptions(input,width,tributary).ToArray();
+                        if (input.ReuseSearchWork) crossCache[crossKey] = crosses;
+                    }
+                    else input.Trace?.Increment(BeamSearchCounter.CrossCacheHits);
+                    if (crosses.Length == 0) continue;
+                    input.Trace?.Work("Transfer tower/support geometry");
+                    string geometryKey = (rotated ? "R:" : "N:") + Values(cover);
+                    input.Trace?.CheckCancellation();
+                    Func<Geometry[]> buildGeometry=()=>
+                    {
+                        var generated=Geometries(cover,rotated,input).ToArray();
+                        input.Trace?.Increment(BeamSearchCounter.GeometryBuilds);
+                        return generated;
+                    };
+                    bool hit=false;
+                    var geometries=geometryCache==null ? buildGeometry() : geometryCache.Get(geometryKey,buildGeometry,out hit);
+                    if(hit)input.Trace?.Increment(BeamSearchCounter.GeometryCacheHits);
+                    if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
+                    foreach (var geometry in geometries)
+                    {
+                        if(geometry.Positions.Length*2>input.NetworkLegCeiling)continue;
+                        // Try centred rows and phase shifts. Independent primary coverage adds beam load
+                        // at the end rows without increasing the shared slab tributaries.
+                        foreach (double phase in t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })
+                        {
+                            var rowKey = Tuple.Create(covered,phase);
+                            if (!rowCache.TryGetValue(rowKey,out var grid))
+                            {
+                                var stations = Enumerable.Range(0,count).Select(i => first+phase+i*t.UpperSpacingMm).ToArray();
+                                var widths = Enumerable.Range(0,count).Select(i => (i == count-1 ? covered : (stations[i]+stations[i+1])/2)-(i == 0 ? 0 : (stations[i-1]+stations[i])/2)).ToArray();
+                                grid = new RowGrid {Rows=stations,Tributaries=widths,LeftScales=(t.LeftEffectiveWidthsMm??widths).Select(x=>x/1000).ToArray(),RightScales=(t.RightEffectiveWidthsMm??widths).Select(x=>x/1000).ToArray()};
+                                grid.Key = Values(stations)+"|"+Values(widths)+"|"+Values(grid.LeftScales)+"|"+Values(grid.RightScales)+"|"+edge.ToString("R",CultureInfo.InvariantCulture);
+                                rowCache[rowKey]=grid;
+                            }
+                            var rows = grid.Rows;
+                            if (rows[0] <= 0 || rows.Last() >= covered) continue;
+                            var tributaries = grid.Tributaries;
+                            // Shared slab tributaries were checked by the network solver. A longer
+                            // primary cover puts additional beam concrete onto the end rows; the
+                            // resulting larger beam tributaries are checked at their actual loads.
+                            if (!independent && tributaries.Max() > t.UpperSpacingMm+1e-7) continue;
+                            // A transverse row must bear on both longitudinal stocks, away from independent member breaks.
+                            var conflicting=rows.FirstOrDefault(r=>geometry.Stock.Skip(1).Any(s=>Math.Abs(s.StartMm-r)<40));
+                            if(conflicting>0) {double joint=geometry.Stock.Skip(1).OrderBy(s=>Math.Abs(s.StartMm-conflicting)).First().StartMm;diag.Geometry(input.DiagnosticScope+"row/joint",$"{input.DiagnosticScope}support row x={conflicting+edge:0.###} mm is {Math.Abs(joint-conflicting):0.###} mm from primary joint x={joint+edge:0.###} mm; minimum 40 mm.","Review upper row spacing and the primary stock combination.",40-Math.Abs(joint-conflicting));continue;}
+                            work.Add(new LayoutWork {Geometry=geometry,Width=width,Rotated=rotated,Crosses=crosses,Grid=grid,Edge=edge});
+                        }
+                    }
+                }
+            }
+            // Stable order within a leg tier keeps all original timber/utilization ties.
+            // Higher tiers cannot win after any layout in a lower tier passes.
+            foreach(var item in work.OrderBy(w=>w.Geometry.Positions.Length))
+            {
+                input.Trace?.CheckCancellation();
+                var geometry=item.Geometry;var grid=item.Grid;
+                if(geometry.Positions.Length*2>input.NetworkLegCeiling || best!=null && geometry.Positions.Length*2>best.LegCount)break;
+                foreach(var cross in item.Crosses)
+                {
+                    input.Trace?.Increment(BeamSearchCounter.TransferCandidates);tested++;
+                    if(input.PruneUneconomicCandidates && best!=null && geometry.Positions.Length*2==best.LegCount)
+                    {
+                        double timber=geometry.Stock.Sum(s=>s.StockLengthMm)*4+grid.Rows.Length*(cross.Stock+(cross.Left?.Stock??0)+(cross.Right?.Stock??0));
+                        if(timber>Timber(best)+.01) {input.Trace?.Increment(BeamSearchCounter.EconomyPruned);continue;}
+                    }
+                    var candidate=Evaluate(input,geometry,item.Width,item.Rotated,cross,grid,item.Edge,primaryCache,matrixCache,shared,best);
+                    if(candidate!=null && (best==null || candidate.LegCount<best.LegCount || candidate.LegCount==best.LegCount
+                        && (Timber(candidate)<Timber(best)-.01 || Math.Abs(Timber(candidate)-Timber(best))<.01 && candidate.Utilization<best.Utilization)))best=candidate;
                 }
             }
             if (best == null) throw diag.Exception("No valid transferred-slab layout found within the bounded search.");

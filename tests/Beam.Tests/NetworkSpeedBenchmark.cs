@@ -22,7 +22,8 @@ internal static class NetworkSpeedBenchmark
         LengthMm=scenario=="warm" ? 4900 : 10600,LegCapacityKn=70,
         StockLengthsMm=TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths),
         StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,Exclude600Standalone=true,
-        DeflectionDenominator=270,AllowCustomH20Lengths=true,ReuseNetworkNumerics=(variant&1)!=0,DeferTransferLayout=(variant&2)!=0,
+        DeflectionDenominator=270,AllowCustomH20Lengths=true,ReuseNetworkNumerics=true,DeferTransferLayout=true,
+        SearchByLegTier=(variant&1)!=0,PruneNetworkBounds=(variant&2)!=0,ReuseCompleteNetworkSolves=(variant&2)!=0,
         NetworkSearchWorkers=Math.Min(4,Environment.ProcessorCount),
         Trace=new BeamSearchTrace("network speed: "+scenario,token)
     };
@@ -90,7 +91,7 @@ internal static class NetworkSpeedBenchmark
             int gen0=GC.CollectionCount(0),gen1=GC.CollectionCount(1),gen2=GC.CollectionCount(2);
             var timer=Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,network);timer.Stop();
             Engineering(common,network,result,scenario);
-            Console.WriteLine(FormattableString.Invariant($"SPEED scenario={scenario} variant={variant} repeat={repeat} workers={common.NetworkSearchWorkers} processors={Environment.ProcessorCount} seconds={timer.Elapsed.TotalSeconds:0.000} legs={result.LegCount} feet={result.UpperFootCount} timber={result.TimberMm:0.###} B1={result.Beams[0].LegCount} primary={Counter(common.Trace,"Primary member analyses")} shared={Counter(common.Trace,"Network primary response cache hits")} built={Counter(common.Trace,"Detailed transfer layouts built")} deferred={Counter(common.Trace,"Detailed transfer layouts deferred")} lower={Counter(common.Trace,"Lower secondary analyses")} candidates={Counter(common.Trace,"Transferred layout candidates")} solves={Counter(common.Trace,"Receiving-beam solves")} gc={GC.CollectionCount(0)-gen0}/{GC.CollectionCount(1)-gen1}/{GC.CollectionCount(2)-gen2}"));
+            Console.WriteLine(FormattableString.Invariant($"SPEED scenario={scenario} variant={variant} repeat={repeat} workers={common.NetworkSearchWorkers} processors={Environment.ProcessorCount} seconds={timer.Elapsed.TotalSeconds:0.000} legs={result.LegCount} feet={result.UpperFootCount} timber={result.TimberMm:0.###} B1={result.Beams[0].LegCount} primary={Counter(common.Trace,"Primary member analyses")} shared={Counter(common.Trace,"Network primary response cache hits")} built={Counter(common.Trace,"Detailed transfer layouts built")} deferred={Counter(common.Trace,"Detailed transfer layouts deferred")} branches={Counter(common.Trace,"Network branches pruned by exact bounds")} completeHits={Counter(common.Trace,"Complete receiving-beam solve cache hits")} lower={Counter(common.Trace,"Lower secondary analyses")} candidates={Counter(common.Trace,"Transferred layout candidates")} solves={Counter(common.Trace,"Receiving-beam solves")} gc={GC.CollectionCount(0)-gen0}/{GC.CollectionCount(1)-gen1}/{GC.CollectionCount(2)-gen2}"));
             return new Trial {Seconds=timer.Elapsed.TotalSeconds,Result=result};
         }
     }
@@ -107,7 +108,8 @@ internal static class NetworkSpeedBenchmark
     }
     public static void Run()
     {
-        Console.WriteLine($"SPEED runtime={Environment.Version} processors={Environment.ProcessorCount} serverGC={GCSettings.IsServerGC}; Exact numerical reuse and deferred layout construction; actual leg capacity remains 70 kN. Existing end-load model is unchanged.");
+        Console.WriteLine($"SPEED runtime={Environment.Version} processors={Environment.ProcessorCount} serverGC={GCSettings.IsServerGC}; Lowest-leg-first traversal, exact network bounds and complete-solve reuse; actual leg capacity remains 70 kN. Existing end-load model is unchanged.");
+        NetworkFallbackTests.Run();
         var warm=Solve("warm",0,0);foreach(int variant in new[] {1,2,3})Same(warm.Result,Solve("warm",variant,0).Result);
         using(var source=new CancellationTokenSource())
         {

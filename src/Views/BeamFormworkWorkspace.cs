@@ -375,6 +375,7 @@ namespace EngineeringDashboard
             else if(Drawing.SelectedKind==FormworkObject.Slab && index<network.Bays.Length)
             {
                 var bay=network.Bays[index];int rows=network.Beams[0].Transfer.RowsMm.Length;
+                if(bay==null) {selectedSummary.Text=$"Selected slab · S{index+1}\nSeparate slab formwork required.\nDesign and quantities are not calculated here.\nNo slab load transfers to B{index+1} or B{index+2}.";return;}
                 selectedSummary.Text=$"Selected slab · S{index+1}\n{rows} slab H20s × {bay.StockLengthMm:0.###} mm{(bay.IsCustomLength ? " custom" : " stock")}\n{2*rows} upper feet · carried by B{index+1} and B{index+2}";
             }
             else if(Drawing.SelectedKind==FormworkObject.Crossing && index<Model.CrossingBeams.Count)

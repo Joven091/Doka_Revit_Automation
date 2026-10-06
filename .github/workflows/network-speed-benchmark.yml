@@ -1,4 +1,4 @@
-name: Network numerical reuse controlled benchmark
+name: Network search pruning controlled benchmark
 on: [pull_request]
 jobs:
   net10:
@@ -21,3 +21,4 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet build tests/Beam.Net48/Beam.Net48.csproj -c Release --warnaserror
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --network-speed-benchmark
+
