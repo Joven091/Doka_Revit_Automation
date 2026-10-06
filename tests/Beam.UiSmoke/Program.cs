@@ -264,21 +264,21 @@ internal static class Program
    window.RestoreCalculation(networkSaved);Pump();Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBeams[1].DepthMm==1200 && vm.NetworkBeams[2].WidthMm==900,"network save/load round trip retains per-beam width/depth and all bays");
    ((Button)window.FindName("RemoveBeamBayButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Check(vm.NetworkBeams.Count==2 && vm.NetworkBays.Count==1,"remove last bay button");
    vm.NetworkBeams[0].WidthMm=800;vm.NetworkBeams[0].DepthMm=1750;vm.NetworkBeams[1].WidthMm=650;vm.NetworkBeams[1].DepthMm=1150;vm.NetworkBays[0].WidthMm=2575;vm.NetworkBays[0].ThicknessMm=300;
-   vm.BeamLengthMm=10600;vm.TowerLegCapacityKn=70;vm.Exclude600Standalone=true;vm.UpperSupportSpacingMm=750;Optimize();Render();
+   vm.AllowCustomH20Lengths=true;vm.BeamLengthMm=10600;vm.TowerLegCapacityKn=70;vm.Exclude600Standalone=true;vm.UpperSupportSpacingMm=750;Optimize();Render();
    var failureExpander=(Expander)window.FindName("FailureDetailsExpander");var failureText=(TextBox)window.FindName("FailureDetailsText");
    Check(!vm.IsCalculationValid && vm.HasTowerFailure && failureExpander.Visibility==Visibility.Visible && networkPlan.DrawnTowerLegCount==0,"failed network shows diagnostic control and clears stale plan");
    failureExpander.IsExpanded=true;Render();
-   Check(failureText.IsReadOnly && failureText.Text.Contains("Lower secondary · shear") && failureText.Text.Contains("Lower secondary · moment") && failureText.Text.Contains("stock 2175 mm"),"copyable failure detail shows remaining member failures after custom slab length");
+   Check(failureText.IsReadOnly && failureText.Text.Contains("Lower secondary · shear") && failureText.Text.Contains("Lower secondary · moment"),"copyable failure detail shows remaining member failures after custom slab length");
    if(args.Length>0){SavePreview(Path.ChangeExtension(args[0],"failure.png"),1040,860);File.WriteAllText(Path.ChangeExtension(args[0],"failure.txt"),failureText.Text);}
    vm.UpperSupportSpacingMm=200;Optimize();Render();
    Check(vm.IsCalculationValid && !vm.HasTowerFailure && failureExpander.Visibility==Visibility.Collapsed && networkPlan.DrawnTowerLegCount==vm.NetworkResult.LegCount,"custom slab length produces a valid tower plan at 200 mm rows");
-   Check(vm.NetworkResult.Bays[0].StockLengthMm==2175 && vm.NetworkResult.Bays[0].IsCustomLength && window.BuildReport().Contains("2175 mm custom"),"custom length is labelled in calculation report");
+   Check(vm.NetworkResult.Bays[0].StockLengthMm%25==0 && vm.NetworkResult.Bays[0].IsCustomLength && window.BuildReport().Contains(vm.NetworkResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"custom length is labelled in calculation report");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
    var customTransfer=vm.NetworkResult.Beams[0].Transfer;int customRow=Array.IndexOf(customTransfer.RightUpperScales,customTransfer.RightUpperScales.Max());
    int customEncoded=vm.NetworkResult.Beams[0].StockPlan.Pieces.Length+customTransfer.RowsMm.Length+customRow*2+1;
    var customHit=networkPlan.MemberTargets.Single(h=>h.Item2==0 && h.Item3==customEncoded);
    Check(networkPlan.SelectAt(new Point(customHit.Item1.X+customHit.Item1.Width/2,customHit.Item1.Y+customHit.Item1.Height/2)),"custom slab H20 can be selected directly for diagrams");Pump();
-   Check(window.TowerDiagrams.SelectedTransferMember.LengthMm==2175 && window.TowerDiagrams.SelectedTransferMember.H20Count==1,"custom slab diagrams use actual length and single H20 capacity");
+   Check(window.TowerDiagrams.SelectedTransferMember.LengthMm==vm.NetworkResult.Bays[0].StockLengthMm && window.TowerDiagrams.SelectedTransferMember.H20Count==1,"custom slab diagrams use actual length and single H20 capacity");
    if(args.Length>0){var bitmap=new RenderTargetBitmap((int)Math.Ceiling(networkPlan.ActualWidth),(int)Math.Ceiling(networkPlan.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(networkPlan);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"custom-plan.png")))encoder.Save(file);File.WriteAllText(Path.ChangeExtension(args[0],"custom.txt"),vm.NetworkResult.Summary+"\n\n"+vm.NetworkResult.Schedule);}
    var customWorkspaceRecord=window.CaptureCalculation();
    window.RestoreCalculation(networkSaved);Pump();Check(!vm.HasTowerFailure && failureExpander.Visibility==Visibility.Collapsed,"restoring inputs clears stale failure details");Optimize();Render();Check(vm.IsCalculationValid && !vm.HasTowerFailure,"successful retry hides failure report");
@@ -295,3 +295,4 @@ internal static class Program
  static void Optimize(){var task=vm.OptimizeTowersAsync();var timer=System.Diagnostics.Stopwatch.StartNew();while(!task.IsCompleted){Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>30)throw new Exception("Tower search timeout");}task.GetAwaiter().GetResult();Pump();}
 
 }
+

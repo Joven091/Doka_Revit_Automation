@@ -107,8 +107,9 @@ namespace EngineeringDashboard
         internal bool DeferTransferLayout = true;
         internal bool SearchByLegTier = true;
         internal bool AllowSeparateSlabFallback = true;
+        internal bool RespectNetworkCatalogueLengths = true;
         internal bool PruneNetworkBounds = true;
-        internal bool ReuseCompleteNetworkSolves = true;
+        internal bool ReuseTransverseNumerics = true;
         // A caller may restrict a solve only when larger leg counts cannot win.
         internal int NetworkLegCeiling = int.MaxValue;
         internal TransferredSlabOptimizer.SearchWorkCache NetworkNumerics;
@@ -132,12 +133,6 @@ namespace EngineeringDashboard
     }
     public sealed class TowerLayout
     {
-        internal TowerLayout CopyNetworkResult()
-        {
-            var copy=(TowerLayout)MemberwiseClone();
-            if(Transfer!=null)copy.Transfer=Transfer.CopyNetworkResult();
-            return copy;
-        }
         public TransferredSlabResult Transfer { get; internal set; }
         public double[] PositionsMm { get; internal set; }
         public bool[] Joined { get; internal set; }

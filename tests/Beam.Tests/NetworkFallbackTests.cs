@@ -41,10 +41,11 @@ internal static class NetworkFallbackTests
         Check(serial.Beams[1].Transfer.LeftUpperStockMm==0 && serial.Beams[1].Transfer.RightUpperStockMm>0 && serial.Beams[2].Transfer.LeftUpperStockMm>0,"B2 and B3 still carry S2");
         Check(serial.Summary.Contains("Separate slab formwork required: S1") && serial.Schedule.Contains("design are excluded") && serial.LayoutDiagnostics.Contains("S1: separate slab formwork"),"scope exclusion is visible in summaries, schedules and diagnostics");
         Check(serial.Beams.All(b=>b.StockPlan.Pieces.All(p=>common.StockLengthsMm.Contains(p.StockLengthMm)) && common.StockLengthsMm.Contains(b.Transfer.LowerStockLengthMm)),"fallback retains catalogue primary and lower stocks");
+        Check(serial.Bays.Where(b=>b!=null).All(b=>!b.IsCustomLength && common.StockLengthsMm.Contains(b.StockLengthMm)),"disabled custom lengths also retain catalogue upper stocks");
         Engineering(serial);
         common.NetworkSearchWorkers=4;var parallel=TransferNetworkOptimizer.Optimize(common,input);
         Check(serial.Summary==parallel.Summary && serial.Schedule==parallel.Schedule && serial.LayoutDiagnostics==parallel.LayoutDiagnostics,"serial and parallel fallback choices agree");
-        common.PruneNetworkBounds=false;common.ReuseCompleteNetworkSolves=false;common.SearchByLegTier=false;
+        common.PruneNetworkBounds=false;common.ReuseTransverseNumerics=false;common.SearchByLegTier=false;
         var reference=TransferNetworkOptimizer.Optimize(common,input);
         Check(serial.Summary==reference.Summary && serial.Schedule==reference.Schedule,"optimized fallback matches the unpruned reference search");
         // A crossing beam within an independently supported bay belongs to that separate design.
@@ -52,6 +53,9 @@ internal static class NetworkFallbackTests
         var crossing=TransferNetworkOptimizer.Optimize(Common(),input);
         Check(crossing.Bays[0]==null && crossing.Schedule.Contains("X1: S1 · separate formwork design required (not calculated)"),"excluded crossing is expressly identified");
         Engineering(crossing);
+        input=Network();input.Bays[0].WidthMm=2575;
+        var noCut=TransferNetworkOptimizer.Optimize(Common(),input);
+        Check(noCut.Bays[0]==null && noCut.Bays[1]!=null,"custom disabled does not silently cut an upper H20 when no catalogue length fits");
         // Full transfer remains preferred when it passes; excluded slab costs are never used to claim savings.
         input=Network();input.Bays[0].WidthMm=2500;
         var full=TransferNetworkOptimizer.Optimize(Common(),input);

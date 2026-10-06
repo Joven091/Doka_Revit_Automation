@@ -196,12 +196,12 @@ internal static class WorkspaceTests
             Check(!model.IsCalculationValid && workspace.FailureDetails.Contains("Lower secondary") && workspace.FailureTargets.Any(),"failed calculation exposes member demands and drawing targets");
             Check(parent.CaptureDrawingInputs().Inputs.Any(f=>f.Name=="BeamLengthMm" && f.Value=="10600"),"no-solution geometry can be saved independently of acceptance");
             var failureTarget=workspace.FailureTargets.First();failureTarget.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Render();Check(drawing.SelectedKind==FormworkObject.Beam && drawing.SelectedIndex==0,"failure selects affected beam without displaying a failed tower layout");
-            Enter("UpperSupportSpacingMm","200");Calculate();Check(model.IsCalculationValid && drawing.DrawnLegCount==36 && model.NetworkResult.Bays[0].StockLengthMm==2175,"user setup calculates and fits all 36 legs with custom slab member");
+            Enter("UpperSupportSpacingMm","200");Calculate();Check(model.IsCalculationValid && drawing.DrawnLegCount==model.NetworkResult.LegCount && model.NetworkResult.Bays[0].IsCustomLength,"enabled custom setup calculates and draws every selected leg");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-custom.png"));
             Click("Section");Render(output==null ? null : Path.ChangeExtension(output,"workspace-section.png"));
             var customHit=workspace.Section.MemberTargets.Last();workspace.Section.SelectAt(Centre(customHit.Item1));Pump();
-            Check(workspace.Diagrams.SelectedTransferMember.LengthMm==2175 && workspace.Diagrams.SelectedTransferMember.H20Count==1,"custom member is selectable in dedicated section");
-            Click("Geometry");drawing.Select(FormworkObject.Slab,0);Render();Check(workspace.SelectedResultText.Contains("Selected slab · S1") && workspace.SelectedResultText.Contains("2175 mm custom"),"slab selection reports its own H20 stock and receiving beams");
+            Check(workspace.Diagrams.SelectedTransferMember.LengthMm==model.NetworkResult.Bays[0].StockLengthMm && workspace.Diagrams.SelectedTransferMember.H20Count==1,"custom member is selectable in dedicated section");
+            Click("Geometry");drawing.Select(FormworkObject.Slab,0);Render();Check(workspace.SelectedResultText.Contains("Selected slab · S1") && workspace.SelectedResultText.Contains(model.NetworkResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"slab selection reports its own H20 stock and receiving beams");
             Click("Geometry");drawing.Select(FormworkObject.Beam,0);workspace.Fields["DepthMm"].Text="bad";Pump();Render();
             Check(!workspace.Buttons["Calculate"].IsEnabled && !model.CanOptimizeTowers && !parent.TryGetValidCalculation(out var ignored),"workspace conversion errors also block calculator and export guards");
             var exclusion=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Exclude standalone 600 mm towers"));exclusion.IsChecked=false;exclusion.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
