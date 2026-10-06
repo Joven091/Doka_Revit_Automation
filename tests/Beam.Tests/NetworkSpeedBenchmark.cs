@@ -23,7 +23,7 @@ internal static class NetworkSpeedBenchmark
         StockLengthsMm=TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths),
         StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,Exclude600Standalone=true,
         DeflectionDenominator=270,AllowCustomH20Lengths=true,ReuseNetworkNumerics=true,DeferTransferLayout=true,
-        RespectNetworkCatalogueLengths=variant!=0,SearchByLegTier=(variant&1)!=0,PruneNetworkBounds=(variant&2)!=0,ReuseTransverseNumerics=variant>=2,
+        RespectNetworkCatalogueLengths=variant!=0,SearchByLegTier=(variant&1)!=0,PruneNetworkBounds=(variant&2)!=0,ReuseTransverseNumerics=(variant&2)!=0 || variant==4,LazySearchDiagnostics=(variant&2)!=0 || variant==8,
         NetworkSearchWorkers=Math.Min(4,Environment.ProcessorCount),
         Trace=new BeamSearchTrace("network speed: "+scenario,token)
     };
@@ -110,7 +110,7 @@ internal static class NetworkSpeedBenchmark
     {
         Console.WriteLine($"SPEED runtime={Environment.Version} processors={Environment.ProcessorCount} serverGC={GCSettings.IsServerGC}; Lowest-leg-first traversal, exact network bounds and exact transverse response reuse; actual leg capacity remains 70 kN. Existing end-load model is unchanged.");
         NetworkFallbackTests.Run();
-        var warm=Solve("warm",0,0);foreach(int variant in new[] {1,2,3,4})Same(warm.Result,Solve("warm",variant,0).Result);
+        var warm=Solve("warm",0,0);foreach(int variant in new[] {1,2,3,4,8})Same(warm.Result,Solve("warm",variant,0).Result);
         using(var source=new CancellationTokenSource())
         {
             source.Cancel();bool cancelled=false;
