@@ -209,6 +209,7 @@ internal static class WorkspaceTests
             Check(!model.CanCancelOptimization && !workspace.Buttons["Cancel"].IsEnabled,"cancel is disabled without a running analysis");
             var cancelledSearch=workspace.CalculateAsync();
             Check(model.CanCancelOptimization,"running analysis can be cancelled");
+            Check(!workspace.Buttons["NewSession"].IsEnabled,"new session is disabled until the running search stops");
             Pump();Check(!workspace.SharedProperties.IsEnabled && !workspace.Fields["BeamLengthMm"].IsEnabled,"shared inputs are locked during a running search");
             var calculatorCancel=(Button)parent.FindName("CancelBeamAnalysisButton");
             calculatorCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -276,14 +277,31 @@ internal static class WorkspaceTests
             var retainedUpper=workspace.Section.MemberTargets.First(h=>h.Item2==1 && h.Item3>=model.NetworkResult.Beams[1].StockPlan.Pieces.Length+model.NetworkResult.Beams[1].Transfer.RowsMm.Length);
             workspace.Section.SelectAt(Centre(retainedUpper.Item1));Pump();Check(workspace.Diagrams.SelectedTransferMember.H20Count==1,"retained S2 diagrams remain selectable after fallback");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-separate-section.png"));
+            var retainedDiagram=workspace.Diagrams;var previousXml=model.NetworkConfigurationXml;var previousResult=model.NetworkResult;
+            workspace.ConfirmNewSession=()=>false;Click("NewSession");
+            Check(model.NetworkConfigurationXml==previousXml && ReferenceEquals(model.NetworkResult,previousResult) && ReferenceEquals(workspace.Diagrams,retainedDiagram),"declining new session preserves inputs, result and open diagrams");
+            workspace.ConfirmNewSession=()=>true;Click("NewSession");Render();
+            var defaults=new BeamCalculatorViewModel();
+            Check(workspace.IsVisible && ReferenceEquals(workspace.Model,model) && model.HasSelectedSupportSystem && model.UseTowers && model.UseBeamNetwork && model.TransferSlabLoads,"new session retains the shared model, selected mode and drawing workspace");
+            Check(model.NetworkBeams.Count==2 && model.NetworkBays.Count==1 && model.CrossingBeams.Count==0 && model.SelectedNetworkBeam==0,"new session starts a fresh two-beam network without old crossing beams");
+            Check(model.NetworkBeams.All(b=>b.WidthMm==defaults.Width && b.DepthMm==defaults.Depth) && model.BeamLengthMm==defaults.BeamLengthMm && model.StockLengthsText==defaults.StockLengthsText && model.TowerLegCapacityKn==defaults.TowerLegCapacityKn && model.UpperSupportSpacingMm==defaults.UpperSupportSpacingMm,"new session resets geometry, stock, capacity and spacing to defaults");
+            Check(model.TowerResult==null && model.NetworkResult==null && !model.IsCalculationValid && !model.HasTowerFailure && workspace.Diagrams==null && !retainedDiagram.IsVisible && workspace.Diagnostics==null,"new session clears results, failure and child windows");
+            Check(!model.BuildDiagnosticReport().Contains("Search outcome: Succeeded") && workspace.NetworkResultText=="" && !workspace.Buttons["Export"].IsEnabled,"new session has no old search trace, visible quantities or exportable result");
+            Check(!workspace.Buttons["Undo"].IsEnabled && !workspace.Buttons["Redo"].IsEnabled && !drawing.Formwork && workspace.Buttons["Calculate"].IsEnabled,"new session clears undo history and returns to editable geometry");
+            Render(output==null ? null : Path.ChangeExtension(output,"workspace-new-session.png"));
+            model.AddCrossingBeam();Pump();Render();workspace.Fields["DepthMm"].Text="bad";Pump();
+            Check(workspace.Buttons["NewSession"].IsEnabled && !workspace.Buttons["Calculate"].IsEnabled,"new session remains available when pending input is invalid");
+            Click("NewSession");Render();
+            Check(model.CrossingBeams.Count==0 && workspace.Fields["DepthMm"].Text==defaults.Depth.ToString("0.###") && model.CanOptimizeTowers && workspace.Buttons["Calculate"].IsEnabled,"new session discards invalid pending text and clears crossing geometry");
             parent.RestoreCalculation(beforeFallback);Pump();Render();
-            var closingDiagnosis=workspace.Diagnostics;
+            Click("Diagnose");var closingDiagnosis=workspace.Diagnostics;
             var xml=model.NetworkConfigurationXml;workspace.Close();Pump();Check(parent.FormworkWorkspace==null && model.CanOptimizeTowers && model.NetworkConfigurationXml==xml,"closing releases validation and retains geometry");Check(!closingDiagnosis.IsVisible,"closing workspace closes its diagnosis window");workspace=null;
             Console.WriteLine($"Passed {checks} drawing workspace checks.");return checks;
         }
         finally {workspace?.Close();}
     }
 }
+
 
 
 
