@@ -1,5 +1,11 @@
 name: Network search pruning controlled benchmark
-on: [pull_request]
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   net10:
     runs-on: windows-latest

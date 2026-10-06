@@ -1,5 +1,11 @@
 name: Beam search reuse and reported-case benchmark
-on: [pull_request]
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   beam-search:
     runs-on: windows-latest

@@ -1,5 +1,11 @@
 name: Actual main versus candidate network benchmark
-on: [pull_request]
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   net48-source:
     runs-on: windows-latest
