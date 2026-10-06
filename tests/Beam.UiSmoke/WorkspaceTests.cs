@@ -128,9 +128,16 @@ internal static class WorkspaceTests
             Check(workspace.Diagrams!=null && workspace.Diagrams.SelectedTransferMember.H20Count==2,"primary pair diagrams are embedded in workspace");
             Check(Math.Abs(workspace.Diagrams.LoadedAnalysis.TotalLoadKn-model.NetworkResult.Beams[hit.Item2].Transfer.PrimaryCases.Last()[hit.Item3].Analysis.TotalLoadKn)<1e-8,"plan selection displays actual member load");
             Check(Controls<Border>(workspace).Count(b=>b.CornerRadius.TopLeft==8)==3,"tower response diagrams use three chart cards like the slab and beam calculators");
+            Check(workspace.Diagrams.IsEquivalentUdlView && workspace.Diagrams.DisplayedTransferMember.Points.Length==0,"embedded primary defaults to labelled equivalent UDL");
+            var approximateDetails=Controls<Expander>(workspace).Single(e=>Equals(e.Header,"Approximate UDL support reactions (view only)"));
+            Check(!approximateDetails.IsExpanded,"approximate reactions remain collapsed above the plots");
+            Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Equivalent UDL view")).IsChecked=false;Pump();
+            Check(!workspace.Diagrams.IsEquivalentUdlView && workspace.Diagrams.LoadedAnalysis==workspace.Diagrams.SelectedTransferMember.Analysis && model.IsCalculationValid,"embedded toggle restores actual design response without invalidating the result");
             var loadDetails=Controls<Expander>(workspace).Single(e=>Equals(e.Header,"Support reactions and point loads"));
             Check(!loadDetails.IsExpanded && ((TextBlock)loadDetails.Content).Text.Contains("Point loads from stock end"),"long load details remain available without pushing the graph below the viewport");
             Check(workspace.SelectedResultText.Contains("Selected beam · B"+(hit.Item2+1)),"member picking updates the selected result without changing network totals");
+            Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Equivalent UDL view")).IsChecked=true;Pump();
+            Check(workspace.Diagrams.IsEquivalentUdlView,"embedded primary restores UDL view");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-diagrams.png"));
             Click("Geometry");Render();var beam=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Beam && h.Item3==1);
             Check(drawing.SelectAt(Centre(beam.Item1)) && drawing.SelectedIndex==1 && workspace.Fields["DepthMm"].Text=="1200","click selects actual beam and editable depth");
@@ -243,4 +250,5 @@ internal static class WorkspaceTests
         finally {workspace?.Close();}
     }
 }
+
 
