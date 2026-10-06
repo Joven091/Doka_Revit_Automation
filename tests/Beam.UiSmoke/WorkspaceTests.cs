@@ -23,6 +23,26 @@ internal static class WorkspaceTests
         Pump();var root=(FrameworkElement)workspace.Content;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();
         if(path!=null){int imageWidth=(int)Math.Ceiling(root.ActualWidth),imageHeight=(int)Math.Ceiling(root.ActualHeight);var bitmap=new RenderTargetBitmap(imageWidth,imageHeight,96,96,PixelFormats.Pbgra32);var backdrop=new DrawingVisual();using(var dc=backdrop.RenderOpen())dc.DrawRectangle(Brushes.WhiteSmoke,null,new Rect(0,0,imageWidth,imageHeight));bitmap.Render(backdrop);bitmap.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}
     }
+    static void RenderDiagrams(string path=null)
+    {
+        Pump();var content=(FrameworkElement)((ScrollViewer)workspace.Diagrams.Content).Content;
+        content.Measure(new Size(900,double.PositiveInfinity));content.Arrange(new Rect(0,0,900,content.DesiredSize.Height));content.UpdateLayout();
+        if(path!=null){var bitmap=new RenderTargetBitmap((int)Math.Ceiling(content.ActualWidth),(int)Math.Ceiling(content.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(content);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}
+    }
+    static bool NoOverlaps(IEnumerable<Rect> boxes)
+    {var values=boxes.ToArray();return !values.Where((r,i)=>values.Skip(i+1).Any(r.IntersectsWith)).Any();}
+    static void DenseSection(TransferNetworkResult actual,string output)
+    {
+        // Eight-beam drawing fixture reuses checked members; this does not run another network search.
+        var fixture=new TransferNetworkResult {Beams=Enumerable.Repeat(actual.Beams[1],8).ToArray(),Bays=Enumerable.Repeat(actual.Bays[0],7).ToArray(),BeamCentresMm=Enumerable.Range(0,8).Select(i=>i*4500.0).ToArray(),Input=new TransferNetworkInput {Beams=Enumerable.Repeat(actual.Input.Beams[1],8).ToArray(),Bays=Enumerable.Repeat(actual.Input.Bays[0],7).ToArray()}};
+        var section=new TransferNetworkPlan {Width=1200,SectionOnly=true};section.SetResult(fixture);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,420));section.UpdateLayout();
+        Action<string> capture=path=> {var bitmap=new RenderTargetBitmap(1200,420,96,96,PixelFormats.Pbgra32);bitmap.Render(section);if(path!=null){var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}};
+        capture(output==null ? null : Path.ChangeExtension(output,"workspace-dense-section.png"));
+        Check(section.MemberTargets.Count==15 && section.DrawnSecondaryLengthCount==8,"eight-beam section retains every lower and shared slab member target");
+        Check(NoOverlaps(section.AnnotationBounds),"eight-beam section annotation rectangles do not overlap");
+        section.ShowAllDimensions=true;section.InvalidateVisual();section.UpdateLayout();capture(null);
+        Check(NoOverlaps(section.AnnotationBounds),"full section dimensions omit labels that would overlap");
+    }
     static void Calculate()
     {
         var task=workspace.CalculateAsync();var timer=System.Diagnostics.Stopwatch.StartNew();
@@ -115,6 +135,9 @@ internal static class WorkspaceTests
             Check(copied==copyWindow.ReportBox.Text && copied.Contains("Copy my remarks") && copied.Contains("END BEAM FORMWORK"),"copy refreshes the complete report and remarks");copyWindow.Close();
             var drawing=workspace.Drawing;drawing.Fit();Render();
             Check(workspace.NetworkResultText.Contains(model.NetworkResult.LegCount+" tower legs") && workspace.SelectedResultText.Contains("Selected beam · B1") && workspace.SelectedResultText.Contains(model.NetworkResult.Beams[0].LegCount+" tower legs"),"network totals and selected beam quantities have explicit independent labels");
+            var details=Controls<Expander>(workspace).Single(e=>Equals(e.Header,"Details"));
+            Check(!details.IsExpanded && !workspace.NetworkResultText.Contains("peak leg") && workspace.NetworkResultText.Contains(model.NetworkResult.H20Count+" H20s"),"network card defaults to support and timber counts with extra quantities collapsed");
+            Check(Controls<TextBlock>(details).Any(t=>t.Text.Contains("upper feet") && t.Text.Contains("Slab movement")),"full engineering totals remain available under Details");
             Check(drawing.ObjectTargets.Count(t=>t.Item2==FormworkObject.Beam)==3 && drawing.ObjectTargets.Count(t=>t.Item2==FormworkObject.Slab)==2,"geometry is visible before formwork selection");
             var top=drawing.Screen(drawing.SceneBounds.Left,drawing.SceneBounds.Top);var bottom=drawing.Screen(drawing.SceneBounds.Right,drawing.SceneBounds.Bottom);
             Check(top.X>=0 && top.Y>=0 && bottom.X<=drawing.ActualWidth && bottom.Y<=drawing.ActualHeight,"fit includes the complete metric plan");
@@ -124,21 +147,32 @@ internal static class WorkspaceTests
             Click("Formwork");Render(output==null ? null : Path.ChangeExtension(output,"workspace-overview.png"));
             Check(drawing.DrawnLegCount==model.NetworkResult.LegCount && drawing.MemberTargets.Count>0,"formwork overlays all calculated legs and primary pairs");
             Check(drawing.LegTargets.Count==drawing.DrawnLegCount && drawing.LegTargets.All(t=>t.Item2.Contains("/70 kN")),"every visible leg has load and permissible-capacity inspection");
-            var hit=drawing.MemberTargets.First();Check(drawing.SelectAt(Centre(hit.Item1)),"primary H20 is selected directly from plan");Pump();Render();
-            Check(workspace.Diagrams!=null && workspace.Diagrams.SelectedTransferMember.H20Count==2,"primary pair diagrams are embedded in workspace");
+            double planHeight=drawing.ActualHeight;var hit=drawing.MemberTargets.First();Check(drawing.SelectAt(Centre(hit.Item1)),"primary H20 is selected directly from plan");Pump();Render();
+            Check(workspace.Diagrams!=null && workspace.Diagrams.IsVisible && workspace.Diagrams.Owner==workspace && workspace.Diagrams.SelectedTransferMember.H20Count==2,"primary pair opens an owned separate diagram window");
             Check(Math.Abs(workspace.Diagrams.LoadedAnalysis.TotalLoadKn-model.NetworkResult.Beams[hit.Item2].Transfer.PrimaryCases.Last()[hit.Item3].Analysis.TotalLoadKn)<1e-8,"plan selection displays actual member load");
-            Check(Controls<Border>(workspace).Count(b=>b.CornerRadius.TopLeft==8)==3,"tower response diagrams use three chart cards like the slab and beam calculators");
-            Check(workspace.Diagrams.IsEquivalentUdlView && workspace.Diagrams.DisplayedTransferMember.Points.Length==0,"embedded primary defaults to labelled equivalent UDL");
-            var approximateDetails=Controls<Expander>(workspace).Single(e=>Equals(e.Header,"Approximate UDL support reactions (view only)"));
+            Check(Controls<Border>(workspace.Diagrams).Count(b=>b.CornerRadius.TopLeft==8)==4 && !Controls<Border>(workspace).Any(b=>b.CornerRadius.TopLeft==8),"loading and response cards are outside the workspace");
+            Check(Math.Abs(drawing.ActualHeight-planHeight)<.01,"opening diagrams does not shrink the drawing canvas");
+            RenderDiagrams();Check(workspace.Diagrams.LoadingDiagram.DrawnSupportCount==workspace.Diagrams.SelectedTransferMember.SupportsMm.Length && workspace.Diagrams.LoadingDiagram.DrawnUniformCount==1,"loading schematic renders every support and the equivalent UDL");
+            Check(workspace.Diagrams.IsEquivalentUdlView && workspace.Diagrams.DisplayedTransferMember.Points.Length==0,"separate primary defaults to labelled equivalent UDL");
+            var approximateDetails=Controls<Expander>(workspace.Diagrams).Single(e=>Equals(e.Header,"Approximate UDL support reactions (view only)"));
             Check(!approximateDetails.IsExpanded,"approximate reactions remain collapsed above the plots");
-            Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Equivalent UDL view")).IsChecked=false;Pump();
-            Check(!workspace.Diagrams.IsEquivalentUdlView && workspace.Diagrams.LoadedAnalysis==workspace.Diagrams.SelectedTransferMember.Analysis && model.IsCalculationValid,"embedded toggle restores actual design response without invalidating the result");
-            var loadDetails=Controls<Expander>(workspace).Single(e=>Equals(e.Header,"Support reactions and point loads"));
+            Controls<CheckBox>(workspace.Diagrams).Single(c=>Equals(c.Content,"Equivalent UDL view")).IsChecked=false;Pump();
+            Check(!workspace.Diagrams.IsEquivalentUdlView && workspace.Diagrams.LoadedAnalysis==workspace.Diagrams.SelectedTransferMember.Analysis && model.IsCalculationValid,"separate toggle restores actual design response without invalidating the result");
+            RenderDiagrams();Check(workspace.Diagrams.LoadingDiagram.DrawnPointCount==workspace.Diagrams.SelectedTransferMember.Points.Length,"actual loading schematic retains every point reaction");
+            var loadDetails=Controls<Expander>(workspace.Diagrams).Single(e=>Equals(e.Header,"Support reactions and point loads"));
             Check(!loadDetails.IsExpanded && ((TextBlock)loadDetails.Content).Text.Contains("Point loads from stock end"),"long load details remain available without pushing the graph below the viewport");
             Check(workspace.SelectedResultText.Contains("Selected beam · B"+(hit.Item2+1)),"member picking updates the selected result without changing network totals");
-            Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Equivalent UDL view")).IsChecked=true;Pump();
-            Check(workspace.Diagrams.IsEquivalentUdlView,"embedded primary restores UDL view");
+            Controls<CheckBox>(workspace.Diagrams).Single(c=>Equals(c.Content,"Equivalent UDL view")).IsChecked=true;Pump();
+            Check(workspace.Diagrams.IsEquivalentUdlView,"separate primary restores UDL view");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-diagrams.png"));
+            RenderDiagrams(output==null ? null : Path.ChangeExtension(output,"workspace-diagram-window.png"));
+            var diagramWindow=workspace.Diagrams;var bodyHit=drawing.ObjectTargets.First(h=>h.Item2==FormworkObject.Beam && h.Item3==hit.Item2);
+            Check(drawing.SelectAt(Centre(bodyHit.Item1)),"beam body click also opens its primary diagrams");Pump();Render();
+            Check(ReferenceEquals(workspace.Diagrams,diagramWindow),"picking another primary on the same beam reuses the diagram window");
+            diagramWindow.Close();Pump();Check(workspace.Diagrams==null && model.IsCalculationValid,"closing diagram window clears its reference and retains valid results");
+            drawing.SelectAt(Centre(bodyHit.Item1));Pump();Check(workspace.Diagrams!=null && workspace.Diagrams.IsVisible,"beam click reopens the closed diagram window");
+            Check(NoOverlaps(drawing.AnnotationBounds),"plan annotation rectangles do not overlap");
+            DenseSection(model.NetworkResult,output);
             Click("Geometry");Render();var beam=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Beam && h.Item3==1);
             Check(drawing.SelectAt(Centre(beam.Item1)) && drawing.SelectedIndex==1 && workspace.Fields["DepthMm"].Text=="1200","click selects actual beam and editable depth");
             Check(workspace.SelectedResultText.Contains("Selected beam · B2") && workspace.SelectedResultText.Contains(model.NetworkResult.Beams[1].LegCount+" tower legs"),"each geometry beam selection displays that beam's own result");
@@ -250,5 +284,6 @@ internal static class WorkspaceTests
         finally {workspace?.Close();}
     }
 }
+
 
 

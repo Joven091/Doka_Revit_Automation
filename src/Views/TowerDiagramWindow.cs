@@ -21,15 +21,18 @@ namespace EngineeringDashboard
         internal LoadedBeamAnalysis ActualLoadedAnalysis { get; private set; }
         internal bool UseEquivalentUdlForPrimary {get;private set;}=true;
         internal bool IsEquivalentUdlView {get;private set;}
+        internal MemberLoadingPlot LoadingDiagram {get;private set;}
         internal int SelectedLoadCase { get; private set; } = -1;
         private readonly TowerLayout layout;
+        private readonly string beamLabel;
         private readonly StackPanel charts = new StackPanel();
         public TowerDiagramWindow(BeamCalculatorViewModel model)
         {
+            beamLabel=model.IsNetworkMode ? $"B{model.SelectedNetworkBeam+1} · " : "";
             layout = model.TowerResult ?? throw new ArgumentException("Optimize the tower layout first.");
-            Title = "Select H20 — shear, moment and deflection"; Width = 900; Height = 850;
+            Title = "Select H20 — shear, moment and deflection"; Width = 960; Height = 850; MinWidth=760;MinHeight=550;WindowStartupLocation=WindowStartupLocation.CenterOwner;FontFamily=new FontFamily("Segoe UI");FontSize=13;
             var panel = new StackPanel { Margin = new Thickness(16), Background=Brushes.WhiteSmoke };
-            panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = (layout.Transfer != null ? "Primary members are H20 pairs: M=10 kNm, V=22 kN. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. Use the case buttons to check beam/slab loading stages. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents a double-H20 pair with equal load sharing: M=10 kNm, V=22 kN. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; red arrows mark applied loads. Primary pairs open in an equivalent UDL view; clear its checkbox to show the actual concentrated reactions. The UDL approximation is for viewing only; layout checks, quantities and reported utilization use the actual loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
+            panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = (layout.Transfer != null ? "Primary members are H20 pairs: M=10 kNm, V=22 kN. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. Use the case buttons to check beam/slab loading stages. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents a double-H20 pair with equal load sharing: M=10 kNm, V=22 kN. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; the loading diagram shows applied loads and supports. Primary pairs open in an equivalent UDL view; clear its checkbox to show the actual concentrated reactions. The UDL approximation is for viewing only; layout checks, quantities and reported utilization use the actual loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
             panel.Children.Add(charts);
             Background=Brushes.WhiteSmoke;
             Content = new ScrollViewer { Content = panel, Background = Brushes.WhiteSmoke, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -41,11 +44,13 @@ namespace EngineeringDashboard
             var piece = layout.StockPlan.Pieces[SelectedRun];
             var supports = layout.PositionsMm.Skip(piece.FirstSupport).Take(piece.LastSupport - piece.FirstSupport + 1).Select(x => (x - piece.StartMm) / 1000).ToArray();
             double q = SelectedLine == 0 ? layout.LeftLineLoad : layout.RightLineLoad;
-            Title = $"P{SelectedRun + 1} · {(SelectedLine == 0 ? "Left" : "Right")} · double H20 — response diagrams";
+            Title = beamLabel+$"P{SelectedRun + 1} · {(SelectedLine == 0 ? "Left" : "Right")} · double H20 — response diagrams";
             Analysis = TowerBeamAnalysis.Analyze(piece.StockLengthMm / 1000, supports, q, TowerOptimizer.PairEI);
             charts.Children.Clear();
             charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · loaded length: {piece.StockLengthMm:0.###} mm", TextWrapping = TextWrapping.Wrap,Margin=new Thickness(0,8,0,4) });
             AddLoadDetails(string.Join("   ",Analysis.Reactions.Select((v,i)=>$"Support {piece.FirstSupport+i+1}: leg load {v:0.00} kN")));
+            LoadingDiagram=new MemberLoadingPlot(piece.StockLengthMm,supports.Select(x=>x*1000).ToArray(),Analysis.Reactions,new[] {new BeamDistributedLoad {StartMm=0,EndMm=piece.StockLengthMm,KnPerM=q}},new BeamPointLoad[0]);
+            AddChart("Loading diagram",LoadingDiagram,true);
             string[] names = { "Shear (kN)", "Moment (kNm)", "Deflection (mm)" };
             double[] peaks = { Analysis.Shear, Analysis.Moment, Analysis.DeflectionMm }, limits = { TowerOptimizer.PairShear, TowerOptimizer.PairMoment, Analysis.DeflectionRegions.Max(x => x.AllowableMm(layout.DeflectionLimitMm, layout.DeflectionDenominator)) };
             for (int i = 0; i < 3; i++)
@@ -77,7 +82,7 @@ namespace EngineeringDashboard
             IsEquivalentUdlView=primary && UseEquivalentUdlForPrimary;
             if(IsEquivalentUdlView)m=EquivalentUniformMember(m,layout.DeflectionDenominator);
             DisplayedTransferMember=m;LoadedAnalysis=m.Analysis;
-            Title=m.Name+(m.H20Count==1 ? " · single H20" : " · double H20")+" — response diagrams";
+            Title=beamLabel+m.Name+(m.H20Count==1 ? " · single H20" : " · double H20")+" — response diagrams";
             charts.Children.Clear();
             if(!upper)
             {
@@ -99,7 +104,7 @@ namespace EngineeringDashboard
                 {
                     double q=m.Uniform[0].KnPerM;
                     charts.Children.Add(new Border {Background=new SolidColorBrush(Color.FromRgb(255,246,219)),Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
-                        Child=new TextBlock {Text=$"Equivalent UDL approximation · {q:0.000} kN/m over {m.LengthMm:0.###} mm. Same total load and supports; reactions, peaks and curves below are approximate. Layout checks and reported quantities use the actual point loads.",TextWrapping=TextWrapping.Wrap}});
+                        Child=new TextBlock {Text=$"Equivalent UDL approximation · {q:0.000} kN/m. Actual point loads govern layout checks; the curves below are for viewing.",TextWrapping=TextWrapping.Wrap}});
                 }
             }
             charts.Children.Add(new TextBlock {Text=m.LoadCase+(m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
@@ -107,6 +112,8 @@ namespace EngineeringDashboard
             AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
                 +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))),
                 IsEquivalentUdlView ? "Approximate UDL support reactions (view only)" : "Support reactions and point loads");
+            LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);
+            AddChart("Loading diagram"+(IsEquivalentUdlView ? " · equivalent UDL" : " · actual loads"),LoadingDiagram,true);
             string[] names={"Shear (kN)","Moment (kNm)","Relative member deflection (mm)"};
             double[] peaks={m.Analysis.ShearKn,m.Analysis.MomentKnM,m.Analysis.DeflectionMm};
             for(int i=0;i<3;i++)
@@ -128,12 +135,12 @@ namespace EngineeringDashboard
         }
         private void AddLoadDetails(string text,string header="Support reactions and point loads")
         {charts.Children.Add(new Expander {Header=header,Margin=new Thickness(0,4,0,4),Content=new TextBlock {Text=text,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,6,4,8)}});}
-        private void AddChart(string caption,FrameworkElement plot)
+        private void AddChart(string caption,FrameworkElement plot,bool loading=false)
         {
             var panel=new StackPanel();
             panel.Children.Add(new TextBlock {Text=caption,FontSize=16,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(51,51,51)),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,6)});
             panel.Children.Add(plot);
-            panel.Children.Add(new TextBlock {Text="Distance is measured from the left stock end. Dashed vertical lines mark supports; red dashed lines show permissible limits.",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,6,0,0)});
+            panel.Children.Add(new TextBlock {Text=loading ? "Red: applied load · green: support reactions · dimensions in mm. Full values are available under support reactions above." : "Distance from the left stock end (mm). Dashed verticals: supports · red dashed lines: permissible limits.",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,6,0,0)});
             charts.Children.Add(new Border {Background=Brushes.White,BorderBrush=new SolidColorBrush(Color.FromRgb(224,224,224)),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8),Padding=new Thickness(12),Margin=new Thickness(0,12,0,4),Child=panel});
         }
         private static Brush PlotBackground(int index)=>new SolidColorBrush(index==0 ? Color.FromRgb(255,255,217) : index==1 ? Color.FromRgb(220,250,220) : Color.FromRgb(218,255,255));
@@ -151,10 +158,66 @@ namespace EngineeringDashboard
             dc.PushTransform(new RotateTransform(-90,45,centre));label(unit,45-unit.Length*2.75,centre-6);dc.Pop();
             label("Distance (mm)",(left+right)/2-35,bottom+4);
         }
+        internal sealed class MemberLoadingPlot : FrameworkElement
+        {
+            readonly double length;readonly double[] supports,reactions;readonly BeamDistributedLoad[] uniform;readonly BeamPointLoad[] points;
+            internal int DrawnSupportCount {get;private set;}
+            internal int DrawnPointCount {get;private set;}
+            internal int DrawnUniformCount {get;private set;}
+            internal readonly System.Collections.Generic.List<Rect> LabelBounds=new System.Collections.Generic.List<Rect>();
+            internal MemberLoadingPlot(double l,double[] s,double[] r,BeamDistributedLoad[] u,BeamPointLoad[] p)
+            {length=l;supports=s;reactions=r;uniform=u;points=p;Height=215;}
+            protected override void OnRender(DrawingContext dc)
+            {
+                base.OnRender(dc);LabelBounds.Clear();DrawnSupportCount=DrawnPointCount=DrawnUniformCount=0;
+                double left=65,right=Math.Max(left+20,ActualWidth-20),beamY=85;
+                Func<double,double> xx=x=>left+x/length*(right-left);
+                Action<string,double,double> label=(value,x,y)=>
+                {
+                    var text=new FormattedText(value,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,Brushes.DarkSlateGray,VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                    x=Math.Max(2,Math.Min(ActualWidth-text.Width-2,x-text.Width/2));var box=new Rect(x-2,y-1,text.Width+4,text.Height+2);
+                    if(LabelBounds.Any(b=>b.IntersectsWith(box)))return;
+                    LabelBounds.Add(box);dc.DrawText(text,new Point(x,y));
+                };
+                Action<double,double,double,Brush> arrow=(x,from,to,colour)=>
+                {
+                    double sign=Math.Sign(to-from);var pen=new Pen(colour,1.5);dc.DrawLine(pen,new Point(x,from),new Point(x,to));
+                    dc.DrawLine(pen,new Point(x,to),new Point(x-4,to-sign*7));dc.DrawLine(pen,new Point(x,to),new Point(x+4,to-sign*7));
+                };
+                dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));
+                dc.DrawLine(new Pen(Brushes.DarkSlateGray,4),new Point(left,beamY),new Point(right,beamY));
+                for(int i=0;i<uniform.Length;i++)
+                {
+                    var q=uniform[i];double y=25+i*19,a=xx(q.StartMm),b=xx(q.EndMm);
+                    dc.DrawLine(new Pen(Brushes.Firebrick,1),new Point(a,y+18),new Point(b,y+18));
+                    int count=Math.Max(1,(int)((b-a)/45));
+                    for(int k=0;k<=count;k++)arrow(a+(b-a)*k/count,y+18,beamY-5,Brushes.Firebrick);
+                    label($"{q.KnPerM:0.###} kN/m",(a+b)/2,y-2);DrawnUniformCount++;
+                }
+                foreach(var p in points)
+                {
+                    double x=xx(p.PositionMm);arrow(x,48,beamY-5,Brushes.Firebrick);label($"{p.Kn:0.##} kN",x,26);DrawnPointCount++;
+                }
+                for(int i=0;i<supports.Length;i++)
+                {
+                    double x=xx(supports[i]);var triangle=new StreamGeometry();using(var c=triangle.Open()){c.BeginFigure(new Point(x,beamY+3),true,true);c.LineTo(new Point(x-7,beamY+15),true,false);c.LineTo(new Point(x+7,beamY+15),true,false);}
+                    dc.DrawGeometry(Brushes.SlateGray,null,triangle);dc.DrawLine(new Pen(Brushes.SlateGray,1),new Point(x-10,beamY+19),new Point(x+10,beamY+19));
+                    arrow(x,reactions[i]>=0 ? 145 : 110,reactions[i]>=0 ? 110 : 145,Brushes.SeaGreen);label($"R{i+1}: {reactions[i]:0.##} kN",x,148);DrawnSupportCount++;
+                }
+                var stations=new[] {0.0}.Concat(supports).Concat(new[] {length}).Distinct().OrderBy(x=>x).ToArray();
+                for(int i=1;i<stations.Length;i++)
+                {
+                    double a=xx(stations[i-1]),b=xx(stations[i]),y=180;dc.DrawLine(new Pen(Brushes.Gray,1),new Point(a,y),new Point(b,y));
+                    foreach(double x in new[] {a,b})dc.DrawLine(new Pen(Brushes.Gray,1),new Point(x,y-4),new Point(x,y+4));
+                    string value=$"{stations[i]-stations[i-1]:0.###}";if(b-a>value.Length*7+8)label(value,(a+b)/2,y+5);
+                }
+                label("0",left,200);label($"{length:0.###} mm",right,200);
+            }
+        }
         private sealed class LoadedResponsePlot : FrameworkElement
         {
             readonly TransferMember member; readonly int index,denominator;
-            public LoadedResponsePlot(TransferMember m,int i,int ratio) {member=m;index=i;denominator=ratio;Height=245;}
+            public LoadedResponsePlot(TransferMember m,int i,int ratio) {member=m;index=i;denominator=ratio;Height=220;}
             protected override void OnRender(DrawingContext dc)
             {
                 base.OnRender(dc); double left=65,right=Math.Max(left+20,ActualWidth-20),top=20,bottom=175;
@@ -169,37 +232,22 @@ namespace EngineeringDashboard
                     double allowable=index==2 ? (stations[i]-stations[i-1])/denominator : limit;
                     foreach(double sign in new[] {-1.0,1.0}) dc.DrawLine(new Pen(Brushes.IndianRed,1){DashStyle=DashStyles.Dash},new Point(xx(stations[i-1]),yy(sign*allowable)),new Point(xx(stations[i]),yy(sign*allowable)));
                     if(index==2) label($"±{allowable:0.##}",(xx(stations[i-1])+xx(stations[i]))/2-14,yy(allowable)-14);
-                    double y=bottom+34;dc.DrawLine(new Pen(Brushes.Gray,1),new Point(xx(stations[i-1]),y),new Point(xx(stations[i]),y));
-                    foreach(double x in new[] {stations[i-1],stations[i]}) dc.DrawLine(new Pen(Brushes.Gray,1),new Point(xx(x),y-3),new Point(xx(x),y+3));
-                    label($"{stations[i]-stations[i-1]:0.###}",(xx(stations[i-1])+xx(stations[i]))/2-14,y+5);
                 }
                 foreach(double s in member.SupportsMm) dc.DrawLine(new Pen(Brushes.LightGray,1){DashStyle=DashStyles.Dash},new Point(xx(s),top),new Point(xx(s),bottom));
-                foreach(var q in member.Uniform)
-                {
-                    for(int i=0;i<=12;i++)
-                    {
-                        double x=xx(q.StartMm+(q.EndMm-q.StartMm)*i/12);
-                        dc.DrawLine(new Pen(Brushes.DarkRed,1),new Point(x,top),new Point(x,top+14));
-                        dc.DrawLine(new Pen(Brushes.DarkRed,1),new Point(x,top+14),new Point(x-3,top+9));
-                        dc.DrawLine(new Pen(Brushes.DarkRed,1),new Point(x,top+14),new Point(x+3,top+9));
-                    }
-                    label($"UDL {q.KnPerM:0.###} kN/m",(xx(q.StartMm)+xx(q.EndMm))/2-45,top-14);
-                }
-                foreach(var p in member.Points) {dc.DrawLine(new Pen(Brushes.DarkRed,1),new Point(xx(p.PositionMm),top),new Point(xx(p.PositionMm),top+14));label($"{p.Kn:0.#}",xx(p.PositionMm)-8,top-14);}
                 var jumps=member.SupportsMm.Concat(member.Points.Select(p=>p.PositionMm)).Distinct().ToArray();
                 var positions=Enumerable.Range(0,401).Select(i=>member.LengthMm*i/400).Concat(jumps).Distinct().OrderBy(x=>x);Point? previous=null;
                 foreach(double x in positions) foreach(bool side in jumps.Contains(x) ? new[] {false,true} : new[] {true})
                 {
                     var point=new Point(xx(x),yy(member.Analysis.Response(x,side)[index]));if(previous.HasValue)dc.DrawLine(new Pen(Brushes.SteelBlue,2),previous.Value,point);previous=point;
                 }
-                label("0",left,bottom+4);label($"{member.LengthMm:0} mm",right-60,bottom+4);label(member.Points.Length==0 ? "End offsets and support spans (mm); UDL in kN/m" : "End offsets and support spans (mm); point loads in kN",left,bottom+56);
+                label("0",left,bottom+4);label($"{member.LengthMm:0} mm",right-60,bottom+4);
             }
         }
         private sealed class ResponsePlot : FrameworkElement
         {
             readonly TowerBeamAnalysis analysis; readonly double[] supports; readonly double length, range, limit; readonly int index, denominator;
             public ResponsePlot(TowerBeamAnalysis a, double[] s, double l, int i, double peak, double allowable, int ratio)
-            { analysis = a; denominator = ratio; supports = s; length = l; index = i; limit = allowable; range = Math.Max(.001,Math.Max(peak, allowable) * 1.15); Height = 245; }
+            { analysis = a; denominator = ratio; supports = s; length = l; index = i; limit = allowable; range = Math.Max(.001,Math.Max(peak, allowable) * 1.15); Height = 220; }
             protected override void OnRender(DrawingContext dc)
             {
                 base.OnRender(dc); double left = 65, right = Math.Max(left + 20, ActualWidth - 20), top = 20, bottom = 175;
@@ -231,17 +279,9 @@ namespace EngineeringDashboard
                         previous = point;
                     }
                 label("0", left, bottom + 4); label($"{length * 1000:0} mm", right - 60, bottom + 4);
-                var stations = new[] { 0.0 }.Concat(supports).Concat(new[] { length }).Distinct().ToArray();
-                for (int i = 1; i < stations.Length; i++)
-                {
-                    double a = xx(stations[i-1]), b = xx(stations[i]), y = bottom + 34;
-                    dc.DrawLine(new Pen(Brushes.Gray, 1), new Point(a,y), new Point(b,y));
-                    foreach (double end in new[] {a,b}) dc.DrawLine(new Pen(Brushes.Gray,1),new Point(end,y-3),new Point(end,y+3));
-                    label($"{(stations[i]-stations[i-1])*1000:0.###}", (a+b)/2-14, y+5);
-                }
-                label("End offsets and support spans (mm)", left, bottom + 56);
             }
         }
     }
 }
+
 
