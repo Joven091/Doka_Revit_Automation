@@ -39,6 +39,7 @@ internal static class Program
   var reference=LoadedBeamAnalysis.Analyze(actual.LengthMm,actual.SupportsMm,shown.Uniform,null,TowerOptimizer.PairEI,denominator);
   Check(shown.Analysis.MomentKnM==reference.MomentKnM && shown.Analysis.ShearKn==reference.ShearKn && shown.Analysis.DeflectionMm==reference.DeflectionMm,"plotted peaks belong to the displayed UDL calculation");
   Check(Find<TextBlock>(diagrams).Any(t=>t.Text.Contains("Equivalent UDL approximation")) && Find<TextBlock>(diagrams).Any(t=>t.Text.StartsWith("Actual checked peaks: ")) && Find<TextBlock>(diagrams).Count(t=>t.Text.StartsWith("Equivalent UDL · "))==3,"approximation is labelled above the plots and in each chart");
+  Check(Find<TextBlock>(diagrams).Any(t=>t.Text.StartsWith("Loading diagram")) && diagrams.LoadingDiagram!=null,"primary has a separate loading schematic above the response plots");
   var toggle=Find<CheckBox>(diagrams).Single(c=>Equals(c.Content,"Equivalent UDL view"));toggle.IsChecked=false;Pump();
   Check(!diagrams.IsEquivalentUdlView && diagrams.LoadedAnalysis==actual.Analysis && diagrams.DisplayedTransferMember==actual,"actual point-load view remains selectable");
   Check(actual.Points.Select(p=>p.Kn).SequenceEqual(points),"switching diagram views never mutates optimizer loads");
@@ -316,5 +317,6 @@ internal static class Program
  static void Optimize(){var task=vm.OptimizeTowersAsync();var timer=System.Diagnostics.Stopwatch.StartNew();while(!task.IsCompleted){Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>30)throw new Exception("Tower search timeout");}task.GetAwaiter().GetResult();Pump();}
 
 }
+
 
 

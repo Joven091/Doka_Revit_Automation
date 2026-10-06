@@ -27,6 +27,7 @@ namespace EngineeringDashboard
         internal readonly List<Tuple<Rect,FormworkObject,int>> ObjectTargets=new List<Tuple<Rect,FormworkObject,int>>();
         internal readonly List<Tuple<Rect,int,int,int>> MemberTargets=new List<Tuple<Rect,int,int,int>>();
         internal readonly List<Tuple<Rect,string>> LegTargets=new List<Tuple<Rect,string>>();
+        internal readonly List<Rect> AnnotationBounds=new List<Rect>();
         private readonly List<Tuple<Rect,FormworkObject,int,string>> dimensions=new List<Tuple<Rect,FormworkObject,int,string>>();
         internal event Action SelectionChanged;
         internal event Action<FormworkObject,int,string> DimensionSelected;
@@ -133,11 +134,13 @@ namespace EngineeringDashboard
             return new Pen(normal,width);
         }
         internal void SelectMember(int beam,int run,int line) {memberBeam=beam;memberRun=run;memberLine=line;InvalidateVisual();}
-        private void Label(DrawingContext dc,string text,Point at,Brush colour=null,bool centre=false)
+        private bool Label(DrawingContext dc,string text,Point at,Brush colour=null,bool centre=false)
         {
             var f=new FormattedText(text,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,colour??Brushes.DarkSlateGray,VisualTreeHelper.GetDpi(this).PixelsPerDip);
             if(centre)at.X-=f.Width/2;
-            dc.DrawRectangle(Brushes.White,null,new Rect(at.X-2,at.Y-1,f.Width+4,f.Height+2));dc.DrawText(f,at);
+            var box=new Rect(at.X-2,at.Y-1,f.Width+4,f.Height+2);
+            if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>ActualHeight || AnnotationBounds.Any(r=>r.IntersectsWith(box)))return false;
+            AnnotationBounds.Add(box);dc.DrawRectangle(Brushes.White,null,box);dc.DrawText(f,at);return true;
         }
         private void Dimension(DrawingContext dc,Point a,Point b,string text,FormworkObject kind,int index,string field,Brush colour=null,double labelOffset=4)
         {
@@ -145,12 +148,13 @@ namespace EngineeringDashboard
             bool vertical=Math.Abs(a.X-b.X)<.1;
             foreach(var p in new[] {a,b})dc.DrawLine(new Pen(colour,1),p+(vertical ? new Vector(-4,0) : new Vector(0,-4)),p+(vertical ? new Vector(4,0) : new Vector(0,4)));
             Point label=vertical ? new Point(a.X+7,(a.Y+b.Y)/2-7) : new Point((a.X+b.X)/2,(a.Y+b.Y)/2+labelOffset);
-            Label(dc,text,label,colour,!vertical);
+            if(field==null && !vertical && Math.Abs(b.X-a.X)<text.Length*7+8)return;
+            if(!Label(dc,text,label,colour,!vertical))return;
             if(field!=null)dimensions.Add(Tuple.Create(new Rect(label.X-(vertical ? 0 : 38),label.Y,76,18),kind,index,field));
         }
         protected override void OnRender(DrawingContext dc)
         {
-            base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();dimensions.Clear();DrawnLegCount=0;
+            base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();dimensions.Clear();AnnotationBounds.Clear();DrawnLegCount=0;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if(!ValidGeometry()) {Label(dc,"Correct geometry to draw the plan.",new Point(30,30));return;}
             var beams=Beams();var ys=Centres();SceneBounds=Bounds();
@@ -185,12 +189,12 @@ namespace EngineeringDashboard
             for(int i=0;i<beams.Length;i++)
             {
                 var b=beams[i];var rect=new Rect(Screen(0,ys[i]-b.WidthMm/2),Screen(Model.BeamLengthMm,ys[i]+b.WidthMm/2));
-                bool selected=IsSelected(FormworkObject.Beam,i,rect);
                 dc.DrawRectangle(Brushes.LightGray,ObjectPen(FormworkObject.Beam,i,rect,Brushes.SlateGray),rect);
                 ObjectTargets.Insert(0,Tuple.Create(rect,FormworkObject.Beam,i));
                 Label(dc,$"B{i+1} · {b.WidthMm:0}×{b.DepthMm:0}",new Point(rect.Left+8,rect.Top+5));
-                if(Formwork && Layout(i)!=null)DrawSupports(dc,Layout(i),i,ys[i],selected || AllDimensions);
+
             }
+            if(Formwork)for(int i=0;i<beams.Length;i++)if(Layout(i)!=null)DrawSupports(dc,Layout(i),i,ys[i],selection.Contains(Tuple.Create(FormworkObject.Beam,i)) || AllDimensions);
             double bottomY=Pan.Y+SceneBounds.Bottom*Zoom+42;
             Dimension(dc,new Point(Screen(0,0).X,bottomY),new Point(Screen(Model.BeamLengthMm,0).X,bottomY),$"Beam length {Model.BeamLengthMm:0.###} mm",FormworkObject.Beam,0,"BeamLengthMm");
             if(dragging && Math.Abs(dragDelta)>2)Label(dc,$"Move {Math.Round(dragDelta/Zoom/25)*25:0} mm",mouseStart+new Vector(15,15),Brushes.DodgerBlue);
@@ -199,7 +203,7 @@ namespace EngineeringDashboard
                 var colour=windowEnd.X<mouseStart.X ? Colors.SeaGreen : Colors.DodgerBlue;
                 dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(25,colour.R,colour.G,colour.B)),new Pen(new SolidColorBrush(colour),1){DashStyle=windowEnd.X<mouseStart.X ? DashStyles.Dash : DashStyles.Solid},new Rect(mouseStart,windowEnd));
             }
-            Label(dc,AddCrossing ? "Click a slab bay to place a crossing beam." : Formwork ? "Wheel: zoom · middle drag: pan · double-click: fit · click H20: diagrams" : "Click: select · Shift-click: toggle · drag blank space: window/crossing selection · Delete: remove · Esc: clear",new Point(16,ActualHeight-25),Brushes.SlateGray);
+            Label(dc,AddCrossing ? "Click a slab bay to place a crossing beam." : Formwork ? "Wheel: zoom · middle drag: pan · double-click: fit · click beam/H20: diagrams" : "Click: select · Shift-click: toggle · drag blank space: window/crossing selection · Delete: remove · Esc: clear",new Point(16,ActualHeight-25),Brushes.SlateGray);
         }
         private void DrawSupports(DrawingContext dc,TowerLayout layout,int beam,double centre,bool dims)
         {
@@ -211,7 +215,14 @@ namespace EngineeringDashboard
                 for(int line=0;line<2;line++) {var p=Screen(x,line==0 ? a : b);dc.DrawEllipse(Brushes.SlateGray,null,p,3.5,3.5);DrawnLegCount++;double reaction=line==0 ? layout.LeftReactions[i] : layout.RightReactions[i];LegTargets.Add(Tuple.Create(new Rect(p.X-6,p.Y-6,12,12),$"B{beam+1} · leg {i+1} {(line==0 ? "L" : "R")} · {reaction:0.##}/{layout.LegCapacityKn:0.##} kN"));}
                 if(i>=layout.Joined.Length)continue;double end=layout.PositionsMm[i+1];Brush colour=layout.Joined[i] && !layout.Rotated ? Brushes.Firebrick : Brushes.SlateGray;
                 if(layout.Joined[i])foreach(double y in new[] {a,b})dc.DrawLine(new Pen(colour,1.5){DashStyle=layout.Rotated ? DashStyles.Solid : DashStyles.Dash},Screen(x,y),Screen(end,y));
-                if(dims)Dimension(dc,Screen(x,a)+new Vector(0,-29),Screen(end,a)+new Vector(0,-29),(end-x).ToString("0.###"),FormworkObject.Beam,beam,null,colour,(end-x)*Zoom<40 && i%2==1 ? -18 : 4);
+
+            }
+            if(dims)for(int i=0;i<layout.Joined.Length;)
+            {
+                int count=1;double step=layout.PositionsMm[i+1]-layout.PositionsMm[i];
+                while(i+count<layout.Joined.Length && layout.Joined[i+count]==layout.Joined[i] && Math.Abs(layout.PositionsMm[i+count+1]-layout.PositionsMm[i+count]-step)<.001)count++;
+                Dimension(dc,Screen(layout.PositionsMm[i],a)+new Vector(0,-29),Screen(layout.PositionsMm[i+count],a)+new Vector(0,-29),$"{(count>1 ? count+"×" : "")}{step:0.###}",FormworkObject.Beam,beam,null,layout.Joined[i] ? Brushes.Firebrick : Brushes.SlateGray);
+                i+=count;
             }
             for(int run=0;run<layout.StockPlan.Pieces.Length;run++)
             {
@@ -223,14 +234,14 @@ namespace EngineeringDashboard
                     var start=Screen(p.StartMm,y);MemberTargets.Add(Tuple.Create(new Rect(start.X,start.Y-8,p.StockLengthMm*Zoom,16),beam,run,line));
                 }
                 Label(dc,$"P{run+1} · {p.StockLengthMm:0}",Screen((p.StartMm+p.EndMm)/2,b)+new Vector(0,10),null,true);
-                if(dims)
+                if(dims && (AllDimensions || memberBeam==beam && memberRun==run))
                 {
                     double y=Screen(0,b).Y+37;
                     Dimension(dc,new Point(Screen(p.StartMm,0).X,y),new Point(Screen(layout.PositionsMm[p.FirstSupport],0).X,y),(layout.PositionsMm[p.FirstSupport]-p.StartMm).ToString("0.###"),FormworkObject.Beam,beam,null,null,run>0 ? -19 : 4);
                     Dimension(dc,new Point(Screen(layout.PositionsMm[p.LastSupport],0).X,y),new Point(Screen(p.EndMm,0).X,y),(p.EndMm-layout.PositionsMm[p.LastSupport]).ToString("0.###"),FormworkObject.Beam,beam,null);
                 }
             }
-            if(dims)Label(dc,$"{layout.LegCount} legs · {(layout.Rotated ? "Cross" : "Frame")} {layout.WidthMm:0} across · peak {layout.MaxLegKn:0.##}/{layout.LegCapacityKn:0.##} kN",Screen(0,a)+new Vector(0,-58));
+
         }
         internal bool SelectAt(Point point,bool toggle=false)
         {
@@ -242,7 +253,16 @@ namespace EngineeringDashboard
             }
             if(Formwork)foreach(var hit in MemberTargets)if(hit.Item1.Contains(point)) {SelectMember(hit.Item2,hit.Item3,hit.Item4);MemberSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}
             foreach(var hit in dimensions)if(hit.Item1.Contains(point)){Select(hit.Item2,hit.Item3);DimensionSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}
-            foreach(var hit in ObjectTargets)if(hit.Item1.Contains(point)){if(toggle)Toggle(hit.Item2,hit.Item3);else Select(hit.Item2,hit.Item3);return true;}return false;
+            foreach(var hit in ObjectTargets)if(hit.Item1.Contains(point))
+            {
+                if(Formwork && hit.Item2==FormworkObject.Beam && Layout(hit.Item3)!=null)
+                {
+                    var layout=Layout(hit.Item3);double x=World(point).X;
+                    int run=Enumerable.Range(0,layout.StockPlan.Pieces.Length).OrderBy(i=>Math.Abs(x-(layout.StockPlan.Pieces[i].StartMm+layout.StockPlan.Pieces[i].EndMm)/2)).First();
+                    int line=World(point).Y<Centres()[hit.Item3] ? 0 : 1;
+                    SelectMember(hit.Item3,run,line);MemberSelected?.Invoke(hit.Item3,run,line);return true;
+                }
+                if(toggle)Toggle(hit.Item2,hit.Item3);else Select(hit.Item2,hit.Item3);return true;}return false;
         }
         protected override void OnMouseLeave(MouseEventArgs e)
         {base.OnMouseLeave(e);HoveredObject=null;InvalidateVisual();}
@@ -292,4 +312,5 @@ namespace EngineeringDashboard
         }
     }
 }
+
 
