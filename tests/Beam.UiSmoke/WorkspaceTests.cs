@@ -17,7 +17,7 @@ internal static class WorkspaceTests
     static BeamFormworkWorkspace workspace;
     static void Check(bool value,string label){checks++;if(!value)throw new Exception("Workspace: "+label);}
     static void Pump()=>Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));
-    static void Click(string key){workspace.Buttons[key].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();}
+    static void Click(string key){var control=workspace.Buttons[key];control.RaiseEvent(new RoutedEventArgs(control is MenuItem ? MenuItem.ClickEvent : Button.ClickEvent));Pump();}
     static void Render(string path=null,int width=1280,int height=860)
     {
         Pump();var root=(FrameworkElement)workspace.Content;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();
@@ -99,6 +99,8 @@ internal static class WorkspaceTests
             Check(workspace!=null && ReferenceEquals(workspace.Model,model) && workspace.WindowState==WindowState.Maximized,"opens a maximized workspace with shared state");
             opener.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(ReferenceEquals(workspace,parent.FormworkWorkspace),"opening again reuses the window");
             workspace.WindowState=WindowState.Normal;workspace.Width=1280;workspace.Height=860;Render();
+            Check(workspace.Buttons["Save"] is MenuItem && workspace.Buttons["Load"] is MenuItem && workspace.Buttons["AddAbove"] is MenuItem,"file and add actions use compact menus");
+            Check(workspace.InspectorTabs.Items.Count==2 && ((TabItem)workspace.InspectorTabs.Items[1]).Header.Equals("Shared settings"),"object properties and shared settings have separate inspector tabs");
             var originalResult=model.TowerResult;Click("Diagnose");var diagnosis=workspace.Diagnostics;
             Check(diagnosis!=null && diagnosis.IsVisible && diagnosis.ReportBox.IsReadOnly && diagnosis.ReportBox.Text.Contains("BEAM FORMWORK DIAGNOSTIC REPORT v1"),"diagnose opens copyable report window");
             Check(ReferenceEquals(model.TowerResult,originalResult),"opening diagnosis retains calculated result");
@@ -108,6 +110,7 @@ internal static class WorkspaceTests
             copyWindow.RemarksBox.Text="Copy my remarks";copyWindow.CopyButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(copied==copyWindow.ReportBox.Text && copied.Contains("Copy my remarks") && copied.Contains("END BEAM FORMWORK"),"copy refreshes the complete report and remarks");copyWindow.Close();
             var drawing=workspace.Drawing;drawing.Fit();Render();
+            Check(workspace.NetworkResultText.Contains(model.NetworkResult.LegCount+" tower legs") && workspace.SelectedResultText.Contains("Selected beam · B1") && workspace.SelectedResultText.Contains(model.NetworkResult.Beams[0].LegCount+" tower legs"),"network totals and selected beam quantities have explicit independent labels");
             Check(drawing.ObjectTargets.Count(t=>t.Item2==FormworkObject.Beam)==3 && drawing.ObjectTargets.Count(t=>t.Item2==FormworkObject.Slab)==2,"geometry is visible before formwork selection");
             var top=drawing.Screen(drawing.SceneBounds.Left,drawing.SceneBounds.Top);var bottom=drawing.Screen(drawing.SceneBounds.Right,drawing.SceneBounds.Bottom);
             Check(top.X>=0 && top.Y>=0 && bottom.X<=drawing.ActualWidth && bottom.Y<=drawing.ActualHeight,"fit includes the complete metric plan");
@@ -120,9 +123,16 @@ internal static class WorkspaceTests
             var hit=drawing.MemberTargets.First();Check(drawing.SelectAt(Centre(hit.Item1)),"primary H20 is selected directly from plan");Pump();Render();
             Check(workspace.Diagrams!=null && workspace.Diagrams.SelectedTransferMember.H20Count==2,"primary pair diagrams are embedded in workspace");
             Check(Math.Abs(workspace.Diagrams.LoadedAnalysis.TotalLoadKn-model.NetworkResult.Beams[hit.Item2].Transfer.PrimaryCases.Last()[hit.Item3].Analysis.TotalLoadKn)<1e-8,"plan selection displays actual member load");
+            Check(Controls<Border>(workspace).Count(b=>b.CornerRadius.TopLeft==8)==3,"tower response diagrams use three chart cards like the slab and beam calculators");
+            Check(workspace.SelectedResultText.Contains("Selected beam · B"+(hit.Item2+1)),"member picking updates the selected result without changing network totals");
             Click("Geometry");Render();var beam=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Beam && h.Item3==1);
             Check(drawing.SelectAt(Centre(beam.Item1)) && drawing.SelectedIndex==1 && workspace.Fields["DepthMm"].Text=="1200","click selects actual beam and editable depth");
+            Check(workspace.SelectedResultText.Contains("Selected beam · B2") && workspace.SelectedResultText.Contains(model.NetworkResult.Beams[1].LegCount+" tower legs"),"each geometry beam selection displays that beam's own result");
+            workspace.InspectorTabs.SelectedIndex=1;Render();var advanced=Controls<Expander>(workspace.SharedProperties).Single(e=>Equals(e.Header,"Stock and load settings"));advanced.IsExpanded=true;
+            drawing.Select(FormworkObject.Beam,0);Render();Check(workspace.InspectorTabs.SelectedIndex==0 && Controls<Expander>(workspace.SharedProperties).Single(e=>Equals(e.Header,"Stock and load settings")).IsExpanded,"selection returns to object properties and preserves expanded shared settings");
+            drawing.Select(FormworkObject.Beam,1);Render();
             Enter("DepthMm","1325");Check(model.NetworkBeams[1].DepthMm==1325 && !model.IsCalculationValid && workspace.Diagrams==null && !workspace.Buttons["Export"].IsEnabled,"editing invalidates shared result and diagrams");
+            Check(workspace.NetworkResultText=="" && workspace.SelectedResultText=="","an edit hides all stale result quantities");
             Check(parent.CaptureDrawingInputs().Inputs.Any(f=>f.Name=="NetworkConfigurationXml") && workspace.Buttons["Save"].IsEnabled,"draft geometry can be saved before recalculation");
             Click("Undo");Check(model.NetworkBeams[1].DepthMm==1200,"undo restores beam depth");Click("Redo");Check(model.NetworkBeams[1].DepthMm==1325,"redo restores edited depth");Click("Undo");
             drawing.Select(FormworkObject.Beam,1);drawing.MoveSelection(42);Pump();Render();Check(model.NetworkBays[0].WidthMm==3950,"moving a beam edits its adjacent span in 25 mm steps");Click("Undo");Check(model.NetworkBays[0].WidthMm==3900,"undo restores dragged span");
@@ -151,12 +161,14 @@ internal static class WorkspaceTests
             Check(!model.CanCancelOptimization && !workspace.Buttons["Cancel"].IsEnabled,"cancel is disabled without a running analysis");
             var cancelledSearch=workspace.CalculateAsync();
             Check(model.CanCancelOptimization,"running analysis can be cancelled");
+            Pump();Check(!workspace.SharedProperties.IsEnabled && !workspace.Fields["BeamLengthMm"].IsEnabled,"shared inputs are locked during a running search");
             var calculatorCancel=(Button)parent.FindName("CancelBeamAnalysisButton");
             calculatorCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(!model.CanCancelOptimization && model.IsOptimizing,"cancel request disables repeated cancellation until worker stops");
             var cancelTimer=System.Diagnostics.Stopwatch.StartNew();while(!cancelledSearch.IsCompleted){Pump();Thread.Sleep(1);if(cancelTimer.Elapsed.TotalSeconds>10)throw new Exception("Workspace cancellation timeout");}
             cancelledSearch.GetAwaiter().GetResult();Pump();workspace.Diagnostics.RefreshReport();
             Check(!model.IsOptimizing && !model.IsCalculationValid && model.TowerResult==null && model.NetworkResult==null && model.CanOptimizeTowers,"cancel stops analysis without publishing a partial layout and allows recalculation");
+            Check(workspace.SharedProperties.IsEnabled && workspace.Fields["BeamLengthMm"].IsEnabled,"cancellation restores input editing");
             Check(workspace.Diagnostics.ReportBox.Text.Contains("Search outcome: Cancelled") && workspace.Diagnostics.ReportBox.Text.Contains("Cancellation requested: True"),"diagnosis retains cancelled search details");
             var secondCancel=workspace.CalculateAsync();workspace.Buttons["Cancel"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             cancelTimer.Restart();while(!secondCancel.IsCompleted){Pump();Thread.Sleep(1);if(cancelTimer.Elapsed.TotalSeconds>10)throw new Exception("Workspace second cancellation timeout");}
@@ -182,6 +194,7 @@ internal static class WorkspaceTests
             Click("Section");Render(output==null ? null : Path.ChangeExtension(output,"workspace-section.png"));
             var customHit=workspace.Section.MemberTargets.Last();workspace.Section.SelectAt(Centre(customHit.Item1));Pump();
             Check(workspace.Diagrams.SelectedTransferMember.LengthMm==2175 && workspace.Diagrams.SelectedTransferMember.H20Count==1,"custom member is selectable in dedicated section");
+            Click("Geometry");drawing.Select(FormworkObject.Slab,0);Render();Check(workspace.SelectedResultText.Contains("Selected slab · S1") && workspace.SelectedResultText.Contains("2175 mm custom"),"slab selection reports its own H20 stock and receiving beams");
             Click("Geometry");drawing.Select(FormworkObject.Beam,0);workspace.Fields["DepthMm"].Text="bad";Pump();Render();
             Check(!workspace.Buttons["Calculate"].IsEnabled && !model.CanOptimizeTowers && !parent.TryGetValidCalculation(out var ignored),"workspace conversion errors also block calculator and export guards");
             var exclusion=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Exclude standalone 600 mm towers"));exclusion.IsChecked=false;exclusion.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
@@ -202,4 +215,3 @@ internal static class WorkspaceTests
         finally {workspace?.Close();}
     }
 }
-
