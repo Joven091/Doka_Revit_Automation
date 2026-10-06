@@ -110,7 +110,9 @@ namespace EngineeringDashboard
                 dc.DrawLine(new Pen(tick==0 ? Brushes.Gray : Brushes.LightGray,1),new Point(left,y),new Point(right,y));
                 label(value.ToString("0.##",CultureInfo.CurrentCulture),3,y-7);
             }
-            label(index==0 ? "Shear (kN)" : index==1 ? "Moment (kNm)" : "Deflection (mm)",left,0);
+            string unit=index==0 ? "Shear (kN)" : index==1 ? "Moment (kNm)" : "Deflection (mm)";
+            double centre=(top+bottom)/2;
+            dc.PushTransform(new RotateTransform(-90,45,centre));label(unit,45-unit.Length*2.75,centre-6);dc.Pop();
             label("Distance (mm)",(left+right)/2-35,bottom+4);
         }
         private sealed class LoadedResponsePlot : FrameworkElement
@@ -170,7 +172,7 @@ namespace EngineeringDashboard
                     }
                 }
                 else foreach (double value in new[] { -limit, limit })
-                { dc.DrawLine(new Pen(Brushes.IndianRed, 1) { DashStyle = DashStyles.Dash }, new Point(left, yy(value)), new Point(right, yy(value))); label(value.ToString("0.##"), 3, yy(value)-7); }
+                { dc.DrawLine(new Pen(Brushes.IndianRed, 1) { DashStyle = DashStyles.Dash }, new Point(left, yy(value)), new Point(right, yy(value))); }
                 foreach (double x in supports) dc.DrawLine(new Pen(Brushes.LightGray, 1) { DashStyle = DashStyles.Dash }, new Point(xx(x), top), new Point(xx(x), bottom));
                 var positions = Enumerable.Range(0, 401).Select(i => length * i / 400).Concat(supports).Distinct().OrderBy(x => x);
                 Point? previous = null;
