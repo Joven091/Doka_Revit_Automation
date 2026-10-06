@@ -196,12 +196,12 @@ internal static class WorkspaceTests
             Check(!model.IsCalculationValid && workspace.FailureDetails.Contains("Lower secondary") && workspace.FailureTargets.Any(),"failed calculation exposes member demands and drawing targets");
             Check(parent.CaptureDrawingInputs().Inputs.Any(f=>f.Name=="BeamLengthMm" && f.Value=="10600"),"no-solution geometry can be saved independently of acceptance");
             var failureTarget=workspace.FailureTargets.First();failureTarget.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Render();Check(drawing.SelectedKind==FormworkObject.Beam && drawing.SelectedIndex==0,"failure selects affected beam without displaying a failed tower layout");
-            Enter("UpperSupportSpacingMm","200");Calculate();Check(model.IsCalculationValid && drawing.DrawnLegCount==36 && model.NetworkResult.Bays[0].StockLengthMm==2175,"user setup calculates and fits all 36 legs with custom slab member");
+            Enter("UpperSupportSpacingMm","200");Calculate();Check(model.IsCalculationValid && drawing.DrawnLegCount==model.NetworkResult.LegCount && model.NetworkResult.Bays[0].IsCustomLength,"enabled custom setup calculates and draws every selected leg");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-custom.png"));
             Click("Section");Render(output==null ? null : Path.ChangeExtension(output,"workspace-section.png"));
             var customHit=workspace.Section.MemberTargets.Last();workspace.Section.SelectAt(Centre(customHit.Item1));Pump();
-            Check(workspace.Diagrams.SelectedTransferMember.LengthMm==2175 && workspace.Diagrams.SelectedTransferMember.H20Count==1,"custom member is selectable in dedicated section");
-            Click("Geometry");drawing.Select(FormworkObject.Slab,0);Render();Check(workspace.SelectedResultText.Contains("Selected slab · S1") && workspace.SelectedResultText.Contains("2175 mm custom"),"slab selection reports its own H20 stock and receiving beams");
+            Check(workspace.Diagrams.SelectedTransferMember.LengthMm==model.NetworkResult.Bays[0].StockLengthMm && workspace.Diagrams.SelectedTransferMember.H20Count==1,"custom member is selectable in dedicated section");
+            Click("Geometry");drawing.Select(FormworkObject.Slab,0);Render();Check(workspace.SelectedResultText.Contains("Selected slab · S1") && workspace.SelectedResultText.Contains(model.NetworkResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"slab selection reports its own H20 stock and receiving beams");
             Click("Geometry");drawing.Select(FormworkObject.Beam,0);workspace.Fields["DepthMm"].Text="bad";Pump();Render();
             Check(!workspace.Buttons["Calculate"].IsEnabled && !model.CanOptimizeTowers && !parent.TryGetValidCalculation(out var ignored),"workspace conversion errors also block calculator and export guards");
             var exclusion=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Exclude standalone 600 mm towers"));exclusion.IsChecked=false;exclusion.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
@@ -215,6 +215,27 @@ internal static class WorkspaceTests
             model.Exclude600Standalone=false;Pump();Check(Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Exclude standalone 600 mm towers")).IsChecked==false,"parent-window edits synchronize categorical settings");model.Exclude600Standalone=true;Pump();
             var calculatorDiagnose=(Button)parent.FindName("DiagnoseBeamButton");calculatorDiagnose.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
             Check(parent.Diagnostics!=null && parent.Diagnostics.ReportBox.Text.Contains("Source: Beam calculator"),"calculator provides the same diagnostic report");parent.Diagnostics.Close();
+            var beforeFallback=parent.CaptureDrawingInputs();
+            model.AllowCustomH20Lengths=false;model.BeamLengthMm=3300;model.TowerLegCapacityKn=70;model.UpperSupportSpacingMm=200;
+            model.DeflectionLimit=model.DeflectionOptions.Single(d=>d.Label=="L/350");model.Exclude600Standalone=false;
+            while(model.NetworkBeams.Count<3)model.AddNetworkBay();while(model.NetworkBeams.Count>3)model.RemoveNetworkBay();
+            foreach(var crossing in model.CrossingBeams.ToArray())model.RemoveCrossingBeam(crossing);
+            foreach(var fallbackBeam in model.NetworkBeams){fallbackBeam.WidthMm=400;fallbackBeam.DepthMm=500;}
+            model.NetworkBays[0].WidthMm=10000;model.NetworkBays[1].WidthMm=2500;
+            foreach(var bay in model.NetworkBays)bay.ThicknessMm=300;
+            Pump();Render();Calculate();
+            Check(model.IsCalculationValid && model.NetworkResult.Bays[0]==null && model.NetworkResult.Bays[1]!=null,"catalogue failure falls back to separate S1 while retaining S2");
+            Check(workspace.NetworkResultText.Contains("Separate slab formwork required: S1") && parent.BuildReport().Contains("design are excluded"),"mixed result and export explicitly identify the excluded slab design");
+            Click("Geometry");drawing.Select(FormworkObject.Slab,0);Render();
+            Check(workspace.SelectedResultText.Contains("Separate slab formwork required") && workspace.SelectedResultText.Contains("No slab load transfers"),"selected independent slab displays its actual scope");
+            Render(output==null ? null : Path.ChangeExtension(output,"workspace-separate-slab.png"));
+            Click("Section");Render();
+            int upperStart=model.NetworkResult.Beams[0].StockPlan.Pieces.Length+model.NetworkResult.Beams[0].Transfer.RowsMm.Length;
+            Check(!workspace.Section.MemberTargets.Any(h=>h.Item2==0 && h.Item3>=upperStart),"separate slab creates no fabricated upper member targets");
+            var retainedUpper=workspace.Section.MemberTargets.First(h=>h.Item2==1 && h.Item3>=model.NetworkResult.Beams[1].StockPlan.Pieces.Length+model.NetworkResult.Beams[1].Transfer.RowsMm.Length);
+            workspace.Section.SelectAt(Centre(retainedUpper.Item1));Pump();Check(workspace.Diagrams.SelectedTransferMember.H20Count==1,"retained S2 diagrams remain selectable after fallback");
+            Render(output==null ? null : Path.ChangeExtension(output,"workspace-separate-section.png"));
+            parent.RestoreCalculation(beforeFallback);Pump();Render();
             var closingDiagnosis=workspace.Diagnostics;
             var xml=model.NetworkConfigurationXml;workspace.Close();Pump();Check(parent.FormworkWorkspace==null && model.CanOptimizeTowers && model.NetworkConfigurationXml==xml,"closing releases validation and retains geometry");Check(!closingDiagnosis.IsVisible,"closing workspace closes its diagnosis window");workspace=null;
             Console.WriteLine($"Passed {checks} drawing workspace checks.");return checks;
@@ -222,3 +243,4 @@ internal static class WorkspaceTests
         finally {workspace?.Close();}
     }
 }
+

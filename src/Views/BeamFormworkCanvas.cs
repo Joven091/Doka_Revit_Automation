@@ -158,9 +158,17 @@ namespace EngineeringDashboard
             {
                 double top=ys[i]+beams[i].WidthMm/2,bottom=ys[i+1]-beams[i+1].WidthMm/2;
                 var rect=new Rect(Screen(0,top),Screen(Model.BeamLengthMm,bottom));
-                dc.DrawRectangle(Brushes.AliceBlue,ObjectPen(FormworkObject.Slab,i,rect,Brushes.LightSteelBlue),rect);
+                bool separate=Model.IsCalculationValid && Model.NetworkResult?.Bays[i]==null;
+                dc.DrawRectangle(separate ? Brushes.Moccasin : Brushes.AliceBlue,ObjectPen(FormworkObject.Slab,i,rect,Brushes.LightSteelBlue),rect);
                 ObjectTargets.Add(Tuple.Create(rect,FormworkObject.Slab,i));
-                Label(dc,$"S{i+1} · {Model.NetworkBays[i].WidthMm:0} · t {Model.NetworkBays[i].ThicknessMm:0}",new Point(rect.Left+18,rect.Top+rect.Height/2-8));
+                if(separate)
+                {
+                    double centre=rect.Top+rect.Height/2,x=rect.Left+rect.Width/2;
+                    Label(dc,$"S{i+1} · {Model.NetworkBays[i].WidthMm:0}",new Point(x,centre-26),centre:true);
+                    Label(dc,$"t {Model.NetworkBays[i].ThicknessMm:0} · separate",new Point(x,centre-8),centre:true);
+                    Label(dc,"formwork required",new Point(x,centre+10),centre:true);
+                }
+                else Label(dc,$"S{i+1} · {Model.NetworkBays[i].WidthMm:0} · t {Model.NetworkBays[i].ThicknessMm:0}",new Point(rect.Left+18,rect.Top+rect.Height/2-8));
                 if(AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Slab && SelectedIndex==i)
                     Dimension(dc,new Point(rect.Right+24,rect.Top),new Point(rect.Right+24,rect.Bottom),Model.NetworkBays[i].WidthMm.ToString("0.###"),FormworkObject.Slab,i,"WidthMm");
             }
@@ -284,3 +292,4 @@ namespace EngineeringDashboard
         }
     }
 }
+

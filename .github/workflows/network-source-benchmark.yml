@@ -1,0 +1,54 @@
+name: Actual main versus candidate network benchmark
+on: [pull_request]
+jobs:
+  net48-source:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          ref: 58840f3c45c744c47fc4cc13e093663750f9458d
+          path: baseline
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile the identical harness against both source trees
+        shell: pwsh
+        run: |
+          foreach ($version in @('baseline','candidate')) {
+            $folder = Join-Path $version 'tests/Beam.ColdBenchmark'
+            New-Item -ItemType Directory -Force $folder | Out-Null
+            Copy-Item candidate/tests/Beam.Net48/ColdBenchmarkHost.cs "$folder/ColdBenchmarkHost.cs"
+            $project = Get-Content "$version/tests/Beam.Net48/Beam.Net48.csproj" -Raw
+            $project = $project.Replace('<Compile Include="../Beam.Tests/*.cs" />','<Compile Include="ColdBenchmarkHost.cs" />')
+            Set-Content "$folder/Beam.ColdBenchmark.csproj" $project
+            dotnet build "$folder/Beam.ColdBenchmark.csproj" -c Release --warnaserror
+            if ($LASTEXITCODE -ne 0) { throw 'Benchmark build failed' }
+          }
+      - name: ABBA trials and exact result fingerprints
+        shell: pwsh
+        run: |
+          $records = @()
+          foreach ($scenario in @('three','eight')) {
+            foreach ($version in @('baseline','candidate','candidate','baseline')) {
+              $output = & "$version/tests/Beam.ColdBenchmark/bin/Release/net48/Beam.ColdBenchmark.exe" $scenario $version
+              if ($LASTEXITCODE -ne 0) { throw 'Benchmark solve failed' }
+              $output | Write-Host
+              $line = $output | Where-Object { $_ -like 'ACTUAL *' }
+              if ($line -notmatch 'seconds=([0-9.]+).*signature=([A-F0-9]+)') { throw 'Missing benchmark result' }
+              $records += [pscustomobject]@{ Scenario=$scenario; Version=$version; Seconds=[double]::Parse($Matches[1],[cultureinfo]::InvariantCulture); Signature=$Matches[2] }
+            }
+            $samples = $records | Where-Object Scenario -eq $scenario
+            if (($samples.Signature | Select-Object -Unique).Count -ne 1) { throw 'Selected layouts or unrounded demands changed' }
+            $before = ($samples | Where-Object Version -eq baseline | Measure-Object Seconds -Average).Average
+            $after = ($samples | Where-Object Version -eq candidate | Measure-Object Seconds -Average).Average
+            Write-Host "ACTUAL SUMMARY scenario=$scenario baseline_mean=$before candidate_mean=$after reduction_percent=$((1-$after/$before)*100)"
+          }
+          $records | ConvertTo-Json | Set-Content benchmark-results.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: network-source-benchmark
+          path: benchmark-results.json

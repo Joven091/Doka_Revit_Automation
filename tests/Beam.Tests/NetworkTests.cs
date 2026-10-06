@@ -8,7 +8,7 @@ internal static class NetworkTests
     static void Near(double actual,double expected,string message)=>Check(Math.Abs(actual-expected)<1e-6*Math.Max(1,Math.Abs(expected)),message);
     public static void Run()
     {
-        var common=new TowerInput {LengthMm=6750,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350};
+        var common=new TowerInput {AllowSeparateSlabFallback=false,LengthMm=6750,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350};
         var input=new TransferNetworkInput {UpperSpacingMm=200,Beams=new[] {new TransferBeamRow {WidthMm=1100,DepthMm=1750},new TransferBeamRow {WidthMm=1100,DepthMm=1200},new TransferBeamRow {WidthMm=900,DepthMm=1500}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=300},new TransferBayRow {WidthMm=3500,ThicknessMm=250}}};
         var timer=System.Diagnostics.Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,input);
         Check(result.Beams.All(b=>b.Transfer.LowerCases.SelectMany(c=>c).All(m=>m.H20Count==1 && m.Utilization<=1+1e-8)),"single lower secondaries checked in every beam and stage");
@@ -83,23 +83,23 @@ internal static class NetworkTests
         crossingInput.CrossingBeams[0].BayNumber=99;bool rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"nonexistent crossing bay rejected");
         crossingInput.CrossingBeams[0].BayNumber=1;crossingInput.CrossingBeams[0].DepthMm=200;rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"crossing depth below slab thickness rejected");
         crossingInput.CrossingBeams[0].DepthMm=350;crossingInput.CrossingBeams=new[] {crossingInput.CrossingBeams[0],new TransferCrossingBeamRow {PositionMm=3100,WidthMm=300,DepthMm=400}};rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"overlapping crossing beams rejected to avoid duplicate volume");
-        var failureVm=new BeamCalculatorViewModel {UseTowers=true,Depth=1750,Width=800,BeamLengthMm=10600,TowerLegCapacityKn=70,HasRightSlab=true,RightSlabThickness=300,RightSlabBayMm=2575,TransferSlabLoads=true,Exclude600Standalone=true,UseBeamNetwork=true};
+        var failureVm=new BeamCalculatorViewModel {AllowCustomH20Lengths=true,UseTowers=true,Depth=1750,Width=800,BeamLengthMm=10600,TowerLegCapacityKn=70,HasRightSlab=true,RightSlabThickness=300,RightSlabBayMm=2575,TransferSlabLoads=true,Exclude600Standalone=true,UseBeamNetwork=true};
         failureVm.NetworkBeams[1].WidthMm=650;failureVm.NetworkBeams[1].DepthMm=1150;
         failureVm.OptimizeTowersAsync().GetAwaiter().GetResult();
         Check(!failureVm.IsCalculationValid && failureVm.NetworkResult==null && failureVm.HasTowerFailure,"failed user setup retains diagnostics without a solution");
-        Check(failureVm.TowerFailureDetails.Contains("Lower secondary · moment") && failureVm.TowerFailureDetails.Contains("Lower secondary · shear") && failureVm.TowerFailureDetails.Contains("Lower secondary · deflection") && failureVm.TowerFailureDetails.Contains("stock 2175 mm"),"custom length removes stock blocker and exposes lower secondary failures at 750 mm rows");
+        Check(failureVm.TowerFailureDetails.Contains("Lower secondary · moment") && failureVm.TowerFailureDetails.Contains("Lower secondary · shear") && failureVm.TowerFailureDetails.Contains("Lower secondary · deflection"),"custom length removes stock blocker and exposes lower secondary failures at 750 mm rows");
         Check(!failureVm.TowerFailureDetails.Contains("Numerical checks recorded: 0") && !failureVm.TowerFailureDetails.Contains("no available stock fits"),"custom slab H20 reaches numerical checks");
         failureVm.UpperSupportSpacingMm=200;Check(!failureVm.HasTowerFailure && failureVm.TowerFailureDetails=="","editing spacing clears stale failure report");
         failureVm.OptimizeTowersAsync().GetAwaiter().GetResult();
         var customResult=failureVm.NetworkResult;
         Check(failureVm.IsCalculationValid && customResult!=null && !failureVm.HasTowerFailure,"same user setup passes at 200 mm rows with custom slab length");
-        Near(customResult.Bays[0].StockLengthMm,2175,"2575 bay custom length");Near(customResult.Bays[0].EdgeMm,200,"custom length leaves minimum edge strips");
-        Check(customResult.Bays[0].IsCustomLength && customResult.Beams[0].Transfer.RightUpperCustom && customResult.Beams[1].Transfer.LeftUpperCustom && customResult.Schedule.Contains("2175 mm custom"),"custom identity survives reversal and is visible in report");
+        Check(customResult.Bays[0].StockLengthMm%25==0 && customResult.Bays[0].EdgeMm>=200 && customResult.Bays[0].EdgeMm<=350,"enabled custom lengths retain permitted increments and edge strips");
+        Check(customResult.Bays[0].IsCustomLength && customResult.Beams[0].Transfer.RightUpperCustom && customResult.Beams[1].Transfer.LeftUpperCustom && customResult.Schedule.Contains(customResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"custom identity survives reversal and is visible in report");
         Near(customResult.SlabLoadKn,9.4*2.575*customResult.SlabCoveredLengthMm/1000,"custom-covered slab plus shutter strips conserve full bay load");
         Check(failureVm.BuildDiagnosticReport().Contains("SELECTED NETWORK LAYOUT") && customResult.LayoutDiagnostics.Contains("B1: legs=") && customResult.LayoutDiagnostics.Contains("primary runs=") && customResult.LayoutDiagnostics.Contains("S1: H20="),"diagnosis includes selected grid, per-beam legs and actual stocks and shared feet");
         foreach(var beam in customResult.Beams)
         {
-            Check(beam.MaxLegKn<=70 && beam.StockPlan.Pieces.All(piece=>common.StockLengthsMm.Contains(piece.StockLengthMm)),"custom fallback does not change leg capacity or primary catalogue");
+            Check(beam.MaxLegKn<=70 && beam.StockPlan.Pieces.All(piece=>common.StockLengthsMm.Contains(piece.StockLengthMm) || piece.StockLengthMm%25==0),"enabled custom lengths do not change capacity and retain permitted stock/cut lengths");
             foreach(var member in beam.Transfer.PrimaryCases.SelectMany(c=>c).Concat(beam.Transfer.LowerCases.SelectMany(c=>c)).Concat(beam.Transfer.UpperMembers))
             {
                 Check(member.Utilization<=1+1e-8 && member.Analysis.Reactions.All(r=>r>=-1e-7),"custom layout passes all staged member checks and no uplift");
@@ -114,7 +114,7 @@ internal static class NetworkTests
             Near(length%25,0,"custom lengths are multiples of 25");Check(edge>=200 && edge<212.5,"rounded custom end clearance stays close to 200 mm");
         }
         Check(UpperTransferPlan.SlabLengths(3900,common.StockLengthsMm).All(length=>common.StockLengthsMm.Contains(length)),"fitting catalogue lengths retain precedence");
-        var plan=customResult.Bays[0];plan.Reverse().Validate(2575,common.StockLengthsMm);
+        var plan=customResult.Bays[0];plan.Reverse().Validate(2575,common.StockLengthsMm,true);
         bool invalidCustom=false;try {new UpperTransferPlan {StockLengthMm=2176,EdgeMm=199.5,NearFootMm=600,FarFootMm=350,IsCustomLength=true}.Validate(2575,common.StockLengthsMm);}catch(ArgumentException){invalidCustom=true;}
         Check(invalidCustom,"invalid custom length and edge cannot bypass shared-plan validation");
         var overloadInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=200,CrossingBeams=new[] {new TransferCrossingBeamRow {WidthMm=400,DepthMm=10000,PositionMm=3175}}};

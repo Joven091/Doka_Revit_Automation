@@ -10,12 +10,12 @@ namespace EngineeringDashboard
     {
         CoveragePlans, CoverageVariants, UpperAnalyses, LowerAnalyses, PrimaryAnalyses,
         TowerCandidates, TransferCandidates, NetworkSolves, NumericalChecks, RejectionChecks,
-        GeometryBuilds, GeometryCacheHits, CrossCacheHits, LowerCaseCacheHits, PrimaryCacheHits, PrimaryMatrixCacheHits, LowerResponseCacheHits, EconomyPruned, PrimaryDeflectionSkipped, NetworkPrimaryCacheHits, TransferLayoutsBuilt, TransferLayoutsDeferred
+        GeometryBuilds, GeometryCacheHits, CrossCacheHits, LowerCaseCacheHits, PrimaryCacheHits, PrimaryMatrixCacheHits, LowerResponseCacheHits, EconomyPruned, PrimaryDeflectionSkipped, NetworkPrimaryCacheHits, TransferLayoutsBuilt, TransferLayoutsDeferred, NetworkBranchesPruned, NetworkTransverseCacheHits
     }
     // A single search writes progress; the UI reads atomic snapshots without touching solver collections.
     internal sealed class BeamSearchTrace
     {
-        private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred"};
+        private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred","Network branches pruned by exact bounds","Network transverse response cache hits"};
         private readonly long[] counters=new long[CounterNames.Length];
         private readonly long started=Stopwatch.GetTimestamp();
         private long ended, catalogueTicks, customTicks;

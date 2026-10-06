@@ -37,13 +37,30 @@ namespace EngineeringDashboard
             trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(reaction>=-tolerance)return;
             Add(scope+"/uplift",stage,Math.Abs(reaction),$"{scope} · uplift: reaction {reaction:G6} kN; minimum 0 kN. {location}","Review foot positions, primary-line/tower width and one-sided loading balance.");
         }
+        internal bool LazyLocations=true;
+        public void AnalysisLazy(LoadedBeamAnalysis a,double scale,int count,string scope,int stage,Func<string> location)
+        {
+            double allowable=a.GoverningLengthMm/denominator;
+            bool failing=!LazyLocations || a.MomentKnM*scale>TowerOptimizer.PairMoment*count/2+1e-8
+                || a.ShearKn*scale>TowerOptimizer.PairShear*count/2+1e-8
+                || a.DeflectionEvaluated && a.DeflectionUtilization*allowable*scale>allowable+allowable*1e-8
+                || a.Reactions.Min()*scale< -1e-7;
+            Analysis(a,scale,count,scope,stage,failing ? location() : "");
+        }
+        public void LegsLazy(double[] reactions,double capacity,string scope,Func<string> location,double tolerance=1e-8,double bearingTolerance=1e-7)
+            =>Legs(reactions,capacity,scope,!LazyLocations || reactions.Max()>capacity+tolerance || reactions.Min()< -bearingTolerance ? location() : "",tolerance,bearingTolerance);
         public void Analysis(LoadedBeamAnalysis a,double scale,int count,string scope,int stage,string location)
         {
             string advice=stage==1 ? "Review upper spacing, stock length and foot positions." : stage==2 ? "Review upper row spacing, lower secondary stock and foot/primary bearing positions." : "Review primary stock lengths and tower support spacing.";
             Limit(scope,"moment",stage,a.MomentKnM*scale,TowerOptimizer.PairMoment*count/2,"kNm",location,advice);
             Limit(scope,"shear",stage,a.ShearKn*scale,TowerOptimizer.PairShear*count/2,"kN",location,advice);
             double allowable=a.GoverningLengthMm/denominator;
-            if(a.DeflectionEvaluated)Limit(scope,"deflection",stage,a.DeflectionUtilization*allowable*scale,allowable,"mm",location+$" · governing span/overhang {a.GoverningLengthMm:0.###} mm (L/{denominator})",advice,allowable*1e-8);
+            if(a.DeflectionEvaluated)
+            {
+                double demand=a.DeflectionUtilization*allowable*scale;
+                string details=!LazyLocations || demand>allowable+allowable*1e-8 ? location+$" · governing span/overhang {a.GoverningLengthMm:0.###} mm (L/{denominator})" : "";
+                Limit(scope,"deflection",stage,demand,allowable,"mm",details,advice,allowable*1e-8);
+            }
             Bearing(scope,stage,a.Reactions.Min()*scale,location);
         }
         public void Primary(TowerBeamAnalysis a,TowerInput input,string location)
@@ -57,7 +74,7 @@ namespace EngineeringDashboard
         public void Legs(double[] reactions,double capacity,string scope,string location,double tolerance=1e-8,double bearingTolerance=1e-7)
         {
             int leg=Array.IndexOf(reactions,reactions.Max());
-            Limit(scope,"leg load",4,reactions[leg],capacity,"kN",location+$" · support {leg+1}","Review support layout and applied loads. Use the permissible leg load for the actual tower configuration.",tolerance);
+            Limit(scope,"leg load",4,reactions[leg],capacity,"kN",(!LazyLocations || reactions[leg]>capacity+tolerance ? location+$" · support {leg+1}" : ""),"Review support layout and applied loads. Use the permissible leg load for the actual tower configuration.",tolerance);
             Bearing(scope+" legs",4,reactions.Min(),location,bearingTolerance);
         }
         public TowerOptimizationException Exception(string title)
@@ -105,6 +122,14 @@ namespace EngineeringDashboard
         internal bool StagePrimaryChecks = true;
         internal bool ReuseNetworkNumerics = true;
         internal bool DeferTransferLayout = true;
+        internal bool SearchByLegTier = true;
+        internal bool AllowSeparateSlabFallback = true;
+        internal bool RespectNetworkCatalogueLengths = true;
+        internal bool PruneNetworkBounds = true;
+        internal bool ReuseTransverseNumerics = true;
+        internal bool LazySearchDiagnostics = true;
+        // A caller may restrict a solve only when larger leg counts cannot win.
+        internal int NetworkLegCeiling = int.MaxValue;
         internal TransferredSlabOptimizer.SearchWorkCache NetworkNumerics;
         internal TowerInput CopyForSearch() => (TowerInput)MemberwiseClone();
         internal string DiagnosticScope="";

@@ -10,7 +10,7 @@ internal static class SearchReuseTests
     static int checks;
     static void Check(bool condition,string message) {checks++;if(!condition)throw new Exception("Search reuse: "+message);}
     static long Counter(BeamSearchTrace trace,string name) => long.Parse(trace.Snapshot().Split('\n').Single(x=>x.StartsWith(name+": ")).Substring(name.Length+2));
-    static TowerInput Common(bool reuse,bool custom=false) => new TowerInput {LengthMm=2450,LegCapacityKn=70,StockLengthsMm=new[] {1250.0,1800,2450},StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=270,AllowCustomH20Lengths=custom,ReuseSearchWork=reuse,Trace=new BeamSearchTrace("reuse regression")};
+    static TowerInput Common(bool reuse,bool custom=false) => new TowerInput {LengthMm=2450,LegCapacityKn=70,StockLengthsMm=new[] {1250.0,1800,2450},StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=270,AllowCustomH20Lengths=custom,ReuseSearchWork=reuse,SearchByLegTier=false,PruneNetworkBounds=false,ReuseTransverseNumerics=false,LazySearchDiagnostics=false,Trace=new BeamSearchTrace("reuse regression")};
     static TransferNetworkInput Network(bool crossing=false) => new TransferNetworkInput {UpperSpacingMm=200,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=350,DepthMm=250},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100},new TransferBayRow {WidthMm=1850,ThicknessMm=100}},CrossingBeams=crossing ? new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1200,WidthMm=500,DepthMm=150}} : new TransferCrossingBeamRow[0]};
     static string Signature(TransferNetworkResult result) => string.Join("\n",result.Beams.Select(b=>b.StockSchedule+"\n"+b.Transfer.Schedule+"\n"+string.Join(";",b.PositionsMm)+"\n"+string.Join(";",b.Joined)))+"\n"+result.Summary;
     static double[] Demands(TransferNetworkResult result) => result.Beams.SelectMany(b=>b.Transfer.PrimaryCases.Concat(b.Transfer.LowerCases).SelectMany(c=>c).Concat(b.Transfer.UpperMembers)).SelectMany(m=>new[] {m.Analysis.MomentKnM,m.Analysis.ShearKn,m.Analysis.DeflectionMm,m.Analysis.DeflectionUtilization,m.Analysis.TotalLoadKn}.Concat(m.Analysis.Reactions)).ToArray();
@@ -36,6 +36,9 @@ internal static class SearchReuseTests
     public static void Run()
     {
         BandedAnalysisTests.Run();
+        CompareLazyFailures();
+        CheckTransverseKeys();
+        CompareNextSearch();
         CompareNetworkSpeed();
         Compare(false,false);Compare(true,false);Compare(true,true);
         foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})ComparePruning(custom,crossing);
@@ -54,6 +57,64 @@ internal static class SearchReuseTests
             Check(cancelled,"cancellation remains observable with reuse enabled");
         }
         Console.WriteLine($"Passed {checks} search reuse checks.");
+    }
+    static void CompareLazyFailures()
+    {
+        foreach(bool custom in new[] {false,true})
+        {
+            var eager=Common(true,custom);eager.LegCapacityKn=.01;eager.AllowSeparateSlabFallback=false;
+            var lazy=Common(true,custom);lazy.LegCapacityKn=.01;lazy.AllowSeparateSlabFallback=false;lazy.LazySearchDiagnostics=true;
+            string a="",b="";
+            try {TransferNetworkOptimizer.Optimize(eager,Network());}catch(TowerOptimizationException ex){a=ex.Details;}
+            try {TransferNetworkOptimizer.Optimize(lazy,Network());}catch(TowerOptimizationException ex){b=ex.Details;}
+            Check(a.Length>0 && a==b,"lazy locations preserve every rejected-check count, closest example and complete failure detail");
+        }
+    }
+    static void CheckTransverseKeys()
+    {
+        var input=Common(true);input.ReuseTransverseNumerics=true;input.NetworkNumerics=new TransferredSlabOptimizer.SearchWorkCache();
+        var supports=new[] {150.0,2300};var uniform=new[] {new BeamDistributedLoad {StartMm=400,EndMm=2000,KnPerM=10}};
+        var points=new[] {new BeamPointLoad {PositionMm=1200,Kn=5}};
+        var first=TransferredSlabOptimizer.AnalyzeTransverse(input,BeamSearchCounter.LowerAnalyses,2450,supports,uniform,points,TowerOptimizer.PairEI/2,270);
+        var cached=TransferredSlabOptimizer.AnalyzeTransverse(input,BeamSearchCounter.LowerAnalyses,2450,supports,uniform,points,TowerOptimizer.PairEI/2,270);
+        Check(ReferenceEquals(first,cached) && Counter(input.Trace,"Network transverse response cache hits")==1,"an exact full transverse response is reused");
+        points[0].Kn+=1e-10;
+        var changed=TransferredSlabOptimizer.AnalyzeTransverse(input,BeamSearchCounter.LowerAnalyses,2450,supports,uniform,points,TowerOptimizer.PairEI/2,270);
+        Check(!ReferenceEquals(first,changed),"forces are not rounded in transverse keys");
+        var otherCriterion=TransferredSlabOptimizer.AnalyzeTransverse(input,BeamSearchCounter.LowerAnalyses,2450,supports,uniform,points,TowerOptimizer.PairEI/2,350);
+        Check(!ReferenceEquals(changed,otherCriterion) && changed.DeflectionUtilization!=otherCriterion.DeflectionUtilization,"the deflection criterion belongs to the response key");
+        var pair=TransferredSlabOptimizer.AnalyzeTransverse(input,BeamSearchCounter.LowerAnalyses,2450,supports,uniform,points,TowerOptimizer.PairEI,270);
+        Check(!ReferenceEquals(changed,pair) && Math.Abs(pair.DeflectionMm*2-changed.DeflectionMm)<1e-10,"single and paired stiffness responses cannot share a cached result");
+        uniform[0].KnPerM+=1e-10;
+        var otherUniform=TransferredSlabOptimizer.AnalyzeTransverse(input,BeamSearchCounter.LowerAnalyses,2450,supports,uniform,points,TowerOptimizer.PairEI/2,270);
+        Check(!ReferenceEquals(changed,otherUniform),"distributed forces also retain exact key values");
+    }
+    static void CompareNextSearch()
+    {
+        foreach(bool custom in new[] {false,true})foreach(bool crossing in new[] {false,true})
+        {
+            var original=Common(true,custom);original.NetworkSearchWorkers=1;
+            var network=Network(crossing);var reference=TransferNetworkOptimizer.Optimize(original,network);
+            foreach(int variant in new[] {1,2,4,8,15})foreach(int workers in new[] {1,4})
+            {
+                var next=Common(true,custom);next.NetworkSearchWorkers=workers;
+                next.SearchByLegTier=(variant&1)!=0;next.PruneNetworkBounds=(variant&2)!=0;next.ReuseTransverseNumerics=(variant&4)!=0;next.LazySearchDiagnostics=(variant&8)!=0;
+                var result=TransferNetworkOptimizer.Optimize(next,network);
+                Check(Signature(reference)==Signature(result) && Demands(reference).SequenceEqual(Demands(result)),"leg tiers, exact bounds and transverse reuse/lazy diagnostics individually/combined preserve exact selected results with serial/parallel workers");
+                Check(result.Tested<=reference.Tested,"exact bounds never add network transition solves");
+                network.Beams[1].DepthMm=275;
+                var edited=TransferNetworkOptimizer.Optimize(next,network);
+                var editedReference=TransferNetworkOptimizer.Optimize(original,network);
+                Check(Signature(edited)==Signature(editedReference) && Demands(edited).SequenceEqual(Demands(editedReference)),"transverse response reuse cannot cross an edited-input pass");
+                network.Beams[1].DepthMm=250;
+            }
+        }
+        var capped=Common(true);capped.NetworkLegCeiling=2;
+        capped.TransferredSlab=new TransferredSlabInput {IsNetwork=true,BeamWidthMm=300,BeamLineLoadKnM=1.5,UpperSpacingMm=200};
+        bool failed=false;try {TransferredSlabOptimizer.Optimize(capped);}catch(TowerOptimizationException){failed=true;}
+        Check(failed,"a constrained solve cannot return a layout above its leg ceiling");
+        capped.NetworkLegCeiling=int.MaxValue;
+        Check(TransferredSlabOptimizer.Optimize(capped).LegCount>=4,"an earlier constrained failure does not poison a fresh unconstrained search");
     }
     static void CompareNetworkSpeed()
     {
