@@ -14,5 +14,15 @@ jobs:
       - run: dotnet run --project tests/D3Slab.UiSmoke/D3Slab.UiSmoke.csproj -c Release
       - run: dotnet run --project tests/Slab.Tests/Slab.Tests.csproj -c Release
       - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release
-      - run: dotnet run --project tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release
+      - name: Beam UI checks and previews
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          dotnet run --project tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release -- artifacts/beam.png
       - run: dotnet run --project tests/Backpropping.Tests/Backpropping.Tests.csproj -c Release
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beam-ui-previews
+          path: artifacts/
+          if-no-files-found: ignore
+

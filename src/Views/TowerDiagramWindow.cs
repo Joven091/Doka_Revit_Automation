@@ -24,10 +24,11 @@ namespace EngineeringDashboard
         {
             layout = model.TowerResult ?? throw new ArgumentException("Optimize the tower layout first.");
             Title = "Select H20 — shear, moment and deflection"; Width = 900; Height = 850;
-            var panel = new StackPanel { Margin = new Thickness(20), Background = Brushes.White };
+            var panel = new StackPanel { Margin = new Thickness(16), Background=Brushes.WhiteSmoke };
             panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = (layout.Transfer != null ? "Primary members are H20 pairs: M=10 kNm, V=22 kN. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. Use the case buttons to check beam/slab loading stages. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents a double-H20 pair with equal load sharing: M=10 kNm, V=22 kN. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; red arrows mark point loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
             panel.Children.Add(charts);
-            Content = new ScrollViewer { Content = panel, Background = Brushes.White, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            Background=Brushes.WhiteSmoke;
+            Content = new ScrollViewer { Content = panel, Background = Brushes.WhiteSmoke, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
                 }
         private void Refresh()
         {
@@ -39,15 +40,16 @@ namespace EngineeringDashboard
             Title = $"P{SelectedRun + 1} · {(SelectedLine == 0 ? "Left" : "Right")} · double H20 — response diagrams";
             Analysis = TowerBeamAnalysis.Analyze(piece.StockLengthMm / 1000, supports, q, TowerOptimizer.PairEI);
             charts.Children.Clear();
-            charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · loaded length: {piece.StockLengthMm:0.###} mm\n" + string.Join("   ", Analysis.Reactions.Select((v, i) => $"Support {piece.FirstSupport + i + 1}: leg load {v:0.00} kN")), TextWrapping = TextWrapping.Wrap });
+            charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · loaded length: {piece.StockLengthMm:0.###} mm", TextWrapping = TextWrapping.Wrap,Margin=new Thickness(0,8,0,4) });
+            AddLoadDetails(string.Join("   ",Analysis.Reactions.Select((v,i)=>$"Support {piece.FirstSupport+i+1}: leg load {v:0.00} kN")));
             string[] names = { "Shear (kN)", "Moment (kNm)", "Deflection (mm)" };
             double[] peaks = { Analysis.Shear, Analysis.Moment, Analysis.DeflectionMm }, limits = { TowerOptimizer.PairShear, TowerOptimizer.PairMoment, Analysis.DeflectionRegions.Max(x => x.AllowableMm(layout.DeflectionLimitMm, layout.DeflectionDenominator)) };
             for (int i = 0; i < 3; i++)
             {
-                charts.Children.Add(new TextBlock { Text = i == 2 && layout.DeflectionDenominator > 0
+                string caption=i == 2 && layout.DeflectionDenominator > 0
                     ? $"{names[i]} · peak {peaks[i]:0.000} · L/{layout.DeflectionDenominator} · utilization {Analysis.DeflectionUtilization(layout.DeflectionLimitMm, layout.DeflectionDenominator)*100:0.0}%"
-                    : $"{names[i]} · peak {peaks[i]:0.000} / permissible {limits[i]:0.000}", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 16, 0, 0) });
-                charts.Children.Add(new ResponsePlot(Analysis, supports, piece.StockLengthMm / 1000, i, peaks[i], limits[i], layout.DeflectionDenominator));
+                    : $"{names[i]} · peak {peaks[i]:0.000} / permissible {limits[i]:0.000}";
+                AddChart(caption,new ResponsePlot(Analysis,supports,piece.StockLengthMm/1000,i,peaks[i],limits[i],layout.DeflectionDenominator));
             }
         }
         private void RefreshTransfer()
@@ -79,16 +81,41 @@ namespace EngineeringDashboard
                 }
                 charts.Children.Add(choices);
             }
-            charts.Children.Add(new TextBlock {Text=m.LoadCase+(m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN\n"
-                +string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
-                +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))),TextWrapping=TextWrapping.Wrap});
+            charts.Children.Add(new TextBlock {Text=m.LoadCase+(m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
+            AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
+                +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))));
             string[] names={"Shear (kN)","Moment (kNm)","Relative member deflection (mm)"};
             double[] peaks={m.Analysis.ShearKn,m.Analysis.MomentKnM,m.Analysis.DeflectionMm};
             for(int i=0;i<3;i++)
             {
-                charts.Children.Add(new TextBlock {Text=i==2 ? $"{names[i]} · peak {peaks[i]:0.000} · L/{layout.DeflectionDenominator} · utilization {m.Analysis.DeflectionUtilization*100:0.0}%" : $"{names[i]} · peak {peaks[i]:0.000} / {(i==0 ? m.ShearLimitKn : m.MomentLimitKnM)}",FontWeight=FontWeights.Bold,Margin=new Thickness(0,16,0,0)});
-                charts.Children.Add(new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
+                string caption=i==2 ? $"{names[i]} · peak {peaks[i]:0.000} · L/{layout.DeflectionDenominator} · utilization {m.Analysis.DeflectionUtilization*100:0.0}%" : $"{names[i]} · peak {peaks[i]:0.000} / {(i==0 ? m.ShearLimitKn : m.MomentLimitKnM):0.000}";
+                AddChart(caption,new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
             }
+        }
+        private void AddLoadDetails(string text)
+        {charts.Children.Add(new Expander {Header="Support reactions and point loads",Margin=new Thickness(0,4,0,4),Content=new TextBlock {Text=text,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,6,4,8)}});}
+        private void AddChart(string caption,FrameworkElement plot)
+        {
+            var panel=new StackPanel();
+            panel.Children.Add(new TextBlock {Text=caption,FontSize=16,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(51,51,51)),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,6)});
+            panel.Children.Add(plot);
+            panel.Children.Add(new TextBlock {Text="Distance is measured from the left stock end. Dashed vertical lines mark supports; red dashed lines show permissible limits.",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,6,0,0)});
+            charts.Children.Add(new Border {Background=Brushes.White,BorderBrush=new SolidColorBrush(Color.FromRgb(224,224,224)),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8),Padding=new Thickness(12),Margin=new Thickness(0,12,0,4),Child=panel});
+        }
+        private static Brush PlotBackground(int index)=>new SolidColorBrush(index==0 ? Color.FromRgb(255,255,217) : index==1 ? Color.FromRgb(220,250,220) : Color.FromRgb(218,255,255));
+        private static void Axes(DrawingContext dc,double left,double right,double top,double bottom,double range,int index,Action<string,double,double> label)
+        {
+            dc.DrawRectangle(PlotBackground(index),null,new Rect(left,top,right-left,bottom-top));
+            for(int tick=-2;tick<=2;tick++)
+            {
+                double value=range*tick/2,y=(top+bottom)/2-value/range*(bottom-top)/2;
+                dc.DrawLine(new Pen(tick==0 ? Brushes.Gray : Brushes.LightGray,1),new Point(left,y),new Point(right,y));
+                label(value.ToString("0.##",CultureInfo.CurrentCulture),3,y-7);
+            }
+            string unit=index==0 ? "Shear (kN)" : index==1 ? "Moment (kNm)" : "Deflection (mm)";
+            double centre=(top+bottom)/2;
+            dc.PushTransform(new RotateTransform(-90,45,centre));label(unit,45-unit.Length*2.75,centre-6);dc.Pop();
+            label("Distance (mm)",(left+right)/2-35,bottom+4);
         }
         private sealed class LoadedResponsePlot : FrameworkElement
         {
@@ -99,10 +126,10 @@ namespace EngineeringDashboard
                 base.OnRender(dc); double left=65,right=Math.Max(left+20,ActualWidth-20),top=20,bottom=175;
                 var stations=new[] {0.0}.Concat(member.SupportsMm).Concat(new[] {member.LengthMm}).Distinct().OrderBy(x=>x).ToArray();
                 double limit=index==0 ? member.ShearLimitKn : index==1 ? member.MomentLimitKnM : Enumerable.Range(1,stations.Length-1).Max(i=>stations[i]-stations[i-1])/denominator;
-                double peak=index==0 ? member.Analysis.ShearKn : index==1 ? member.Analysis.MomentKnM : member.Analysis.DeflectionMm,range=Math.Max(peak,limit)*1.15;
+                double peak=index==0 ? member.Analysis.ShearKn : index==1 ? member.Analysis.MomentKnM : member.Analysis.DeflectionMm,range=Math.Max(.001,Math.Max(peak,limit)*1.15);
                 Func<double,double> xx=x=>left+x/member.LengthMm*(right-left),yy=y=>(top+bottom)/2-y/range*(bottom-top)/2;
                 Action<string,double,double> label=(s,x,y)=>dc.DrawText(new FormattedText(s,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),11,Brushes.Black,VisualTreeHelper.GetDpi(this).PixelsPerDip),new Point(x,y));
-                dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));dc.DrawLine(new Pen(Brushes.Gray,1),new Point(left,yy(0)),new Point(right,yy(0)));label("0",3,yy(0)-7);
+                dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));Axes(dc,left,right,top,bottom,range,index,label);
                 for(int i=1;i<stations.Length;i++)
                 {
                     double allowable=index==2 ? (stations[i]-stations[i-1])/denominator : limit;
@@ -127,7 +154,7 @@ namespace EngineeringDashboard
         {
             readonly TowerBeamAnalysis analysis; readonly double[] supports; readonly double length, range, limit; readonly int index, denominator;
             public ResponsePlot(TowerBeamAnalysis a, double[] s, double l, int i, double peak, double allowable, int ratio)
-            { analysis = a; denominator = ratio; supports = s; length = l; index = i; limit = allowable; range = Math.Max(peak, allowable) * 1.15; Height = 245; }
+            { analysis = a; denominator = ratio; supports = s; length = l; index = i; limit = allowable; range = Math.Max(.001,Math.Max(peak, allowable) * 1.15); Height = 245; }
             protected override void OnRender(DrawingContext dc)
             {
                 base.OnRender(dc); double left = 65, right = Math.Max(left + 20, ActualWidth - 20), top = 20, bottom = 175;
@@ -135,7 +162,7 @@ namespace EngineeringDashboard
                 Func<double, double> yy = y => (top + bottom) / 2 - y / range * (bottom - top) / 2;
                 Action<string, double, double> label = (s, x, y) => dc.DrawText(new FormattedText(s, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), 11, Brushes.Black, VisualTreeHelper.GetDpi(this).PixelsPerDip), new Point(x, y));
                 dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, ActualWidth, Height));
-                dc.DrawLine(new Pen(Brushes.Gray, 1), new Point(left, yy(0)), new Point(right, yy(0))); label("0", 3, yy(0)-7);
+                Axes(dc,left,right,top,bottom,range,index,label);
                 if (index == 2 && denominator > 0)
                 {
                     foreach (var region in analysis.DeflectionRegions)
@@ -147,7 +174,7 @@ namespace EngineeringDashboard
                     }
                 }
                 else foreach (double value in new[] { -limit, limit })
-                { dc.DrawLine(new Pen(Brushes.IndianRed, 1) { DashStyle = DashStyles.Dash }, new Point(left, yy(value)), new Point(right, yy(value))); label(value.ToString("0.##"), 3, yy(value)-7); }
+                { dc.DrawLine(new Pen(Brushes.IndianRed, 1) { DashStyle = DashStyles.Dash }, new Point(left, yy(value)), new Point(right, yy(value))); }
                 foreach (double x in supports) dc.DrawLine(new Pen(Brushes.LightGray, 1) { DashStyle = DashStyles.Dash }, new Point(xx(x), top), new Point(xx(x), bottom));
                 var positions = Enumerable.Range(0, 401).Select(i => length * i / 400).Concat(supports).Distinct().OrderBy(x => x);
                 Point? previous = null;
