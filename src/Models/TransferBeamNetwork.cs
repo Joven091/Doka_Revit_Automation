@@ -121,7 +121,7 @@ namespace EngineeringDashboard
             catch(TowerOptimizationException fullFailure) when (!common.AllowCustomH20Lengths && common.AllowSeparateSlabFallback)
             {
                 common.Trace?.Work("Separate slab formwork fallback");
-                try {return OptimizeCore(common,input,true);}
+                try {return common.Trace==null ? OptimizeCore(common,input,true) : common.Trace.RunPass(false,()=>OptimizeCore(common,input,true));}
                 catch(TowerOptimizationException partialFailure)
                 {throw new TowerOptimizationException(partialFailure.Message,fullFailure.Details+"\n\nSeparate slab formwork fallback also failed:\n"+partialFailure.Details);}
             }
@@ -171,7 +171,11 @@ namespace EngineeringDashboard
             var incumbent=common.PruneNetworkBounds && !separate ? new Incumbent() : null;
             common.Trace?.Work("Network primary cover generation");
             var stockCovers=TransferredSlabOptimizer.StockCovers(common);
-            if(stockCovers.Length==0)throw diag.Exception("No primary stock coverage fits the beam; separate slab formwork cannot fix missing beam stock.");
+            if(stockCovers.Length==0)
+            {
+                diag.Geometry("primary coverage",$"Primary coverage: no available stock combination totals {common.LengthMm-2*common.MaximumConcreteEndOverhangMm:0.###}–{common.LengthMm:0.###} mm.","Review available primary stocks and the maximum concrete end allowance.");
+                throw diag.Exception("No primary stock coverage fits the beam; separate slab formwork cannot fix missing beam stock.");
+            }
             // Every independent primary run has at least two supports on each of two lines.
             // This is a topology bound over the actual searched covers, not an assumed kN/leg.
             int minimumLegs=stockCovers.Min(c=>c.Length)*4;
