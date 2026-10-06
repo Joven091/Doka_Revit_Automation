@@ -320,6 +320,7 @@ namespace EngineeringDashboard
         private void ClearDiagrams(){analysis.Content=null;Diagrams?.Close();Diagrams=null;analysisExpander.Header="Member diagrams";analysisExpander.IsExpanded=false;Drawing.SelectMember(-1,-1,0);Section.SelectMember(-1,-1,0);}
         private void Refresh()
         {
+            properties.IsEnabled=SharedProperties.IsEnabled=!Model.IsOptimizing;
             Drawing.InvalidateVisual();changing=true;try {foreach(var e in editors)if(!e.Dirty && !e.Box.IsKeyboardFocused)e.Box.Text=e.Get().ToString("0.###",CultureInfo.CurrentCulture);foreach(var e in stringEditors)if(!e.Dirty && !e.Box.IsKeyboardFocused)e.Box.Text=e.Get();foreach(var sync in syncControls)sync();}finally {changing=false;}
             bool pending=editors.Any(e=>e.Dirty && e.Box.IsEnabled) || stringEditors.Any(e=>e.Dirty),valid=editors.Where(e=>e.Box.IsEnabled).All(ValidateEditor) && stringEditors.All(ValidateStock);
             Model.SetAdditionalTextInputErrors(this,pending);
@@ -333,7 +334,6 @@ namespace EngineeringDashboard
             Buttons["Delete"].ToolTip=RemovalPreview;
             Buttons["Undo"].IsEnabled=undo.Count>0 && !Model.IsOptimizing;Buttons["Redo"].IsEnabled=redo.Count>0 && !Model.IsOptimizing;
             Buttons["Save"].IsEnabled=valid && !Model.IsOptimizing;Buttons["Export"].IsEnabled=Model.IsCalculationValid && !pending;Buttons["Load"].IsEnabled=!Model.IsOptimizing;
-            properties.IsEnabled=SharedProperties.IsEnabled=!Model.IsOptimizing;
             UpdateViewButtons();
             if(!Model.IsCalculationValid || pending) {ClearDiagrams();Section.SetResult(null);if(sectionMode)Geometry();}
             else Section.SetResult(Model.NetworkResult);
@@ -397,5 +397,4 @@ namespace EngineeringDashboard
         }
     }
 }
-
 

@@ -99,6 +99,10 @@ internal static class WorkspaceTests
             Check(workspace!=null && ReferenceEquals(workspace.Model,model) && workspace.WindowState==WindowState.Maximized,"opens a maximized workspace with shared state");
             opener.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(ReferenceEquals(workspace,parent.FormworkWorkspace),"opening again reuses the window");
             workspace.WindowState=WindowState.Normal;workspace.Width=1280;workspace.Height=860;Render();
+            Render(output==null ? null : Path.ChangeExtension(output,"workspace-geometry.png"));
+            workspace.InspectorTabs.SelectedIndex=1;Render(output==null ? null : Path.ChangeExtension(output,"workspace-settings.png"));
+            Render(output==null ? null : Path.ChangeExtension(output,"workspace-compact.png"),980,620);
+            workspace.InspectorTabs.SelectedIndex=0;Render();
             Check(workspace.Buttons["Save"] is MenuItem && workspace.Buttons["Load"] is MenuItem && workspace.Buttons["AddAbove"] is MenuItem,"file and add actions use compact menus");
             Check(workspace.InspectorTabs.Items.Count==2 && ((TabItem)workspace.InspectorTabs.Items[1]).Header.Equals("Shared settings"),"object properties and shared settings have separate inspector tabs");
             var originalResult=model.TowerResult;Click("Diagnose");var diagnosis=workspace.Diagnostics;
@@ -125,6 +129,7 @@ internal static class WorkspaceTests
             Check(Math.Abs(workspace.Diagrams.LoadedAnalysis.TotalLoadKn-model.NetworkResult.Beams[hit.Item2].Transfer.PrimaryCases.Last()[hit.Item3].Analysis.TotalLoadKn)<1e-8,"plan selection displays actual member load");
             Check(Controls<Border>(workspace).Count(b=>b.CornerRadius.TopLeft==8)==3,"tower response diagrams use three chart cards like the slab and beam calculators");
             Check(workspace.SelectedResultText.Contains("Selected beam · B"+(hit.Item2+1)),"member picking updates the selected result without changing network totals");
+            Render(output==null ? null : Path.ChangeExtension(output,"workspace-diagrams.png"));
             Click("Geometry");Render();var beam=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Beam && h.Item3==1);
             Check(drawing.SelectAt(Centre(beam.Item1)) && drawing.SelectedIndex==1 && workspace.Fields["DepthMm"].Text=="1200","click selects actual beam and editable depth");
             Check(workspace.SelectedResultText.Contains("Selected beam · B2") && workspace.SelectedResultText.Contains(model.NetworkResult.Beams[1].LegCount+" tower legs"),"each geometry beam selection displays that beam's own result");

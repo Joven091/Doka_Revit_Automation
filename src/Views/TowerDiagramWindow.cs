@@ -24,7 +24,7 @@ namespace EngineeringDashboard
         {
             layout = model.TowerResult ?? throw new ArgumentException("Optimize the tower layout first.");
             Title = "Select H20 — shear, moment and deflection"; Width = 900; Height = 850;
-            var panel = new StackPanel { Margin = new Thickness(16) };
+            var panel = new StackPanel { Margin = new Thickness(16), Background=Brushes.WhiteSmoke };
             panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = (layout.Transfer != null ? "Primary members are H20 pairs: M=10 kNm, V=22 kN. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. Use the case buttons to check beam/slab loading stages. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents a double-H20 pair with equal load sharing: M=10 kNm, V=22 kN. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; red arrows mark point loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
             panel.Children.Add(new TextBlock {Text="Select an H20 in the plan or section. These plots show that member and its selected loading stage.",TextWrapping=TextWrapping.Wrap,Foreground=Brushes.SlateGray,Margin=new Thickness(0,10,0,12)});
             panel.Children.Add(charts);
@@ -195,4 +195,3 @@ namespace EngineeringDashboard
         }
     }
 }
-
