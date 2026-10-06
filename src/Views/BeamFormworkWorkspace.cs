@@ -146,7 +146,7 @@ namespace EngineeringDashboard
                 Drawing.Select(FormworkObject.Beam,0,false);
                 dimensions.IsChecked=false;
                 Drawing.AllDimensions=false;
-                Section.ShowAllDimensions=false;Section.SetResult(null);InspectorTabs.SelectedIndex=0;
+                Section.ShowAllDimensions=false;Section.SetResult(null);SectionViewport.ResetView();InspectorTabs.SelectedIndex=0;
                 BuildProperties();Geometry();Drawing.Fit();
             }
             finally {changing=false;}

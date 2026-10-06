@@ -23,6 +23,7 @@ namespace EngineeringDashboard
             return new Size(double.IsInfinity(constraint.Width) ? Child.DesiredSize.Width : constraint.Width,double.IsInfinity(constraint.Height) ? Child.DesiredSize.Height : constraint.Height);
         }
         protected override Size ArrangeOverride(Size size) {Child.Arrange(new Rect(new Point(),Child.DesiredSize));if(fitted)Fit(size);return size;}
+        internal void ResetView(){fitted=true;panning=false;if(IsMouseCaptured)ReleaseMouseCapture();Fit();}
         internal void Fit()=>Fit(new Size(ActualWidth,ActualHeight));
         private void Fit(Size size)
         {
@@ -48,3 +49,4 @@ namespace EngineeringDashboard
         protected override void OnMouseUp(MouseButtonEventArgs e){if(panning){panning=false;ReleaseMouseCapture();e.Handled=true;}}
     }
 }
+
