@@ -45,6 +45,24 @@ namespace EngineeringDashboard
                 UnsubscribeNetwork();NetworkBeams.Clear();NetworkBays.Clear();CrossingBeams.Clear();foreach(var c in config.CrossingBeams??new TransferCrossingBeamRow[0])CrossingBeams.Add(c);foreach(var b in config.Beams)NetworkBeams.Add(b);foreach(var b in config.Bays)NetworkBays.Add(b);SubscribeNetwork();Changed();NotifyNetwork();
             }
         }
+        internal void StartNewSession()
+        {
+            if(IsOptimizing)throw new InvalidOperationException("Cancel or finish the current search before starting a new session.");
+            // Preserve the chosen support/workflow mode, and reset document inputs in the retained model.
+            var fresh=new BeamCalculatorViewModel {UseBeamNetwork=true};
+            depth=fresh.depth;width=fresh.width;leftThickness=fresh.leftThickness;rightThickness=fresh.rightThickness;
+            floorHeight=fresh.floorHeight;selectedProp=fresh.selectedProp;hasLeft=fresh.hasLeft;hasRight=fresh.hasRight;
+            customLoads=fresh.customLoads;customLive=fresh.customLive;customFormwork=fresh.customFormwork;
+            numberOfProps=fresh.numberOfProps;deflection=fresh.deflection;slabStripWidthMm=fresh.slabStripWidthMm;
+            beamLengthMm=fresh.beamLengthMm;towerLegCapacityKn=fresh.towerLegCapacityKn;stockLengthsText=fresh.stockLengthsText;
+            stockEndSetbackMm=fresh.stockEndSetbackMm;maximumConcreteEndOverhangMm=fresh.maximumConcreteEndOverhangMm;
+            exclude600Standalone=fresh.exclude600Standalone;allowCustomH20Lengths=fresh.allowCustomH20Lengths;
+            upperSupportSpacingMm=fresh.upperSupportSpacingMm;leftSlabBayMm=fresh.leftSlabBayMm;rightSlabBayMm=fresh.rightSlabBayMm;
+            calculatorTextErrors=false;additionalTextErrors.Clear();textErrors=false;
+            beamSearchTrace=null;SelectedNetworkBeam=0;
+            NetworkConfigurationXml=fresh.NetworkConfigurationXml;
+            OnPropertyChanged(null);NotifyTower();
+        }
         private void SubscribeNetwork() {for(int i=0;i<NetworkBeams.Count;i++)NetworkBeams[i].Label="B"+(i+1);for(int i=0;i<NetworkBays.Count;i++)NetworkBays[i].Label=$"S{i+1}";foreach(var b in NetworkBeams)b.PropertyChanged+=NetworkChanged;foreach(var b in NetworkBays)b.PropertyChanged+=NetworkChanged;foreach(var c in CrossingBeams)c.PropertyChanged+=NetworkChanged;}
         private void UnsubscribeNetwork() {foreach(var b in NetworkBeams)b.PropertyChanged-=NetworkChanged;foreach(var b in NetworkBays)b.PropertyChanged-=NetworkChanged;foreach(var c in CrossingBeams)c.PropertyChanged-=NetworkChanged;}
         private void NetworkChanged(object sender,PropertyChangedEventArgs e) {Changed(nameof(NetworkConfigurationXml));NotifyNetwork();}
@@ -114,3 +132,4 @@ namespace EngineeringDashboard
         }
     }
 }
+

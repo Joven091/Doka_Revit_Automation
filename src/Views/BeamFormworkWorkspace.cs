@@ -40,6 +40,7 @@ namespace EngineeringDashboard
         private readonly TextBlock resultDetails=new TextBlock {TextWrapping=TextWrapping.Wrap};
         private readonly Expander detailsExpander=new Expander {Header="Details",Margin=new Thickness(0,8,0,0)};
         private int diagramBeam=-1;
+        private readonly CheckBox dimensions=new CheckBox {Content="All dimensions",ToolTip="Show dimension chains for all members. Zoom in to reveal labels where space is limited.",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,8,0)};
         private readonly TextBlock status=new TextBlock {Margin=new Thickness(14,8,14,8),TextWrapping=TextWrapping.Wrap};
         private readonly TextBox failure=new TextBox {IsReadOnly=true,TextWrapping=TextWrapping.Wrap,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,MaxHeight=180};
         private readonly StackPanel failures=new StackPanel();
@@ -49,7 +50,8 @@ namespace EngineeringDashboard
         private readonly List<StringEditor> stringEditors=new List<StringEditor>();
         private readonly List<Action> syncControls=new List<Action>();
         private readonly Stack<State> undo=new Stack<State>(),redo=new Stack<State>();
-        private readonly Action save,load,export;
+        private readonly Action save,load,export,refreshInputs;
+        internal Func<bool> ConfirmNewSession {get;set;}
         private bool changing,refreshQueued,closed;
         private bool sectionMode;
         private object selectedObject;
@@ -65,15 +67,17 @@ namespace EngineeringDashboard
             internal int SelectedIndex;
         }
         private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,UpperSupportSpacingMm,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,Exclude600Standalone,DeflectionLimit,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
-        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport)
+        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null)
         {
-            Model=model;save=saveInputs;load=loadInputs;export=exportReport;
+            Model=model;save=saveInputs;load=loadInputs;export=exportReport;refreshInputs=refreshCalculatorInputs;
+            ConfirmNewSession=()=>MessageBox.Show(this,"Start a new beam formwork session? Current inputs, results and undo history will be cleared. Saved files are unchanged.","New session",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes;
             if(Model.IsTransferMode && !Model.UseBeamNetwork)Model.UseBeamNetwork=true;
             Drawing=new BeamFormworkCanvas(model);SectionViewport=new FormworkDrawingViewport(Section);
             Title="Beam formwork drawing";Width=1280;Height=860;MinWidth=980;MinHeight=620;WindowState=WindowState.Maximized;WindowStartupLocation=WindowStartupLocation.CenterOwner;
             FontFamily=new FontFamily("Segoe UI");FontSize=13;Background=Brushes.WhiteSmoke;
             var root=new Grid {Background=Brushes.WhiteSmoke};root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             var toolbar=new WrapPanel {Margin=new Thickness(8)};
+            var newSession=Button("NewSession","New session",StartNewSession);newSession.ToolTip="Reset inputs and start a fresh beam formwork session.";toolbar.Children.Add(newSession);
             var files=new Menu {Background=Brushes.Transparent,VerticalAlignment=VerticalAlignment.Center};
             var file=new MenuItem {Header="_File",Padding=new Thickness(10,6,10,6)};files.Items.Add(file);
             file.Items.Add(MenuAction("Save","Save inputs…",()=> {if(CommitFields())save?.Invoke();}));
@@ -98,7 +102,6 @@ namespace EngineeringDashboard
             tabs.Children.Add(new Border {Width=1,Height=24,Background=Brushes.LightGray,Margin=new Thickness(10,0,10,0)});
             tabs.Children.Add(Button("Fit","Fit",()=> {if(sectionMode)SectionViewport.Fit();else Drawing.Fit();}));
             tabs.Children.Add(Button("ZoomOut","−",()=>Zoom(1/1.25)));tabs.Children.Add(Button("ZoomIn","+",()=>Zoom(1.25)));
-            var dimensions=new CheckBox {Content="All dimensions",ToolTip="Show dimension chains for all members. Zoom in to reveal labels where space is limited.",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,8,0)};
             dimensions.Checked+=(s,e)=> {Drawing.AllDimensions=true;Section.ShowAllDimensions=true;Drawing.InvalidateVisual();Section.InvalidateVisual();};dimensions.Unchecked+=(s,e)=> {Drawing.AllDimensions=false;Section.ShowAllDimensions=false;Drawing.InvalidateVisual();Section.InvalidateVisual();};tabs.Children.Add(dimensions);main.Children.Add(tabs);
             Grid.SetRow(Drawing,1);main.Children.Add(Drawing);sectionHost.Child=SectionViewport;Grid.SetRow(sectionHost,1);main.Children.Add(sectionHost);
             var inspector=new Grid {Background=Brushes.White};inspector.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});inspector.RowDefinitions.Add(new RowDefinition());Grid.SetColumn(inspector,1);body.Children.Add(inspector);
@@ -131,6 +134,24 @@ namespace EngineeringDashboard
         }
         private MenuItem MenuAction(string name,string text,Action action)
         {var item=new MenuItem {Header=text,Name="Workspace"+name};item.Click+=(s,e)=>action();Buttons[name]=item;return item;}
+        private void StartNewSession()
+        {
+            if(Model.IsOptimizing || ConfirmNewSession==null || !ConfirmNewSession())return;
+            changing=true;
+            try
+            {
+                ClearDiagrams();Diagnostics?.Close();Model.StartNewSession();refreshInputs?.Invoke();
+                undo.Clear();redo.Clear();advancedExpanded=false;failure.Text="";failures.Children.Clear();
+                detailsExpander.IsExpanded=failureExpander.IsExpanded=false;
+                Drawing.Select(FormworkObject.Beam,0,false);
+                dimensions.IsChecked=false;
+                Drawing.AllDimensions=false;
+                Section.ShowAllDimensions=false;Section.SetResult(null);SectionViewport.ResetView();InspectorTabs.SelectedIndex=0;
+                BuildProperties();Geometry();Drawing.Fit();
+            }
+            finally {changing=false;}
+            Refresh();
+        }
         private void ShowDiagnostics()
         {
             if(Diagnostics!=null){Diagnostics.RefreshReport();Diagnostics.Activate();return;}
@@ -324,6 +345,7 @@ namespace EngineeringDashboard
             Drawing.InvalidateVisual();changing=true;try {foreach(var e in editors)if(!e.Dirty && !e.Box.IsKeyboardFocused)e.Box.Text=e.Get().ToString("0.###",CultureInfo.CurrentCulture);foreach(var e in stringEditors)if(!e.Dirty && !e.Box.IsKeyboardFocused)e.Box.Text=e.Get();foreach(var sync in syncControls)sync();}finally {changing=false;}
             bool pending=editors.Any(e=>e.Dirty && e.Box.IsEnabled) || stringEditors.Any(e=>e.Dirty),valid=editors.Where(e=>e.Box.IsEnabled).All(ValidateEditor) && stringEditors.All(ValidateStock);
             Model.SetAdditionalTextInputErrors(this,pending);
+            Buttons["NewSession"].IsEnabled=!Model.IsOptimizing;
             Buttons["Calculate"].IsEnabled=valid && !Model.IsOptimizing;
             Buttons["Cancel"].IsEnabled=Model.CanCancelOptimization;
             Buttons["Formwork"].IsEnabled=Model.IsCalculationValid && !pending;
@@ -406,5 +428,6 @@ namespace EngineeringDashboard
         }
     }
 }
+
 
 

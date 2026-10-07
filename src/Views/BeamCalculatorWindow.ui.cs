@@ -35,7 +35,8 @@ namespace EngineeringDashboard
             FormworkWorkspace=new BeamFormworkWorkspace(observedModel,
                 ()=>CalculationFiles.Run(FormworkWorkspace,()=>CalculationFiles.Save(FormworkWorkspace,CaptureDrawingInputs(),"Beam")),
                 ()=>CalculationFiles.Run(FormworkWorkspace,()=> {var path=CalculationFiles.ChooseLoad(FormworkWorkspace);if(path!=null)RestoreCalculation(CalculationFiles.Read<CalculationRecord>(path));}),
-                ()=>CalculationFiles.Run(FormworkWorkspace,()=>CalculationFiles.ExportHtml(FormworkWorkspace,"Beam",BuildReport())));
+                ()=>CalculationFiles.Run(FormworkWorkspace,()=>CalculationFiles.ExportHtml(FormworkWorkspace,"Beam",BuildReport())),
+                ()=> {CloseTowerDiagrams();Diagnostics?.Close();foreach(var box in TextInputs(this))box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();RefreshInputValidity();});
             FormworkWorkspace.Closed+=(s,args)=>FormworkWorkspace=null;
             if(IsVisible)FormworkWorkspace.Owner=this;
             FormworkWorkspace.Show();
@@ -250,4 +251,5 @@ namespace EngineeringDashboard
         }
     }
 }
+
 
