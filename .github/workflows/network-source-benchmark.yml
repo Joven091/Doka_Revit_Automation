@@ -42,7 +42,12 @@ jobs:
               $records += [pscustomobject]@{ Scenario=$scenario; Version=$version; Seconds=[double]::Parse($Matches[1],[cultureinfo]::InvariantCulture); Signature=$Matches[2] }
             }
             $samples = $records | Where-Object Scenario -eq $scenario
-            if (($samples.Signature | Select-Object -Unique).Count -ne 1) { throw 'Selected layouts or unrounded demands changed' }
+            # Design-model changes can legitimately change the historical layout.
+            # Require exact repeatability within each source version; design regressions
+            # are checked by Primary UDL design checks and the economy/cache tests.
+            foreach ($version in @('baseline','candidate')) {
+              if ((($samples | Where-Object Version -eq $version).Signature | Select-Object -Unique).Count -ne 1) { throw 'Repeated source-version layouts or demands changed' }
+            }
             $before = ($samples | Where-Object Version -eq baseline | Measure-Object Seconds -Average).Average
             $after = ($samples | Where-Object Version -eq candidate | Measure-Object Seconds -Average).Average
             Write-Host "ACTUAL SUMMARY scenario=$scenario baseline_mean=$before candidate_mean=$after reduction_percent=$((1-$after/$before)*100)"

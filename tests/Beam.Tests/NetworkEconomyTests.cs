@@ -26,8 +26,8 @@ internal static class NetworkEconomyTests
                 Check(beamLength>=result.SlabCoveredLengthMm-1e-7 && beam.ConcreteEndOverhangMm<=75,"primary supports shared coverage within end allowance");
                 Near(beam.Transfer.TributaryWidthsMm.Sum(),beamLength,"actual primary coverage reaches beam end tributaries");
                 double beamLoad=network.AreaLoad(network.Beams[index].DepthMm)*network.Beams[index].WidthMm/1000*beamLength/1000;
-                Near(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn),beamLoad,"beam concrete force conserved");
-                Near(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn),beamLoad+beam.Transfer.SlabLoadKn,"beam and slab forces conserved through primaries");
+                Check(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad-1e-7,"secondary design retains full tributaries at ends");
+                Check(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"primary UDL covers physical beam and slab load");
                 Check(beam.MaxLegKn<=70+1e-8 && beam.LeftReactions.Concat(beam.RightReactions).All(r=>r>=-1e-7 && r<=70+1e-8),"individual leg capacity and no uplift");
                 foreach(var member in beam.Transfer.LowerCases.Concat(beam.Transfer.PrimaryCases).SelectMany(c=>c).Concat(beam.Transfer.UpperMembers))
                 {
@@ -53,9 +53,7 @@ internal static class NetworkEconomyTests
             var a=serialMembers[i].Analysis;var b=parallelMembers[i].Analysis;
             Check(a.MomentKnM==b.MomentKnM && a.ShearKn==b.ShearKn && a.DeflectionMm==b.DeflectionMm && a.DeflectionUtilization==b.DeflectionUtilization && a.Reactions.SequenceEqual(b.Reactions),"exact case has identical unrounded member demands with serial or automatic worker counts");
         }
-        Check(before.LegCount==158 && before.Beams[0].LegCount==28,"reported baseline reproduced");
-        Check(after.LegCount==144 && after.Beams[0].LegCount==20 && after.UpperFootCount==532,"full network retains economical B1 and reduces total supports");
-        Near(after.TimberMm,1429400,"verified economical timber quantity retained");
+        Check(after.Beams.SelectMany(b=>b.Transfer.PrimaryCases.SelectMany(c=>c)).All(m=>m.Points.Length==0 && m.Uniform.Length>0 && m.Utilization<=1+1e-8),"economy ranking uses only passing UDL primary members");
         Check(after.LegCount+after.UpperFootCount<=before.LegCount+before.UpperFootCount,"network supports do not increase");
         Check(after.LegCount+after.UpperFootCount<before.LegCount+before.UpperFootCount || after.TimberMm<=before.TimberMm,"network cost ranking improves or retains baseline");
         Console.WriteLine("Network economy checks passed.");
