@@ -15,6 +15,8 @@ Slab H20 feet now require equal setbacks from both concrete faces and equal stoc
 
 The numeric regression and compilation commands were attempted, but the execution environment has no `dotnet` executable. SDK installation was attempted through the configured network proxy, which refused the connection. The GitHub Windows workflow also failed before its first step started; no build/test log was produced. There is no successful numeric, add-in build or WPF smoke result for this draft yet.
 
+Windows validation of the downloaded branch identified two CS0103 errors in `CrossSupportTests`: named arguments used `=` instead of `:`. Both calls have been corrected. The targeted symmetry and cross-support runs must be repeated on the corrected source; no successful execution is recorded yet.
+
 Run these before approving engineering use:
 
 ```text

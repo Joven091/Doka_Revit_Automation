@@ -51,11 +51,11 @@ internal static class CrossSupportTests
         var wide=TransferNetworkOptimizer.Optimize(common,wideInput);
         Check(wide.CrossSupports[0].Members.Length>=2 && wide.CrossSupports[0].Members.All(m=>m.H20Count==1),"multiple parallel cross H20s selected and individually checked");
         Near(wide.CrossSupports[0].LoadKn,input.AreaLoad(150)*.8*3.9,"multiple H20 tributaries conserve the cross concrete load");
-        var unequal=Input(bottom=-250);unequal.Beams[1].BottomElevationMm=-1000;
+        var unequal=Input(bottom: -250);unequal.Beams[1].BottomElevationMm=-1000;
         var unequalResult=TransferNetworkOptimizer.Optimize(common,unequal);
         Near(unequalResult.CrossSupports[0].Bearings.First(bearing=>bearing.Beam==0).FillerHeightMm,150,"left filler independently calculated");
         Near(unequalResult.CrossSupports[0].Bearings.First(bearing=>bearing.Beam==1).FillerHeightMm,550,"unequal right soffit gives different filler");
-        Failed(common,Input(bottom=-401),"negative gap fails Existing supports only");
+        Failed(common,Input(bottom: -401),"negative gap fails Existing supports only");
         var dedicated=TransferNetworkOptimizer.Optimize(common,Input(CrossBeamSupportMode.DedicatedTowers,-1000));
         Check(dedicated.CrossSupports[0].Towers!=null,"requested dedicated tower arrangement calculated");
         Check(dedicated.LegCount==dedicated.Beams.Sum(l=>l.LegCount)+dedicated.CrossSupports[0].Towers.LegCount,"dedicated legs included in ranking and totals");
