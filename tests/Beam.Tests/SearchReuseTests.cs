@@ -24,7 +24,10 @@ internal static class SearchReuseTests
         Check(a.Tested==b.Tested,"same bounded candidates and ranking traversal");
         Check(Counter(cached.Trace,"Tower geometry cache hits")>0,"geometry reused across receiving beams");
         Check(Counter(cached.Trace,"Lower row-case cache hits")>0,"checked row cases reused across tower layouts");
-        Check(Counter(cached.Trace,"Primary member cache hits")>0 && Counter(cached.Trace,"Primary member analyses")<Counter(plain.Trace,"Primary member analyses"),"identical complete primary member checks reused");
+        // Symmetric feet can remove duplicate responses within one beam solve.
+        // The pass-wide cache still reuses exact responses across receiving beams.
+        long primaryHits=Counter(cached.Trace,"Primary member cache hits")+Counter(cached.Trace,"Network primary response cache hits");
+        Check(primaryHits>0 && Counter(cached.Trace,"Primary member analyses")<Counter(plain.Trace,"Primary member analyses"),"identical complete primary member checks reused within or between receiving-beam solves");
         Check(Counter(cached.Trace,"Primary matrix cache hits")>0,"new primary load vectors reuse checked structural preparation");
         Check(Counter(cached.Trace,"Lower response cache hits")>0,"identical exact row tributaries reuse transverse responses");
         Check(Counter(cached.Trace,"Numerical checks")<Counter(plain.Trace,"Numerical checks"),"repeated numerical checks reduced");

@@ -8,11 +8,12 @@ using System.Windows.Threading;
 using EngineeringDashboard;
 internal static class CrossSupportUiTests
 {
-    static void Check(bool value,string message) {if(!value)throw new Exception("Cross UI: "+message);}
+    static int checks;
+    static void Check(bool value,string message) {checks++;if(!value)throw new Exception("Cross UI: "+message);}
     static void Pump()=>Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));
-    public static void Run()
+    public static int Run()
     {
-        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,UpperSupportSpacingMm=200,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70};
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,UpperSupportSpacingMm=100,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70};
         foreach(var b in vm.NetworkBeams) {b.WidthMm=300;b.DepthMm=600;}
         vm.NetworkBays[0].WidthMm=3900;vm.NetworkBays[0].ThicknessMm=100;
         vm.AddCrossingBeam();var cross=vm.CrossingBeams[0];cross.PositionMm=1225;cross.WidthMm=400;cross.DepthMm=150;cross.BottomElevationMm=-250;cross.SupportMode=CrossBeamSupportMode.ExistingSupportsOnly;
@@ -30,9 +31,9 @@ internal static class CrossSupportUiTests
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Drawing.Select(FormworkObject.Crossing,0);workspace.Show();Pump();
         Check(workspace.Fields.ContainsKey("BottomElevationMm"),"cross bottom elevation exposed in workspace");
         workspace.Drawing.Select(FormworkObject.Slab,0);Pump();
-        Check(workspace.SelectedResultText.Contains("Equal foot setback") && workspace.SelectedResultText.Contains("repeat every row") && workspace.SelectedResultText.Contains("Maximum row spacing 200"),"workspace exposes the repeated symmetric slab support detail and spacing");
+        Check(workspace.SelectedResultText.Contains("Equal foot setback") && workspace.SelectedResultText.Contains("repeat every row") && workspace.SelectedResultText.Contains("Maximum row spacing 100"),"workspace exposes the repeated symmetric slab support detail and spacing");
         var slab=vm.NetworkResult.Beams[0].Transfer.UpperMembers.Single(m=>m.Name=="Upper right");
         Check(Math.Abs(slab.SupportsMm[0]+slab.SupportsMm[1]-slab.LengthMm)<1e-7 && Math.Abs(slab.Analysis.Reactions[0]-slab.Analysis.Reactions[1])<1e-7,"drawn slab member has symmetric supports and actual equal uniform-load reactions");
-        workspace.Close();Console.WriteLine("Cross UI: section, filler, actual diagrams and elevation editor passed.");
+        workspace.Close();Console.WriteLine("Cross UI: section, filler, actual diagrams and elevation editor passed.");return checks;
     }
 }

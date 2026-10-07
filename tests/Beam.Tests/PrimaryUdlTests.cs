@@ -139,7 +139,7 @@ internal static class PrimaryUdlTests
             var network=new TransferNetworkInput {UpperSpacingMm=200,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,
                 Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=350,DepthMm=250}},
                 Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100}},
-                CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=endCrossing ? 200 : 1200,WidthMm=endCrossing ? 200 : 500,DepthMm=150}}};
+                CrossingBeams=new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,BayNumber=1,PositionMm=endCrossing ? 200 : 1200,WidthMm=endCrossing ? 200 : 500,DepthMm=150}}};
             var result=TransferNetworkOptimizer.Optimize(common,network);
             foreach(var beam in result.Beams)CheckLayout(beam);
             CheckNetworkLoads(result);
