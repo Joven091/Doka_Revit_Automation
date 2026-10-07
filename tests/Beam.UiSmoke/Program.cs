@@ -265,7 +265,7 @@ internal static class Program
    Find<Expander>(window).Single(e=>Equals(e.Header,"Crossing beams")).IsExpanded=true;Render();
    ((Button)window.FindName("AddCrossingBeamButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render();
    Check(vm.CrossingBeams.Count==1 && !vm.IsCalculationValid && window.TowerDiagrams==null,"adding crossing beam invalidates stale plans and diagrams");
-   var crossing=vm.CrossingBeams[0];crossing.PositionMm=3175;crossing.WidthMm=400;crossing.DepthMm=350;Render();
+   var crossing=vm.CrossingBeams[0];Check(crossing.SupportMode==CrossBeamSupportMode.Automatic,"new crossing defaults to Automatic");crossing.SupportMode=CrossBeamSupportMode.LegacySlabRows;crossing.PositionMm=3175;crossing.WidthMm=400;crossing.DepthMm=350;Render();
    var crossingWidth=VisualInputs((DependencyObject)window.Content).Single(t=>t.DataContext==crossing && t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path=="WidthMm");
    crossingWidth.Text="oops";crossingWidth.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(!vm.CanOptimizeTowers,"invalid crossing width blocks optimization");
    crossingWidth.Text="400";crossingWidth.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Optimize();Render();
@@ -304,7 +304,8 @@ internal static class Program
    if(args.Length>0){var bitmap=new RenderTargetBitmap((int)Math.Ceiling(networkPlan.ActualWidth),(int)Math.Ceiling(networkPlan.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(networkPlan);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"custom-plan.png")))encoder.Save(file);File.WriteAllText(Path.ChangeExtension(args[0],"custom.txt"),vm.NetworkResult.Summary+"\n\n"+vm.NetworkResult.Schedule);}
    var customWorkspaceRecord=window.CaptureCalculation();
    window.RestoreCalculation(networkSaved);Pump();Check(!vm.HasTowerFailure && failureExpander.Visibility==Visibility.Collapsed,"restoring inputs clears stale failure details");Optimize();Render();Check(vm.IsCalculationValid && !vm.HasTowerFailure,"successful retry hides failure report");
-   checks+=WorkspaceTests.Run(window,vm,customWorkspaceRecord,args.Length>0 ? args[0] : null);
+   checks+=CrossSupportUiTests.Run();
+   WorkspaceTests.Run(window,vm,customWorkspaceRecord,args.Length>0 ? args[0] : null);
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }
   catch(Exception ex){Console.Error.WriteLine(ex);window?.Close();return 1;}

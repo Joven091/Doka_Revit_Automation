@@ -24,6 +24,7 @@ namespace EngineeringDashboard
         internal MemberLoadingPlot LoadingDiagram {get;private set;}
         internal int SelectedLoadCase { get; private set; } = -1;
         private readonly TowerLayout layout;
+        private readonly CrossBeamSupportResult crossSupport;
         private readonly string beamLabel;
         private readonly StackPanel charts = new StackPanel();
         public TowerDiagramWindow(BeamCalculatorViewModel model)
@@ -37,9 +38,24 @@ namespace EngineeringDashboard
             Background=Brushes.WhiteSmoke;
             Content = new ScrollViewer { Content = panel, Background = Brushes.WhiteSmoke, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
                 }
+        public TowerDiagramWindow(BeamCalculatorViewModel model,CrossBeamSupportResult support):this(model)
+        {crossSupport=support??throw new ArgumentNullException(nameof(support));UseEquivalentUdlForPrimary=false;}
+        private void RefreshCross()
+        {
+            if(SelectedRun<0 || SelectedRun>=crossSupport.Members.Length)return;
+            var m=crossSupport.Members[SelectedRun];SelectedTransferMember=DisplayedTransferMember=m;ActualLoadedAnalysis=LoadedAnalysis=m.Analysis;IsEquivalentUdlView=false;Analysis=null;
+            Title=$"X{crossSupport.CrossingIndex+1} · {m.Name} · actual cross-beam loads — response diagrams";charts.Children.Clear();
+            charts.Children.Add(new TextBlock {Text=crossSupport.Schedule,TextWrapping=TextWrapping.Wrap});
+            charts.Children.Add(new TextBlock {Text=CrossBeamSupportResult.Limitations,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,8,0,8)});
+            LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);AddChart("Loading diagram · actual cross-beam loads",LoadingDiagram,true);
+            AddLoadDetails(string.Join("; ",m.Analysis.Reactions.Select((v,i)=>$"Bearing {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.###} kN")));
+            var names=new[] {"Shear (kN)","Moment (kNm)","Relative member deflection (mm)"};
+            for(int i=0;i<3;i++)AddChart(names[i],new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
+        }
         private void Refresh()
         {
             if (SelectedRun < 0) return;
+            if(crossSupport!=null) {RefreshCross();return;}
             if (layout.Transfer != null) { RefreshTransfer(); return; }
             var piece = layout.StockPlan.Pieces[SelectedRun];
             var supports = layout.PositionsMm.Skip(piece.FirstSupport).Take(piece.LastSupport - piece.FirstSupport + 1).Select(x => (x - piece.StartMm) / 1000).ToArray();

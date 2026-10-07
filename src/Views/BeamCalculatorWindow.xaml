@@ -103,10 +103,11 @@
                   <TextBlock Text="Beams, left to right" FontWeight="SemiBold"/>
                   <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Grid.Column="1" Text="Width (mm)"/><TextBlock Grid.Column="3" Text="Depth (mm)"/></Grid>
                   <ItemsControl ItemsSource="{Binding NetworkBeams}"><ItemsControl.ItemTemplate><DataTemplate>
-                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
                       <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
                       <TextBox Grid.Column="1" AutomationProperties.Name="Beam width (mm)" ToolTip="Beam width (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                       <TextBox Grid.Column="3" AutomationProperties.Name="Beam depth (mm)" ToolTip="Beam depth (mm)" Text="{Binding DepthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                      <TextBlock Grid.Row="1" Grid.Column="1" Text="Bottom elevation (mm)"/><TextBox Grid.Row="1" Grid.Column="3" ToolTip="Main beam bottom / soffit elevation (mm), z upwards" Text="{Binding BottomElevationMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                     </Grid>
                   </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
                   <TextBlock Text="Slab bays · clear width / thickness (mm)" FontWeight="SemiBold" Margin="0,8,0,0"/>
@@ -119,15 +120,17 @@
                   </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
                   <Expander Header="Crossing beams" Margin="0,8,0,0">
                     <StackPanel>
-                      <TextBlock Style="{StaticResource Hint}" Text="Across slab bay · centre from beam start · total depth (mm)"/>
+                      <TextBlock Style="{StaticResource Hint}" Text="Across clear bay · centre from main beam start · elevations in mm (z upwards). Filler bearing strength and stability are not verified."/>
                       <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="45"/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="26"/></Grid.ColumnDefinitions><TextBlock Text="Bay"/><TextBlock Grid.Column="1" Text="Centre"/><TextBlock Grid.Column="2" Text="Width"/><TextBlock Grid.Column="3" Text="Depth"/></Grid>
                       <ItemsControl ItemsSource="{Binding CrossingBeams}"><ItemsControl.ItemTemplate><DataTemplate>
-                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="45"/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="26"/></Grid.ColumnDefinitions>
+                        <Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="45"/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="26"/></Grid.ColumnDefinitions>
                           <TextBox ToolTip="Slab bay number" Text="{Binding BayNumber, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                           <TextBox Grid.Column="1" ToolTip="Centre from beam start (mm)" Text="{Binding PositionMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                           <TextBox Grid.Column="2" ToolTip="Crossing beam width (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                           <TextBox Grid.Column="3" ToolTip="Total crossing beam depth (mm)" Text="{Binding DepthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                           <Button Grid.Column="4" Content="×" Padding="2" Margin="2" ToolTip="Remove crossing beam" Tag="{Binding}" Click="RemoveCrossingBeam_Click"/>
+                          <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="Bottom elevation (mm)"/><TextBox Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2" ToolTip="Cross beam bottom / soffit elevation (mm), z upwards" Text="{Binding BottomElevationMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                          <ComboBox Grid.Row="2" Grid.ColumnSpan="4" ToolTip="Cross beam support arrangement" ItemsSource="{Binding SupportModes}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SupportMode, UpdateSourceTrigger=PropertyChanged}"/>
                         </Grid>
                       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
                       <Button x:Name="AddCrossingBeamButton" Content="Add crossing beam" Click="AddCrossingBeam_Click"/>

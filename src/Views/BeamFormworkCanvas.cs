@@ -195,6 +195,7 @@ namespace EngineeringDashboard
 
             }
             if(Formwork)for(int i=0;i<beams.Length;i++)if(Layout(i)!=null)DrawSupports(dc,Layout(i),i,ys[i],selection.Contains(Tuple.Create(FormworkObject.Beam,i)) || AllDimensions);
+            if(Formwork && Model.NetworkResult!=null)DrawCrossSupports(dc);
             double bottomY=Pan.Y+SceneBounds.Bottom*Zoom+42;
             Dimension(dc,new Point(Screen(0,0).X,bottomY),new Point(Screen(Model.BeamLengthMm,0).X,bottomY),$"Beam length {Model.BeamLengthMm:0.###} mm",FormworkObject.Beam,0,"BeamLengthMm");
             if(dragging && Math.Abs(dragDelta)>2)Label(dc,$"Move {Math.Round(dragDelta/Zoom/25)*25:0} mm",mouseStart+new Vector(15,15),Brushes.DodgerBlue);
@@ -204,6 +205,31 @@ namespace EngineeringDashboard
                 dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(25,colour.R,colour.G,colour.B)),new Pen(new SolidColorBrush(colour),1){DashStyle=windowEnd.X<mouseStart.X ? DashStyles.Dash : DashStyles.Solid},new Rect(mouseStart,windowEnd));
             }
             Label(dc,AddCrossing ? "Click a slab bay to place a crossing beam." : Formwork ? "Wheel: zoom · middle drag: pan · double-click: fit · click beam/H20: diagrams" : "Click: select · Shift-click: toggle · drag blank space: window/crossing selection · Delete: remove · Esc: clear",new Point(16,ActualHeight-25),Brushes.SlateGray);
+        }
+        private void DrawCrossSupports(DrawingContext dc)
+        {
+            foreach(var support in Model.NetworkResult.CrossSupports)
+            {
+                int encoded=-support.CrossingIndex-1;
+                foreach(var solid in support.Solids)
+                {
+                    var rect=new Rect(Screen(solid.X0,solid.Y0),Screen(solid.X1,solid.Y1));
+                    if(solid.IsLeg)
+                    {
+                        dc.DrawRectangle(Brushes.SlateGray,null,rect);DrawnLegCount++;
+                        LegTargets.Add(Tuple.Create(rect,$"X{support.CrossingIndex+1} dedicated tower · peak leg {support.Towers.MaxLegKn:0.###}/{support.Towers.LegCapacityKn:0.###} kN"));continue;
+                    }
+                    int member=Array.IndexOf(support.Members,solid.Member);
+                    bool active=memberBeam==encoded && memberRun==member;
+                    dc.DrawRectangle(solid.Member==null ? Brushes.SandyBrown : Brushes.Goldenrod,new Pen(active ? Brushes.DodgerBlue : Brushes.SaddleBrown,1),rect);
+                    if(member>=0)MemberTargets.Insert(0,Tuple.Create(rect,encoded,member,0));
+                }
+                foreach(var bearing in support.Bearings)
+                {
+                    var p=Screen(bearing.Xmm,bearing.Ymm);dc.DrawEllipse(Brushes.DarkRed,null,p,3,3);
+                    if(AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex)Label(dc,bearing.FillerHeightMm<=1e-7 ? "Direct bearing" : $"Filler {bearing.FillerHeightMm:0.###} mm",p+new Vector(5,5),Brushes.SaddleBrown);
+                }
+            }
         }
         private void DrawSupports(DrawingContext dc,TowerLayout layout,int beam,double centre,bool dims)
         {

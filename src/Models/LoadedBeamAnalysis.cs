@@ -33,7 +33,7 @@ namespace EngineeringDashboard
         }
         public LoadedBeamAnalysis Scale(double factor)
         {
-            if (!Finite(factor) || factor <= 0) throw new ArgumentException("Load scale must be positive.");
+            if (!Finite(factor) || factor < 0) throw new ArgumentException("Load scale must be nonnegative.");
             var result = new LoadedBeamAnalysis { rigidity = rigidity, DeflectionEvaluated=DeflectionEvaluated, Reactions = Reactions.Select(v => v * factor).ToArray(), MomentKnM = MomentKnM * factor, ShearKn = ShearKn * factor, DeflectionMm = DeflectionMm * factor, DeflectionUtilization = DeflectionUtilization * factor, TotalLoadKn = TotalLoadKn * factor, GoverningLengthMm = GoverningLengthMm };
             foreach (var e in elements) result.elements.Add(new Element { X = e.X, L = e.L, Q = e.Q * factor, U = e.U * factor, T = e.T * factor, C2 = e.C2 * factor, C3 = e.C3 * factor, C4 = e.C4 * factor });
             return result;
@@ -119,17 +119,19 @@ namespace EngineeringDashboard
             =>AnalyzeCore(lengthMm,supportMm,null,points,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary);
         public static LoadedBeamAnalysis Analyze(double lengthMm, double[] supportMm, BeamDistributedLoad[] uniform, BeamPointLoad[] points, double ei, int denominator)
             => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,true);
+        internal static LoadedBeamAnalysis AnalyzeSigned(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator)
+            =>AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,true,allowSigned:true);
         // Retain the former dense storage path for exact numerical regression comparisons.
         internal static LoadedBeamAnalysis AnalyzeDenseReference(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator)
             => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,false);
-        private static LoadedBeamAnalysis AnalyzeCore(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool banded,MatrixCache matrixCache=null,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false)
+        private static LoadedBeamAnalysis AnalyzeCore(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool banded,MatrixCache matrixCache=null,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false,bool allowSigned=false)
         {
             if (!Finite(lengthMm) || lengthMm <= 0 || !Finite(ei) || ei <= 0 || supportMm == null || supportMm.Length < 2
                 || supportMm.Any(v => !Finite(v) || v < 0 || v > lengthMm) || supportMm.Distinct().Count() != supportMm.Length
                 || !new[] { 500, 350, 270 }.Contains(denominator)) throw new ArgumentException("Invalid stock/support geometry or deflection criterion.");
             uniform = uniform ?? new BeamDistributedLoad[0]; points = points ?? new BeamPointLoad[0];
-            if (uniform.Any(v => v == null || !Finite(v.StartMm) || !Finite(v.EndMm) || v.StartMm < 0 || v.EndMm > lengthMm || v.EndMm <= v.StartMm || !Finite(v.KnPerM) || v.KnPerM < 0)
-                || points.Any(v => v == null || !Finite(v.PositionMm) || v.PositionMm < 0 || v.PositionMm > lengthMm || !Finite(v.Kn) || v.Kn < 0)) throw new ArgumentException("Invalid beam loads.");
+            if (uniform.Any(v => v == null || !Finite(v.StartMm) || !Finite(v.EndMm) || v.StartMm < 0 || v.EndMm > lengthMm || v.EndMm <= v.StartMm || !Finite(v.KnPerM) || !allowSigned && v.KnPerM < 0)
+                || points.Any(v => v == null || !Finite(v.PositionMm) || v.PositionMm < 0 || v.PositionMm > lengthMm || !Finite(v.Kn) || !allowSigned && v.Kn < 0)) throw new ArgumentException("Invalid beam loads.");
             // Primary pairs reuse only their immutable structure. Each load vector and
             // displacement solution is new; forces are never rounded or omitted from checks.
             var shapeKey=matrixCache==null || uniform.Length!=0 ? null : new MatrixKey(lengthMm,supportMm,points,ei);

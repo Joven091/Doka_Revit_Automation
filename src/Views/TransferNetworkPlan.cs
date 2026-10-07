@@ -121,23 +121,48 @@ namespace EngineeringDashboard
                 }
 
             }
+            DrawCrossPlan(dc,ys,xx);
             var last=result.Beams.Last();double endY=ys.Last()+last.WidthMm*.055/2+121;Dim(dc,40,ActualWidth-40,endY,$"Beam length {last.LengthMm:0} · concrete beyond H20 {last.ConcreteEndOverhangMm:0.###} / end");
             Section(dc,endY+60);
+        }
+        private void DrawCrossPlan(DrawingContext dc,double[] ys,Func<double,double> xx)
+        {
+            Func<double,double> yy=y=>
+            {
+                int bay=Math.Max(0,Math.Min(ys.Length-2,Array.FindLastIndex(result.BeamCentresMm,c=>c<=y)));
+                return ys[bay]+(y-result.BeamCentresMm[bay])*(ys[bay+1]-ys[bay])/(result.BeamCentresMm[bay+1]-result.BeamCentresMm[bay]);
+            };
+            foreach(var support in result.CrossSupports)
+            {
+                int encoded=-support.CrossingIndex-1;
+                foreach(var solid in support.Solids)
+                {
+                    var rect=new Rect(new Point(xx(solid.X0),yy(solid.Y0)),new Point(xx(solid.X1),yy(solid.Y1)));
+                    int member=Array.IndexOf(support.Members,solid.Member);
+                    dc.DrawRectangle(solid.IsLeg ? Steel : solid.Member==null ? Brushes.SandyBrown : Timber,new Pen(selectedBeam==encoded && selectedRun==member ? Brushes.DodgerBlue : Brushes.SaddleBrown,1),rect);
+                    if(solid.IsLeg)DrawnTowerLegCount++;
+                    if(member>=0)MemberTargets.Insert(0,Tuple.Create(rect,encoded,member,0));
+                }
+                foreach(var b in support.Bearings)dc.DrawEllipse(Brushes.DarkRed,null,new Point(xx(b.Xmm),yy(b.Ymm)),3,3);
+            }
         }
         private void Section(DrawingContext dc,double y0)
         {
             Label(dc,"Section · red: slab feet · blue: shutter loads · select H20 for diagrams",30,y0);
             double min=double.MaxValue,max=double.MinValue;
             for(int b=0;b<result.Beams.Length;b++) {var t=result.Beams[b].Transfer;min=Math.Min(min,result.BeamCentresMm[b]+t.LowerStockStartMm);max=Math.Max(max,result.BeamCentresMm[b]+t.LowerStockStartMm+t.LowerStockLengthMm);}
-            double scale=(ActualWidth-80)/(max-min),depthScale=130/result.Input.Beams.Max(b=>b.DepthMm);Func<double,double> xx=x=>40+(x-min)*scale;double top=y0+100;
+            foreach(var support in result.CrossSupports)foreach(var solid in support.Solids) {min=Math.Min(min,solid.Y0);max=Math.Max(max,solid.Y1);}
+            double highest=result.Input.Beams.Max(b=>b.BottomElevationMm+b.DepthMm),lowest=result.Input.Beams.Min(b=>b.BottomElevationMm-400);
+            if(result.CrossSupports.Length>0) {highest=Math.Max(highest,result.CrossSupports.Max(c=>c.Input.BottomElevationMm+c.Input.DepthMm));lowest=Math.Min(lowest,result.CrossSupports.Min(c=>c.Input.BottomElevationMm-400));}
+            double scale=(ActualWidth-80)/(max-min),depthScale=150/Math.Max(200,highest-lowest);Func<double,double> xx=x=>40+(x-min)*scale;double top=y0+100;
             for(int beam=0;beam<result.Beams.Length;beam++)
             {
-                var b=result.Beams[beam];var input=result.Input.Beams[beam];var t=b.Transfer;double centre=result.BeamCentresMm[beam],bottom=top+input.DepthMm*depthScale;
-                dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(xx(centre-input.WidthMm/2),top,input.WidthMm*scale,bottom-top));
+                var b=result.Beams[beam];var input=result.Input.Beams[beam];var t=b.Transfer;double centre=result.BeamCentresMm[beam],bottom=top+(highest-input.BottomElevationMm)*depthScale,beamTop=top+(highest-input.BottomElevationMm-input.DepthMm)*depthScale;
+                dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(xx(centre-input.WidthMm/2),beamTop,input.WidthMm*scale,bottom-beamTop));
                 Label(dc,$"B{beam+1}",xx(centre),top-20,true);
                 int row=Enumerable.Range(0,t.RowsMm.Length).OrderByDescending(r=>t.LowerCases.Max(c=>c[r].Utilization)).First(),encoded=b.StockPlan.Pieces.Length+row;
                 double start=xx(centre+t.LowerStockStartMm),end=xx(centre+t.LowerStockStartMm+t.LowerStockLengthMm);
-                dc.DrawLine(new Pen(beam==selectedBeam && selectedRun==encoded ? Brushes.DodgerBlue : Timber,3),new Point(start,bottom+7),new Point(end,bottom+7));
+                dc.DrawRectangle(Timber,new Pen(beam==selectedBeam && selectedRun==encoded ? Brushes.DodgerBlue : Brushes.SaddleBrown,1),new Rect(start,bottom,end-start,200*depthScale));
                 MemberTargets.Add(Tuple.Create(new Rect(start,bottom,end-start,15),beam,encoded,0));
                 foreach(double support in new[] {-b.WidthMm/2,b.WidthMm/2})dc.DrawLine(new Pen(Steel,3),new Point(xx(centre+support),bottom+13),new Point(xx(centre+support),bottom+33));
                 Dim(dc,start,end,bottom+43,$"H20 {t.LowerStockLengthMm:0}");DrawnSecondaryLengthCount++;
@@ -154,15 +179,16 @@ namespace EngineeringDashboard
                     continue;
                 }
                 double face=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2,other=face+slab.WidthMm;
-                double a=face+plan.EdgeMm,b=a+plan.StockLengthMm,near=face+plan.NearFootMm,far=other-plan.FarFootMm,soffit=top+slab.ThicknessMm*depthScale;
+                double a=face+plan.EdgeMm,b=a+plan.StockLengthMm,near=face+plan.NearFootMm,far=other-plan.FarFootMm,soffit=top+(highest-Math.Max(result.Input.Beams[bay].BottomElevationMm+result.Input.Beams[bay].DepthMm,result.Input.Beams[bay+1].BottomElevationMm+result.Input.Beams[bay+1].DepthMm)+slab.ThicknessMm)*depthScale;
                 dc.DrawRectangle(Brushes.LightSteelBlue,null,new Rect(xx(face),top,slab.WidthMm*scale,slab.ThicknessMm*depthScale));
                 int row=Array.IndexOf(result.Beams[bay].Transfer.RightUpperScales,result.Beams[bay].Transfer.RightUpperScales.Max());
+                if(result.SlabRowCount(bay)==0)continue;
                 int encoded=result.Beams[bay].StockPlan.Pieces.Length+result.Beams[bay].Transfer.RowsMm.Length+row*2+1;
                 dc.DrawLine(new Pen(bay==selectedBeam && selectedRun==encoded ? Brushes.DodgerBlue : Timber,3),new Point(xx(a),soffit+7),new Point(xx(b),soffit+7));
                 MemberTargets.Add(Tuple.Create(new Rect(xx(a),soffit,plan.StockLengthMm*scale,15),bay,encoded,0));
                 for(int side=0;side<2;side++)
                 {
-                    int beam=bay+side;double bottom=top+result.Input.Beams[beam].DepthMm*depthScale+5,x=side==0 ? near : far;
+                    int beam=bay+side;double bottom=top+(highest-result.Input.Beams[beam].BottomElevationMm)*depthScale,x=side==0 ? near : far;
                     dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x),soffit+13),new Point(xx(x),bottom));Arrow(dc,xx(x),bottom,Brushes.DarkRed);
                     double shutter=side==0 ? face+100 : other-100;dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter),soffit),new Point(xx(shutter),bottom));Arrow(dc,xx(shutter),bottom,Brushes.SteelBlue);
                     if(ShowAllDimensions || selectedBeam==beam)
@@ -172,6 +198,26 @@ namespace EngineeringDashboard
                     }
                 }
                 Dim(dc,xx(a),xx(b),top-59,$"S{bay+1} H20 {plan.StockLengthMm:0}{(plan.IsCustomLength ? " custom" : "")}");
+            }
+            DrawCrossSection(dc,xx,z=>top+(highest-z)*depthScale);
+        }
+        private void DrawCrossSection(DrawingContext dc,Func<double,double> xx,Func<double,double> zz)
+        {
+            var support=result.CrossSupports.FirstOrDefault(c=>selectedBeam==-c.CrossingIndex-1)??result.CrossSupports.FirstOrDefault();if(support==null)return;
+            int bay=support.Input.BayNumber-1;double face=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2;
+            dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(new Point(xx(face),zz(support.Input.BottomElevationMm+support.Input.DepthMm)),new Point(xx(face+result.Input.Bays[bay].WidthMm),zz(support.Input.BottomElevationMm))));
+            Label(dc,$"X{support.CrossingIndex+1} section @ x={support.Input.PositionMm:0.###} · bottom {support.Input.BottomElevationMm:0.###} mm",xx(face),zz(support.Input.BottomElevationMm)-20);
+            foreach(var solid in support.Solids)
+            {
+                if(solid.IsLeg) {dc.DrawLine(new Pen(Steel,2),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)+35));continue;}
+                var rect=new Rect(new Point(xx(solid.Y0),zz(solid.Z1)),new Point(xx(solid.Y1),zz(solid.Z0)));int member=Array.IndexOf(support.Members,solid.Member);
+                dc.DrawRectangle(solid.Member==null ? Brushes.SandyBrown : Timber,new Pen(selectedBeam==-support.CrossingIndex-1 && selectedRun==member ? Brushes.DodgerBlue : Brushes.SaddleBrown,1),rect);
+                if(member>=0)MemberTargets.Insert(0,Tuple.Create(rect,-support.CrossingIndex-1,member,0));
+            }
+            foreach(var bearing in support.Bearings.GroupBy(b=>new {b.Ymm,b.FillerHeightMm}).Select(g=>g.First()))
+            {
+                dc.DrawEllipse(Brushes.DarkRed,null,new Point(xx(bearing.Ymm),zz(bearing.ReceivingTopMm)),3,3);
+                Label(dc,bearing.FillerHeightMm<=1e-7 ? "Direct bearing" : $"Filler {bearing.FillerHeightMm:0.###} mm",xx(bearing.Ymm)+4,zz(bearing.H20UndersideMm)+3);
             }
         }
         private static void Arrow(DrawingContext dc,double x,double y,Brush colour) {dc.DrawLine(new Pen(colour,2),new Point(x-4,y-6),new Point(x,y));dc.DrawLine(new Pen(colour,2),new Point(x+4,y-6),new Point(x,y));}

@@ -15,7 +15,7 @@ namespace EngineeringDashboard
         public double RightSlabBayMm { get => rightSlabBayMm; set { rightSlabBayMm=value; Changed(); } }
         public string TransferSummary => TowerResult?.Transfer?.Summary ?? "";
         public string TransferSchedule => TowerResult?.Transfer?.Schedule ?? "";
-        public string TowerCalculationBasis => IsTransferMode ? TransferredSlabResult.Assumptions : TowerAssumptions;
+        public string TowerCalculationBasis => IsTransferMode ? (IsNetworkMode && NetworkResult?.CrossSupports.Length>0 ? CrossBeamSupportResult.Limitations+"\n"+TransferredSlabResult.Assumptions : TransferredSlabResult.Assumptions) : TowerAssumptions;
         private void NotifyTransfer()
         {
             NotifyNetwork();

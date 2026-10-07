@@ -79,7 +79,7 @@ namespace EngineeringDashboard
                 if(diagramBeam!=beam) {TowerDiagrams?.Close();TowerDiagrams=null;}
                 vm.SelectNetworkBeam(beam);diagramBeam=beam;NetworkPlan.SelectMember(beam,run,line);
                 bool opening=TowerDiagrams==null;
-                if(opening) {TowerDiagrams=new TowerDiagramWindow(vm);TowerDiagrams.Closed+=(s,e)=> {TowerDiagrams=null;diagramBeam=-1;NetworkPlan.SelectMember(-1,-1,0);};if(IsVisible)TowerDiagrams.Owner=this;}
+                if(opening) {TowerDiagrams=beam<0 ? new TowerDiagramWindow(vm,vm.NetworkResult.CrossSupports.Single(c=>c.CrossingIndex==-beam-1)) : new TowerDiagramWindow(vm);TowerDiagrams.Closed+=(s,e)=> {TowerDiagrams=null;diagramBeam=-1;NetworkPlan.SelectMember(-1,-1,0);};if(IsVisible)TowerDiagrams.Owner=this;}
                 TowerDiagrams.SelectMember(run,line,-1);if(opening)TowerDiagrams.Show();
             };
             SupportDiagram.MemberSelected += (run, line, member) => {
