@@ -66,7 +66,7 @@ namespace EngineeringDashboard
             internal FormworkObject SelectedKind;
             internal int SelectedIndex;
         }
-        private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,UpperSupportSpacingMm,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,Exclude600Standalone,DeflectionLimit,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
+        private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,UpperSupportSpacingMm,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,IgnoreUplift,Exclude600Standalone,DeflectionLimit,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
         internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null)
         {
             Model=model;save=saveInputs;load=loadInputs;export=exportReport;refreshInputs=refreshCalculatorInputs;
@@ -313,6 +313,8 @@ namespace EngineeringDashboard
                 exclude.Click+=(s,e)=> {bool value=exclude.IsChecked==true;if(CommitFields())Mutate(()=>Model.Exclude600Standalone=value);else Refresh();};syncControls.Add(()=>exclude.IsChecked=Model.Exclude600Standalone);properties.Children.Add(exclude);
                 var customH20=new CheckBox {Content="Allow custom H20 lengths (25 mm)",IsChecked=Model.AllowCustomH20Lengths,Margin=new Thickness(0,0,0,14),ToolTip="Optimize primary, lower secondary and slab H20s using catalogue or custom lengths in 25 mm increments."};
                 customH20.Click+=(s,e)=> {bool value=customH20.IsChecked==true;if(CommitFields())Mutate(()=>Model.AllowCustomH20Lengths=value);else Refresh();};syncControls.Add(()=>customH20.IsChecked=Model.AllowCustomH20Lengths);properties.Children.Add(customH20);
+                var uplift=new CheckBox {Content="Exclude uplift check (connected plywood / deadweight assumed)",IsChecked=Model.IgnoreUplift,Margin=new Thickness(0,0,0,14),ToolTip=TowerLayout.ConnectedFormworkAssumption};
+                uplift.Click+=(s,e)=> {bool value=uplift.IsChecked==true;if(CommitFields())Mutate(()=>Model.IgnoreUplift=value);else Refresh();};syncControls.Add(()=>uplift.IsChecked=Model.IgnoreUplift);properties.Children.Add(uplift);
                 var advanced=new Expander {Header="Stock and load settings",IsExpanded=advancedExpanded,Margin=new Thickness(0,6,0,10)};var advancedPanel=new StackPanel();
                 int first=properties.Children.Count;
                 Text("H20 stocks (mm)");var stock=new TextBox {Text=Model.StockLengthsText,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,10)};properties.Children.Add(stock);Fields["StockLengthsText"]=stock;
@@ -386,6 +388,7 @@ namespace EngineeringDashboard
             resultHeading.Text=network!=null ? "Network totals" : "Beam result";
             networkSummary.Text=network!=null ? $"{network.LegCount} tower legs · {network.H20Count} H20s" : $"{Model.TowerResult.LegCount} tower legs · {Model.TowerResult.StockPlan.TotalH20Count} primary H20s";
             resultDetails.Text=network!=null ? network.Summary+"\n"+network.UpperFootCount+" upper feet (separate from tower legs)" : Model.TowerResult.CompactSummary+"\n"+Model.TowerResult.LegLoadSummary;
+            if(Model.IgnoreUplift)resultDetails.Text+=$"\nUplift excluded · minimum signed reaction {(network!=null ? network.Beams.Min(b=>b.MinimumReactionKn) : Model.TowerResult.MinimumReactionKn):0.######} kN";
             if(network?.RequiresSeparateSlabFormwork==true)networkSummary.Text+="\nSeparate slab formwork required: "+string.Join(", ",network.Bays.Select((b,i)=>b==null ? "S"+(i+1) : null).Where(x=>x!=null))+". Not included in totals.";
             if(network==null)return;
             if(Drawing.SelectedObjects.Length==0){selectedSummary.Text="Select a beam or slab to inspect its result.";return;}

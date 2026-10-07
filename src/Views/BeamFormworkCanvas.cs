@@ -243,7 +243,7 @@ namespace EngineeringDashboard
             for(int i=0;i<layout.PositionsMm.Length;i++)
             {
                 double x=layout.PositionsMm[i];dc.DrawLine(pen,Screen(x,a),Screen(x,b));
-                for(int line=0;line<2;line++) {var p=Screen(x,line==0 ? a : b);dc.DrawEllipse(Brushes.SlateGray,null,p,3.5,3.5);DrawnLegCount++;double reaction=line==0 ? layout.LeftReactions[i] : layout.RightReactions[i];LegTargets.Add(Tuple.Create(new Rect(p.X-6,p.Y-6,12,12),$"B{beam+1} · leg {i+1} {(line==0 ? "L" : "R")} · {reaction:0.##}/{layout.LegCapacityKn:0.##} kN"));}
+                for(int line=0;line<2;line++) {var p=Screen(x,line==0 ? a : b);dc.DrawEllipse(Brushes.SlateGray,null,p,3.5,3.5);DrawnLegCount++;double reaction=line==0 ? layout.LeftReactions[i] : layout.RightReactions[i];LegTargets.Add(Tuple.Create(new Rect(p.X-6,p.Y-6,12,12),$"B{beam+1} · leg {i+1} {(line==0 ? "L" : "R")} · {reaction:0.##}/{layout.LegCapacityKn:0.##} kN"+(layout.IgnoreUplift ? $" · minimum signed reaction {layout.MinimumLegReaction(line==0,i):0.######} kN · uplift excluded" : "")));}
                 if(i>=layout.Joined.Length)continue;double end=layout.PositionsMm[i+1];Brush colour=layout.Joined[i] && !layout.Rotated ? Brushes.Firebrick : Brushes.SlateGray;
                 if(layout.Joined[i])foreach(double y in new[] {a,b})dc.DrawLine(new Pen(colour,1.5){DashStyle=layout.Rotated ? DashStyles.Solid : DashStyles.Dash},Screen(x,y),Screen(end,y));
 

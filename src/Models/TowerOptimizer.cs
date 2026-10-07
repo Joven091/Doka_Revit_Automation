@@ -19,7 +19,8 @@ namespace EngineeringDashboard
         private readonly double fixedLimit;
         private int checks;
         private readonly BeamSearchTrace trace;
-        public TowerSearchDiagnostics(int denominator,double fixedLimit=0,BeamSearchTrace trace=null) {this.denominator=denominator;this.fixedLimit=fixedLimit;this.trace=trace;}
+        private readonly bool ignoreUplift;
+        public TowerSearchDiagnostics(int denominator,double fixedLimit=0,BeamSearchTrace trace=null,bool ignoreUplift=false) {this.denominator=denominator;this.fixedLimit=fixedLimit;this.trace=trace;this.ignoreUplift=ignoreUplift;}
         private void Add(string key,int stage,double score,string text,string advice,string summary=null,bool blocker=false)
         {
             trace?.Increment(BeamSearchCounter.RejectionChecks);
@@ -34,7 +35,7 @@ namespace EngineeringDashboard
         }
         public void Bearing(string scope,int stage,double reaction,string location,double tolerance=1e-7)
         {
-            trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(reaction>=-tolerance)return;
+            trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(ignoreUplift || reaction>=-tolerance)return;
             Add(scope+"/uplift",stage,Math.Abs(reaction),$"{scope} · uplift: reaction {reaction:G6} kN; minimum 0 kN. {location}","Review foot positions, primary-line/tower width and one-sided loading balance.");
         }
         internal bool LazyLocations=true;
@@ -44,11 +45,11 @@ namespace EngineeringDashboard
             bool failing=!LazyLocations || a.MomentKnM*scale>TowerOptimizer.PairMoment*count/2+1e-8
                 || a.ShearKn*scale>TowerOptimizer.PairShear*count/2+1e-8
                 || a.DeflectionEvaluated && a.DeflectionUtilization*allowable*scale>allowable+allowable*1e-8
-                || a.Reactions.Min()*scale< -1e-7;
+                || !ignoreUplift && a.Reactions.Min()*scale< -1e-7;
             Analysis(a,scale,count,scope,stage,failing ? location() : "");
         }
         public void LegsLazy(double[] reactions,double capacity,string scope,Func<string> location,double tolerance=1e-8,double bearingTolerance=1e-7)
-            =>Legs(reactions,capacity,scope,!LazyLocations || reactions.Max()>capacity+tolerance || reactions.Min()< -bearingTolerance ? location() : "",tolerance,bearingTolerance);
+            =>Legs(reactions,capacity,scope,!LazyLocations || reactions.Max()>capacity+tolerance || !ignoreUplift && reactions.Min()< -bearingTolerance ? location() : "",tolerance,bearingTolerance);
         public void Analysis(LoadedBeamAnalysis a,double scale,int count,string scope,int stage,string location)
         {
             string advice=stage==1 ? "Review upper spacing, stock length and foot positions." : stage==2 ? "Review upper row spacing, lower secondary stock and foot/primary bearing positions." : "Review primary stock lengths and tower support spacing.";
@@ -146,6 +147,8 @@ namespace EngineeringDashboard
         public int DeflectionDenominator { get; set; }
         public double[] StockLengthsMm { get; set; } = TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths);
         public bool AllowCustomH20Lengths { get; set; }
+        // Explicit project assumption; no stabilizing deadweight or connection model is added.
+        public bool IgnoreUplift { get; set; }
         public double StockEndSetbackMm { get; set; } = 150;
         public double MaximumConcreteEndOverhangMm { get; set; }
         public bool Exclude600Standalone { get; set; }
@@ -153,6 +156,12 @@ namespace EngineeringDashboard
     public sealed class TowerLayout
     {
         public TransferredSlabResult Transfer { get; internal set; }
+        public bool IgnoreUplift { get; internal set; }
+        public double MinimumReactionKn => Transfer == null
+            ? LeftReactions.Concat(RightReactions).Min()
+            : Transfer.PrimaryCases.Concat(Transfer.LowerCases).SelectMany(c=>c).Concat(Transfer.UpperMembers).Select(m=>m.MinimumReactionKn).Concat(MinimumLeftReactions??LeftReactions).Concat(MinimumRightReactions??RightReactions).Min();
+        public const string ConnectedFormworkAssumption = "Uplift excluded from acceptance: connected plywood and stabilizing deadweight are assumed by the user. Signed reactions are retained. Deadweight adequacy and connections are not calculated; negative reactions indicate required restraint. Strength, deflection and maximum individual leg loads remain checked.";
+        public string UpliftSummary => (IgnoreUplift ? ConnectedFormworkAssumption : "Bearing-only supports: uplift is rejected.") + $" Minimum signed reaction {MinimumReactionKn:0.######} kN.";
         public double[] PositionsMm { get; internal set; }
         public bool[] Joined { get; internal set; }
         public double WidthMm { get; internal set; }
@@ -163,6 +172,9 @@ namespace EngineeringDashboard
         public double RightLineLoad { get; internal set; }
         public double[] LeftReactions { get; internal set; }
         public double[] RightReactions { get; internal set; }
+        public double[] MinimumLeftReactions { get; internal set; }
+        public double[] MinimumRightReactions { get; internal set; }
+        public double MinimumLegReaction(bool left,int index) => (left ? MinimumLeftReactions : MinimumRightReactions)?[index] ?? (left ? LeftReactions : RightReactions)[index];
         public TowerStockPlan StockPlan { get; internal set; }
         public double LegUtilizationPercent => MaxLegKn / LegCapacityKn * 100;
         public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s";
@@ -197,7 +209,7 @@ namespace EngineeringDashboard
         }
         public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\n{12}\nPeak deflection {9:0.00} mm · criterion {11} (each span/overhang)",
             LegCount, GroupCount, BayCount, Rotated ? "Rotated isolated towers" : "1524 mm frames across beam", WidthMm, MaxLegKn, Utilization * 100, MomentKnM, ShearKn, DeflectionMm, LegCapacityKn, DeflectionDenominator == 0 ? $"{DeflectionLimitMm:0.00} mm" : $"L/{DeflectionDenominator}", MemberDemandSummary)
-            + string.Format(CultureInfo.CurrentCulture, "\nPrimary H20s: {0} pieces · no overlaps\nConcrete beyond H20: {1:0.###} mm per end", StockPlan.TotalH20Count, ConcreteEndOverhangMm);
+            + string.Format(CultureInfo.CurrentCulture, "\nPrimary H20s: {0} pieces · no overlaps\nConcrete beyond H20: {1:0.###} mm per end", StockPlan.TotalH20Count, ConcreteEndOverhangMm) + (IgnoreUplift ? "\n"+UpliftSummary : "");
         public string Schedule
         {
             get
@@ -207,6 +219,7 @@ namespace EngineeringDashboard
                 {
                     if (i > 0 && !Joined[i - 1]) group++;
                     lines.Add(string.Format(CultureInfo.CurrentCulture, "G{0} · x={1:0.###} mm · legs L/R={2:0.00}/{3:0.00} kN · utilization L/R={4:0.0}/{5:0.0}%", group, PositionsMm[i], LeftReactions[i], RightReactions[i], LeftReactions[i] / LegCapacityKn * 100, RightReactions[i] / LegCapacityKn * 100));
+                    if (IgnoreUplift) lines.Add($"  Minimum signed leg reactions L/R={MinimumLegReaction(true,i):0.######}/{MinimumLegReaction(false,i):0.######} kN across stages");
                     if (i < Joined.Length) lines.Add(string.Format(CultureInfo.CurrentCulture, "  {0}: {1:0.###} mm", Joined[i] ? (Rotated ? "Frame span" : "Cross bay") : "Clear gap between leg planes", PositionsMm[i + 1] - PositionsMm[i]));
                 }
                 lines.Add(string.Format(CultureInfo.CurrentCulture, "End overhangs: {0:0.###} / {1:0.###} mm", PositionsMm[0], LengthMm - PositionsMm.Last()));
@@ -230,7 +243,7 @@ namespace EngineeringDashboard
         private static TowerLayout OptimizeCore(TowerInput input)
         {
             Validate(input);
-            input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm,input.Trace);
+            input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm,input.Trace,input.IgnoreUplift);
             if (input.MaximumConcreteEndOverhangMm == 0) return OptimizeCovered(input);
             input.Trace?.Work("Beam-only primary coverage DP");
             // Reachable stock totals; allow only symmetric concrete end overhang, never internal stock gaps.
@@ -247,7 +260,7 @@ namespace EngineeringDashboard
                 double overhang = (input.LengthMm - covered) / 2;
                 var candidateInput = new TowerInput { LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
                     TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator,
-                    Trace = input.Trace, AllowCustomH20Lengths = input.AllowCustomH20Lengths, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
+                    Trace = input.Trace, IgnoreUplift = input.IgnoreUplift, AllowCustomH20Lengths = input.AllowCustomH20Lengths, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
                 TowerLayout candidate;
                 try { candidate = OptimizeCovered(candidateInput); }
                 catch (TowerOptimizationException) {continue;}
@@ -358,7 +371,7 @@ namespace EngineeringDashboard
                 }
                 if (best != null) break;
             }
-            if (best == null) throw (input.Diagnostics??new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm,input.Trace)).Exception("No valid tower layout found within the bounded search (up to 80 legs).");
+            if (best == null) throw (input.Diagnostics??new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm,input.Trace,input.IgnoreUplift)).Exception("No valid tower layout found within the bounded search (up to 80 legs).");
             best.Tested = tested;
             int capacityBound = Math.Max(2, (int)Math.Ceiling((input.TotalLineLoad / 2 + Math.Abs(input.TransverseLoadMoment) / 2) * length / 1000 / input.LegCapacityKn - 1e-10));
             best.MinimumLegCountProven = best.PositionsMm.Length == Math.Max(capacityBound, minimumPieces * 2); return best;
@@ -385,10 +398,10 @@ namespace EngineeringDashboard
             var response = TowerStockPlanner.Find(input, positions, Math.Max(left, right));
             if (response == null) return null;
             double maxLeg = response.Reactions.Max();
-            if (response.Reactions.Min() < -1e-9 * maxLeg) return null;
+            if (!input.IgnoreUplift && response.Reactions.Min() < -1e-9 * maxLeg) return null;
             var utilization = new[] { maxLeg / input.LegCapacityKn, response.MomentKnM / PairMoment, response.ShearKn / PairShear, response.DeflectionUtilization };
             if (utilization.Any(x => !TowerBeamAnalysis.Finite(x)) || utilization.Max() > 1 + 1e-10) return null;
-            return new TowerLayout { PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
+            return new TowerLayout { IgnoreUplift = input.IgnoreUplift, PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
                 LeftLineLoad = left, RightLineLoad = right, LeftReactions = response.Reactions.Select(x => x * left / Math.Max(left, right)).ToArray(), RightReactions = response.Reactions.Select(x => x * right / Math.Max(left, right)).ToArray(),
                 MaxLegKn = maxLeg, LegCapacityKn = input.LegCapacityKn, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator, MomentKnM = response.MomentKnM, ShearKn = response.ShearKn, DeflectionMm = response.DeflectionMm,
                 Utilization = utilization.Max(), Governing = new[] { "Leg capacity", "Primary moment", "Primary shear", "Primary deflection" }[Array.IndexOf(utilization, utilization.Max())] };

@@ -15,6 +15,8 @@ namespace EngineeringDashboard
         }
         private bool useTowers, exclude600Standalone;
         public bool Exclude600Standalone { get => exclude600Standalone; set { exclude600Standalone = value; Changed(); } }
+        private bool ignoreUplift;
+        public bool IgnoreUplift { get => ignoreUplift; set { ignoreUplift=value; Changed(); } }
         private bool allowCustomH20Lengths;
         public bool AllowCustomH20Lengths { get => allowCustomH20Lengths; set { allowCustomH20Lengths = value; Changed(); } }
         private double beamLengthMm = 6100, towerLegCapacityKn = 30;
@@ -64,7 +66,7 @@ namespace EngineeringDashboard
             double left = HasLeftSlab && !IsTransferMode ? AreaLoad(LeftSlabThickness) * SlabStripWidthMm / 1000 : 0;
             double right = HasRightSlab && !IsTransferMode ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;
             var input = new TowerInput { LengthMm = BeamLengthMm, LegCapacityKn = TowerLegCapacityKn, DeflectionLimitMm = DeflectionLimit.Millimetres, DeflectionDenominator = DeflectionLimit.Denominator,
-                AllowCustomH20Lengths = AllowCustomH20Lengths, Exclude600Standalone = Exclude600Standalone, MaximumConcreteEndOverhangMm = MaximumConcreteEndOverhangMm, StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
+                IgnoreUplift = IgnoreUplift, AllowCustomH20Lengths = AllowCustomH20Lengths, Exclude600Standalone = Exclude600Standalone, MaximumConcreteEndOverhangMm = MaximumConcreteEndOverhangMm, StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
                 TotalLineLoad = IsNetworkMode ? 0 : AreaLoad(Depth) * Width / 1000 + left + right,
                 TransverseLoadMoment = IsTransferMode ? 0 : (right - left) * (Width + (HasAnySlab ? SlabStripWidthMm : 0)) / 2000 };
             if(IsNetworkMode) { input.Network=CreateNetworkInput(); input.Network.Validate(input); input.TotalLineLoad=input.Network.AreaLoad(input.Network.Beams[0].DepthMm)*input.Network.Beams[0].WidthMm/1000; }

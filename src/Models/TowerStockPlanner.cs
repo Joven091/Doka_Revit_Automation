@@ -137,7 +137,7 @@ namespace EngineeringDashboard
                     var u = new[] { response.Reactions.Max() / input.LegCapacityKn, response.Moment / TowerOptimizer.PairMoment,
                         response.Shear / TowerOptimizer.PairShear, response.DeflectionUtilization(input.DeflectionLimitMm, input.DeflectionDenominator) };
                     input.Diagnostics?.Primary(response,input,$"stock {stock:0} mm · x={start+input.DiagnosticOffsetMm:0.###}–{end+input.DiagnosticOffsetMm:0.###} mm · support x={string.Join(", ",positions.Skip(first).Take(last-first+1).Select(x=>(x+input.DiagnosticOffsetMm).ToString("0.###")))} mm · governing loaded line");
-                    if (response.Reactions.Min() < -1e-9 * response.Reactions.Max() || u.Any(x => !TowerBeamAnalysis.Finite(x) || x > 1 + 1e-10)) continue;
+                    if ((!input.IgnoreUplift && response.Reactions.Min() < -1e-9 * response.Reactions.Max()) || u.Any(x => !TowerBeamAnalysis.Finite(x) || x > 1 + 1e-10)) continue;
                     var region = response.GoverningDeflection(input.DeflectionLimitMm, input.DeflectionDenominator);
                     var piece = new TowerStockPiece { StartMm = start, StockLengthMm = stock, IsCustomLength = !input.StockLengthsMm.Contains(stock), FirstSupport = first, LastSupport = last,
                         MomentKnM = response.Moment, ShearKn = response.Shear, DeflectionMm = response.DeflectionMm, DeflectionUtilization = u[3], GoverningDeflectionMm = region.PeakMm,
