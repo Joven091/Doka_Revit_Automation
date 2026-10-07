@@ -8,7 +8,7 @@ internal static class NetworkTests
     static void Near(double actual,double expected,string message)=>Check(Math.Abs(actual-expected)<1e-6*Math.Max(1,Math.Abs(expected)),message);
     public static void Run()
     {
-        var common=new TowerInput {AllowSeparateSlabFallback=false,LengthMm=6750,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350};
+        var common=new TowerInput {AllowCustomH20Lengths=true,AllowSeparateSlabFallback=false,LengthMm=6750,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350};
         var input=new TransferNetworkInput {UpperSpacingMm=200,Beams=new[] {new TransferBeamRow {WidthMm=1100,DepthMm=1750},new TransferBeamRow {WidthMm=1100,DepthMm=1200},new TransferBeamRow {WidthMm=900,DepthMm=1500}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=300},new TransferBayRow {WidthMm=3500,ThicknessMm=250}}};
         var timer=System.Diagnostics.Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,input);
         Check(result.Beams.All(b=>b.Transfer.LowerCases.SelectMany(c=>c).All(m=>m.H20Count==1 && m.Utilization<=1+1e-8)),"single lower secondaries checked in every beam and stage");
@@ -19,9 +19,10 @@ internal static class NetworkTests
         {
             var beam=result.Beams[b];Check(beam.Transfer.RowsMm.SequenceEqual(result.Beams[0].Transfer.RowsMm),"shared upper rows align across all lower beams");
             double beamLoad=input.AreaLoad(input.Beams[b].DepthMm)*input.Beams[b].WidthMm/1000*(common.LengthMm-2*beam.ConcreteEndOverhangMm)/1000;
-            Near(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn),beamLoad,"each beam depth produces its own beam concrete load");
+            Near(beam.Transfer.BeamLoadKn,beamLoad,"each beam depth produces its own physical beam concrete load");
+            Check(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad-1e-7,"lower secondary design retains full end tributaries");
             Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r>=-1e-7 && r<=common.LegCapacityKn+1e-8),"each beam's legs checked");
-            Near(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn),beamLoad+beam.Transfer.SlabLoadKn,"shutter and upper feet reach longitudinal pairs");
+            Check(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"primary UDL covers physical beam, shutter and slab load");
             foreach(var m in beam.Transfer.LowerCases.Last())
             {
                 var shutters=m.Points.Where(p=>Math.Abs(Math.Abs(p.PositionMm+m.StartMm)-input.Beams[b].WidthMm/2-100)<1e-6).ToArray();
@@ -67,7 +68,7 @@ internal static class NetworkTests
         for(int r=0;r<crossed.Beams[0].Transfer.RowsMm.Length;r++)
         {
             Near(crossed.Beams[0].Transfer.UpperScale(false,r),crossed.Beams[1].Transfer.UpperScale(true,r),"both main beams use the same physical crossing row loads");
-            foreach(var beam in crossed.Beams)Near(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.Reactions.Sum()),beam.Transfer.LowerCases.Last().Sum(m=>m.Analysis.TotalLoadKn),"crossing row point reactions conserved through primaries to legs");
+            foreach(var beam in crossed.Beams)Near(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.Reactions.Sum()),beam.Transfer.PrimaryCases.Last().Sum(m=>m.Uniform.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000)),"crossing UDL forces conserved through primaries to legs");
         }
         foreach(var beam in crossed.Beams)Near(beam.Transfer.CoveredSlabAreaM2,crossed.SlabCoveredLengthMm*(beam.Transfer.LeftUpperStockMm+beam.Transfer.RightUpperStockMm)/1e6,"reported slab stock area uses physical coverage, without weighting the crossing load");
         Check(crossed.Schedule.Contains("X1: S1") && crossed.Schedule.Contains("extra bay load"),"crossing geometry and added load retained in schedule");
@@ -122,7 +123,7 @@ internal static class NetworkTests
         Check(failure!=null && failure.Details.Contains("S1 slab H20") && failure.Details.Contains("moment") && failure.Details.Contains("shear") && failure.Details.Contains("deflection") && failure.Details.Contains("T") && failure.Details.Contains("L/350"),"crossing overload reports member, actual row, demand, capacity and deflection criterion");
         Check(failure.Details.Contains("examples may come from different layouts"),"diagnostic samples do not pretend to form one alternative layout");
         overloadInput.CrossingBeams=new TransferCrossingBeamRow[0];TransferNetworkOptimizer.Optimize(common,overloadInput);
-        overloadInput.Bays[0]=new TransferBayRow {WidthMm=3900,ThicknessMm=300};common.StockLengthsMm=new[] {1250.0};failure=null;try {TransferNetworkOptimizer.Optimize(common,overloadInput);}catch(TowerOptimizationException ex){failure=ex;}
+        overloadInput.Bays[0]=new TransferBayRow {WidthMm=3900,ThicknessMm=300};common.StockLengthsMm=new[] {1250.0};common.AllowCustomH20Lengths=false;failure=null;try {TransferNetworkOptimizer.Optimize(common,overloadInput);}catch(TowerOptimizationException ex){failure=ex;}
         Check(failure!=null && !failure.Details.Contains("S1 slab H20 · moment") && failure.Details.Contains("Numerical checks recorded: 0"),"reusing a snapshot starts a new diagnostic run");
         var legInput=new TowerInput {LengthMm=6750,LegCapacityKn=1,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,TransferredSlab=new TransferredSlabInput {BeamWidthMm=1100,BeamLineLoadKnM=50,UpperSpacingMm=200,LeftBayMm=3900,LeftAreaLoadKnM2=9.4}};
         failure=null;try {TransferredSlabOptimizer.Optimize(legInput);}catch(TowerOptimizationException ex){failure=ex;}

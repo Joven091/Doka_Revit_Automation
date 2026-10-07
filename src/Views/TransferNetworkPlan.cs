@@ -8,7 +8,7 @@ using System.Windows.Media;
 
 namespace EngineeringDashboard
 {
-    /// <summary>All receiving beams are shown once. Transverse secondaries are confined to the section.</summary>
+    /// <summary>Main receiving beams are shown once, with actual cross-formwork stock, bearings and tower positions.</summary>
     public sealed class TransferNetworkPlan : FrameworkElement
     {
         private TransferNetworkResult result;
@@ -63,12 +63,14 @@ namespace EngineeringDashboard
             if(SectionOnly) {Section(dc,55);return;}
             Label(dc,$"mm · primary P = 2×H20/line · secondaries = single H20 @ {result.Input.UpperSpacingMm:0}",30,8);
             Label(dc,"Red: braced bays · grey: gaps · beam W×D · slab t = thickness · transverse view schematic",30,27);
-            var ys=Centres();double scale=(ActualWidth-80)/result.Beams[0].LengthMm;Func<double,double> xx=x=>40+x*scale;
+            var ys=Centres();var crossSolids=result.CrossSupports.SelectMany(c=>c.Solids).ToArray();
+            double minX=Math.Min(0,crossSolids.Select(s=>s.X0).DefaultIfEmpty(0).Min()),maxX=Math.Max(result.Beams[0].LengthMm,crossSolids.Select(s=>s.X1).DefaultIfEmpty(0).Max());
+            double scale=(ActualWidth-80)/(maxX-minX);Func<double,double> xx=x=>40+(x-minX)*scale;
             for(int bay=0;bay<result.Bays.Length;bay++)
             {
                 double a=ys[bay]+result.Input.Beams[bay].WidthMm*.055/2,b=ys[bay+1]-result.Input.Beams[bay+1].WidthMm*.055/2;
                 bool separate=result.Bays[bay]==null;
-                dc.DrawRectangle(separate ? Brushes.Moccasin : Brushes.AliceBlue,null,new Rect(40,a,ActualWidth-80,b-a));
+                dc.DrawRectangle(separate ? Brushes.Moccasin : Brushes.AliceBlue,null,new Rect(xx(0),a,result.Beams[0].LengthMm*scale,b-a));
                 bool crossed=result.Input.CrossingBeams.Any(c=>c.BayNumber==bay+1);
                 Label(dc,$"S{bay+1} · bay {result.Input.Bays[bay].WidthMm:0} · t {result.Input.Bays[bay].ThicknessMm:0}{(separate ? " · separate formwork (not calculated)" : "")}",crossed ? 45 : ActualWidth/2,(a+b)/2,!crossed);
             }
@@ -86,7 +88,7 @@ namespace EngineeringDashboard
             {
                 var b=result.Beams[beam];double cy=ys[beam],top=cy-b.WidthMm*.055/2,bottom=cy+b.WidthMm*.055/2;
                 Label(dc,$"B{beam+1} · {result.Input.Beams[beam].WidthMm:0}×{result.Input.Beams[beam].DepthMm:0} · {b.LegCount} legs · {(b.Rotated ? "Cross" : "Frame")} {b.WidthMm:0} across",40,top-65);
-                dc.DrawRectangle(Concrete,null,new Rect(40,cy-result.Input.Beams[beam].WidthMm*.055/2,ActualWidth-80,result.Input.Beams[beam].WidthMm*.055));
+                dc.DrawRectangle(Concrete,null,new Rect(xx(0),cy-result.Input.Beams[beam].WidthMm*.055/2,b.LengthMm*scale,result.Input.Beams[beam].WidthMm*.055));
                 for(int i=0;i<b.StockPlan.Pieces.Length;i++)
                 {
                     var stock=b.StockPlan.Pieces[i];
@@ -122,7 +124,7 @@ namespace EngineeringDashboard
 
             }
             DrawCrossPlan(dc,ys,xx);
-            var last=result.Beams.Last();double endY=ys.Last()+last.WidthMm*.055/2+121;Dim(dc,40,ActualWidth-40,endY,$"Beam length {last.LengthMm:0} · concrete beyond H20 {last.ConcreteEndOverhangMm:0.###} / end");
+            var last=result.Beams.Last();double endY=ys.Last()+last.WidthMm*.055/2+121;Dim(dc,xx(0),xx(last.LengthMm),endY,$"Beam length {last.LengthMm:0} · concrete beyond H20 {last.ConcreteEndOverhangMm:0.###} / end");
             Section(dc,endY+60);
         }
         private void DrawCrossPlan(DrawingContext dc,double[] ys,Func<double,double> xx)

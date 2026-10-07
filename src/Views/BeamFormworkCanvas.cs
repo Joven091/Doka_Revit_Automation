@@ -41,6 +41,7 @@ namespace EngineeringDashboard
         private double dragDelta;
         private int memberBeam=-1,memberRun=-1,memberLine;
         internal int DrawnLegCount {get;private set;}
+        internal int DrawnCrossH20Count {get;private set;}
         internal BeamFormworkCanvas(BeamCalculatorViewModel model)
         {Model=model;Focusable=true;ClipToBounds=true;SizeChanged+=(s,e)=> {if(fitted || e.PreviousSize.Width==0)Fit();};}
         internal double[] Centres()
@@ -61,7 +62,10 @@ namespace EngineeringDashboard
                 var result=Layout(i);double half=Math.Max(beams[i].WidthMm,result?.WidthMm??0)/2;
                 min=Math.Min(min,ys[i]-half);max=Math.Max(max,ys[i]+half);
             }
-            return new Rect(0,min,Model.BeamLengthMm,max-min);
+            double minX=0,maxX=Model.BeamLengthMm;
+            if(Model.IsCalculationValid && Model.NetworkResult!=null)foreach(var solid in Model.NetworkResult.CrossSupports.SelectMany(c=>c.Solids))
+            {minX=Math.Min(minX,solid.X0);maxX=Math.Max(maxX,solid.X1);min=Math.Min(min,solid.Y0);max=Math.Max(max,solid.Y1);}
+            return new Rect(minX,min,maxX-minX,max-min);
         }
         private TowerLayout Layout(int beam)=>!Model.IsCalculationValid ? null : Model.IsNetworkMode ? Model.NetworkResult?.Beams[beam] : Model.TowerResult;
         internal void Fit()
@@ -154,7 +158,7 @@ namespace EngineeringDashboard
         }
         protected override void OnRender(DrawingContext dc)
         {
-            base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();dimensions.Clear();AnnotationBounds.Clear();DrawnLegCount=0;
+            base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();dimensions.Clear();AnnotationBounds.Clear();DrawnLegCount=DrawnCrossH20Count=0;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if(!ValidGeometry()) {Label(dc,"Correct geometry to draw the plan.",new Point(30,30));return;}
             var beams=Beams();var ys=Centres();SceneBounds=Bounds();
@@ -222,11 +226,12 @@ namespace EngineeringDashboard
                     int member=Array.IndexOf(support.Members,solid.Member);
                     bool active=memberBeam==encoded && memberRun==member;
                     dc.DrawRectangle(solid.Member==null ? Brushes.SandyBrown : Brushes.Goldenrod,new Pen(active ? Brushes.DodgerBlue : Brushes.SaddleBrown,1),rect);
-                    if(member>=0)MemberTargets.Insert(0,Tuple.Create(rect,encoded,member,0));
+                    if(member>=0) {DrawnCrossH20Count++;MemberTargets.Insert(0,Tuple.Create(rect,encoded,member,0));}
                 }
                 foreach(var bearing in support.Bearings)
                 {
                     var p=Screen(bearing.Xmm,bearing.Ymm);dc.DrawEllipse(Brushes.DarkRed,null,p,3,3);
+                    LegTargets.Add(Tuple.Create(new Rect(p.X-5,p.Y-5,10,10),$"X{support.CrossingIndex+1} bearing {bearing.Label??($"B{bearing.Beam+1}/T{bearing.Row+1}")} @ ({bearing.Xmm:0.###}, {bearing.Ymm:0.###}) mm · filler {bearing.FillerHeightMm:0.###} mm · reaction {bearing.ReactionKn:0.###} kN · filler strength/stability not verified"));
                     if(AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex)Label(dc,bearing.FillerHeightMm<=1e-7 ? "Direct bearing" : $"Filler {bearing.FillerHeightMm:0.###} mm",p+new Vector(5,5),Brushes.SaddleBrown);
                 }
             }

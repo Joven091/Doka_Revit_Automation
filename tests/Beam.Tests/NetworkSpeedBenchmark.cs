@@ -77,8 +77,7 @@ internal static class NetworkSpeedBenchmark
         Near(result.SlabLoadKn,network.Bays.Sum(b=>network.AreaLoad(b.ThicknessMm)*b.WidthMm/1000)*result.SlabCoveredLengthMm/1000,"modelled slab load conserved");
         if(scenario=="eight")
         {
-            Check(result.LegCount==144 && result.Beams[0].LegCount==20 && result.UpperFootCount==532,"reported eight-beam support quantities retained");
-            Near(result.TimberMm,1429400,"reported eight-beam timber retained");
+            Check(result.Beams.SelectMany(b=>b.Transfer.PrimaryCases.SelectMany(c=>c)).All(m=>m.Points.Length==0 && m.Uniform.Length>0 && m.Utilization<=1+1e-8),"eight-beam benchmark uses passing UDL primaries");
         }
     }
     static Trial Solve(string scenario,int variant,int repeat)

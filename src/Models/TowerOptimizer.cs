@@ -112,7 +112,7 @@ namespace EngineeringDashboard
     public sealed class TowerInput
     {
         internal TowerSearchDiagnostics Diagnostics;
-        internal Dictionary<int,CrossBeamSupportResult> DedicatedCrossCache;
+        internal Dictionary<Tuple<int,double>,CrossBeamSupportResult> DedicatedCrossCache;
         internal BeamSearchTrace Trace;
         // Tests can replay the original search without reuse; production searches reuse work.
         internal bool ReuseSearchWork = true;

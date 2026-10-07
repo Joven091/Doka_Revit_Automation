@@ -19,8 +19,6 @@ namespace EngineeringDashboard
         internal TransferMember SelectedTransferMember { get; private set; }
         internal TransferMember DisplayedTransferMember { get; private set; }
         internal LoadedBeamAnalysis ActualLoadedAnalysis { get; private set; }
-        internal bool UseEquivalentUdlForPrimary {get;private set;}=true;
-        internal bool IsEquivalentUdlView {get;private set;}
         internal MemberLoadingPlot LoadingDiagram {get;private set;}
         internal int SelectedLoadCase { get; private set; } = -1;
         private readonly TowerLayout layout;
@@ -33,17 +31,17 @@ namespace EngineeringDashboard
             layout = model.TowerResult ?? throw new ArgumentException("Optimize the tower layout first.");
             Title = "Select H20 — shear, moment and deflection"; Width = 960; Height = 850; MinWidth=760;MinHeight=550;WindowStartupLocation=WindowStartupLocation.CenterOwner;FontFamily=new FontFamily("Segoe UI");FontSize=13;
             var panel = new StackPanel { Margin = new Thickness(16), Background=Brushes.WhiteSmoke };
-            panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = (layout.Transfer != null ? "Primary members are H20 pairs: M=10 kNm, V=22 kN. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. Use the case buttons to check beam/slab loading stages. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents a double-H20 pair with equal load sharing: M=10 kNm, V=22 kN. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; the loading diagram shows applied loads and supports. Primary pairs open in an equivalent UDL view; clear its checkbox to show the actual concentrated reactions. The UDL approximation is for viewing only; layout checks, quantities and reported utilization use the actual loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
+            panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = (layout.Transfer != null ? "Primary members are H20 pairs: M=10 kNm, V=22 kN. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. Use the case buttons to check beam/slab loading stages. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents a double-H20 pair with equal load sharing: M=10 kNm, V=22 kN. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; the loading diagram shows applied loads and supports. Primary pairs use UDL design loads derived from beam and slab reactions per metre, without assumed secondary row point loads. Crossing-beam increments remain distributed over their physical footprints. The optimizer, diagrams and reported utilization use the same distributed loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
             panel.Children.Add(charts);
             Background=Brushes.WhiteSmoke;
             Content = new ScrollViewer { Content = panel, Background = Brushes.WhiteSmoke, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
                 }
         public TowerDiagramWindow(BeamCalculatorViewModel model,CrossBeamSupportResult support):this(model)
-        {crossSupport=support??throw new ArgumentNullException(nameof(support));UseEquivalentUdlForPrimary=false;}
+        {crossSupport=support??throw new ArgumentNullException(nameof(support));}
         private void RefreshCross()
         {
             if(SelectedRun<0 || SelectedRun>=crossSupport.Members.Length)return;
-            var m=crossSupport.Members[SelectedRun];SelectedTransferMember=DisplayedTransferMember=m;ActualLoadedAnalysis=LoadedAnalysis=m.Analysis;IsEquivalentUdlView=false;Analysis=null;
+            var m=crossSupport.Members[SelectedRun];SelectedTransferMember=DisplayedTransferMember=m;ActualLoadedAnalysis=LoadedAnalysis=m.Analysis;Analysis=null;
             Title=$"X{crossSupport.CrossingIndex+1} · {m.Name} · actual cross-beam loads — response diagrams";charts.Children.Clear();
             charts.Children.Add(new TextBlock {Text=crossSupport.Schedule,TextWrapping=TextWrapping.Wrap});
             charts.Children.Add(new TextBlock {Text=CrossBeamSupportResult.Limitations,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,8,0,8)});
@@ -89,14 +87,12 @@ namespace EngineeringDashboard
             {
                 int encoded=SelectedRun-runs-t.RowsMm.Length,row=encoded/2,side=encoded%2;
                 var original=t.UpperMembers.Single(x=>x.Name==(side==0 ? "Upper left" : "Upper right"));
-                double scale=t.UpperScale(side==0,row)/(side==0 ? t.LeftUpperScales : t.RightUpperScales).Max();
+                double scale=t.UpperScale(side==0,row)/Math.Max((side==0 ? t.LeftUpperScales : t.RightUpperScales).Max(),t.EnteredUpperSpacingMm/1000);
                 m=new TransferMember {Name=original.Name+" · T"+(row+1),LoadCase=original.LoadCase,LengthMm=original.LengthMm,SupportsMm=original.SupportsMm,Points=original.Points,
                     H20Count=original.H20Count,Uniform=original.Uniform.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM*scale}).ToArray(),Analysis=original.Analysis.Scale(scale)};
             }
             SelectedTransferMember=m; ActualLoadedAnalysis=m.Analysis; Analysis=null;
             bool primary=SelectedRun<runs;
-            IsEquivalentUdlView=primary && UseEquivalentUdlForPrimary;
-            if(IsEquivalentUdlView)m=EquivalentUniformMember(m,layout.DeflectionDenominator);
             DisplayedTransferMember=m;LoadedAnalysis=m.Analysis;
             Title=beamLabel+m.Name+(m.H20Count==1 ? " · single H20" : " · double H20")+" — response diagrams";
             charts.Children.Clear();
@@ -111,43 +107,22 @@ namespace EngineeringDashboard
                 charts.Children.Add(choices);
             }
             if(primary)
-            {
-                var view=new CheckBox {Content="Equivalent UDL view",IsChecked=UseEquivalentUdlForPrimary,Margin=new Thickness(0,4,0,6)};
-                view.Checked+=(sender,args)=> {UseEquivalentUdlForPrimary=true;RefreshTransfer();};
-                view.Unchecked+=(sender,args)=> {UseEquivalentUdlForPrimary=false;RefreshTransfer();};
-                charts.Children.Add(view);
-                if(IsEquivalentUdlView)
-                {
-                    double q=m.Uniform[0].KnPerM;
-                    charts.Children.Add(new Border {Background=new SolidColorBrush(Color.FromRgb(255,246,219)),Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
-                        Child=new TextBlock {Text=$"Equivalent UDL approximation · {q:0.000} kN/m. Actual point loads govern layout checks; the curves below are for viewing.",TextWrapping=TextWrapping.Wrap}});
-                }
-            }
+                charts.Children.Add(new Border {Background=new SolidColorBrush(Color.FromRgb(255,246,219)),Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
+                    Child=new TextBlock {Text="UDL design model · full secondary support reaction ÷ spacing, with no end-row reduction. Crossing loads stay over their footprints. These distributed loads govern layout checks.",TextWrapping=TextWrapping.Wrap}});
+            charts.Children.Add(new TextBlock {Text=$"Maximum secondary spacing {t.EnteredUpperSpacingMm:0.###} mm · full tributary design",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
             charts.Children.Add(new TextBlock {Text=m.LoadCase+(m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
-            if(IsEquivalentUdlView)charts.Children.Add(new TextBlock {Text=$"Actual checked peaks: shear {ActualLoadedAnalysis.ShearKn:0.000} kN · moment {ActualLoadedAnalysis.MomentKnM:0.000} kNm · deflection {ActualLoadedAnalysis.DeflectionMm:0.000} mm. These demands govern the layout.",TextWrapping=TextWrapping.Wrap,Foreground=Brushes.DimGray,Margin=new Thickness(0,0,0,4)});
             AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
                 +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))),
-                IsEquivalentUdlView ? "Approximate UDL support reactions (view only)" : "Support reactions and point loads");
+                primary ? "UDL support reactions" : "Support reactions and point loads");
             LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);
-            AddChart("Loading diagram"+(IsEquivalentUdlView ? " · equivalent UDL" : " · actual loads"),LoadingDiagram,true);
+            AddChart("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,true);
             string[] names={"Shear (kN)","Moment (kNm)","Relative member deflection (mm)"};
             double[] peaks={m.Analysis.ShearKn,m.Analysis.MomentKnM,m.Analysis.DeflectionMm};
             for(int i=0;i<3;i++)
             {
                 string caption=i==2 ? $"{names[i]} · peak {peaks[i]:0.000} · L/{layout.DeflectionDenominator} · utilization {m.Analysis.DeflectionUtilization*100:0.0}%" : $"{names[i]} · peak {peaks[i]:0.000} / {(i==0 ? m.ShearLimitKn : m.MomentLimitKnM):0.000}";
-                AddChart((IsEquivalentUdlView ? "Equivalent UDL · " : "")+caption,new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
+                AddChart((primary ? "UDL design · " : "")+caption,new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
             }
-        }
-        internal static TransferMember EquivalentUniformMember(TransferMember actual,int denominator)
-        {
-            // Preserve the selected stock's total applied load and actual supports.
-            // This creates a separate display response; no optimizer member is mutated.
-            double q=actual.Analysis.TotalLoadKn*1000/actual.LengthMm;
-            var uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=actual.LengthMm,KnPerM=q}};
-            return new TransferMember {Name=actual.Name,LoadCase=actual.LoadCase,StartMm=actual.StartMm,
-                LengthMm=actual.LengthMm,SupportsMm=(double[])actual.SupportsMm.Clone(),H20Count=actual.H20Count,
-                Points=new BeamPointLoad[0],Uniform=uniform,
-                Analysis=LoadedBeamAnalysis.Analyze(actual.LengthMm,actual.SupportsMm,uniform,null,TowerOptimizer.PairEI*actual.H20Count/2,denominator)};
         }
         private void AddLoadDetails(string text,string header="Support reactions and point loads")
         {charts.Children.Add(new Expander {Header=header,Margin=new Thickness(0,4,0,4),Content=new TextBlock {Text=text,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,6,4,8)}});}
