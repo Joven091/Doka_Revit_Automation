@@ -18,9 +18,9 @@ namespace EngineeringDashboard
             text.AppendLine("Deflection criterion = "+(DeflectionLimit?.Label??"(none)"));
             text.AppendLine("Deflection denominator = "+(DeflectionLimit?.Denominator??0));
             text.AppendLine("Fixed deflection limit mm = "+(DeflectionLimit?.Millimetres??0).ToString("R",CultureInfo.InvariantCulture));
-            for(int i=0;i<NetworkBeams.Count;i++)text.AppendLine(FormattableString.Invariant($"B{i+1}: width={NetworkBeams[i].WidthMm:R}; depth={NetworkBeams[i].DepthMm:R} mm"));
+            for(int i=0;i<NetworkBeams.Count;i++)text.AppendLine(FormattableString.Invariant($"B{i+1}: width={NetworkBeams[i].WidthMm:R}; depth={NetworkBeams[i].DepthMm:R} mm; bottom={NetworkBeams[i].BottomElevationMm:R} mm"));
             for(int i=0;i<NetworkBays.Count;i++)text.AppendLine(FormattableString.Invariant($"S{i+1}: clear span={NetworkBays[i].WidthMm:R}; thickness={NetworkBays[i].ThicknessMm:R} mm"));
-            for(int i=0;i<CrossingBeams.Count;i++) {var c=CrossingBeams[i];text.AppendLine(FormattableString.Invariant($"X{i+1}: slab bay={c.BayNumber}; centre={c.PositionMm:R}; width={c.WidthMm:R}; depth={c.DepthMm:R} mm"));}
+            for(int i=0;i<CrossingBeams.Count;i++) {var c=CrossingBeams[i];text.AppendLine(FormattableString.Invariant($"X{i+1}: slab bay={c.BayNumber}; centre={c.PositionMm:R}; width={c.WidthMm:R}; depth={c.DepthMm:R} mm; bottom={c.BottomElevationMm:R} mm; supports={c.SupportMode}"));}
             return text.ToString();
         }
         // Read-only capture on the UI thread: no validation, recalculation, model API or input commits.

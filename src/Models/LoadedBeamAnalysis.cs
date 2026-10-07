@@ -120,6 +120,8 @@ namespace EngineeringDashboard
             =>AnalyzeCore(lengthMm,supportMm,null,points,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary,allowSigned:ignoreUplift,ignoreUplift:ignoreUplift);
         internal static LoadedBeamAnalysis AnalyzeUniformCached(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,double ei,int denominator,MatrixCache cache,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false,bool ignoreUplift=false)
             =>AnalyzeCore(lengthMm,supportMm,uniform,null,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary,allowSigned:ignoreUplift,ignoreUplift:ignoreUplift);
+        internal static LoadedBeamAnalysis AnalyzeCombinedCached(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,MatrixCache cache,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false,bool ignoreUplift=false,bool allowSignedLoads=false)
+            =>AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary,allowSigned:ignoreUplift || allowSignedLoads,ignoreUplift:ignoreUplift);
         public static LoadedBeamAnalysis Analyze(double lengthMm, double[] supportMm, BeamDistributedLoad[] uniform, BeamPointLoad[] points, double ei, int denominator)
             => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,true);
         internal static LoadedBeamAnalysis AnalyzeSigned(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator)
