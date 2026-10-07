@@ -49,7 +49,7 @@ internal static class NetworkFallbackTests
         var reference=TransferNetworkOptimizer.Optimize(common,input);
         Check(serial.Summary==reference.Summary && serial.Schedule==reference.Schedule,"optimized fallback matches the unpruned reference search");
         // A crossing beam within an independently supported bay belongs to that separate design.
-        input.CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1650,WidthMm=300,DepthMm=10000}};
+        input.CrossingBeams=new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,BayNumber=1,PositionMm=1650,WidthMm=300,DepthMm=10000}};
         var crossing=TransferNetworkOptimizer.Optimize(Common(),input);
         Check(crossing.Bays[0]==null && crossing.Schedule.Contains("X1: S1 · separate formwork design required (not calculated)"),"excluded crossing is expressly identified");
         Engineering(crossing);

@@ -11,7 +11,7 @@ internal static class SearchReuseTests
     static void Check(bool condition,string message) {checks++;if(!condition)throw new Exception("Search reuse: "+message);}
     static long Counter(BeamSearchTrace trace,string name) => long.Parse(trace.Snapshot().Split('\n').Single(x=>x.StartsWith(name+": ")).Substring(name.Length+2));
     static TowerInput Common(bool reuse,bool custom=false) => new TowerInput {LengthMm=2450,LegCapacityKn=70,StockLengthsMm=new[] {1250.0,1800,2450},StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=270,AllowCustomH20Lengths=custom,ReuseSearchWork=reuse,SearchByLegTier=false,PruneNetworkBounds=false,ReuseTransverseNumerics=false,LazySearchDiagnostics=false,Trace=new BeamSearchTrace("reuse regression")};
-    static TransferNetworkInput Network(bool crossing=false) => new TransferNetworkInput {UpperSpacingMm=200,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=350,DepthMm=250},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100},new TransferBayRow {WidthMm=1850,ThicknessMm=100}},CrossingBeams=crossing ? new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1200,WidthMm=500,DepthMm=150}} : new TransferCrossingBeamRow[0]};
+    static TransferNetworkInput Network(bool crossing=false) => new TransferNetworkInput {UpperSpacingMm=200,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=350,DepthMm=250},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100},new TransferBayRow {WidthMm=1850,ThicknessMm=100}},CrossingBeams=crossing ? new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,BayNumber=1,PositionMm=1200,WidthMm=500,DepthMm=150}} : new TransferCrossingBeamRow[0]};
     static string Signature(TransferNetworkResult result) => string.Join("\n",result.Beams.Select(b=>b.StockSchedule+"\n"+b.Transfer.Schedule+"\n"+string.Join(";",b.PositionsMm)+"\n"+string.Join(";",b.Joined)))+"\n"+result.Summary;
     static double[] Demands(TransferNetworkResult result) => result.Beams.SelectMany(b=>b.Transfer.PrimaryCases.Concat(b.Transfer.LowerCases).SelectMany(c=>c).Concat(b.Transfer.UpperMembers)).SelectMany(m=>new[] {m.Analysis.MomentKnM,m.Analysis.ShearKn,m.Analysis.DeflectionMm,m.Analysis.DeflectionUtilization,m.Analysis.TotalLoadKn}.Concat(m.Analysis.Reactions)).ToArray();
     static void Compare(bool custom,bool crossing)
@@ -24,7 +24,10 @@ internal static class SearchReuseTests
         Check(a.Tested==b.Tested,"same bounded candidates and ranking traversal");
         Check(Counter(cached.Trace,"Tower geometry cache hits")>0,"geometry reused across receiving beams");
         Check(Counter(cached.Trace,"Lower row-case cache hits")>0,"checked row cases reused across tower layouts");
-        Check(Counter(cached.Trace,"Primary member cache hits")>0 && Counter(cached.Trace,"Primary member analyses")<Counter(plain.Trace,"Primary member analyses"),"identical complete primary member checks reused");
+        // Symmetric feet can remove duplicate responses within one beam solve.
+        // The pass-wide cache still reuses exact responses across receiving beams.
+        long primaryHits=Counter(cached.Trace,"Primary member cache hits")+Counter(cached.Trace,"Network primary response cache hits");
+        Check(primaryHits>0 && Counter(cached.Trace,"Primary member analyses")<Counter(plain.Trace,"Primary member analyses"),"identical complete primary member checks reused within or between receiving-beam solves");
         Check(Counter(cached.Trace,"Primary matrix cache hits")>0,"new primary load vectors reuse checked structural preparation");
         Check(Counter(cached.Trace,"Lower response cache hits")>0,"identical exact row tributaries reuse transverse responses");
         Check(Counter(cached.Trace,"Numerical checks")<Counter(plain.Trace,"Numerical checks"),"repeated numerical checks reduced");

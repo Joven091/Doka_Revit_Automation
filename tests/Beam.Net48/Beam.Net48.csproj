@@ -25,4 +25,4 @@
     <Compile Include="../../src/Models/TransferBeamNetwork.cs" />
     <Compile Include="../../src/Models/BeamSearchTrace.cs" />
   </ItemGroup>
-</Project>
+<ItemGroup><Compile Include="../../src/Models/CrossBeamSupport.cs"/></ItemGroup></Project>

@@ -32,6 +32,9 @@ internal static class NetworkTests
         for(int bay=0;bay<result.Bays.Length;bay++)
         {
             var left=result.Beams[bay].Transfer.UpperMembers.Single(m=>m.Name=="Upper right");var right=result.Beams[bay+1].Transfer.UpperMembers.Single(m=>m.Name=="Upper left");
+            Near(result.Bays[bay].NearFootMm,result.Bays[bay].FarFootMm,"network slab feet have equal setbacks despite different adjacent beams");
+            Near(left.SupportsMm[0],left.LengthMm-left.SupportsMm[1],"slab stock overhangs are symmetric");
+            Near(left.Analysis.Reactions[0],left.Analysis.Reactions[1],"uniform slab H20 load gives equal foot reactions");
             Near(left.LengthMm,right.LengthMm,"upper stock shared across adjacent beams");
             Near(left.Analysis.Reactions[0],right.Analysis.Reactions[1],"same physical upper-left reaction at both analyses");
             Near(left.Analysis.Reactions[1],right.Analysis.Reactions[0],"same physical upper-right reaction at both analyses");
@@ -52,7 +55,7 @@ internal static class NetworkTests
         Check(braceJoins.SequenceEqual(new[] {true,false,true,true}),"five frames split into one standalone and one joined tower with three cross bays");
         Check(TowerOptimizer.RemoveRedundantJoins(new[] {true,true,true,true},new[] {150.0,750,1350,1950,2550},true).All(j=>j),"five 600 frames stay joined when standalone 600 bays are excluded");
         var crossingInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=200,
-            CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3175,WidthMm=400,DepthMm=350}}};
+            CrossingBeams=new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,BayNumber=1,PositionMm=3175,WidthMm=400,DepthMm=350}}};
         Near(crossingInput.AreaLoad(300),9.4,"default slab area load includes one set of allowances");
         Near(crossingInput.AreaLoad(1750),46.65,"default deep beam load clamps 10 percent surcharge to 1.75");
         var custom=new TransferNetworkInput {CustomLoads=true,LiveKnM2=2,FormworkKnM2=.5};
@@ -83,7 +86,7 @@ internal static class NetworkTests
         crossingInput.CrossingBeams[0].WidthMm=400;
         crossingInput.CrossingBeams[0].BayNumber=99;bool rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"nonexistent crossing bay rejected");
         crossingInput.CrossingBeams[0].BayNumber=1;crossingInput.CrossingBeams[0].DepthMm=200;rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"crossing depth below slab thickness rejected");
-        crossingInput.CrossingBeams[0].DepthMm=350;crossingInput.CrossingBeams=new[] {crossingInput.CrossingBeams[0],new TransferCrossingBeamRow {PositionMm=3100,WidthMm=300,DepthMm=400}};rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"overlapping crossing beams rejected to avoid duplicate volume");
+        crossingInput.CrossingBeams[0].DepthMm=350;crossingInput.CrossingBeams=new[] {crossingInput.CrossingBeams[0],new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,PositionMm=3100,WidthMm=300,DepthMm=400}};rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"overlapping crossing beams rejected to avoid duplicate volume");
         var failureVm=new BeamCalculatorViewModel {AllowCustomH20Lengths=true,UseTowers=true,Depth=1750,Width=800,BeamLengthMm=10600,TowerLegCapacityKn=70,HasRightSlab=true,RightSlabThickness=300,RightSlabBayMm=2575,TransferSlabLoads=true,Exclude600Standalone=true,UseBeamNetwork=true};
         failureVm.NetworkBeams[1].WidthMm=650;failureVm.NetworkBeams[1].DepthMm=1150;
         failureVm.OptimizeTowersAsync().GetAwaiter().GetResult();
@@ -118,7 +121,7 @@ internal static class NetworkTests
         var plan=customResult.Bays[0];plan.Reverse().Validate(2575,common.StockLengthsMm,true);
         bool invalidCustom=false;try {new UpperTransferPlan {StockLengthMm=2176,EdgeMm=199.5,NearFootMm=600,FarFootMm=350,IsCustomLength=true}.Validate(2575,common.StockLengthsMm);}catch(ArgumentException){invalidCustom=true;}
         Check(invalidCustom,"invalid custom length and edge cannot bypass shared-plan validation");
-        var overloadInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=200,CrossingBeams=new[] {new TransferCrossingBeamRow {WidthMm=400,DepthMm=10000,PositionMm=3175}}};
+        var overloadInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=200,CrossingBeams=new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,WidthMm=400,DepthMm=10000,PositionMm=3175}}};
         TowerOptimizationException failure=null;try {TransferNetworkOptimizer.Optimize(common,overloadInput);}catch(TowerOptimizationException ex){failure=ex;}
         Check(failure!=null && failure.Details.Contains("S1 slab H20") && failure.Details.Contains("moment") && failure.Details.Contains("shear") && failure.Details.Contains("deflection") && failure.Details.Contains("T") && failure.Details.Contains("L/350"),"crossing overload reports member, actual row, demand, capacity and deflection criterion");
         Check(failure.Details.Contains("examples may come from different layouts"),"diagnostic samples do not pretend to form one alternative layout");
