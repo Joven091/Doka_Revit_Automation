@@ -272,7 +272,7 @@ internal static class WorkspaceTests
             foreach(var bay in model.NetworkBays)bay.ThicknessMm=300;
             Pump();Render();Calculate();
             Check(model.IsCalculationValid && model.NetworkResult.Bays[0]==null && model.NetworkResult.Bays[1]!=null,"catalogue failure falls back to separate S1 while retaining S2");
-            Check(workspace.SeparateSlabNotice.Visibility==Visibility.Visible && workspace.SeparateSlabNotice.Notice.Text.Contains("S1") && parent.BuildReport().Contains("design are excluded") && parent.BuildReport().Contains("FullTransferFailureDetails"),"mixed result and export explicitly identify the excluded slab design");
+            Check(workspace.SeparateSlabNotice.Visibility==Visibility.Visible && workspace.SeparateSlabNotice.Notice.Text.Contains("S1") && parent.BuildReport().Contains("design are excluded") && parent.BuildReport().Contains("Full Transfer Failure Details") && parent.BuildReport().Contains("no permitted slab H20 length"),"mixed result and export explicitly identify the excluded slab design");
             Check(!workspace.SeparateSlabNotice.Explanation.IsExpanded && workspace.SeparateSlabNotice.EvidenceText.Contains("10000 mm"),"separate slab notice shows actual reason with details initially collapsed");
             Click("Geometry");drawing.Select(FormworkObject.Slab,0);Render();
             Check(workspace.SeparateSlabNotice.Explanation.IsExpanded && workspace.SeparateSlabNotice.EvidenceText==model.NetworkResult.SeparateSlabExplanationForBay(0),"selecting the amber slab opens its specific explanation");
