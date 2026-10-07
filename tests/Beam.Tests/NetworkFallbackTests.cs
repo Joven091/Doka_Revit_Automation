@@ -31,10 +31,21 @@ internal static class NetworkFallbackTests
     public static void Run()
     {
         var common=Common();var input=Network();common.AllowSeparateSlabFallback=false;
-        bool failed=false;try {TransferNetworkOptimizer.Optimize(common,input);}catch(TowerOptimizationException){failed=true;}
+        TowerOptimizationException original=null;bool failed=false;try {TransferNetworkOptimizer.Optimize(common,input);}catch(TowerOptimizationException ex){original=ex;failed=true;}
         Check(failed,"full transfer cannot support the wide first bay");
         common.AllowSeparateSlabFallback=true;common.NetworkSearchWorkers=1;
         var serial=TransferNetworkOptimizer.Optimize(common,input);
+        Check(serial.FullTransferFailureDetails==original.Details,"successful fallback retains the exact rejected full-transfer evidence");
+        Check(serial.SeparateSlabReasons.Length==input.Bays.Length && serial.SeparateSlabExplanationForBay(1)=="","retained bay has no independent-support reason");
+        Check(serial.SeparateSlabExplanationForBay(0).Contains("S1: no passing") && serial.SeparateSlabExplanationForBay(0).Contains("10000 mm") && serial.SeparateSlabExplanationForBay(0).Contains("no permitted slab H20 length"),"excluded bay identifies the stock coverage failure and actual span");
+        Check(serial.SeparateSlabExplanation.Contains("bounded search does not prove impossibility") && serial.SeparateSlabExplanation.Contains("not calculated or included in totals"),"explanation identifies search and design scope");
+        Check(serial.Schedule.Contains(serial.SeparateSlabExplanation) && serial.LayoutDiagnostics.Contains(serial.SeparateSlabExplanation),"reason survives schedules and diagnostic capture");
+        var evidence=new TowerSearchDiagnostics(350);
+        evidence.Limit("S1 slab H20","shear",1,12,11,"kN","T3 · x=500 mm","Reduce secondary spacing.");
+        evidence.Limit("B2 · primary","leg load",4,71,70,"kN","support 2","Review tower positions.");
+        evidence.Geometry("S10 length","S10 unrelated","Review S10.");
+        var scoped=evidence.SeparateBayExplanation(0);
+        Check(scoped.Contains("12 / 11 kN") && scoped.Contains("T3 · x=500 mm") && scoped.Contains("Reduce secondary spacing") && scoped.Contains("71 / 70 kN") && scoped.Contains("may also involve adjacent bays") && !scoped.Contains("S10 unrelated"),"scoped evidence preserves demand, limit, location and advice without prefix collisions or false attribution");
         Check(serial.RequiresSeparateSlabFormwork && serial.SeparateSlabCount==1 && serial.Bays[0]==null && serial.Bays[1]!=null,"only S1 moves to separate slab formwork");
         Check(serial.Beams[0].Transfer.UpperMembers.Length==0 && serial.Beams[0].Transfer.CaseNames.SequenceEqual(new[] {"Beam"}),"B1 is checked for its own beam load");
         Near(serial.Beams[0].Transfer.SlabLoadKn,0,"B1 has no slab or shutter load");
@@ -59,6 +70,7 @@ internal static class NetworkFallbackTests
         // Full transfer remains preferred when it passes; excluded slab costs are never used to claim savings.
         input=Network();input.Bays[0].WidthMm=2500;
         var full=TransferNetworkOptimizer.Optimize(Common(),input);
+        Check(full.FullTransferFailureDetails=="" && full.SeparateSlabReasons.Length==0,"full transfer has no fallback explanation");
         Check(!full.RequiresSeparateSlabFormwork && full.Bays.All(b=>b!=null),"a passing full-transfer network does not invoke the fallback");
         input=Network();input.Beams[0].WidthMm=10000;input.Beams[0].DepthMm=10000;
         failed=false;try {TransferNetworkOptimizer.Optimize(Common(),input);}catch(TowerOptimizationException){failed=true;}

@@ -38,7 +38,7 @@ internal static class WorkspaceTests
         var section=new TransferNetworkPlan {Width=1200,SectionOnly=true};section.SetResult(fixture);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,420));section.UpdateLayout();
         Action<string> capture=path=> {var bitmap=new RenderTargetBitmap(1200,420,96,96,PixelFormats.Pbgra32);bitmap.Render(section);if(path!=null){var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}};
         capture(output==null ? null : Path.ChangeExtension(output,"workspace-dense-section.png"));
-        Check(section.MemberTargets.Count==15 && section.DrawnSecondaryLengthCount==8,"eight-beam section retains every lower and shared slab member target");
+        Check(section.MemberTargets.Count==47 && section.DrawnSecondaryLengthCount==8 && section.DrawnPrimarySectionCount==32,"eight-beam section retains secondary, shared slab and both paired primary section targets");
         Check(NoOverlaps(section.AnnotationBounds),"eight-beam section annotation rectangles do not overlap");
         section.ShowAllDimensions=true;section.InvalidateVisual();section.UpdateLayout();capture(null);
         Check(NoOverlaps(section.AnnotationBounds),"full section dimensions omit labels that would overlap");
@@ -213,12 +213,14 @@ internal static class WorkspaceTests
             Check(model.CanCancelOptimization,"running analysis can be cancelled");
             Pump(); // Workspace controls refresh on the dispatcher after model notifications.
             Check(!workspace.Buttons["NewSession"].IsEnabled,"new session is disabled until the running search stops");
+            Check(workspace.Waiting.Visibility==Visibility.Visible && workspace.Waiting.IsTimerRunning && workspace.Waiting.Cancel.IsEnabled,"drawing overlay follows an actual running analysis");
             Check(!workspace.SharedProperties.IsEnabled && !workspace.Fields["BeamLengthMm"].IsEnabled,"shared inputs are locked during a running search");
             var calculatorCancel=(Button)parent.FindName("CancelBeamAnalysisButton");
             calculatorCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(!model.CanCancelOptimization && model.IsOptimizing,"cancel request disables repeated cancellation until worker stops");
             var cancelTimer=System.Diagnostics.Stopwatch.StartNew();while(!cancelledSearch.IsCompleted){Pump();Thread.Sleep(1);if(cancelTimer.Elapsed.TotalSeconds>10)throw new Exception("Workspace cancellation timeout");}
             cancelledSearch.GetAwaiter().GetResult();Pump();workspace.Diagnostics.RefreshReport();
+            Check(workspace.Waiting.Visibility==Visibility.Collapsed && !workspace.Waiting.IsTimerRunning,"cancellation removes Hugo and stops its UI timer");
             Check(!model.IsOptimizing && !model.IsCalculationValid && model.TowerResult==null && model.NetworkResult==null && model.CanOptimizeTowers,"cancel stops analysis without publishing a partial layout and allows recalculation");
             Check(workspace.SharedProperties.IsEnabled && workspace.Fields["BeamLengthMm"].IsEnabled,"cancellation restores input editing");
             Check(workspace.Diagnostics.ReportBox.Text.Contains("Search outcome: Cancelled") && workspace.Diagnostics.ReportBox.Text.Contains("Cancellation requested: True"),"diagnosis retains cancelled search details");
@@ -270,8 +272,10 @@ internal static class WorkspaceTests
             foreach(var bay in model.NetworkBays)bay.ThicknessMm=300;
             Pump();Render();Calculate();
             Check(model.IsCalculationValid && model.NetworkResult.Bays[0]==null && model.NetworkResult.Bays[1]!=null,"catalogue failure falls back to separate S1 while retaining S2");
-            Check(workspace.NetworkResultText.Contains("Separate slab formwork required: S1") && parent.BuildReport().Contains("design are excluded"),"mixed result and export explicitly identify the excluded slab design");
+            Check(workspace.SeparateSlabNotice.Visibility==Visibility.Visible && workspace.SeparateSlabNotice.Notice.Text.Contains("S1") && parent.BuildReport().Contains("design are excluded") && parent.BuildReport().Contains("FullTransferFailureDetails"),"mixed result and export explicitly identify the excluded slab design");
+            Check(!workspace.SeparateSlabNotice.Explanation.IsExpanded && workspace.SeparateSlabNotice.EvidenceText.Contains("10000 mm"),"separate slab notice shows actual reason with details initially collapsed");
             Click("Geometry");drawing.Select(FormworkObject.Slab,0);Render();
+            Check(workspace.SeparateSlabNotice.Explanation.IsExpanded && workspace.SeparateSlabNotice.EvidenceText==model.NetworkResult.SeparateSlabExplanationForBay(0),"selecting the amber slab opens its specific explanation");
             Check(workspace.SelectedResultText.Contains("Separate slab formwork required") && workspace.SelectedResultText.Contains("No slab load transfers"),"selected independent slab displays its actual scope");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-separate-slab.png"));
             Click("Section");Render();
@@ -288,6 +292,7 @@ internal static class WorkspaceTests
             Check(workspace.IsVisible && ReferenceEquals(workspace.Model,model) && model.HasSelectedSupportSystem && model.UseTowers && model.UseBeamNetwork && model.TransferSlabLoads,"new session retains the shared model, selected mode and drawing workspace");
             Check(model.NetworkBeams.Count==2 && model.NetworkBays.Count==1 && model.CrossingBeams.Count==0 && model.SelectedNetworkBeam==0,"new session starts a fresh two-beam network without old crossing beams");
             Check(model.NetworkBeams.All(b=>b.WidthMm==defaults.Width && b.DepthMm==defaults.Depth) && model.BeamLengthMm==defaults.BeamLengthMm && model.StockLengthsText==defaults.StockLengthsText && model.TowerLegCapacityKn==defaults.TowerLegCapacityKn && model.UpperSupportSpacingMm==defaults.UpperSupportSpacingMm,"new session resets geometry, stock, capacity and spacing to defaults");
+            Check(workspace.SeparateSlabNotice.Visibility==Visibility.Collapsed,"new session clears the previous independent-slab explanation");
             Check(model.TowerResult==null && model.NetworkResult==null && !model.IsCalculationValid && !model.HasTowerFailure && workspace.Diagrams==null && !retainedDiagram.IsVisible && workspace.Diagnostics==null,"new session clears results, failure and child windows");
             Check(!model.BuildDiagnosticReport().Contains("Search outcome: Succeeded") && workspace.NetworkResultText=="" && !workspace.Buttons["Export"].IsEnabled,"new session has no old search trace, visible quantities or exportable result");
             Check(!workspace.Buttons["Undo"].IsEnabled && !workspace.Buttons["Redo"].IsEnabled && !drawing.Formwork && workspace.Buttons["Calculate"].IsEnabled,"new session clears undo history and returns to editable geometry");

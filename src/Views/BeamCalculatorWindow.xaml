@@ -260,7 +260,8 @@
           <Border Style="{StaticResource Step}">
             <TextBlock Text="3  Review spacing" FontWeight="Bold"/>
           </Border>
-          <Border Style="{StaticResource Issue}">
+          <Border>
+            <Border.Style><Style TargetType="Border" BasedOn="{StaticResource Issue}"><Style.Triggers><DataTrigger Binding="{Binding IsOptimizing}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Border.Style>
             <StackPanel>
               <TextBlock Text="Review your inputs" FontWeight="SemiBold" Foreground="#B42318" Margin="0,0,0,6"/>
               <TextBlock Text="{Binding WarningMessage}" TextWrapping="Wrap" Foreground="#B42318" AutomationProperties.LiveSetting="Polite"/>
@@ -274,6 +275,7 @@
               <Style TargetType="Border">
                 <Setter Property="Visibility" Value="Visible"/>
                 <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsOptimizing}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
                   <DataTrigger Binding="{Binding IsCalculationValid}" Value="True">
                     <Setter Property="Visibility" Value="Collapsed"/>
                   </DataTrigger>
@@ -306,6 +308,7 @@
               <TextBlock Text="{Binding PrimaryDeflectionSummary}" TextWrapping="Wrap" Margin="0,6,0,0"/>
             </StackPanel>
           </Border>
+          <local:SeparateSlabExplanationView x:Name="SeparateSlabNotice"/>
           <Border x:Name="TowerResultsBorder" Visibility="{Binding ShowTowerResults, Converter={StaticResource BoolToVis}}" Background="#FFF6D6" BorderBrush="#D4AA00" BorderThickness="5,0,0,0" Padding="16" Margin="0,0,0,12">
             <StackPanel>
               <TextBlock Text="Tower layout · best found" FontWeight="SemiBold" FontSize="18"/>
@@ -327,6 +330,9 @@
               <TextBlock Style="{StaticResource Subheading}" Text="Beam and support section" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
               <TextBlock Style="{StaticResource Hint}" Text="Schematic · secondary H20 perpendicular to primary H20" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
               <TextBlock Style="{StaticResource Subheading}" Text="Tower layout · plan" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
+              <Grid x:Name="BeamDrawingArea">
+                <Grid.Style><Style TargetType="Grid"><Setter Property="MinHeight" Value="0"/><Style.Triggers><DataTrigger Binding="{Binding UseTowers}" Value="True"><Setter Property="MinHeight" Value="300"/></DataTrigger></Style.Triggers></Style></Grid.Style>
+                <StackPanel>
               <ScrollViewer x:Name="TowerPlanScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False">
               <local:BeamSupportDiagram x:Name="SupportDiagram" Margin="0,4"><local:BeamSupportDiagram.Visibility><Binding Path="ShowSingleGeometry" Converter="{StaticResource BoolToVis}"/></local:BeamSupportDiagram.Visibility>
                 <local:BeamSupportDiagram.Style>
@@ -338,6 +344,9 @@
               </local:BeamSupportDiagram>
               </ScrollViewer>
               <ScrollViewer x:Name="NetworkPlanScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"><local:TransferNetworkPlan x:Name="NetworkPlan"/></ScrollViewer>
+                </StackPanel>
+                <local:BeamSearchWaitingView x:Name="SearchWaiting"/>
+              </Grid>
               <TextBlock Text="{Binding NetworkSummary}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/>
               <TextBlock Text="{Binding NetworkSelectedLabel}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/>
               <TextBlock x:Name="DiagramCaption" Style="{StaticResource Hint}"/>

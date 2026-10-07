@@ -43,6 +43,7 @@ namespace EngineeringDashboard
         public int DrawnGapDimensionCount { get; private set; }
         public int DrawnTransferRowCount { get; private set; }
         public int DrawnFootCount { get; private set; }
+        public int DrawnH20ProfileCount {get;private set;}
         public void SetModel(BeamCalculatorViewModel value)
         {
             model = value;
@@ -87,7 +88,7 @@ namespace EngineeringDashboard
         {
             base.OnRender(dc); DrawnPropCount = DrawnSlabCount = DrawnTowerLegCount = DrawnStockPieceCount = 0;
             DrawnBayDimensionCount = DrawnGapDimensionCount = DrawnEndDimensionCount = 0; MemberTargets.Clear();
-            DrawnTransferRowCount = DrawnFootCount = 0;
+            DrawnTransferRowCount = DrawnFootCount = DrawnH20ProfileCount = 0;
             if(model?.TowerResult?.Transfer != null) dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if (model == null || !model.IsCalculationValid) return;
             if (model.UseTowers) { DrawTowerPlan(dc); return; }
@@ -210,14 +211,20 @@ namespace EngineeringDashboard
                 double start=centre+(centre==0 ? t.LowerStockStartMm : -t.LowerStockStartMm-t.LowerStockLengthMm);
                 min=Math.Min(min,start);max=Math.Max(max,start+t.LowerStockLengthMm); }
             double scale=(ActualWidth-60)/(max-min); Func<double,double> xx=x=>30+(x-min)*scale;
-            Label(dc,"Load-transfer section · transverse dimensions (mm)",30,y0-22);
+            Label(dc,"Load-transfer section · transverse dimensions (mm); vertical schematic",30,y0-22);
             double beamBottom=y0+110,beamTop=y0+20;
             foreach(double centre in new[] {0.0,leftBay>0 ? -model.Width-leftBay : double.NaN,rightBay>0 ? model.Width+rightBay : double.NaN})
                 if(!double.IsNaN(centre))
                 {
                     dc.DrawRectangle(ConcreteTop,new Pen(ConcreteSide,1),new Rect(xx(centre-model.Width/2),beamTop,model.Width*scale,beamBottom-beamTop));
-                    dc.DrawLine(new Pen(Gold,5),new Point(xx(centre+(centre==0 ? t.LowerStockStartMm : -t.LowerStockStartMm-t.LowerStockLengthMm)),beamBottom+6),new Point(xx(centre+(centre==0 ? t.LowerStockStartMm+t.LowerStockLengthMm : -t.LowerStockStartMm)),beamBottom+6));
-                    foreach(double support in new[] {-layout.WidthMm/2,layout.WidthMm/2}) dc.DrawLine(new Pen(Steel,3),new Point(xx(centre+support),beamBottom+10),new Point(xx(centre+support),beamBottom+35));
+                    double start=xx(centre+(centre==0 ? t.LowerStockStartMm : -t.LowerStockStartMm-t.LowerStockLengthMm));
+                    bool selected=centre==0 && selectedRun==layout.StockPlan.Pieces.Length+Array.IndexOf(t.TributaryWidthsMm,System.Linq.Enumerable.Max(t.TributaryWidthsMm));
+                    H20Drawing.Longitudinal(dc,new Rect(start,beamBottom,t.LowerStockLengthMm*scale,20),selected);DrawnH20ProfileCount++;
+                    foreach(double support in new[] {-layout.WidthMm/2,layout.WidthMm/2})
+                    {
+                        foreach(int pair in new[] {-1,1}) {H20Drawing.EndSection(dc,new Rect(xx(centre+support+pair*40-40),beamBottom+20,80*scale,20));DrawnH20ProfileCount++;}
+                        dc.DrawLine(new Pen(Steel,3),new Point(xx(centre+support),beamBottom+40),new Point(xx(centre+support),beamBottom+65));
+                    }
                 }
             Action<double,double,double,string> dim=(a,b,y,label)=>
             {
@@ -227,7 +234,7 @@ namespace EngineeringDashboard
             };
             int maxRow=Array.IndexOf(t.TributaryWidthsMm,System.Linq.Enumerable.Max(t.TributaryWidthsMm));
             int lowerEncoded=layout.StockPlan.Pieces.Length+maxRow;
-            MemberTargets.Add(Tuple.Create(new Rect(xx(t.LowerStockStartMm),beamBottom, t.LowerStockLengthMm*scale,12),lowerEncoded,0,0));
+            MemberTargets.Add(Tuple.Create(new Rect(xx(t.LowerStockStartMm),beamBottom, t.LowerStockLengthMm*scale,20),lowerEncoded,0,0));
             dim(t.LowerStockStartMm,t.LowerStockStartMm+t.LowerStockLengthMm,beamBottom+107,$"Secondary {t.LowerStockLengthMm:0}");
             for(int side=0;side<2;side++)
             {
@@ -238,20 +245,21 @@ namespace EngineeringDashboard
                 dc.DrawRectangle(ConcreteTop,null,new Rect(Math.Min(xx(face),xx(face+sign*bay)),beamTop-10,bay*scale,10));
                 foreach(double x in new[] {near,far})
                 {
-                    dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x),beamTop+12),new Point(xx(x),beamBottom+6));
-                    dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x)-4,beamBottom),new Point(xx(x),beamBottom+6));
-                    dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x)+4,beamBottom),new Point(xx(x),beamBottom+6));
+                    dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x),beamTop+20),new Point(xx(x),beamBottom));
+                    dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x)-4,beamBottom),new Point(xx(x),beamBottom));
+                    dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x)+4,beamBottom),new Point(xx(x),beamBottom));
                 }
                 foreach(double shutter in new[] {face+sign*100,face+sign*(bay-100)})
                 {
-                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter),beamTop-10),new Point(xx(shutter),beamBottom+6));
-                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter)-4,beamBottom),new Point(xx(shutter),beamBottom+6));
-                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter)+4,beamBottom),new Point(xx(shutter),beamBottom+6));
+                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter),beamTop-10),new Point(xx(shutter),beamBottom));
+                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter)-4,beamBottom),new Point(xx(shutter),beamBottom));
+                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter)+4,beamBottom),new Point(xx(shutter),beamBottom));
                 }
                 int encoded=layout.StockPlan.Pieces.Length+t.RowsMm.Length+maxRow*2+side;
                 bool selected=encoded==selectedRun;
-                dc.DrawLine(new Pen(selected ? Brushes.DodgerBlue : Gold,3),new Point(xx(a),beamTop+5),new Point(xx(b),beamTop+5));
-                MemberTargets.Add(Tuple.Create(new Rect(Math.Min(xx(a),xx(b)),beamTop-2,stock*scale,16),encoded,0,0));
+                var upperRect=new Rect(Math.Min(xx(a),xx(b)),beamTop,stock*scale,20);
+                H20Drawing.Longitudinal(dc,upperRect,selected);DrawnH20ProfileCount++;
+                MemberTargets.Add(Tuple.Create(upperRect,encoded,0,0));
                 dim(face,near,beamBottom+45,$"Face → foot {foot:0}");
                 dim(face+sign*bay,far,beamBottom+45,$"{foot:0}");
                 dim(a,near,beamTop-36,$"End → foot {foot-edge:0}");

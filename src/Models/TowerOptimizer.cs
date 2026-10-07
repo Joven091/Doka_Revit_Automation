@@ -89,6 +89,24 @@ namespace EngineeringDashboard
                 +$"\n\nNumerical checks recorded: {checks}. Rejected layouts are not approved or displayed as solutions.";
             return new TowerOptimizationException(summary,details);
         }
+        // Only use scoped evidence from the rejected full-transfer search. A receiving
+        // beam can also carry an adjacent bay; its examples are not proof about this bay alone.
+        internal string SeparateBayExplanation(int bay)
+        {
+            Func<string,string,bool> scoped=(key,prefix)=>key.StartsWith(prefix,StringComparison.Ordinal)
+                && (key.Length==prefix.Length || !char.IsDigit(key[prefix.Length]));
+            Func<Failure,string> describe=f=>f.Text+"\n"+f.Advice;
+            var slab=failures.Where(e=>scoped(e.Key,"S"+(bay+1))).Select(e=>e.Value)
+                .OrderByDescending(f=>f.Blocker).ThenByDescending(f=>f.Stage).ThenBy(f=>f.Score).ToArray();
+            var beams=failures.Where(e=>scoped(e.Key,"B"+(bay+1)) || scoped(e.Key,"B"+(bay+2))).Select(e=>e.Value)
+                .OrderByDescending(f=>f.Blocker).ThenByDescending(f=>f.Stage).ThenBy(f=>f.Score).ToArray();
+            return $"S{bay+1}: no passing load-transfer arrangement found with the selected H20 stocks, spacing and bearing geometry."
+                +(slab.Length==0 ? "" : "\nSlab H20 / geometry examples:\n"+string.Join("\n\n",slab.Select(describe)))
+                +(beams.Length==0 ? "" : $"\nReceiving-beam examples (B{bay+1}, B{bay+2}; may also involve adjacent bays):\n"+string.Join("\n\n",beams.Select(describe)))
+                +(slab.Length+beams.Length==0 ? "\nThe full-transfer network search failed; no bay-specific rejection was recorded. Review the full-transfer search details." : "")
+                +"\nThese are rejected search examples, potentially from different layouts. The bounded search does not prove impossibility."
+                +$"\nThis result carries no slab or shutter load from S{bay+1} to B{bay+1} or B{bay+2}. Its independent supports, H20s and design are not calculated or included in totals.";
+        }
         // Workers own their diagnostics. Merge in original scenario order after they finish,
         // preserving counts, nearest failures and the first example when scores tie.
         internal void Merge(TowerSearchDiagnostics other)

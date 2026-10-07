@@ -256,6 +256,7 @@ namespace EngineeringDashboard
             {
                 common.Trace?.CheckCancellation();
                 if(index==r.Input.CrossingBeams.Length)return Recheck(common,r,original,accepted.ToArray());
+                common.Trace?.Work("Cross-beam support arrangements");
                 var c=r.Input.CrossingBeams[index];if(c.SupportMode==CrossBeamSupportMode.LegacySlabRows)return arrange(index+1);
                 string sharedFailure=null,towerFailure=null;
                 if(c.SupportMode!=CrossBeamSupportMode.DedicatedTowers)

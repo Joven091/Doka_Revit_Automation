@@ -18,6 +18,10 @@ namespace EngineeringDashboard
         public bool ShowAllDimensions {get;set;}
         internal readonly List<Rect> AnnotationBounds=new List<Rect>();
         public event Action<int,int,int> MemberSelected;
+        public event Action<int> SeparateSlabSelected;
+        internal readonly List<Tuple<Rect,int>> SeparateBayTargets=new List<Tuple<Rect,int>>();
+        public int DrawnH20ProfileCount {get;private set;}
+        public int DrawnPrimarySectionCount {get;private set;}
         internal readonly List<Tuple<Rect,int,int,int>> MemberTargets=new List<Tuple<Rect,int,int,int>>();
         public int DrawnTowerLegCount {get;private set;}
         public int DrawnPrimaryLengthCount {get;private set;}
@@ -35,7 +39,8 @@ namespace EngineeringDashboard
         internal bool SelectAt(Point point)
         {
             if(!IsSelectionEnabled)return false;
-            foreach(var hit in MemberTargets)if(hit.Item1.Contains(point)) {SelectMember(hit.Item2,hit.Item3,hit.Item4);MemberSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}return false;
+            foreach(var hit in MemberTargets)if(hit.Item1.Contains(point)) {SelectMember(hit.Item2,hit.Item3,hit.Item4);MemberSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}
+            foreach(var hit in SeparateBayTargets)if(hit.Item1.Contains(point)){SeparateSlabSelected?.Invoke(hit.Item2);return true;}return false;
         }
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e) {base.OnMouseLeftButtonDown(e);if(SelectAt(e.GetPosition(this)))e.Handled=true;}
         protected override Size MeasureOverride(Size available)=>new Size(Math.Max(MinWidth,double.IsInfinity(available.Width) ? MinWidth : available.Width),Height);
@@ -58,7 +63,7 @@ namespace EngineeringDashboard
         }
         protected override void OnRender(DrawingContext dc)
         {
-            base.OnRender(dc);AnnotationBounds.Clear();MemberTargets.Clear();DrawnTowerLegCount=DrawnPrimaryLengthCount=DrawnSecondaryLengthCount=DrawnCrossingBeamCount=0;if(result==null || ActualWidth<100)return;
+            base.OnRender(dc);AnnotationBounds.Clear();MemberTargets.Clear();SeparateBayTargets.Clear();DrawnH20ProfileCount=DrawnPrimarySectionCount=0;DrawnTowerLegCount=DrawnPrimaryLengthCount=DrawnSecondaryLengthCount=DrawnCrossingBeamCount=0;if(result==null || ActualWidth<100)return;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));
             if(SectionOnly) {Section(dc,55);return;}
             Label(dc,$"mm · primary P = 2×H20/line · secondaries = single H20 @ {result.Input.UpperSpacingMm:0}",30,8);
@@ -71,6 +76,7 @@ namespace EngineeringDashboard
                 double a=ys[bay]+result.Input.Beams[bay].WidthMm*.055/2,b=ys[bay+1]-result.Input.Beams[bay+1].WidthMm*.055/2;
                 bool separate=result.Bays[bay]==null;
                 dc.DrawRectangle(separate ? Brushes.Moccasin : Brushes.AliceBlue,null,new Rect(xx(0),a,result.Beams[0].LengthMm*scale,b-a));
+                if(separate)SeparateBayTargets.Add(Tuple.Create(new Rect(xx(0),a,result.Beams[0].LengthMm*scale,b-a),bay));
                 bool crossed=result.Input.CrossingBeams.Any(c=>c.BayNumber==bay+1);
                 Label(dc,$"S{bay+1} · bay {result.Input.Bays[bay].WidthMm:0} · t {result.Input.Bays[bay].ThicknessMm:0}{(separate ? " · separate formwork (not calculated)" : "")}",crossed ? 45 : ActualWidth/2,(a+b)/2,!crossed);
             }
@@ -165,9 +171,22 @@ namespace EngineeringDashboard
                 Label(dc,$"B{beam+1}",xx(centre),top-20,true);
                 int row=Enumerable.Range(0,t.RowsMm.Length).OrderByDescending(r=>t.LowerCases.Max(c=>c[r].Utilization)).First(),encoded=b.StockPlan.Pieces.Length+row;
                 double start=xx(centre+t.LowerStockStartMm),end=xx(centre+t.LowerStockStartMm+t.LowerStockLengthMm);
-                dc.DrawRectangle(Timber,new Pen(beam==selectedBeam && selectedRun==encoded ? Brushes.DodgerBlue : Brushes.SaddleBrown,1),new Rect(start,bottom,end-start,200*depthScale));
-                MemberTargets.Add(Tuple.Create(new Rect(start,bottom,end-start,15),beam,encoded,0));
-                foreach(double support in new[] {-b.WidthMm/2,b.WidthMm/2})dc.DrawLine(new Pen(Steel,3),new Point(xx(centre+support),bottom+13),new Point(xx(centre+support),bottom+33));
+                var lowerRect=new Rect(start,bottom,end-start,200*depthScale);
+                H20Drawing.Longitudinal(dc,lowerRect,beam==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;
+                MemberTargets.Add(Tuple.Create(lowerRect,beam,encoded,0));
+                // The transverse section cuts the two longitudinal members in each primary line.
+                int primaryRun=Array.FindIndex(b.StockPlan.Pieces,p=>t.RowsMm[row]>=p.StartMm && t.RowsMm[row]<=p.EndMm);
+                foreach(double support in new[] {-b.WidthMm/2,b.WidthMm/2})
+                {
+                    foreach(int pair in new[] {-1,1})
+                    {
+                        var primaryRect=new Rect(xx(centre+support+pair*40-40),bottom+200*depthScale,80*scale,200*depthScale);
+                        int line=support<0 ? 0 : 1;
+                        H20Drawing.EndSection(dc,primaryRect,beam==selectedBeam && selectedRun==primaryRun && selectedLine==line);DrawnH20ProfileCount++;DrawnPrimarySectionCount++;
+                        if(primaryRun>=0)MemberTargets.Add(Tuple.Create(primaryRect,beam,primaryRun,line));
+                    }
+                    dc.DrawLine(new Pen(Steel,3),new Point(xx(centre+support),bottom+400*depthScale),new Point(xx(centre+support),bottom+400*depthScale+12));
+                }
                 Dim(dc,start,end,bottom+43,$"H20 {t.LowerStockLengthMm:0}");DrawnSecondaryLengthCount++;
 
             }
@@ -176,7 +195,11 @@ namespace EngineeringDashboard
                 var slab=result.Input.Bays[bay];var plan=result.Bays[bay];
                 if(plan==null)
                 {
-                    double midpoint=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2+slab.WidthMm/2;
+                    double faceX=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2;
+                    var separateRect=new Rect(xx(faceX),top,slab.WidthMm*scale,slab.ThicknessMm*depthScale);
+                    dc.DrawRectangle(Brushes.Moccasin,new Pen(Brushes.Goldenrod,.6),separateRect);
+                    SeparateBayTargets.Add(Tuple.Create(separateRect,bay));
+                    double midpoint=faceX+slab.WidthMm/2;
                     Label(dc,$"S{bay+1}: separate slab formwork required",xx(midpoint),top-40,true);
                     Label(dc,"Not calculated; no load transfer to these beams",xx(midpoint),top-22,true);
                     continue;
@@ -187,12 +210,13 @@ namespace EngineeringDashboard
                 int row=Array.IndexOf(result.Beams[bay].Transfer.RightUpperScales,result.Beams[bay].Transfer.RightUpperScales.Max());
                 if(result.SlabRowCount(bay)==0)continue;
                 int encoded=result.Beams[bay].StockPlan.Pieces.Length+result.Beams[bay].Transfer.RowsMm.Length+row*2+1;
-                dc.DrawLine(new Pen(bay==selectedBeam && selectedRun==encoded ? Brushes.DodgerBlue : Timber,3),new Point(xx(a),soffit+7),new Point(xx(b),soffit+7));
-                MemberTargets.Add(Tuple.Create(new Rect(xx(a),soffit,plan.StockLengthMm*scale,15),bay,encoded,0));
+                var upperRect=new Rect(xx(a),soffit,plan.StockLengthMm*scale,200*depthScale);
+                H20Drawing.Longitudinal(dc,upperRect,bay==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;
+                MemberTargets.Add(Tuple.Create(upperRect,bay,encoded,0));
                 for(int side=0;side<2;side++)
                 {
                     int beam=bay+side;double bottom=top+(highest-result.Input.Beams[beam].BottomElevationMm)*depthScale,x=side==0 ? near : far;
-                    dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x),soffit+13),new Point(xx(x),bottom));Arrow(dc,xx(x),bottom,Brushes.DarkRed);
+                    dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x),soffit+200*depthScale),new Point(xx(x),bottom));Arrow(dc,xx(x),bottom,Brushes.DarkRed);
                     double shutter=side==0 ? face+100 : other-100;dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter),soffit),new Point(xx(shutter),bottom));Arrow(dc,xx(shutter),bottom,Brushes.SteelBlue);
                     if(ShowAllDimensions || selectedBeam==beam)
                     {
@@ -214,7 +238,14 @@ namespace EngineeringDashboard
             {
                 if(solid.IsLeg) {dc.DrawLine(new Pen(Steel,2),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)+35));continue;}
                 var rect=new Rect(new Point(xx(solid.Y0),zz(solid.Z1)),new Point(xx(solid.Y1),zz(solid.Z0)));int member=Array.IndexOf(support.Members,solid.Member);
-                dc.DrawRectangle(solid.Member==null ? Brushes.SandyBrown : Timber,new Pen(selectedBeam==-support.CrossingIndex-1 && selectedRun==member ? Brushes.DodgerBlue : Brushes.SaddleBrown,1),rect);
+                bool selected=selectedBeam==-support.CrossingIndex-1 && selectedRun==member;
+                if(solid.Member==null)dc.DrawRectangle(Brushes.SandyBrown,new Pen(Brushes.SaddleBrown,1),rect);
+                else
+                {
+                    if(solid.Y1-solid.Y0>solid.X1-solid.X0)H20Drawing.Longitudinal(dc,rect,selected);
+                    else H20Drawing.EndSection(dc,rect,selected);
+                    DrawnH20ProfileCount++;
+                }
                 if(member>=0)MemberTargets.Insert(0,Tuple.Create(rect,-support.CrossingIndex-1,member,0));
             }
             foreach(var bearing in support.Bearings.GroupBy(b=>new {b.Ymm,b.FillerHeightMm}).Select(g=>g.First()))
