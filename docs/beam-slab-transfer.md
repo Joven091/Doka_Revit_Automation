@@ -107,3 +107,13 @@ Validation commands: `dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c
 ## Case-specific uplift exclusion
 
 The **Ignore uplift** option is off by default. For connected plywood formwork, it excludes negative reactions from candidate acceptance only. The user assumes stabilizing deadweight and connections; their adequacy is not calculated. Signed reactions and minimum leg reactions remain visible. Every slab, lower-secondary, primary and crossing H20 still has to pass moment, shear and relative deflection checks in all calculated construction stages. Maximum individual leg loads remain checked. The primary UDL design model is unchanged. The assumption is saved with the beam file and included in the calculation report; starting a new session resets it.
+
+## Dedicated crossings with non-catalogue bay lengths
+
+Dedicated towers respect the entered concrete end allowance instead of demanding exact stock coverage of the clear bay. Additional custom H20 lengths remain multiples of 25 mm. End strips are assigned by signed two-row sheathing statics to the outer two secondary rows at each end. Their influence reactions preserve full concrete force and moment; they are added as localized loads to the primary UDL baseline. The secondary design retains at least the full entered tributary spacing. End-strip loads participate in the candidate search, moment, shear, relative deflection, individual-leg checks and diagrams. Sheathing, bearing and connections still require separate design.
+
+Dedicated searches own their diagnostic scope and retain the specific failure when cached. An unavailable cross arrangement leads the network failure summary. Diagnostic inputs include main/cross soffit elevations and requested crossing support modes.
+
+The uploaded 7 October 2026 Automatic case (6,900 mm, eight alternating 800×1,750 and 650×1,150 beams, seven 650×1,150 crossings, 275 mm rows and 75 mm end allowance) now reaches a real geometry rejection: X1's dedicated primary H20 overlaps the B2 primary at the same elevation. That two-layer arrangement remains rejected; the fix does not establish a complete solution for this geometry. The former exact 2,677 mm stock rejection and unrelated 70.029 kN headline no longer mask the cross arrangement failure.
+
+Run `--cross-end-strips` for full-load equilibrium, H20 checks, cache/reference comparisons, non-25 mm bays, zero-allowance rejection and diagnostic coverage. Run `--cross-reported` to verify the uploaded Automatic case retains its physical clash rejection. These checks also run in Windows CI, with end-strip regressions repeated under .NET Framework 4.8.

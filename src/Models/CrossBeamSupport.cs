@@ -37,10 +37,16 @@ namespace EngineeringDashboard
         public double TimberMm=>Towers==null ? Members.Sum(m=>m.LengthMm*m.H20Count) : Towers.StockPlan.TotalStockLengthMm+Towers.Transfer.AdditionalTimberMm;
         public const string Limitations="Filler heights are geometric gaps only: filler timber bearing strength, restraint and stability are not verified. H20 bearing/connection design, sheathing, tower stability, bracing and foundations require separate verification. H20 depth is 200 mm and flange width is 80 mm. Clash checks include full stock tails, H20 pairs and tower leg columns; tower braces and hardware are not modelled. Cross-beam load includes concrete and applicable construction/formwork allowances, with no slab tributary. Shared reactions are added over their actual longitudinal footprints to the main primary UDL design model. Construction stages include every subset of up to eight shared crossings; larger sets use conservative demand and reaction bounds covering every subset. Search is bounded and does not prove a global optimum.";
         public string Schedule=>$"X{CrossingIndex+1}: S{Input.BayNumber} · {(Towers==null ? "Existing supports" : "Dedicated towers")} · {Input.WidthMm:0.###} × {Input.DepthMm:0.###} mm · bottom {Input.BottomElevationMm:0.###} mm\nCross-beam load {LoadKn:0.###} kN · {H20Count} H20s · {TimberMm/1000:0.###} m timber · {Towers?.LegCount??0} dedicated legs · movement {MovementMm:0.###} mm"
+            +(Towers==null || Towers.ConcreteEndOverhangMm<=1e-7 ? "" : $"\nConcrete end strips {Towers.ConcreteEndOverhangMm:0.###} mm per end transfer through the outer two secondary rows at each end; primary UDL plus localized end-strip reactions retains the full cross-beam load.")
             +(SharedFailure==null ? "" : "\nAutomatic fallback: "+SharedFailure)
             +"\n"+string.Join("\n",Bearings.Select(b=>$"Bearing {b.Label??($"B{b.Beam+1}/T{b.Row+1}")} @ ({b.Xmm:0.###}, {b.Ymm:0.###}) mm: receiving top {b.ReceivingTopMm:0.###}, cross H20 underside {b.H20UndersideMm:0.###} mm; "+(b.FillerHeightMm<=1e-7 ? "direct bearing" : $"filler timber {b.FillerHeightMm:0.###} mm")+$"; reaction {b.ReactionKn:0.###} kN"))
             +"\n"+string.Join("\n",Members.Select(m=>$"{m.Name} · {m.LoadCase} · {m.H20Count} × {m.LengthMm:0.###} mm: M {m.Analysis.MomentKnM:0.###}/{m.MomentLimitKnM:0.###} kNm; V {m.Analysis.ShearKn:0.###}/{m.ShearLimitKn:0.###} kN; d {m.Analysis.DeflectionMm:0.###} mm; minimum signed reaction {m.MinimumReactionKn:0.######} kN; utilization {m.Utilization*100:0.0}%"))
             +(Towers==null ? "" : "\n"+Towers.Schedule+"\n"+Towers.StockSchedule);
+    }
+    internal sealed class DedicatedCrossSearch
+    {
+        internal CrossBeamSupportResult Result;
+        internal string Failure;
     }
     /// <summary>Cross formwork is evaluated on complete network candidates, before ranking them.</summary>
     public static class CrossBeamSupportOptimizer
@@ -189,15 +195,17 @@ namespace EngineeringDashboard
         }
         private static CrossBeamSupportResult DedicatedCandidate(TowerInput common,TransferNetworkResult r,int index,double spacing,out string failure)
         {
-            if(common.DedicatedCrossCache!=null && common.DedicatedCrossCache.TryGetValue(Tuple.Create(index,spacing),out var cached)) {failure=cached==null ? "Dedicated cross-beam stock/tower search failed." : null;return cached;}
+            if(common.DedicatedCrossCache!=null && common.DedicatedCrossCache.TryGetValue(Tuple.Create(index,spacing),out var cached)) {failure=cached.Failure;return cached.Result;}
             var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2,span=r.Input.Bays[bay].WidthMm;
             failure=null;
             // Dedicated transverse secondaries and primary pairs use the same checked tower geometry as main beams.
-            var input=common.CopyForSearch();input.LengthMm=span;input.Network=null;input.MaximumConcreteEndOverhangMm=0;
+            var input=common.CopyForSearch();input.LengthMm=span;input.Network=null;
+            input.DiagnosticScope=$"X{index+1} dedicated · ";
+            input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace,ignoreUplift:input.IgnoreUplift) {LazyLocations=input.LazySearchDiagnostics};
             input.NetworkLegCeiling=int.MaxValue;
-            input.TransferredSlab=new TransferredSlabInput {IsNetwork=true,BeamWidthMm=c.WidthMm,BeamLineLoadKnM=r.Input.AreaLoad(c.DepthMm)*c.WidthMm/1000,UpperSpacingMm=spacing};
+            input.TransferredSlab=new TransferredSlabInput {IsNetwork=true,IncludeConcreteEndStrips=true,BeamWidthMm=c.WidthMm,BeamLineLoadKnM=r.Input.AreaLoad(c.DepthMm)*c.WidthMm/1000,UpperSpacingMm=spacing};
             TowerLayout l;
-            try {l=TransferredSlabOptimizer.Optimize(input,true);}catch(TowerOptimizationException ex) {failure=$"X{index+1} dedicated towers: {ex.Message}";if(common.DedicatedCrossCache!=null)common.DedicatedCrossCache[Tuple.Create(index,spacing)]=null;return null;}
+            try {l=TransferredSlabOptimizer.Optimize(input,true);}catch(TowerOptimizationException ex) {failure=$"X{index+1} dedicated towers: {ex.Message}";if(common.DedicatedCrossCache!=null)common.DedicatedCrossCache[Tuple.Create(index,spacing)]=new DedicatedCrossSearch {Failure=failure};return null;}
             var primary=new TransferMember[l.Transfer.PrimaryCases[0].Length];
             var left=new double[l.PositionsMm.Length];var right=new double[left.Length];
             int primaryRuns=l.StockPlan.Pieces.Length;
@@ -205,14 +213,14 @@ namespace EngineeringDashboard
             {
                 var original=l.Transfer.PrimaryCases[0][run+line*primaryRuns];
                 var uniform=original.Uniform;
-                var m=Analyze(original,new BeamPointLoad[0],uniform,common,"Cross concrete + construction/formwork");
-                if(!Pass(m,common,$"X{index+1} dedicated primary UDL") || m.Analysis.Reactions.Max()>common.LegCapacityKn+1e-8) {failure="Dedicated primary UDL or leg check failed.";return null;}
+                var m=Analyze(original,original.Points,uniform,input,"Cross concrete + construction/formwork + end strips");
+                if(!Pass(m,input,$"X{index+1} dedicated primary UDL + end strips") || m.Analysis.Reactions.Max()>common.LegCapacityKn+1e-8) {failure="Dedicated primary UDL or leg check failed.";return null;}
                 primary[run+line*primaryRuns]=m;
                 for(int leg=0;leg<m.Analysis.Reactions.Length;leg++)(line==0 ? left : right)[l.StockPlan.Pieces[run].FirstSupport+leg]=m.Analysis.Reactions[leg];
             }
             l.Transfer.PrimaryCases=new[] {primary};l.LeftReactions=left;l.RightReactions=right;l.MinimumLeftReactions=(double[])left.Clone();l.MinimumRightReactions=(double[])right.Clone();l.MaxLegKn=Math.Max(left.Max(),right.Max());
             RefreshStockDemands(l);
-            // Full clear-bay coverage ensures the dedicated cross load is conserved.
+            // End-strip reactions are included in the selected stock layout and every member check.
             var solids=new List<FormworkSolid>();var members=new List<TransferMember>();var bearings=new List<CrossBeamBearing>();double bottom=c.BottomElevationMm;
             int runs=l.StockPlan.Pieces.Length;
             for(int run=0;run<runs;run++)for(int side=0;side<2;side++)
@@ -229,7 +237,7 @@ namespace EngineeringDashboard
             }
             foreach(double station in l.PositionsMm)foreach(int side in new[] {-1,1})solids.Add(new FormworkSolid {Name=$"X{index+1} tower leg",X0=c.PositionMm+side*l.WidthMm/2-40,X1=c.PositionMm+side*l.WidthMm/2+40,Y0=face+station-40,Y1=face+station+40,Z0=-1e6,Z1=bottom-400,IsLeg=true});
             var result=new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.DedicatedTowers,Towers=l,Members=members.ToArray(),Solids=solids.ToArray(),Bearings=bearings.ToArray(),LoadKn=l.Transfer.BeamLoadKn};
-            if(common.DedicatedCrossCache!=null)common.DedicatedCrossCache[Tuple.Create(index,spacing)]=result;return result;
+            if(common.DedicatedCrossCache!=null)common.DedicatedCrossCache[Tuple.Create(index,spacing)]=new DedicatedCrossSearch {Result=result};return result;
         }
         // Do not mutate the DP's shared tower layouts while evaluating a cross arrangement.
         private static TowerLayout Copy(TowerLayout l)
@@ -330,7 +338,7 @@ namespace EngineeringDashboard
             double dl=t.PrimaryCases[stage][run].Analysis.Response(local)[2],dr=t.PrimaryCases[stage][run+l.StockPlan.Pieces.Length].Analysis.Response(local)[2];
             var secondary=t.LowerCases[stage][b.Row];return secondary.Analysis.Response(y-secondary.StartMm)[2]+dl+(dr-dl)*(y+l.WidthMm/2)/l.WidthMm;
         }
-        private static void Reject(TowerInput common,string message)=>common.Diagnostics?.Geometry("cross support",message,"Review elevations, cross position, stock availability, bearing/end allowances and tower geometry.");
+        private static void Reject(TowerInput common,string message)=>common.Diagnostics?.Geometry("cross support",message,"Review elevations, cross position, stock availability, bearing/end allowances and tower geometry.",blocker:true);
         private static TransferMember Analyze(TransferMember source,BeamPointLoad[] points,BeamDistributedLoad[] uniform,TowerInput common,string stage)
         {
             return new TransferMember {Name=source.Name,LoadCase=stage,StartMm=source.StartMm,LengthMm=source.LengthMm,H20Count=source.H20Count,SupportsMm=source.SupportsMm,Points=points,Uniform=uniform,Analysis=LoadedBeamAnalysis.AnalyzeSigned(source.LengthMm,source.SupportsMm,uniform,points,TowerOptimizer.PairEI*source.H20Count/2,common.DeflectionDenominator)};
