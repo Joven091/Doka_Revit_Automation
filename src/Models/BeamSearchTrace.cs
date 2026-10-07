@@ -47,6 +47,25 @@ namespace EngineeringDashboard
             Volatile.Write(ref error,details??"");Volatile.Write(ref result,summary??"");
             Interlocked.Exchange(ref ended,Stopwatch.GetTimestamp());Volatile.Write(ref outcome,status);
         }
+        internal double ElapsedSeconds
+        {
+            get {long end=Interlocked.Read(ref ended);return ((end==0 ? Stopwatch.GetTimestamp() : end)-started)/(double)Stopwatch.Frequency;}
+        }
+        internal string ProgressText
+        {
+            get
+            {
+                string current=Volatile.Read(ref work);
+                if(current.IndexOf("cross",StringComparison.OrdinalIgnoreCase)>=0)return "Checking crossing supports";
+                if(current.IndexOf("Separate slab",StringComparison.OrdinalIgnoreCase)>=0)return "Checking separate slab support options";
+                if(current.IndexOf("upper",StringComparison.OrdinalIgnoreCase)>=0 || current.IndexOf("slab H20",StringComparison.OrdinalIgnoreCase)>=0)return "Checking slab H20s";
+                if(current.IndexOf("lower",StringComparison.OrdinalIgnoreCase)>=0)return "Checking secondary H20s";
+                if(current.IndexOf("primary",StringComparison.OrdinalIgnoreCase)>=0)return "Checking primary H20s and stock lengths";
+                if(current.IndexOf("movement",StringComparison.OrdinalIgnoreCase)>=0)return "Checking slab movement";
+                if(current.IndexOf("validat",StringComparison.OrdinalIgnoreCase)>=0)return "Preparing the calculation";
+                return "Checking tower and H20 arrangements";
+            }
+        }
         internal string Snapshot()
         {
             long end=Interlocked.Read(ref ended);var text=new StringBuilder();

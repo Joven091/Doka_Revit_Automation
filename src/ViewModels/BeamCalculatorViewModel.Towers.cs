@@ -33,6 +33,8 @@ namespace EngineeringDashboard
         public TowerLayout TowerResult { get; private set; }
         private CancellationTokenSource towerCancellation;
         public bool IsOptimizing { get; private set; }
+        public string SearchProgressText=>towerCancellation?.IsCancellationRequested==true ? "Stopping the search…" : beamSearchTrace?.ProgressText??"Preparing the calculation";
+        public double SearchElapsedSeconds=>beamSearchTrace?.ElapsedSeconds??0;
         public bool CanCancelOptimization => IsOptimizing && towerCancellation!=null && !towerCancellation.IsCancellationRequested;
         public void CancelOptimization()
         {

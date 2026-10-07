@@ -73,6 +73,7 @@ namespace EngineeringDashboard
         }
         private void InitializeUi()
         {
+            NetworkPlan.SeparateSlabSelected+=bay=> {SeparateSlabNotice.ShowBay(bay);SeparateSlabNotice.BringIntoView();};
             NetworkPlan.MemberSelected+=(beam,run,line)=>
             {
                 if(!NetworkPlan.IsSelectionEnabled || !TryGetValidCalculation(out var vm) || vm.NetworkResult==null)return;
@@ -145,6 +146,7 @@ namespace EngineeringDashboard
         }
         private void UpdateDiagram()
         {
+            SeparateSlabNotice.SetResult(observedModel?.IsCalculationValid==true ? observedModel.NetworkResult : null);
             SupportDiagram.SetModel(observedModel);
             NetworkPlan.SetResult(observedModel?.NetworkResult);
             TowerPlanScroll.ScrollToLeftEnd();
@@ -242,7 +244,7 @@ namespace EngineeringDashboard
                     CalculationFiles.Field("SearchStatus", vm.TowerSearchNote), CalculationFiles.Field("TotalLineLoadKnPerM", vm.TotalLineLoad),
                     CalculationFiles.Field("LeftLineLoadKnPerM", vm.LeftLineLoad), CalculationFiles.Field("RightLineLoadKnPerM", vm.RightLineLoad) };
                 if(tower.Transfer != null) {fields.Add(CalculationFiles.Field("TransferredSlabSummary",tower.Transfer.Summary));fields.Add(CalculationFiles.Field("EstimatedSlabSoffitMovementMm",tower.Transfer.SlabMovementMm));fields.Add(CalculationFiles.Field("ShutterLoadKn",tower.Transfer.ShutterLoadKn));}
-                if(vm.NetworkResult!=null) {fields.Add(CalculationFiles.Field("NetworkSummary",vm.NetworkResult.Summary));fields.Add(CalculationFiles.Field("NetworkSignedReactions",string.Join("\n",vm.NetworkResult.Beams.Select((b,i)=>$"B{i+1}: {b.UpliftSummary}"))));fields.Add(CalculationFiles.Field("AllBeamSchedules",vm.NetworkResult.Schedule));fields.Add(CalculationFiles.Field("TotalNetworkH20LengthMm",vm.NetworkResult.TimberMm));fields.Add(CalculationFiles.Field("TotalNetworkSlabLoadKn",vm.NetworkResult.SlabLoadKn));}
+                if(vm.NetworkResult!=null) {fields.Add(CalculationFiles.Field("NetworkSummary",vm.NetworkResult.Summary));fields.Add(CalculationFiles.Field("NetworkSignedReactions",string.Join("\n",vm.NetworkResult.Beams.Select((b,i)=>$"B{i+1}: {b.UpliftSummary}"))));fields.Add(CalculationFiles.Field("AllBeamSchedules",vm.NetworkResult.Schedule));fields.Add(CalculationFiles.Field("TotalNetworkH20LengthMm",vm.NetworkResult.TimberMm));fields.Add(CalculationFiles.Field("TotalNetworkSlabLoadKn",vm.NetworkResult.SlabLoadKn));if(vm.NetworkResult.RequiresSeparateSlabFormwork)fields.Add(CalculationFiles.Field("FullTransferFailureDetails",vm.NetworkResult.FullTransferFailureDetails));}
                 return CalculationFiles.Report("Beam — shoring towers", record.Inputs, fields, vm.TowerCalculationBasis);
             }
             var results=CalculationFiles.Capture("Beam",vm,"MaximumPropSpacing,PrimaryBeamCantilever,MaximumPropLoad,PropCapacityKn,PrimaryDeflectionMm,PrimaryDeflectionUtilization,PropUtilizationPercent,PropExtensionMm,PropLookupExtensionMm,PrimaryLineSpacingMm,LeftLineLoad,RightLineLoad,TotalLineLoad,LimitingFactor,IsCalculationValid");
