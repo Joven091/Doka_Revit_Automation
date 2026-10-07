@@ -32,6 +32,9 @@ internal static class NetworkTests
         for(int bay=0;bay<result.Bays.Length;bay++)
         {
             var left=result.Beams[bay].Transfer.UpperMembers.Single(m=>m.Name=="Upper right");var right=result.Beams[bay+1].Transfer.UpperMembers.Single(m=>m.Name=="Upper left");
+            Near(result.Bays[bay].NearFootMm,result.Bays[bay].FarFootMm,"network slab feet have equal setbacks despite different adjacent beams");
+            Near(left.SupportsMm[0],left.LengthMm-left.SupportsMm[1],"slab stock overhangs are symmetric");
+            Near(left.Analysis.Reactions[0],left.Analysis.Reactions[1],"uniform slab H20 load gives equal foot reactions");
             Near(left.LengthMm,right.LengthMm,"upper stock shared across adjacent beams");
             Near(left.Analysis.Reactions[0],right.Analysis.Reactions[1],"same physical upper-left reaction at both analyses");
             Near(left.Analysis.Reactions[1],right.Analysis.Reactions[0],"same physical upper-right reaction at both analyses");

@@ -33,6 +33,7 @@ internal static class CrossSupportTests
         var widths=TransferNetworkOptimizer.EffectiveWidthsMm(common,input,0,2450,0);
         Near(widths.Sum(),2050,"slab footprint removed once");
         var result=TransferNetworkOptimizer.Optimize(common,input);var cross=result.CrossSupports.Single();
+        Check(result.Bays.All(b=>Math.Abs(b.NearFootMm-b.FarFootMm)<1e-7),"shared cross support is evaluated with symmetric slab feet");
         Check(cross.Arrangement==CrossBeamSupportMode.ExistingSupportsOnly && cross.Towers==null,"shared arrangement accepted with no new towers");
         Check(cross.Bearings.All(bearing=>Math.Abs(bearing.FillerHeightMm)<1e-7),"both zero gaps are direct bearings");
         Near(cross.LoadKn,input.AreaLoad(150)*.4*3.9,"cross load has no slab tributary");
@@ -70,6 +71,7 @@ internal static class CrossSupportTests
         Check(capacityFallback.CrossSupports[0].Towers!=null && capacityFallback.CrossSupports[0].SharedFailure!=null && !capacityFallback.CrossSupports[0].SharedFailure.Contains("negative filler"),"Automatic tower fallback after shared structural failure with a positive gap");
         var multiple=Input();multiple.CrossingBeams=new[] {new TransferCrossingBeamRow {PositionMm=825,WidthMm=400,DepthMm=150,BottomElevationMm=-400,SupportMode=CrossBeamSupportMode.ExistingSupportsOnly},new TransferCrossingBeamRow {PositionMm=1625,WidthMm=400,DepthMm=150,BottomElevationMm=-400,SupportMode=CrossBeamSupportMode.ExistingSupportsOnly}};
         var combined=TransferNetworkOptimizer.Optimize(common,multiple);
+        Check(combined.Bays.All(b=>Math.Abs(b.NearFootMm-b.FarFootMm)<1e-7),"multiple cross stages retain the repeated symmetric slab arrangement");
         Check(combined.CrossSupports.Length==2 && combined.Beams.All(l=>l.Transfer.CaseNames.Any(c=>c.Contains("X1 + X2"))),"multiple crossings checked alone and together");
         var overloaded=Input();overloaded.CrossingBeams[0].DepthMm=10000;Failed(common,overloaded,"cross H20 overload cannot be accepted");
         var weak=Common();weak.LegCapacityKn=.1;Failed(weak,Input(),"low leg capacity rejects layout");

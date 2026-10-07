@@ -2,6 +2,8 @@
 
 The draft implements Automatic, Existing supports only, Dedicated towers and explicit Legacy slab rows behavior. Cross supports are evaluated on complete network candidates before ranking. Main's primary UDL changes from PR #113 are retained.
 
+Slab H20 feet now require equal setbacks from both concrete faces and equal stock-end overhangs, repeated at every row in each bay. This is mandatory during recalculation, including legacy crossings. Unequal construction-stage loads and individual receiving-member/leg reactions remain checked; reactions are not averaged.
+
 ## Checks completed in this environment
 
 - Repository guidance, network optimizer, transverse and primary calculations, workspace drawings and XML persistence reviewed before changes.
@@ -19,18 +21,21 @@ Run these before approving engineering use:
 dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release
 dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release -- --cross-supports
 dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release -- --primary-udl
+dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release -- --symmetric-slab-supports
 dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
 dotnet build tests/Beam.Net48/Beam.Net48.csproj -c Release --warnaserror
 dotnet build tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release --warnaserror
 ```
 
-On Windows, run `tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --cross-supports` and `tests/Beam.UiSmoke/bin/Release/net48/Beam.UiSmoke.exe`. These are also included in the repository's regression/smoke workflows.
+On Windows, run `tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --cross-supports`, `tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --symmetric-slab-supports` and `tests/Beam.UiSmoke/bin/Release/net48/Beam.UiSmoke.exe`. These are also included in the repository's regression/smoke workflows.
 
 ## Added regression coverage (not executed here)
 
 `CrossSupportTests` covers zero/positive/negative filler gaps, unequal soffits, direct surface contact, actual stock-tail overlaps, shared reactions, local primary increments, receiving-member/leg checks, concrete/slab load conservation, multiple parallel H20s, combinations of crossings, automatic tower fallback after geometry or structural rejection, dedicated quantities, permitted custom stock, missing stock, overloads, slab exclusions, saved elevations/modes and migration/resaving of legacy inputs. An independent simply-supported UDL equilibrium check exercises the conservative nine-increment stage envelope and leg rejection.
 
 `CrossSupportUiTests` covers section rendering and cross-member targets, filler heights, actual load/response plots, workspace H20/leg quantities and editable bottom elevation. Existing crossing-row regression fixtures explicitly use Legacy slab rows; new crossings still default to Automatic.
+
+`SymmetricSlabSupportTests` covers asymmetric fixed-plan rejection, reversed symmetric plans, single-beam and network slab support symmetry, unequal main beams, repeated setbacks, equal uniform-load foot reactions, independent receiving-secondary equilibrium, one-sided slab stages, actual peak-leg capacity, primary UDL retention, load conservation and quantities. An independent partial-load statics example demonstrates that averaging unequal reactions would conceal an overload. Cross support and WPF regressions also assert the symmetric slab layout and site-setting-out summary.
 
 ## Remaining model limits
 

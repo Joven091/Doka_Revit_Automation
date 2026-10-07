@@ -401,7 +401,7 @@ namespace EngineeringDashboard
             {
                 var bay=network.Bays[index];int rows=network.SlabRowCount(index);
                 if(bay==null) {selectedSummary.Text=$"Selected slab · S{index+1}\nSeparate slab formwork required.\nDesign and quantities are not calculated here.\nNo slab load transfers to B{index+1} or B{index+2}.";return;}
-                selectedSummary.Text=$"Selected slab · S{index+1}\n{rows} slab H20s × {bay.StockLengthMm:0.###} mm{(bay.IsCustomLength ? " custom" : " stock")}\n{2*rows} upper feet · carried by B{index+1} and B{index+2}";
+                selectedSummary.Text=$"Selected slab · S{index+1}\n{rows} slab H20s × {bay.StockLengthMm:0.###} mm{(bay.IsCustomLength ? " custom" : " stock")}\nEqual foot setback {bay.NearFootMm:0.###} mm from both concrete faces; repeat every row.\nMaximum row spacing {network.Input.UpperSpacingMm:0.###} mm.\n{2*rows} upper feet · carried by B{index+1} and B{index+2}\nActual member and leg reactions are checked separately for each loading stage.";
             }
             else if(Drawing.SelectedKind==FormworkObject.Crossing && index<Model.CrossingBeams.Count)
                 selectedSummary.Text=network.CrossSupports.SingleOrDefault(c=>c.CrossingIndex==index)?.Schedule??$"X{index+1} · Legacy slab rows: loads transfer through S{Model.CrossingBeams[index].BayNumber}.";

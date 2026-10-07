@@ -151,6 +151,7 @@ namespace EngineeringDashboard
         private void Section(DrawingContext dc,double y0)
         {
             Label(dc,"Section · red: slab feet · blue: shutter loads · select H20 for diagrams",30,y0);
+            Label(dc,$"Slab H20 feet: equal setbacks at both faces; repeat every row · maximum spacing {result.Input.UpperSpacingMm:0.###} mm",30,y0+19);
             double min=double.MaxValue,max=double.MinValue;
             for(int b=0;b<result.Beams.Length;b++) {var t=result.Beams[b].Transfer;min=Math.Min(min,result.BeamCentresMm[b]+t.LowerStockStartMm);max=Math.Max(max,result.BeamCentresMm[b]+t.LowerStockStartMm+t.LowerStockLengthMm);}
             foreach(var support in result.CrossSupports)foreach(var solid in support.Solids) {min=Math.Min(min,solid.Y0);max=Math.Max(max,solid.Y1);}
