@@ -9,7 +9,7 @@ internal static class TransferTests
     static void Near(double a,double b,string text) => Check(Math.Abs(a-b)<1e-6*Math.Max(1,Math.Abs(b)),text);
     public static void Run()
     {
-        var input=new TowerInput {LengthMm=6750,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,
+        var input=new TowerInput {AllowCustomH20Lengths=true,LengthMm=6750,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,
             TransferredSlab=new TransferredSlabInput {BeamWidthMm=1100,BeamLineLoadKnM=50,UpperSpacingMm=200,LeftBayMm=3900,LeftAreaLoadKnM2=9.4}};
         var layout=TowerOptimizer.Optimize(input); var t=layout.Transfer;
         Check(t!=null && t.RowsMm.Length>0,"transfer result");
@@ -32,7 +32,7 @@ internal static class TransferTests
         for(int c=0;c<t.CaseNames.Length;c++)
         {
             var primary=t.PrimaryCases[c]; var lower=t.LowerCases[c];
-            Near(primary.Sum(m=>m.Analysis.TotalLoadKn),lower.Sum(m=>m.Analysis.TotalLoadKn),"downward force conservation");
+            Check(primary.Sum(m=>m.Analysis.TotalLoadKn)>=t.BeamLoadKn+(c==0 ? 0 : t.SlabLoadKn)-1e-7,"full-tributary primary design covers physical reference load");
             foreach(var m in primary.Concat(lower).Concat(t.UpperMembers))
             {
                 Check(m.SupportsMm.Length>=2,"at least two supports per stock");
@@ -44,7 +44,7 @@ internal static class TransferTests
             }
         }
         Check(TowerBeamAnalysis.Finite(t.SlabMovementMm) && t.SlabMovementMm>0,"soffit movement includes lower formwork displacement");
-        Check(t.PrimaryCases.Last().Any(m=>m.Points.Length>0) && t.PrimaryCases.Last().All(m=>m.Uniform.Length==0),"primaries use discrete transverse reactions");
+        Check(t.PrimaryCases.SelectMany(c=>c).All(m=>m.Points.Length==0 && m.Uniform.Length>0),"primaries use distributed design loads in every stage");
         foreach(bool joined in new[] {false,true}) Check(layout.Joined.Contains(joined),"independent gaps and manufactured tower bays");
         for(int i=0;i<layout.Joined.Length;i++) if(layout.Joined[i])
             Check(layout.Rotated ? Math.Abs(layout.PositionsMm[i+1]-layout.PositionsMm[i]-1524)<1e-7 : TowerOptimizer.BaysMm.Any(b=>Math.Abs(b-layout.PositionsMm[i+1]+layout.PositionsMm[i])<1e-7),"manufactured geometry");

@@ -66,25 +66,26 @@ namespace EngineeringDashboard
         internal sealed class MatrixKey : IEquatable<MatrixKey>
         {
             private readonly double length,ei;
-            private readonly double[] supports,positions;
+            private readonly double[] supports,positions,boundaries;
             private readonly int hash;
-            internal MatrixKey(double length,double[] supports,BeamPointLoad[] points,double ei)
+            internal MatrixKey(double length,double[] supports,BeamPointLoad[] points,double ei,BeamDistributedLoad[] uniform=null)
             {
-                this.length=length;this.ei=ei;this.supports=supports;positions=points.Select(p=>p.PositionMm).ToArray();
+                this.length=length;this.ei=ei;this.supports=supports;positions=points.Select(p=>p.PositionMm).ToArray();boundaries=(uniform??new BeamDistributedLoad[0]).SelectMany(q=>new[] {q.StartMm,q.EndMm}).ToArray();
                 unchecked
                 {
                     int h=length.GetHashCode()*31+ei.GetHashCode();
                     for(int i=0;i<supports.Length;i++)h=h*31+supports[i].GetHashCode();
-                    for(int i=0;i<positions.Length;i++)h=h*31+positions[i].GetHashCode();hash=h;
+                    for(int i=0;i<positions.Length;i++)h=h*31+positions[i].GetHashCode();for(int i=0;i<boundaries.Length;i++)h=h*31+boundaries[i].GetHashCode();hash=h;
                 }
             }
             public override int GetHashCode()=>hash;
             public override bool Equals(object other)=>Equals(other as MatrixKey);
             public bool Equals(MatrixKey other)
             {
-                if(other==null || hash!=other.hash || length!=other.length || ei!=other.ei || supports.Length!=other.supports.Length || positions.Length!=other.positions.Length)return false;
+                if(other==null || hash!=other.hash || length!=other.length || ei!=other.ei || supports.Length!=other.supports.Length || positions.Length!=other.positions.Length || boundaries.Length!=other.boundaries.Length)return false;
                 for(int i=0;i<supports.Length;i++)if(supports[i]!=other.supports[i])return false;
                 for(int i=0;i<positions.Length;i++)if(positions[i]!=other.positions[i])return false;
+                for(int i=0;i<boundaries.Length;i++)if(boundaries[i]!=other.boundaries[i])return false;
                 return true;
             }
         }
@@ -117,6 +118,8 @@ namespace EngineeringDashboard
         }
         internal static LoadedBeamAnalysis AnalyzePointsCached(double lengthMm,double[] supportMm,BeamPointLoad[] points,double ei,int denominator,MatrixCache cache,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false)
             =>AnalyzeCore(lengthMm,supportMm,null,points,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary);
+        internal static LoadedBeamAnalysis AnalyzeUniformCached(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,double ei,int denominator,MatrixCache cache,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false)
+            =>AnalyzeCore(lengthMm,supportMm,uniform,null,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary);
         public static LoadedBeamAnalysis Analyze(double lengthMm, double[] supportMm, BeamDistributedLoad[] uniform, BeamPointLoad[] points, double ei, int denominator)
             => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,true);
         // Retain the former dense storage path for exact numerical regression comparisons.
@@ -132,7 +135,7 @@ namespace EngineeringDashboard
                 || points.Any(v => v == null || !Finite(v.PositionMm) || v.PositionMm < 0 || v.PositionMm > lengthMm || !Finite(v.Kn) || v.Kn < 0)) throw new ArgumentException("Invalid beam loads.");
             // Primary pairs reuse only their immutable structure. Each load vector and
             // displacement solution is new; forces are never rounded or omitted from checks.
-            var shapeKey=matrixCache==null || uniform.Length!=0 ? null : new MatrixKey(lengthMm,supportMm,points,ei);
+            var shapeKey=matrixCache==null ? null : new MatrixKey(lengthMm,supportMm,points,ei,uniform);
             var prepared=shapeKey==null ? null : matrixCache.Get(shapeKey);
             double[] supports;List<double> nodes;double[,] original,factor;int[] fixedDof,pointDof;
             if(prepared!=null)
