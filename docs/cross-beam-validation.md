@@ -8,8 +8,10 @@ Slab H20 feet now require equal setbacks from both concrete faces and equal stoc
 
 Validation uses .NET SDK 10.0.401 on Linux (7 October 2026). The SDK was installed from the official archive through the approved network path after the earlier installation attempts failed.
 
-- Numeric regressions pass, including 121 cross-support checks, 457 symmetric slab-support checks, 590 primary-UDL checks and 242 search-reuse checks. The reported 9,900 mm primary-UDL scenario also passes with 48 legs and a 35.599 kN peak leg reaction.
-- The Revit net48 add-in, net48 numeric regression project and WPF UI smoke project compile with `--warnaserror`: zero warnings and errors. Linux UI smoke compilation uses `-p:EnableWindowsTargeting=true`.
+- The full .NET 10 numeric suite passes locally and on Windows CI, including 121 cross-support checks, 457 symmetric slab-support checks, 590 primary-UDL checks and 242 search-reuse checks. The reported 9,900 mm primary-UDL scenario also passes with 48 legs and a 35.599 kN peak leg reaction.
+- The Revit net48 add-in, net48 numeric regression project and WPF UI smoke project compile locally and on Windows CI with `--warnaserror`: zero warnings and errors. Linux UI smoke compilation uses `-p:EnableWindowsTargeting=true`.
+- The D3 slab suite passes 528 checks after its linked-source project includes `CrossBeamSupport.cs`.
+- The controlled network benchmark passes 24,268 layout, exact-demand, load-conservation, capacity and cancellation checks locally. Its load assertions distinguish physical covered quantities, full-spacing secondary design loads and the full-stock primary UDL model.
 - `Microsoft.NETFramework.ReferenceAssemblies` remains in every net48 project. No Revit API operations, threading or transactions were changed.
 - Project/XAML XML parsing, workflow YAML parsing and `git diff --check` pass.
 
@@ -19,11 +21,13 @@ The passing dedicated-tower fixture uses a -1,400 mm soffit to clear the existin
 
 The new UI smoke test returns its check count to the smoke runner, correcting its compile-time return-type mismatch. Numeric test failures now print the complete optimizer diagnosis, including geometry and cross-member failures, alongside the exception stack.
 
-## Windows runtime checks outstanding
+## Windows runtime validation
 
-This environment has no Windows desktop or .NET Framework runtime. The net48 executables and WPF smoke tests have been compiled but have not been executed here. Earlier GitHub Windows runs failed before their first steps, so those runs provide no runtime evidence. The PR remains draft and unmerged pending Windows runtime validation.
+The [Windows primary/cross/symmetry job](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/37611930201) passes .NET 10 and .NET Framework 4.8 primary-UDL checks, both reported-case runs, net48 cross-support and symmetry checks, compilation with warnings treated as errors, and the complete WPF smoke executable. It reports 294 beam WPF checks and 143 drawing-workspace checks, including cross sections, filler heights, actual member diagrams and the bottom-elevation editor. The workspace cancellation regression waits for the queued dispatcher refresh before checking its controls.
 
-Run these before approving engineering use:
+The [Windows calculator regression job](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/37611930213) also passes the add-in build, full beam numeric suite, network economy/reuse regressions on .NET 10 and net48, D3 slab numeric/UI tests and the other existing calculator checks. These runs validate code commit `262dc8b7ce60919fe72ba62bd850d60f0759e6c5`, subsequently merged in PR #114 by the repository owner. This agent did not merge that PR. The remaining benchmark-assertion update is submitted separately for draft review.
+
+Commands to repeat validation:
 
 ```text
 dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release

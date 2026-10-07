@@ -64,9 +64,15 @@ internal static class NetworkSpeedBenchmark
             Check(beam.Transfer.RowsMm.SequenceEqual(result.Beams[0].Transfer.RowsMm),"shared slab rows align");
             Check(coverage>=result.SlabCoveredLengthMm-1e-7 && beam.ConcreteEndOverhangMm<=75,"existing coverage bounds respected");
             Near(beam.Transfer.TributaryWidthsMm.Sum(),coverage,"existing covered-length load model conserved");
-            double load=network.AreaLoad(network.Beams[i].DepthMm)*network.Beams[i].WidthMm/1000*coverage/1000;
-            Near(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn),load,"modelled beam load conserved");
-            Near(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn),load+beam.Transfer.SlabLoadKn,"modelled beam and slab load conserved through primaries");
+            double beamPerM=network.AreaLoad(network.Beams[i].DepthMm)*network.Beams[i].WidthMm/1000;
+            Near(beam.Transfer.BeamLoadKn,beamPerM*coverage/1000,"physical covered beam load conserved");
+            double designTributary=beam.Transfer.TributaryWidthsMm.Sum(w=>Math.Max(w,network.UpperSpacingMm));
+            Near(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn),beamPerM*designTributary/1000,"lower beam rows retain the full-spacing design load");
+            double slabPerM=0;
+            if(i>0 && result.Bays[i-1]!=null)slabPerM+=network.AreaLoad(network.Bays[i-1].ThicknessMm)*network.Bays[i-1].WidthMm/2000;
+            if(i<result.Bays.Length && result.Bays[i]!=null)slabPerM+=network.AreaLoad(network.Bays[i].ThicknessMm)*network.Bays[i].WidthMm/2000;
+            Near(beam.Transfer.SlabLoadKn,slabPerM*result.SlabCoveredLengthMm/1000,"physical slab load conserved through symmetric feet and shutters");
+            Near(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn),(beamPerM+slabPerM)*coverage/1000,"primary UDL retains beam and slab loads per metre over its complete stock");
             Check(beam.MaxLegKn<=70+1e-8 && beam.LeftReactions.Concat(beam.RightReactions).All(r=>r>=-1e-7 && r<=70+1e-8),"actual leg limits and no uplift retained");
             foreach(var member in Members(beam))
             {
