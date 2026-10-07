@@ -204,8 +204,9 @@ internal static class WorkspaceTests
             Check(!model.CanCancelOptimization && !workspace.Buttons["Cancel"].IsEnabled,"cancel is disabled without a running analysis");
             var cancelledSearch=workspace.CalculateAsync();
             Check(model.CanCancelOptimization,"running analysis can be cancelled");
+            Pump(); // Workspace controls refresh on the dispatcher after model notifications.
             Check(!workspace.Buttons["NewSession"].IsEnabled,"new session is disabled until the running search stops");
-            Pump();Check(!workspace.SharedProperties.IsEnabled && !workspace.Fields["BeamLengthMm"].IsEnabled,"shared inputs are locked during a running search");
+            Check(!workspace.SharedProperties.IsEnabled && !workspace.Fields["BeamLengthMm"].IsEnabled,"shared inputs are locked during a running search");
             var calculatorCancel=(Button)parent.FindName("CancelBeamAnalysisButton");
             calculatorCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(!model.CanCancelOptimization && model.IsOptimizing,"cancel request disables repeated cancellation until worker stops");
@@ -296,7 +297,6 @@ internal static class WorkspaceTests
         finally {workspace?.Close();}
     }
 }
-
 
 
 
