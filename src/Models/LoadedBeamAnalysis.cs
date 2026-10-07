@@ -116,10 +116,10 @@ namespace EngineeringDashboard
                 shapes.Add(key,prepared);if(evict)order.Enqueue(key);
             }
         }
-        internal static LoadedBeamAnalysis AnalyzePointsCached(double lengthMm,double[] supportMm,BeamPointLoad[] points,double ei,int denominator,MatrixCache cache,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false)
-            =>AnalyzeCore(lengthMm,supportMm,null,points,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary);
-        internal static LoadedBeamAnalysis AnalyzeUniformCached(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,double ei,int denominator,MatrixCache cache,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false)
-            =>AnalyzeCore(lengthMm,supportMm,uniform,null,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary);
+        internal static LoadedBeamAnalysis AnalyzePointsCached(double lengthMm,double[] supportMm,BeamPointLoad[] points,double ei,int denominator,MatrixCache cache,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false,bool ignoreUplift=false)
+            =>AnalyzeCore(lengthMm,supportMm,null,points,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary,allowSigned:ignoreUplift,ignoreUplift:ignoreUplift);
+        internal static LoadedBeamAnalysis AnalyzeUniformCached(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,double ei,int denominator,MatrixCache cache,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false,bool ignoreUplift=false)
+            =>AnalyzeCore(lengthMm,supportMm,uniform,null,ei,denominator,true,cache,reactionCapacity,rejectFailedPrimary,allowSigned:ignoreUplift,ignoreUplift:ignoreUplift);
         public static LoadedBeamAnalysis Analyze(double lengthMm, double[] supportMm, BeamDistributedLoad[] uniform, BeamPointLoad[] points, double ei, int denominator)
             => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,true);
         internal static LoadedBeamAnalysis AnalyzeSigned(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator)
@@ -127,7 +127,7 @@ namespace EngineeringDashboard
         // Retain the former dense storage path for exact numerical regression comparisons.
         internal static LoadedBeamAnalysis AnalyzeDenseReference(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator)
             => AnalyzeCore(lengthMm,supportMm,uniform,points,ei,denominator,false);
-        private static LoadedBeamAnalysis AnalyzeCore(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool banded,MatrixCache matrixCache=null,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false,bool allowSigned=false)
+        private static LoadedBeamAnalysis AnalyzeCore(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool banded,MatrixCache matrixCache=null,double reactionCapacity=double.PositiveInfinity,bool rejectFailedPrimary=false,bool allowSigned=false,bool ignoreUplift=false)
         {
             if (!Finite(lengthMm) || lengthMm <= 0 || !Finite(ei) || ei <= 0 || supportMm == null || supportMm.Length < 2
                 || supportMm.Any(v => !Finite(v) || v < 0 || v > lengthMm) || supportMm.Distinct().Count() != supportMm.Length
@@ -203,7 +203,7 @@ namespace EngineeringDashboard
                 result.ShearKn = Math.Max(result.ShearKn, Math.Max(Math.Abs(ei * 6 * e.C3), Math.Abs(ei * (6 * e.C3 + 24 * e.C4 * l))));
             }
             if (Math.Abs(result.Reactions.Sum() - result.TotalLoadKn) > 1e-6 * Math.Max(1, result.TotalLoadKn)) throw new ArgumentException("Beam load equilibrium failed.");
-            if(rejectFailedPrimary && (result.MomentKnM>TowerOptimizer.PairMoment+1e-8 || result.ShearKn>TowerOptimizer.PairShear+1e-8 || result.Reactions.Any(r=>r< -1e-7 || r>reactionCapacity+1e-8)))return result;
+            if(rejectFailedPrimary && (result.MomentKnM>TowerOptimizer.PairMoment+1e-8 || result.ShearKn>TowerOptimizer.PairShear+1e-8 || result.Reactions.Any(r=>(!ignoreUplift && r< -1e-7) || r>reactionCapacity+1e-8)))return result;
             for(int index=0;index<result.elements.Count;index++)
             {
                 var e=result.elements[index];double l=e.L;

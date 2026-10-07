@@ -201,6 +201,13 @@ internal static class WorkspaceTests
             Check(((CheckBox)parent.FindName("CustomH20LengthsCheckBox")).IsChecked==true,"calculator checkbox synchronizes with layout window");
             customLengthsRecord.Inputs.RemoveAll(f=>f.Name=="AllowCustomH20Lengths");parent.RestoreCalculation(customLengthsRecord);Pump();
             Check(!model.AllowCustomH20Lengths && Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow custom H20 lengths (25 mm)")).IsChecked==false,"legacy files restore disabled custom mode in both windows");
+            var uplift=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Exclude uplift check (connected plywood / deadweight assumed)"));
+            Check(uplift.IsChecked==false,"workspace uplift exclusion defaults off");uplift.IsChecked=true;uplift.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+            Check(model.IgnoreUplift && !model.IsCalculationValid,"workspace uplift opt-in invalidates the shared result");
+            Click("Undo");Check(!model.IgnoreUplift,"undo restores bearing-only assumptions");Click("Redo");Check(model.IgnoreUplift,"redo restores project uplift assumption");
+            var upliftRecord=parent.CaptureDrawingInputs();Check(upliftRecord.Inputs.Single(f=>f.Name=="IgnoreUplift").Value=="True","workspace uplift assumption saved");
+            model.IgnoreUplift=false;parent.RestoreCalculation(upliftRecord);Pump();Check(model.IgnoreUplift && ((CheckBox)parent.FindName("IgnoreUpliftCheckBox")).IsChecked==true,"loaded uplift assumption synchronizes both windows");
+            upliftRecord.Inputs.RemoveAll(f=>f.Name=="IgnoreUplift");parent.RestoreCalculation(upliftRecord);Pump();Check(!model.IgnoreUplift,"legacy workspace file restores bearing-only assumptions");
             Check(!model.CanCancelOptimization && !workspace.Buttons["Cancel"].IsEnabled,"cancel is disabled without a running analysis");
             var cancelledSearch=workspace.CalculateAsync();
             Check(model.CanCancelOptimization,"running analysis can be cancelled");
