@@ -16,6 +16,7 @@ namespace EngineeringDashboard
         public bool IsSelectionEnabled {get;set;}
         public bool SectionOnly {get;set;}
         public bool ShowAllDimensions {get;set;}
+        internal int DrawnConcreteEndZoneCount {get;private set;}
         internal readonly List<Rect> AnnotationBounds=new List<Rect>();
         public event Action<int,int,int> MemberSelected;
         public event Action<int> SeparateSlabSelected;
@@ -63,7 +64,7 @@ namespace EngineeringDashboard
         }
         protected override void OnRender(DrawingContext dc)
         {
-            base.OnRender(dc);AnnotationBounds.Clear();MemberTargets.Clear();SeparateBayTargets.Clear();DrawnH20ProfileCount=DrawnPrimarySectionCount=0;DrawnTowerLegCount=DrawnPrimaryLengthCount=DrawnSecondaryLengthCount=DrawnCrossingBeamCount=0;if(result==null || ActualWidth<100)return;
+            base.OnRender(dc);DrawnConcreteEndZoneCount=0;AnnotationBounds.Clear();MemberTargets.Clear();SeparateBayTargets.Clear();DrawnH20ProfileCount=DrawnPrimarySectionCount=0;DrawnTowerLegCount=DrawnPrimaryLengthCount=DrawnSecondaryLengthCount=DrawnCrossingBeamCount=0;if(result==null || ActualWidth<100)return;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));
             if(SectionOnly) {Section(dc,55);return;}
             Label(dc,$"mm · primary P = 2×H20/line · secondaries = single H20 @ {result.Input.UpperSpacingMm:0}",30,8);
@@ -248,12 +249,13 @@ namespace EngineeringDashboard
                 }
                 if(member>=0)MemberTargets.Insert(0,Tuple.Create(rect,-support.CrossingIndex-1,member,0));
             }
-            foreach(var bearing in support.Bearings.GroupBy(b=>new {b.Ymm,b.FillerHeightMm}).Select(g=>g.First()))
+            foreach(var bearing in support.Bearings.GroupBy(b=>new {b.Ymm,b.FillerHeightMm,b.IsConcreteEndZone}).Select(g=>g.First()))
             {
                 if(bearing.IsConcreteEndZone)
                 {
+                    DrawnConcreteEndZoneCount++;
                     dc.DrawLine(new Pen(Brushes.DarkRed,3),new Point(xx(bearing.EndZoneStartMm),zz(bearing.ReceivingTopMm)),new Point(xx(bearing.EndZoneEndMm),zz(bearing.ReceivingTopMm)));
-                    Label(dc,$"End zone on B{bearing.Beam+1}: {bearing.EndZoneEndMm-bearing.EndZoneStartMm:0.###} mm",xx(bearing.Ymm),zz(bearing.ReceivingTopMm)-16);continue;
+                    Label(dc,$"End zone on B{bearing.Beam+1}: {bearing.EndZoneEndMm-bearing.EndZoneStartMm:0.###} mm",xx(bearing.Ymm),zz(bearing.ReceivingTopMm)-40);continue;
                 }
                 dc.DrawEllipse(Brushes.DarkRed,null,new Point(xx(bearing.Ymm),zz(bearing.ReceivingTopMm)),3,3);
                 Label(dc,bearing.FillerHeightMm<=1e-7 ? "Direct bearing" : $"Filler {bearing.FillerHeightMm:0.###} mm",xx(bearing.Ymm)+4,zz(bearing.H20UndersideMm)+3);
