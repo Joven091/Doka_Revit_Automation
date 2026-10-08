@@ -29,8 +29,8 @@ internal static class CrossEndStripTests
         var primary=layout.Transfer.PrimaryCases[0];
         Near(primary.Sum(m=>m.Analysis.TotalLoadKn),q*span/1000,"full cross load reaches primary pairs");
         Near(primary.Sum(m=>m.Analysis.Reactions.Sum()),q*span/1000,"full cross load reaches individual legs");
-        Near(primary.Sum(m=>m.Uniform.Sum(u=>u.KnPerM*(u.EndMm-u.StartMm)/1000)),q*(span-2*edge)/1000,"primary UDL baseline retains covered load once");
-        Near(primary.Sum(m=>m.Points.Sum(p=>p.Kn)),q*2*edge/1000,"end-strip reactions add only omitted load");
+        Near(primary.Sum(m=>m.Uniform.Sum(u=>u.KnPerM*(u.EndMm-u.StartMm)/1000)),q*span/1000,"primary UDL retains full concrete load including end strips");
+        Check(primary.All(m=>m.Points.Length==0),"all crossing primary design loads are UDLs without row point loads");
         Near(primary.Sum(m=>m.Analysis.Reactions.Zip(m.SupportsMm,(r,x)=>r*(x+m.StartMm)/1000).Sum()),q*span/1000*span/2000,"end-strip transfer preserves full concrete moment about bay face");
         foreach(var member in Members(layout))MemberChecks(member,layout.DeflectionDenominator);
         if(edge<=1e-7)return;
@@ -39,12 +39,10 @@ internal static class CrossEndStripTests
         double leftSecond=force*(edge/2-rows[0])/(rows[1]-rows[0]);
         double rightLast=force*(span-edge/2-rows[last-1])/(rows[last]-rows[last-1]);
         var expected=new double[rows.Length];expected[0]+=force-leftSecond;expected[1]+=leftSecond;expected[last-1]+=force-rightLast;expected[last]+=rightLast;
-        foreach(string side in new[] {" L"," R"})
-        {
-            var points=primary.Where(m=>m.Name.EndsWith(side)).SelectMany(m=>m.Points.Select(p=>new {X=p.PositionMm+m.StartMm,p.Kn})).ToArray();
-            Check(points.Any(p=>p.Kn<0),"upward strip influence is retained rather than clipped");
-            for(int row=0;row<rows.Length;row++)Near(points.Where(p=>Math.Abs(p.X-rows[row])<1e-7).Sum(p=>p.Kn),expected[row],"independent two-row strip statics");
-        }
+        var influence=TransferredSlabOptimizer.ConcreteEndStripTributaries(span-2*edge,rows.Select(x=>x-edge).ToArray(),edge);
+        Check(influence.Any(v=>v<0),"signed sheathing end-strip influence retained in secondary tributaries");
+        for(int row=0;row<rows.Length;row++)Near(influence[row]*q/2000,expected[row],"secondary end-strip influence agrees with independent two-row statics");
+
     }
     static TransferNetworkInput Small(CrossBeamSupportMode mode=CrossBeamSupportMode.DedicatedTowers)=>new TransferNetworkInput {UpperSpacingMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=2677,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=-1400,SupportMode=mode}}};
     public static void Run()
@@ -87,6 +85,14 @@ internal static class CrossEndStripTests
         Check(failed,"zero end allowance still rejects impossible exact stock coverage");
         var vm=new BeamCalculatorViewModel {UseBeamNetwork=true};vm.AddCrossingBeam();vm.NetworkBeams[0].BottomElevationMm=-1750;vm.CrossingBeams[0].BottomElevationMm=-1150;vm.CrossingBeams[0].SupportMode=CrossBeamSupportMode.DedicatedTowers;
         var report=vm.BuildDiagnosticReport();Check(report.Contains("bottom=-1750 mm") && report.Contains("bottom=-1150 mm; supports=DedicatedTowers"),"diagnostics capture soffit elevations and requested cross support mode");
+        var currentCommon=Common();currentCommon.LengthMm=10450;
+        var currentInput=new TransferNetworkInput {UpperSpacingMm=275,Beams=new[] {new TransferBeamRow {WidthMm=650,DepthMm=1150},new TransferBeamRow {WidthMm=650,DepthMm=1150},new TransferBeamRow {WidthMm=800,DepthMm=1750}},Bays=new[] {new TransferBayRow {WidthMm=3550,ThicknessMm=300},new TransferBayRow {WidthMm=2575,ThicknessMm=300}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=2500,WidthMm=300,DepthMm=600,SupportMode=CrossBeamSupportMode.Automatic}}};
+        var current=TransferNetworkOptimizer.Optimize(currentCommon,currentInput);var currentCross=current.CrossSupports.Single();
+        Check(current.SeparateSlabCount==0 && currentCross.Towers!=null,"current three-beam report still returns complete slab transfer and its own crossing tower");
+        EndStripChecks(currentCross.Towers,currentInput.AreaLoad(600)*.3,3550);
+        foreach(var beam in current.Beams)foreach(var member in Members(beam))MemberChecks(member,270);
+        Near(currentCross.LoadKn,18.79725,"current X1 UDL retains full concrete and construction load");
+        Console.WriteLine($"CURRENT DRAWING REPORT: {current.LegCount} legs; peak {current.PeakLegKn:0.000} kN; X1 primary load model UDL.");
         Console.WriteLine($"Cross end strips: {checks} checks passed.");
     }
     public static void Reported()

@@ -433,7 +433,15 @@ namespace EngineeringDashboard
             if(beam<0)
             {
                 var support=Model.NetworkResult?.CrossSupports.SingleOrDefault(c=>c.CrossingIndex==-beam-1);if(support==null)return;
-                ClearDiagrams();Diagrams=new TowerDiagramWindow(Model,support) {Owner=this};diagramBeam=beam;Diagrams.Closed+=(s,e)=> {Diagrams=null;diagramBeam=-1;};Diagrams.SelectMember(run,line,-1);Diagrams.Show();Drawing.SelectMember(beam,run,line);Section.SelectMember(beam,run,line);return;
+                Drawing.Select(FormworkObject.Crossing,support.CrossingIndex,false);BuildProperties();Refresh();
+                if(Diagrams==null || diagramBeam!=beam)
+                {
+                    ClearDiagrams();var window=new TowerDiagramWindow(Model,support) {Owner=this};Diagrams=window;diagramBeam=beam;
+                    window.Closed+=(sender,args)=> {if(ReferenceEquals(Diagrams,window)){Diagrams=null;diagramBeam=-1;Drawing.SelectMember(-1,-1,0);Section.SelectMember(-1,-1,0);}};
+                    window.SelectMember(run,line,-1);window.Show();
+                }
+                else {Diagrams.SelectMember(run,line,-1);Diagrams.Activate();}
+                Drawing.SelectMember(beam,run,line);Section.SelectMember(beam,run,line);return;
             }
             if(Model.IsNetworkMode)Model.SelectNetworkBeam(beam);
             Drawing.Select(FormworkObject.Beam,beam,false);BuildProperties();Refresh();

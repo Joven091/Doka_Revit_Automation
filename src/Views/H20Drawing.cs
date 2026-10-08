@@ -8,6 +8,12 @@ namespace EngineeringDashboard
     /// 40 mm flange thickness and a 27 mm web. Bounds come from drawing geometry.</summary>
     internal static class H20Drawing
     {
+        internal static void Plan(DrawingContext dc,Point start,Point end,int count,bool active,double separation=3)
+        {
+            var delta=end-start;var normal=new Vector(-delta.Y,delta.X);normal.Normalize();normal*=separation;
+            var pen=new Pen(active ? Brushes.DodgerBlue : Brushes.Goldenrod,active || count==2 ? 2 : 1.3);
+            foreach(double side in count==2 ? new[] {-1.0,1} : new[] {0.0})dc.DrawLine(pen,start+normal*side,end+normal*side);
+        }
         private static readonly Brush Flange=new SolidColorBrush(Color.FromRgb(231,183,70));
         private static readonly Brush Web=new SolidColorBrush(Color.FromRgb(185,137,73));
         private static readonly Brush Grain=new SolidColorBrush(Color.FromArgb(80,113,76,35));
