@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.Collections.Generic;
+using System.Windows.Media;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -11,6 +13,64 @@ internal static class CrossSupportUiTests
     static int checks;
     static void Check(bool value,string message) {checks++;if(!value)throw new Exception("Cross UI: "+message);}
     static void Pump()=>Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));
+    static IEnumerable<DependencyObject> Descendants(DependencyObject node)
+    {
+        for(int i=0;i<VisualTreeHelper.GetChildrenCount(node);i++) {var child=VisualTreeHelper.GetChild(node,i);yield return child;foreach(var nested in Descendants(child))yield return nested;}
+    }
+    static IEnumerable<Drawing> Primitives(Drawing drawing)
+    {
+        if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var item in Primitives(child))yield return item;
+        else yield return drawing;
+    }
+    static RenderTargetBitmap Capture(FrameworkElement element,int width,int height,string path=null)
+    {
+        element.Measure(new Size(width,height));element.Arrange(new Rect(0,0,width,height));element.UpdateLayout();
+        var bitmap=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);bitmap.Render(element);
+        if(path!=null) {var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=System.IO.File.Create(path))encoder.Save(file);}return bitmap;
+    }
+    static string Preview(string path,string name)=>string.IsNullOrEmpty(path) ? null : System.IO.Path.ChangeExtension(path,name+".png");
+    static void ReportedWorkspace(string previewPath)
+    {
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=10450,UpperSupportSpacingMm=275,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,MaximumConcreteEndOverhangMm=75,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+        vm.AddNetworkBay();for(int i=0;i<3;i++) {vm.NetworkBeams[i].WidthMm=i==2 ? 800 : 650;vm.NetworkBeams[i].DepthMm=i==2 ? 1750 : 1150;vm.NetworkBeams[i].BottomElevationMm=i==2 ? -1750 : -1150;}
+        vm.NetworkBays[0].WidthMm=3550;vm.NetworkBays[1].WidthMm=2575;foreach(var bay in vm.NetworkBays)bay.ThicknessMm=300;
+        vm.AddCrossingBeam();var crossing=vm.CrossingBeams[0];crossing.BayNumber=1;crossing.PositionMm=2500;crossing.WidthMm=300;crossing.DepthMm=600;crossing.BottomElevationMm=-600;
+        var task=vm.OptimizeTowersAsync();var timer=System.Diagnostics.Stopwatch.StartNew();while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>90)throw new Exception("Current report UI timeout");}task.GetAwaiter().GetResult();
+        Check(vm.IsCalculationValid,"current three-beam drawing report solves");
+        var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Show();Pump();
+        workspace.Buttons["Formwork"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));workspace.Drawing.AllDimensions=true;Pump();
+        Capture(workspace.Drawing,1400,850);workspace.Drawing.Fit();Capture(workspace.Drawing,1400,850,Preview(previewPath,"current-report-formwork"));
+        var plan=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).ToArray();
+        var glyphs=plan.OfType<GlyphRunDrawing>().Select(g=>new {Text=new string(g.GlyphRun.Characters.ToArray()),Y=g.GlyphRun.BaselineOrigin.Y}).ToArray();
+        Check(!glyphs.Any(g=>g.Text.Contains("Direct bearing")),"formwork omits direct-bearing annotations");
+        foreach(string value in new[] {"450","575"})
+        {
+            var labels=glyphs.Where(g=>g.Text==value).ToArray();Check(labels.Length>=2,"reported overhang dimension labels are visible: "+value);
+            Check(labels.GroupBy(g=>Math.Round(g.Y,3)).All(g=>g.Count()>=2),"overhang labels share a single baseline on each beam: "+value);
+        }
+        Check(workspace.Drawing.MemberTargets.Any(t=>t.Item2>=0 && t.Item3>=vm.NetworkResult.Beams[t.Item2].StockPlan.Pieces.Length),"main lower H20s use the same selectable plan strokes as X1 secondaries");
+        Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.H20Count),"common plan rendering retains every actual leg and crossing H20");
+        workspace.Buttons["Section"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Capture(workspace.Section,1200,420,Preview(previewPath,"current-report-section"));
+        var section=Primitives(VisualTreeHelper.GetDrawing(workspace.Section)).ToArray();
+        Check(!section.OfType<GeometryDrawing>().Any(g=>g.Geometry is EllipseGeometry && g.Brush is SolidColorBrush brush && brush.Color==Colors.DarkRed),"section omits crossing bearing dots");
+        var support=vm.NetworkResult.CrossSupports.Single();
+        foreach(int count in new[] {2,1})
+        {
+            var target=workspace.Section.MemberTargets.First(t=>t.Item2<0 && support.Members[t.Item3].H20Count==count);
+            Check(workspace.Section.SelectAt(new Point(target.Item1.X+target.Item1.Width/2,target.Item1.Y+target.Item1.Height/2)),"section member click opens crossing diagrams");Pump();
+            var window=workspace.Diagrams;Check(window!=null && window.IsVisible && window.SelectedTransferMember.H20Count==count,"selected crossing member displayed in the standard diagram window");
+            Check(Descendants(window).Count(c=>c.GetType().Name=="LoadedResponsePlot")==3,"crossing has shear, moment and deflection plots");
+            Check(window.LoadingDiagram.TranslatePoint(new Point(0,0),window).Y<300,"crossing loading chart is visible above its collapsed schedule");
+            var schedule=Descendants(window).OfType<Expander>().Single(e=>Equals(e.Header,"Crossing support schedule and details"));Check(!schedule.IsExpanded,"long crossing schedule stays collapsed initially");
+            if(count==2)Check(window.DisplayedTransferMember.Points.Length==0 && window.DisplayedTransferMember.Uniform.Length>0,"primary diagram shows the checked UDL without secondary-row point loads");
+            var body=(FrameworkElement)((ScrollViewer)window.Content).Content;body.Measure(new Size(900,double.PositiveInfinity));body.Arrange(new Rect(0,0,900,body.DesiredSize.Height));body.UpdateLayout();
+            Capture(body,900,(int)Math.Ceiling(body.ActualHeight),Preview(previewPath,count==2 ? "current-report-primary" : "current-report-secondary"));
+            var next=workspace.Section.MemberTargets.First(t=>t.Item2<0 && support.Members[t.Item3].H20Count==count && t.Item3!=window.SelectedRun);
+            workspace.Section.SelectAt(new Point(next.Item1.X+next.Item1.Width/2,next.Item1.Y+next.Item1.Height/2));Pump();
+            Check(ReferenceEquals(workspace.Diagrams,window),"picking another crossing H20 reuses its diagram window");
+        }
+        workspace.Close();Console.WriteLine("Current report UI: all six drawing/diagram corrections checked.");
+    }
     public static int Run(string previewPath=null)
     {
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,UpperSupportSpacingMm=100,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70};
@@ -56,6 +116,6 @@ internal static class CrossSupportUiTests
             var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(jointBitmap));using(var file=System.IO.File.Create(System.IO.Path.ChangeExtension(previewPath,"junction-plan.png")))encoder.Save(file);
             encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(jointSectionBitmap));using(var file=System.IO.File.Create(System.IO.Path.ChangeExtension(previewPath,"junction-section.png")))encoder.Save(file);
         }
-        jointWorkspace.Close();Console.WriteLine("Cross UI: section, filler, actual diagrams, elevation editor and reported junction passed.");return checks;
+        jointWorkspace.Close();ReportedWorkspace(previewPath);Console.WriteLine("Cross UI: section, filler, actual diagrams, elevation editor and reported junction passed.");return checks;
     }
 }

@@ -102,7 +102,7 @@ namespace EngineeringDashboard
                     for(int line=0;line<2;line++)
                     {
                         double y=line==0 ? top : bottom;
-                        foreach(double offset in new[] {-4.0,4.0})dc.DrawLine(new Pen(beam==selectedBeam && i==selectedRun && line==selectedLine ? Brushes.DodgerBlue : Timber,2),new Point(xx(stock.StartMm),y+offset),new Point(xx(stock.EndMm),y+offset));
+                        H20Drawing.Plan(dc,new Point(xx(stock.StartMm),y),new Point(xx(stock.EndMm),y),2,beam==selectedBeam && i==selectedRun && line==selectedLine,4);
                         MemberTargets.Add(Tuple.Create(new Rect(xx(stock.StartMm),y-9,stock.StockLengthMm*scale,18),beam,i,line));
 
                     }
@@ -144,15 +144,21 @@ namespace EngineeringDashboard
             foreach(var support in result.CrossSupports)
             {
                 int encoded=-support.CrossingIndex-1;
-                foreach(var solid in support.Solids)
+                foreach(var solid in support.Solids.Where(s=>s.Member==null))
                 {
                     var rect=new Rect(new Point(xx(solid.X0),yy(solid.Y0)),new Point(xx(solid.X1),yy(solid.Y1)));
-                    int member=Array.IndexOf(support.Members,solid.Member);
-                    dc.DrawRectangle(solid.IsLeg ? Steel : solid.Member==null ? Brushes.SandyBrown : Timber,new Pen(selectedBeam==encoded && selectedRun==member ? Brushes.DodgerBlue : Brushes.SaddleBrown,1),rect);
-                    if(solid.IsLeg)DrawnTowerLegCount++;
-                    if(member>=0)MemberTargets.Insert(0,Tuple.Create(rect,encoded,member,0));
+                    if(solid.IsLeg) {dc.DrawEllipse(Steel,null,new Point(xx((solid.X0+solid.X1)/2),yy((solid.Y0+solid.Y1)/2)),3.5,3.5);DrawnTowerLegCount++;}
+                    else dc.DrawRectangle(Brushes.SandyBrown,new Pen(Brushes.SaddleBrown,1),rect);
                 }
-                foreach(var b in support.Bearings)dc.DrawEllipse(Brushes.DarkRed,null,new Point(xx(b.Xmm),yy(b.Ymm)),3,3);
+                foreach(var group in support.Solids.Where(s=>s.Member!=null).GroupBy(s=>s.Member))
+                {
+                    double x0=group.Min(s=>s.X0),x1=group.Max(s=>s.X1),y0=group.Min(s=>s.Y0),y1=group.Max(s=>s.Y1);
+                    bool alongY=y1-y0>x1-x0;int member=Array.IndexOf(support.Members,group.Key);
+                    var first=alongY ? new Point(xx((x0+x1)/2),yy(y0)) : new Point(xx(x0),yy((y0+y1)/2));
+                    var last=alongY ? new Point(xx((x0+x1)/2),yy(y1)) : new Point(xx(x1),yy((y0+y1)/2));
+                    H20Drawing.Plan(dc,first,last,group.Key.H20Count,selectedBeam==encoded && selectedRun==member,4);
+                    var target=new Rect(first,last);target.Inflate(8,8);MemberTargets.Insert(0,Tuple.Create(target,encoded,member,0));
+                }
             }
         }
         private void Section(DrawingContext dc,double y0)
@@ -257,8 +263,7 @@ namespace EngineeringDashboard
                     dc.DrawLine(new Pen(Brushes.DarkRed,3),new Point(xx(bearing.EndZoneStartMm),zz(bearing.ReceivingTopMm)),new Point(xx(bearing.EndZoneEndMm),zz(bearing.ReceivingTopMm)));
                     Label(dc,$"End zone on B{bearing.Beam+1}: {bearing.EndZoneEndMm-bearing.EndZoneStartMm:0.###} mm",xx(bearing.Ymm),zz(bearing.ReceivingTopMm)-40);continue;
                 }
-                dc.DrawEllipse(Brushes.DarkRed,null,new Point(xx(bearing.Ymm),zz(bearing.ReceivingTopMm)),3,3);
-                Label(dc,bearing.FillerHeightMm<=1e-7 ? "Direct bearing" : $"Filler {bearing.FillerHeightMm:0.###} mm",xx(bearing.Ymm)+4,zz(bearing.H20UndersideMm)+3);
+                if(bearing.FillerHeightMm>1e-7)Label(dc,$"Filler {bearing.FillerHeightMm:0.###} mm",xx(bearing.Ymm)+4,zz(bearing.H20UndersideMm)+3);
             }
         }
         private static void Arrow(DrawingContext dc,double x,double y,Brush colour) {dc.DrawLine(new Pen(colour,2),new Point(x-4,y-6),new Point(x,y));dc.DrawLine(new Pen(colour,2),new Point(x+4,y-6),new Point(x,y));}

@@ -42,13 +42,16 @@ namespace EngineeringDashboard
         {
             if(SelectedRun<0 || SelectedRun>=crossSupport.Members.Length)return;
             var m=crossSupport.Members[SelectedRun];SelectedTransferMember=DisplayedTransferMember=m;ActualLoadedAnalysis=LoadedAnalysis=m.Analysis;Analysis=null;
-            Title=$"X{crossSupport.CrossingIndex+1} · {m.Name} · actual cross-beam loads — response diagrams";charts.Children.Clear();
-            charts.Children.Add(new TextBlock {Text=crossSupport.Schedule,TextWrapping=TextWrapping.Wrap});
-            charts.Children.Add(new TextBlock {Text=CrossBeamSupportResult.Limitations,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,8,0,8)});
-            LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);AddChart("Loading diagram · actual cross-beam loads",LoadingDiagram,true);
-            AddLoadDetails(string.Join("; ",m.Analysis.Reactions.Select((v,i)=>$"Bearing {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.###} kN")));
-            var names=new[] {"Shear (kN)","Moment (kNm)","Relative member deflection (mm)"};
-            for(int i=0;i<3;i++)AddChart(names[i],new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
+            bool primary=m.H20Count==2;
+            Title=$"X{crossSupport.CrossingIndex+1} · {m.Name}"+(primary ? " · double H20" : " · single H20")+" — response diagrams";charts.Children.Clear();
+            if(primary)charts.Children.Add(new Border {Background=new SolidColorBrush(Color.FromRgb(255,246,219)),Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
+                Child=new TextBlock {Text="UDL design model · full crossing concrete load, including end strips, distributed over centred primary stock coverage. These loads govern layout checks and diagrams.",TextWrapping=TextWrapping.Wrap}});
+            charts.Children.Add(new TextBlock {Text=m.LoadCase+" · "+m.LengthMm.ToString("0.###")+" mm · load "+m.Analysis.TotalLoadKn.ToString("0.00")+" kN",TextWrapping=TextWrapping.Wrap});
+            AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN")),primary ? "UDL support reactions" : "Support reactions");
+            charts.Children.Add(new Expander {Header="Crossing support schedule and details",IsExpanded=false,Margin=new Thickness(0,4,0,4),Content=new TextBlock {Text=crossSupport.Schedule+"\n"+CrossBeamSupportResult.Limitations,TextWrapping=TextWrapping.Wrap}});
+            LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);AddChart("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,true);
+            AddResponseCharts(m,primary);
+
         }
         private void Refresh()
         {
@@ -116,6 +119,10 @@ namespace EngineeringDashboard
                 primary ? "UDL support reactions" : "Support reactions and point loads");
             LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);
             AddChart("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,true);
+            AddResponseCharts(m,primary);
+        }
+        private void AddResponseCharts(TransferMember m,bool primary)
+        {
             string[] names={"Shear (kN)","Moment (kNm)","Relative member deflection (mm)"};
             double[] peaks={m.Analysis.ShearKn,m.Analysis.MomentKnM,m.Analysis.DeflectionMm};
             for(int i=0;i<3;i++)
