@@ -59,7 +59,7 @@ namespace EngineeringDashboard
             numberOfProps=fresh.numberOfProps;deflection=fresh.deflection;slabStripWidthMm=fresh.slabStripWidthMm;
             beamLengthMm=fresh.beamLengthMm;towerLegCapacityKn=fresh.towerLegCapacityKn;stockLengthsText=fresh.stockLengthsText;
             stockEndSetbackMm=fresh.stockEndSetbackMm;maximumConcreteEndOverhangMm=fresh.maximumConcreteEndOverhangMm;
-            exclude600Standalone=fresh.exclude600Standalone;allowCustomH20Lengths=fresh.allowCustomH20Lengths;ignoreUplift=fresh.ignoreUplift;
+            exclude600Standalone=fresh.exclude600Standalone;allowCustomH20Lengths=fresh.allowCustomH20Lengths;customH20Scope=fresh.customH20Scope;ignoreUplift=fresh.ignoreUplift;
             upperSupportSpacingMm=fresh.upperSupportSpacingMm;leftSlabBayMm=fresh.leftSlabBayMm;rightSlabBayMm=fresh.rightSlabBayMm;
             calculatorTextErrors=false;additionalTextErrors.Clear();textErrors=false;
             beamSearchTrace=null;SelectedNetworkBeam=0;

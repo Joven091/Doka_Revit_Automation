@@ -128,10 +128,22 @@ namespace EngineeringDashboard
             }
         }
     }
+    public enum CustomH20LengthScope { Both, BeamSupports, SlabSupports }
+    public sealed class CustomH20ScopeOption
+    {
+        public string Label { get; }
+        public CustomH20LengthScope Value { get; }
+        private CustomH20ScopeOption(string label, CustomH20LengthScope value) { Label=label; Value=value; }
+        public static readonly CustomH20ScopeOption[] All = {
+            new CustomH20ScopeOption("Both",CustomH20LengthScope.Both),
+            new CustomH20ScopeOption("Beam supports only",CustomH20LengthScope.BeamSupports),
+            new CustomH20ScopeOption("Slab supports only",CustomH20LengthScope.SlabSupports)
+        };
+    }
     public sealed class TowerInput
     {
         internal TowerSearchDiagnostics Diagnostics;
-        internal Dictionary<Tuple<int,double>,DedicatedCrossSearch> DedicatedCrossCache;
+        internal Dictionary<Tuple<int,double,double,double,double,double>,DedicatedCrossSearch> DedicatedCrossCache;
         internal BeamSearchTrace Trace;
         // Tests can replay the original search without reuse; production searches reuse work.
         internal bool ReuseSearchWork = true;
@@ -165,6 +177,18 @@ namespace EngineeringDashboard
         public int DeflectionDenominator { get; set; }
         public double[] StockLengthsMm { get; set; } = TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths);
         public bool AllowCustomH20Lengths { get; set; }
+        private CustomH20LengthScope customH20Scope;
+        public CustomH20LengthScope CustomH20Scope
+        {
+            get => customH20Scope;
+            set { if(!Enum.IsDefined(typeof(CustomH20LengthScope),value))throw new ArgumentException("Select a custom H20 length scope."); customH20Scope=value; }
+        }
+        public bool AllowCustomBeamLengths => AllowCustomH20Lengths && CustomH20Scope!=CustomH20LengthScope.SlabSupports;
+        public bool AllowCustomSlabLengths => AllowCustomH20Lengths && CustomH20Scope!=CustomH20LengthScope.BeamSupports;
+        // Preserve the historical standalone slab fallback only for the default scope.
+        internal bool PermitsSlabLength(double length) => AllowCustomSlabLengths || StockLengthsMm.Contains(length)
+            || CustomH20Scope==CustomH20LengthScope.Both && TransferredSlab!=null && !TransferredSlab.IsNetwork;
+
         // Explicit project assumption; no stabilizing deadweight or connection model is added.
         public bool IgnoreUplift { get; set; }
         public double StockEndSetbackMm { get; set; } = 150;
@@ -278,7 +302,7 @@ namespace EngineeringDashboard
                 double overhang = (input.LengthMm - covered) / 2;
                 var candidateInput = new TowerInput { LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
                     TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator,
-                    Trace = input.Trace, IgnoreUplift = input.IgnoreUplift, AllowCustomH20Lengths = input.AllowCustomH20Lengths, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
+                    Trace = input.Trace, IgnoreUplift = input.IgnoreUplift, AllowCustomH20Lengths = input.AllowCustomH20Lengths, CustomH20Scope = input.CustomH20Scope, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
                 TowerLayout candidate;
                 try { candidate = OptimizeCovered(candidateInput); }
                 catch (TowerOptimizationException) {continue;}

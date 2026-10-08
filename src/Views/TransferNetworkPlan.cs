@@ -250,6 +250,11 @@ namespace EngineeringDashboard
             }
             foreach(var bearing in support.Bearings.GroupBy(b=>new {b.Ymm,b.FillerHeightMm}).Select(g=>g.First()))
             {
+                if(bearing.IsConcreteEndZone)
+                {
+                    dc.DrawLine(new Pen(Brushes.DarkRed,3),new Point(xx(bearing.EndZoneStartMm),zz(bearing.ReceivingTopMm)),new Point(xx(bearing.EndZoneEndMm),zz(bearing.ReceivingTopMm)));
+                    Label(dc,$"End zone on B{bearing.Beam+1}: {bearing.EndZoneEndMm-bearing.EndZoneStartMm:0.###} mm",xx(bearing.Ymm),zz(bearing.ReceivingTopMm)-16);continue;
+                }
                 dc.DrawEllipse(Brushes.DarkRed,null,new Point(xx(bearing.Ymm),zz(bearing.ReceivingTopMm)),3,3);
                 Label(dc,bearing.FillerHeightMm<=1e-7 ? "Direct bearing" : $"Filler {bearing.FillerHeightMm:0.###} mm",xx(bearing.Ymm)+4,zz(bearing.H20UndersideMm)+3);
             }

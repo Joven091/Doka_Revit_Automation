@@ -196,11 +196,24 @@ internal static class WorkspaceTests
             Check(customH20.IsChecked==false,"custom H20 checkbox reflects disabled setting");customH20.IsChecked=true;customH20.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
             Check(model.AllowCustomH20Lengths && !model.IsCalculationValid,"workspace custom toggle updates shared model and invalidates result");
             Click("Undo");Check(!model.AllowCustomH20Lengths,"undo restores custom setting");Click("Redo");Check(model.AllowCustomH20Lengths,"redo restores custom setting");
+            var customScope=Controls<ComboBox>(workspace).Single(c=>c.Name=="CustomH20ScopeSelector");
+            Check(customScope.IsEnabled && customScope.Items.Count==3 && Equals(customScope.SelectedValue,CustomH20LengthScope.Both),"workspace offers both, beam-only and slab-only custom scope");
+            customScope.SelectedValue=CustomH20LengthScope.BeamSupports;Pump();
+            Check(model.CustomH20Scope==CustomH20LengthScope.BeamSupports && !model.IsCalculationValid,"scope change updates model and clears result");
+            Click("Undo");Check(model.CustomH20Scope==CustomH20LengthScope.Both,"undo restores custom scope");Click("Redo");Check(model.CustomH20Scope==CustomH20LengthScope.BeamSupports,"redo restores custom scope");
+            Check(Equals(((ComboBox)parent.FindName("CustomH20ScopeSelector")).SelectedValue,CustomH20LengthScope.BeamSupports),"calculator and workspace scope selectors synchronize");
             var customLengthsRecord=parent.CaptureDrawingInputs();Check(customLengthsRecord.Inputs.Single(f=>f.Name=="AllowCustomH20Lengths").Value=="True","custom setting is saved with drawing inputs");
-            model.AllowCustomH20Lengths=false;parent.RestoreCalculation(customLengthsRecord);Pump();Check(model.AllowCustomH20Lengths,"custom setting loads from calculation file");
+            Check(customLengthsRecord.Inputs.Single(f=>f.Name=="CustomH20Scope").Value=="BeamSupports","custom scope saved with drawing inputs");
+            model.AllowCustomH20Lengths=false;model.CustomH20Scope=CustomH20LengthScope.SlabSupports;parent.RestoreCalculation(customLengthsRecord);Pump();Check(model.AllowCustomH20Lengths && model.CustomH20Scope==CustomH20LengthScope.BeamSupports,"custom setting and scope load from calculation file");
+            var scopeField=customLengthsRecord.Inputs.Single(f=>f.Name=="CustomH20Scope");scopeField.Value="99";
+            bool badScope=false;try {parent.RestoreCalculation(customLengthsRecord);}catch(ArgumentException) {badScope=true;}
+            Check(badScope && model.CustomH20Scope==CustomH20LengthScope.BeamSupports,"invalid saved scope rejected without changing live inputs");
+            customLengthsRecord.Inputs.Remove(scopeField);parent.RestoreCalculation(customLengthsRecord);Pump();
+            Check(model.AllowCustomH20Lengths && model.CustomH20Scope==CustomH20LengthScope.Both,"legacy custom-enabled files retain both scopes");
             Check(((CheckBox)parent.FindName("CustomH20LengthsCheckBox")).IsChecked==true,"calculator checkbox synchronizes with layout window");
             customLengthsRecord.Inputs.RemoveAll(f=>f.Name=="AllowCustomH20Lengths");parent.RestoreCalculation(customLengthsRecord);Pump();
             Check(!model.AllowCustomH20Lengths && Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow custom H20 lengths (25 mm)")).IsChecked==false,"legacy files restore disabled custom mode in both windows");
+            Check(!Controls<ComboBox>(workspace).Single(c=>c.Name=="CustomH20ScopeSelector").IsEnabled,"scope selector disables when custom master switch is off");
             var uplift=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Exclude uplift check (connected plywood / deadweight assumed)"));
             Check(uplift.IsChecked==false,"workspace uplift exclusion defaults off");uplift.IsChecked=true;uplift.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
             Check(model.IgnoreUplift && !model.IsCalculationValid,"workspace uplift opt-in invalidates the shared result");
