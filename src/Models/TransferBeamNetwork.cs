@@ -43,6 +43,7 @@ namespace EngineeringDashboard
         public double BottomElevationMm {get=>bottom??-DepthMm;set {bottom=value;PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(nameof(BottomElevationMm)));}}
         public double DepthMm {get=>depth;set {depth=value;PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(nameof(DepthMm)));PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(nameof(BottomElevationMm)));}}
         public double WidthMm {get=>width;set {width=value;PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(nameof(WidthMm)));}}
+        public void SetDepthKeepingTopMm(double value) {double top=BottomElevationMm+DepthMm;DepthMm=value;BottomElevationMm=top-value;}
         public event PropertyChangedEventHandler PropertyChanged;
     }
     public sealed class TransferBayRow : INotifyPropertyChanged
@@ -73,6 +74,7 @@ namespace EngineeringDashboard
         public double PositionMm {get=>position;set {position=value;Notify(nameof(PositionMm));}}
         public double WidthMm {get=>width;set {width=value;Notify(nameof(WidthMm));}}
         public double DepthMm {get=>depth;set {depth=value;Notify(nameof(DepthMm));Notify(nameof(BottomElevationMm));}}
+        public void SetDepthKeepingTopMm(double value) {double top=BottomElevationMm+DepthMm;DepthMm=value;BottomElevationMm=top-value;}
         public event PropertyChangedEventHandler PropertyChanged;
         private void Notify(string name)=>PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(name));
     }
@@ -193,7 +195,7 @@ namespace EngineeringDashboard
                 Action<int> run=index=>
                 {
                     var worker=common.CopyForSearch();
-                    worker.DedicatedCrossCache=new Dictionary<Tuple<int,double>,DedicatedCrossSearch>();
+                    worker.DedicatedCrossCache=new Dictionary<Tuple<int,double,double,double,double,double>,DedicatedCrossSearch>();
                     worker.NetworkNumerics=common.ReuseSearchWork && (common.ReuseNetworkNumerics || common.ReuseTransverseNumerics) ? numericalWork.Value : null;
                     worker.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};
                     outcomes[index]=SearchScenario(worker,input,stockCovers,geometryCache,incumbent,minimumLegs,scenarios[index].Item1,scenarios[index].Item2,separate);
@@ -314,9 +316,9 @@ namespace EngineeringDashboard
         private static IEnumerable<UpperTransferPlan> Options(TowerInput common,TransferNetworkInput input,int bay,double tributary,string rowLocation)
         {
             var row=input.Bays[bay];var result=new List<Tuple<UpperTransferPlan,double>>();
-            var lengths=UpperTransferPlan.SlabLengths(row.WidthMm,common.StockLengthsMm,common.AllowCustomH20Lengths)
-                .Where(length=>common.AllowCustomH20Lengths || !common.RespectNetworkCatalogueLengths || common.StockLengthsMm.Contains(length)).ToArray();
-            if(lengths.Length==0)common.Diagnostics.Geometry("S"+(bay+1)+" length",$"S{bay+1}: no permitted slab H20 length fits clear bay {row.WidthMm:0.###} mm with 200–350 mm edge strips.","Review the clear bay width and required edge clearance.",blocker:true);
+            var lengths=UpperTransferPlan.SlabLengths(row.WidthMm,common.StockLengthsMm,common.AllowCustomSlabLengths)
+                .Where(length=>common.AllowCustomSlabLengths || !common.RespectNetworkCatalogueLengths && common.CustomH20Scope==CustomH20LengthScope.Both || common.StockLengthsMm.Contains(length)).ToArray();
+            if(lengths.Length==0)common.Diagnostics.Geometry("S"+(bay+1)+" length",$"S{bay+1}: no permitted slab H20 length fits clear bay {row.WidthMm:0.###} mm with 200–350 mm edge strips.","Review slab stocks, edge clearance and the custom-length scope.",blocker:true);
             foreach(double stock in lengths)
             {
                 double edge=(row.WidthMm-stock)/2;if(edge<200 || edge>350)continue;
@@ -346,7 +348,7 @@ namespace EngineeringDashboard
                 LeftBayMm=left==null ? 0 : network.Bays[beam-1].WidthMm,RightBayMm=right==null ? 0 : network.Bays[beam].WidthMm,LeftAreaLoadKnM2=left==null ? 0 : network.AreaLoad(network.Bays[beam-1].ThicknessMm),RightAreaLoadKnM2=right==null ? 0 : network.AreaLoad(network.Bays[beam].ThicknessMm),LeftPlan=left?.Reverse(),RightPlan=right,
                 LeftCrossingBands=left==null ? new BeamDistributedLoad[0] : CrossingBands(network,beam-1),RightCrossingBands=right==null ? new BeamDistributedLoad[0] : CrossingBands(network,beam),
                 LeftEffectiveWidthsMm=left==null ? null : EffectiveWidthsMm(common,network,beam-1,cover,phase),RightEffectiveWidthsMm=right==null ? null : EffectiveWidthsMm(common,network,beam,cover,phase)};
-            var input=new TowerInput {IgnoreUplift=common.IgnoreUplift,Trace=common.Trace,ReuseSearchWork=common.ReuseSearchWork,PruneUneconomicCandidates=common.PruneUneconomicCandidates,StagePrimaryChecks=common.StagePrimaryChecks,ReuseNetworkNumerics=common.ReuseNetworkNumerics,ReuseTransverseNumerics=common.ReuseTransverseNumerics,LazySearchDiagnostics=common.LazySearchDiagnostics,DeferTransferLayout=common.DeferTransferLayout,SearchByLegTier=common.SearchByLegTier,NetworkLegCeiling=ceiling,AllowCustomH20Lengths=common.AllowCustomH20Lengths,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
+            var input=new TowerInput {IgnoreUplift=common.IgnoreUplift,Trace=common.Trace,ReuseSearchWork=common.ReuseSearchWork,PruneUneconomicCandidates=common.PruneUneconomicCandidates,StagePrimaryChecks=common.StagePrimaryChecks,ReuseNetworkNumerics=common.ReuseNetworkNumerics,ReuseTransverseNumerics=common.ReuseTransverseNumerics,LazySearchDiagnostics=common.LazySearchDiagnostics,DeferTransferLayout=common.DeferTransferLayout,SearchByLegTier=common.SearchByLegTier,NetworkLegCeiling=ceiling,AllowCustomH20Lengths=common.AllowCustomH20Lengths,CustomH20Scope=common.CustomH20Scope,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
             try {return TransferredSlabOptimizer.Optimize(input,true);}
             catch(TowerOptimizationException){return null;}
             catch(ArgumentException ex) {common.Diagnostics.Geometry("B"+(beam+1)+" geometry",$"B{beam+1}: {ex.Message}","Review this beam's geometry and transfer inputs.");return null;}

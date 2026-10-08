@@ -231,6 +231,17 @@ namespace EngineeringDashboard
                 foreach(var bearing in support.Bearings)
                 {
                     var p=Screen(bearing.Xmm,bearing.Ymm);dc.DrawEllipse(Brushes.DarkRed,null,p,3,3);
+                    if(bearing.IsConcreteEndZone)
+                    {
+                        LegTargets.Add(Tuple.Create(new Rect(p.X-5,p.Y-5,10,10),$"X{support.CrossingIndex+1} concrete end zone on B{bearing.Beam+1}/T{bearing.Row+1} · load {bearing.ReactionKn:0.###} kN included in H20, primary and leg checks"));
+                        if(bearing==support.Bearings.First(b=>b.IsConcreteEndZone && b.Beam==bearing.Beam))
+                        {
+                            var zone=new Rect(Screen(bearing.FootprintStartMm,bearing.EndZoneStartMm),Screen(bearing.FootprintEndMm,bearing.EndZoneEndMm));
+                            dc.DrawRectangle(null,new Pen(Brushes.DarkRed,1) {DashStyle=DashStyles.Dash},zone);
+                            if(AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex)Label(dc,$"End zone on B{bearing.Beam+1}",new Point(zone.Right+5,(zone.Top+zone.Bottom)/2),Brushes.DarkRed);
+                        }
+                        continue;
+                    }
                     LegTargets.Add(Tuple.Create(new Rect(p.X-5,p.Y-5,10,10),$"X{support.CrossingIndex+1} bearing {bearing.Label??($"B{bearing.Beam+1}/T{bearing.Row+1}")} @ ({bearing.Xmm:0.###}, {bearing.Ymm:0.###}) mm · filler {bearing.FillerHeightMm:0.###} mm · reaction {bearing.ReactionKn:0.###} kN · filler strength/stability not verified"));
                     if(AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex)Label(dc,bearing.FillerHeightMm<=1e-7 ? "Direct bearing" : $"Filler {bearing.FillerHeightMm:0.###} mm",p+new Vector(5,5),Brushes.SaddleBrown);
                 }

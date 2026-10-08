@@ -59,7 +59,7 @@ namespace EngineeringDashboard
         internal static double[] CandidateLengths(TowerInput input, double minimum, double maximum)
         {
             var stocks = input.StockLengthsMm.Where(x => x >= minimum && x <= maximum);
-            if (!input.AllowCustomH20Lengths) return stocks.OrderBy(x => x).ToArray();
+            if (!input.AllowCustomBeamLengths) return stocks.OrderBy(x => x).ToArray();
             int first = (int)Math.Ceiling(Math.Max(25, minimum) / 25), last = (int)Math.Floor(Math.Min(50000, maximum) / 25);
             return stocks.Concat(Enumerable.Range(first, Math.Max(0, last-first+1)).Select(x => x*25.0)).Distinct().OrderBy(x => x).ToArray();
         }

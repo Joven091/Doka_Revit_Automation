@@ -8,7 +8,7 @@ namespace EngineeringDashboard
     public partial class BeamCalculatorViewModel
     {
         private BeamSearchTrace beamSearchTrace;
-        private const string DiagnosticInputs="UseTowers,TransferSlabLoads,UseBeamNetwork,Depth,Width,BeamLengthMm,FloorHeight,NumberOfProps,TowerLegCapacityKn,StockLengthsText,AllowCustomH20Lengths,IgnoreUplift,StockEndSetbackMm,MaximumConcreteEndOverhangMm,Exclude600Standalone,UpperSupportSpacingMm,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,SlabStripWidthMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
+        private const string DiagnosticInputs="UseTowers,TransferSlabLoads,UseBeamNetwork,Depth,Width,BeamLengthMm,FloorHeight,NumberOfProps,TowerLegCapacityKn,StockLengthsText,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,StockEndSetbackMm,MaximumConcreteEndOverhangMm,Exclude600Standalone,UpperSupportSpacingMm,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,SlabStripWidthMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
         private static string DiagnosticValue(object value)=>value is double number ? number.ToString("R",CultureInfo.InvariantCulture) : Convert.ToString(value,CultureInfo.InvariantCulture);
         private string CaptureDiagnosticInputs()
         {

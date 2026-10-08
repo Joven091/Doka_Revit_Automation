@@ -19,6 +19,13 @@ namespace EngineeringDashboard
         public bool IgnoreUplift { get => ignoreUplift; set { ignoreUplift=value; Changed(); } }
         private bool allowCustomH20Lengths;
         public bool AllowCustomH20Lengths { get => allowCustomH20Lengths; set { allowCustomH20Lengths = value; Changed(); } }
+        private CustomH20LengthScope customH20Scope;
+        public CustomH20ScopeOption[] CustomH20ScopeOptions => CustomH20ScopeOption.All;
+        public CustomH20LengthScope CustomH20Scope
+        {
+            get => customH20Scope;
+            set { if(!Enum.IsDefined(typeof(CustomH20LengthScope),value))throw new ArgumentException("Select a custom H20 length scope."); customH20Scope=value; Changed(); }
+        }
         private double beamLengthMm = 6100, towerLegCapacityKn = 30;
         private string stockLengthsText = TowerStockPlanner.DefaultLengths;
         private double stockEndSetbackMm = 150, maximumConcreteEndOverhangMm = 75;
@@ -68,7 +75,7 @@ namespace EngineeringDashboard
             double left = HasLeftSlab && !IsTransferMode ? AreaLoad(LeftSlabThickness) * SlabStripWidthMm / 1000 : 0;
             double right = HasRightSlab && !IsTransferMode ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;
             var input = new TowerInput { LengthMm = BeamLengthMm, LegCapacityKn = TowerLegCapacityKn, DeflectionLimitMm = DeflectionLimit.Millimetres, DeflectionDenominator = DeflectionLimit.Denominator,
-                IgnoreUplift = IgnoreUplift, AllowCustomH20Lengths = AllowCustomH20Lengths, Exclude600Standalone = Exclude600Standalone, MaximumConcreteEndOverhangMm = MaximumConcreteEndOverhangMm, StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
+                IgnoreUplift = IgnoreUplift, AllowCustomH20Lengths = AllowCustomH20Lengths, CustomH20Scope = CustomH20Scope, Exclude600Standalone = Exclude600Standalone, MaximumConcreteEndOverhangMm = MaximumConcreteEndOverhangMm, StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
                 TotalLineLoad = IsNetworkMode ? 0 : AreaLoad(Depth) * Width / 1000 + left + right,
                 TransverseLoadMoment = IsTransferMode ? 0 : (right - left) * (Width + (HasAnySlab ? SlabStripWidthMm : 0)) / 2000 };
             if(IsNetworkMode) { input.Network=CreateNetworkInput(); input.Network.Validate(input); input.TotalLineLoad=input.Network.AreaLoad(input.Network.Beams[0].DepthMm)*input.Network.Beams[0].WidthMm/1000; }

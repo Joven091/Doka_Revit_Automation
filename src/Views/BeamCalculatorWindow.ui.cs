@@ -180,6 +180,7 @@ namespace EngineeringDashboard
             record.Inputs.Add(CalculationFiles.Field("MaximumConcreteEndOverhangMm", vm.MaximumConcreteEndOverhangMm));
             record.Inputs.Add(CalculationFiles.Field("Exclude600Standalone", vm.Exclude600Standalone));
             record.Inputs.Add(CalculationFiles.Field("AllowCustomH20Lengths", vm.AllowCustomH20Lengths));
+            record.Inputs.Add(CalculationFiles.Field("CustomH20Scope", vm.CustomH20Scope));
             record.Inputs.Add(CalculationFiles.Field("IgnoreUplift", vm.IgnoreUplift));
             record.Inputs.Add(CalculationFiles.Field("PropConfiguration", vm.SelectedProp?.CapacityKey ?? BeamPropOption.All[0].CapacityKey));
             record.Inputs.Add(CalculationFiles.Field("DeflectionCriterion", vm.DeflectionLimit.Label));
@@ -204,6 +205,7 @@ namespace EngineeringDashboard
             target.UseBeamNetwork=candidate.UseBeamNetwork;if(candidate.NetworkBeams.Count>=2)target.NetworkConfigurationXml=candidate.NetworkConfigurationXml;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
             target.AllowCustomH20Lengths = candidate.AllowCustomH20Lengths;
+            target.CustomH20Scope = candidate.CustomH20Scope;
             target.IgnoreUplift = candidate.IgnoreUplift;
             target.Exclude600Standalone = candidate.Exclude600Standalone; target.MaximumConcreteEndOverhangMm = candidate.MaximumConcreteEndOverhangMm; target.StockLengthsText = candidate.StockLengthsText; target.StockEndSetbackMm = candidate.StockEndSetbackMm;
             foreach(var box in TextInputs(this)) box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
@@ -219,6 +221,13 @@ namespace EngineeringDashboard
             if (record.Inputs.Any(f => f.Name == "IgnoreUplift")) CalculationFiles.Apply(record, "Beam", vm, "IgnoreUplift");
             vm.AllowCustomH20Lengths = false;
             if (record.Inputs.Any(f => f.Name == "AllowCustomH20Lengths")) CalculationFiles.Apply(record, "Beam", vm, "AllowCustomH20Lengths");
+            vm.CustomH20Scope = CustomH20LengthScope.Both;
+            var scope=record.Inputs.SingleOrDefault(f=>f.Name=="CustomH20Scope");
+            if(scope!=null)
+            {
+                if(!Enum.TryParse(scope.Value,out CustomH20LengthScope value) || !Enum.IsDefined(typeof(CustomH20LengthScope),value))throw new ArgumentException("Invalid custom H20 length scope.");
+                vm.CustomH20Scope=value;
+            }
             vm.Exclude600Standalone = false;
             if (record.Inputs.Any(f => f.Name == "Exclude600Standalone")) CalculationFiles.Apply(record, "Beam", vm, "Exclude600Standalone");
             vm.MaximumConcreteEndOverhangMm = 0;
