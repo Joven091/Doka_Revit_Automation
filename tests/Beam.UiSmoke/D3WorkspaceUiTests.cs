@@ -48,6 +48,8 @@ internal static class D3WorkspaceUiTests
                 var image=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);image.Render(surface);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(image));
                 using(var file=File.Create(Path.ChangeExtension(output,"d3-main-workspace.png")))png.Save(file);
             }
+            model.CustomH20Scope=CustomH20LengthScope.BeamSupports;Pump();
+            Check(Equals(((ComboBox)host.FindName("CustomH20ScopeSelector")).SelectedValue,CustomH20LengthScope.BeamSupports),"calculator bindings remain synchronized while its drawing surface is displayed");
             Click(view,"ChangeSystem");
             Check(host.FormworkWorkspace==null && ReferenceEquals(host.Content,host.ClassicCalculatorContent) && !model.HasSelectedSupportSystem,"change system restores the support picker and releases the workspace");
             ((Button)host.FindName("PickPropsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();

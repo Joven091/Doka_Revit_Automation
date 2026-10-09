@@ -307,9 +307,9 @@ internal static class Program
    window.RestoreCalculation(networkSaved);Pump();Check(!vm.HasTowerFailure && failureExpander.Visibility==Visibility.Collapsed,"restoring inputs clears stale failure details");Optimize();Render();Check(vm.IsCalculationValid && !vm.HasTowerFailure,"successful retry hides failure report");
    checks+=D3WorkspaceUiTests.Run(args.Length>0 ? args[0] : null);
    checks+=PresentationUiTests.Run(args.Length>0 ? args[0] : null);
+   WorkspaceTests.Run(window,vm,customWorkspaceRecord,args.Length>0 ? args[0] : null);
    checks+=CaseDiagramUiTests.Run();
    checks+=CrossSupportUiTests.Run(args.Length>0 ? args[0] : null);
-   WorkspaceTests.Run(window,vm,customWorkspaceRecord,args.Length>0 ? args[0] : null);
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }
   catch(Exception ex){Console.Error.WriteLine(ex);window?.Close();return 1;}

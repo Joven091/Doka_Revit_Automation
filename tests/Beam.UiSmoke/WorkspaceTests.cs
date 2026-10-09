@@ -142,8 +142,10 @@ internal static class WorkspaceTests
             var lowerTarget=drawing.MemberTargets.First(h=>h.Item2>=0 && h.Item3>=layout.Beams[h.Item2].StockPlan.Pieces.Length);
             workspace.ShowMember(lowerTarget.Item2,lowerTarget.Item3,lowerTarget.Item4);Pump();
             Check(workspace.Diagrams.SelectedTransferMember.H20Count==1 && workspace.Diagrams.LoadedAnalysis.DeflectionEvaluated,"visible secondary selection opens checked single-H20 diagrams");
+            Check(workspace.SelectedResultText.Contains("Selected beam · B"+(lowerTarget.Item2+1)),"secondary picking selects its actual receiving beam");
             workspace.Diagrams.Close();Click("SecondaryH20s");Render();
             Check(drawing.DrawnSecondaryH20Count==0 && ReferenceEquals(layout,model.NetworkResult),"hiding secondaries leaves the layout and calculated checks intact");
+            drawing.Select(FormworkObject.Beam,0);Pump();
             Click("Geometry");Render();
             Check(workspace.NetworkResultText.Contains(model.NetworkResult.LegCount+" tower legs") && workspace.SelectedResultText.Contains("Selected beam · B1") && workspace.SelectedResultText.Contains(model.NetworkResult.Beams[0].LegCount+" tower legs"),"network totals and selected beam quantities have explicit independent labels");
             var details=Controls<Expander>(workspace).Single(e=>Equals(e.Header,"Details"));

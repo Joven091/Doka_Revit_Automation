@@ -83,6 +83,8 @@ namespace EngineeringDashboard
         private void InitializeUi()
         {
             ClassicCalculatorContent=Content;
+            // Keep calculator controls synchronized while the drawing occupies Content.
+            ((FrameworkElement)ClassicCalculatorContent).SetBinding(FrameworkElement.DataContextProperty,new System.Windows.Data.Binding("DataContext") {Source=this});
             Loaded+=(s,e)=>DrawingWorkspace_Click(null,null);
             NetworkPlan.SeparateSlabSelected+=bay=> {SeparateSlabNotice.ShowBay(bay);SeparateSlabNotice.BringIntoView();};
             NetworkPlan.MemberSelected+=(beam,run,line)=>
