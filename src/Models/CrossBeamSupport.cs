@@ -235,6 +235,11 @@ namespace EngineeringDashboard
             if(common.DedicatedCrossCache!=null && common.DedicatedCrossCache.TryGetValue(cacheKey,out var cached)) {failure=cached.Failure;return cached.Result;}
             var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2+nearTrim,span=r.Input.Bays[bay].WidthMm-nearTrim-farTrim;
             failure=null;
+            if(nearTrim+common.MaximumConcreteEndOverhangMm<SideShutterClearanceMm || farTrim+common.MaximumConcreteEndOverhangMm<SideShutterClearanceMm)
+            {
+                failure=$"X{index+1} dedicated: primary stock cannot keep the 200 mm side-shutter gap within the entered {common.MaximumConcreteEndOverhangMm:0.###} mm concrete end allowance. Provide checked junction end-zone support.";
+                if(common.DedicatedCrossCache!=null)common.DedicatedCrossCache[cacheKey]=new DedicatedCrossSearch {Failure=failure};return null;
+            }
             // Dedicated transverse secondaries and primary pairs use the same checked tower geometry as main beams.
             var input=common.CopyForSearch();input.LengthMm=span;input.Network=null;
             input.DiagnosticScope=$"X{index+1} dedicated · ";
@@ -414,7 +419,7 @@ namespace EngineeringDashboard
                 if(Math.Abs(b.BottomElevationMm-c.BottomElevationMm)>1e-7)continue;
                 double end=r.BeamCentresMm[beam]+t.LowerStockStartMm+(side==0 ? t.LowerStockLengthMm : 0);
                 double trim=side==0 ? end-face : face+span-end;
-                if(trim<SideShutterClearanceMm-1e-7 || trim>=span)continue;
+                if(trim<=0 || trim>=span)continue;
                 if(side==0)near=trim;else far=trim;
                 // These bearers already continue under the main beam. Their flanges may
                 // straddle the cross footprint edge; only the actual concrete tributary is added.
@@ -429,7 +434,7 @@ namespace EngineeringDashboard
                     zones.Add(new CrossBeamBearing {Beam=beam,Row=rows[k],IsConcreteEndZone=true,EndZoneStartMm=a,EndZoneEndMm=z,EndZoneTributaryWidthMm=effective[k],Xmm=t.RowsMm[rows[k]],Ymm=(a+z)/2,ReceivingTopMm=b.BottomElevationMm,H20UndersideMm=c.BottomElevationMm,FootprintStartMm=lo,FootprintEndMm=hi,ReactionKn=r.Input.AreaLoad(c.DepthMm)*effective[k]*(z-a)/1e6});
                 }
             }
-            if(near<SideShutterClearanceMm || far<SideShutterClearanceMm || near+far>=span-2*common.StockEndSetbackMm)return null;
+            if(near+common.MaximumConcreteEndOverhangMm<SideShutterClearanceMm || far+common.MaximumConcreteEndOverhangMm<SideShutterClearanceMm || near+far>=span-2*common.StockEndSetbackMm)return null;
             foreach(double spacing in new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,175,150}.Distinct())
             foreach(double width in new[] {1000.0,1500,2000,1524,600})
             foreach(double offset in new[] {0.0,25,-25,50,-50,75,-75,100,-100,125,-125,150,-150})
