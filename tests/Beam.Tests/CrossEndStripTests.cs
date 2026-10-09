@@ -20,10 +20,10 @@ internal static class CrossEndStripTests
         double applied=(member.Uniform??new BeamDistributedLoad[0]).Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000*(q.StartMm+q.EndMm)/2000)+(member.Points??new BeamPointLoad[0]).Sum(p=>p.Kn*p.PositionMm/1000);
         Near(member.Analysis.Reactions.Zip(member.SupportsMm,(r,x)=>r*x/1000).Sum(),applied,"signed member moment equilibrium");
     }
-    static void EndStripChecks(TowerLayout layout,double q,double span)
+    static void EndStripChecks(TowerLayout layout,double q,double span,double maximumEnd=75)
     {
         double edge=layout.ConcreteEndOverhangMm;
-        Check(edge>=0 && edge<=75+1e-7 && layout.MaxLegKn<=layout.LegCapacityKn+1e-8,"entered end allowance and individual leg limit retained");
+        Check(edge>=0 && edge<=maximumEnd+1e-7 && layout.MaxLegKn<=layout.LegCapacityKn+1e-8,"entered end allowance and individual leg limit retained");
         Near(layout.Transfer.BeamLoadKn,q*span/1000,"physical concrete load includes both end strips");
         Near(layout.Transfer.TributaryWidthsMm.Sum(),span,"secondary tributaries retain full concrete span");
         var primary=layout.Transfer.PrimaryCases[0];
@@ -74,14 +74,19 @@ internal static class CrossEndStripTests
         var b=new TransferredSlabOptimizer.PrimaryKey(1000,supports,uniform,new[] {new BeamPointLoad {PositionMm=100,Kn=.2}});
         Check(!a.Equals(b),"mixed-load response cache distinguishes end-strip forces");
         var commonNetwork=Common();commonNetwork.LengthMm=2450;commonNetwork.DeflectionDenominator=350;
+        // This independent crossing is below the receiving H20s, so its own
+        // permitted concrete end strips must also provide the 200 mm shutter gap.
+        commonNetwork.MaximumConcreteEndOverhangMm=300;
         var dedicated=TransferNetworkOptimizer.Optimize(commonNetwork,Small());var cross=dedicated.CrossSupports.Single();
         Check(cross.Towers!=null && cross.Towers.ConcreteEndOverhangMm>0 && cross.Schedule.Contains("end strips"),"dedicated support retains end-strip detail in its schedule");
-        EndStripChecks(cross.Towers,Small().AreaLoad(150)*.4,2677);
+        EndStripChecks(cross.Towers,Small().AreaLoad(150)*.4,2677,300);
+        Check(!cross.Bearings.Any(b=>b.IsShutterEndZone),"a receiver above the crossing cannot carry its end load down through a side shutter");
+        Near(cross.LoadKn,Small().AreaLoad(150)*.4*2.677,"independent end strips retain the full cross load");
         foreach(var solid in cross.Solids)foreach(var existing in CrossBeamSupportOptimizer.NetworkSolids(dedicated))Check(!solid.Conflicts(existing),"end allowance does not bypass physical clashes");
         commonNetwork.MaximumConcreteEndOverhangMm=0;
         bool failed=false;
         try {TransferNetworkOptimizer.Optimize(commonNetwork,Small(CrossBeamSupportMode.Automatic));}
-        catch(TowerOptimizationException e) {failed=true;Check(e.Message.Contains("X1") && e.Details.Contains("X1 dedicated") && e.Details.Contains("2677–2677") && !e.Details.Contains("Dedicated cross-beam stock/tower search failed."),"cross failure and cached attempts retain their own exact-coverage diagnosis");}
+        catch(TowerOptimizationException e) {failed=true;Check(e.Message.Contains("X1") && e.Details.Contains("X1 dedicated") && e.Details.Contains("200 mm") && !e.Details.Contains("Dedicated cross-beam stock/tower search failed."),"cross failure retains the shutter-gap and exact-coverage constraint");}
         Check(failed,"zero end allowance still rejects impossible exact stock coverage");
         var vm=new BeamCalculatorViewModel {UseBeamNetwork=true};vm.AddCrossingBeam();vm.NetworkBeams[0].BottomElevationMm=-1750;vm.CrossingBeams[0].BottomElevationMm=-1150;vm.CrossingBeams[0].SupportMode=CrossBeamSupportMode.DedicatedTowers;
         var report=vm.BuildDiagnosticReport();Check(report.Contains("bottom=-1750 mm") && report.Contains("bottom=-1150 mm; supports=DedicatedTowers"),"diagnostics capture soffit elevations and requested cross support mode");
@@ -89,7 +94,7 @@ internal static class CrossEndStripTests
         var currentInput=new TransferNetworkInput {UpperSpacingMm=275,Beams=new[] {new TransferBeamRow {WidthMm=650,DepthMm=1150},new TransferBeamRow {WidthMm=650,DepthMm=1150},new TransferBeamRow {WidthMm=800,DepthMm=1750}},Bays=new[] {new TransferBayRow {WidthMm=3550,ThicknessMm=300},new TransferBayRow {WidthMm=2575,ThicknessMm=300}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=2500,WidthMm=300,DepthMm=600,SupportMode=CrossBeamSupportMode.Automatic}}};
         var current=TransferNetworkOptimizer.Optimize(currentCommon,currentInput);var currentCross=current.CrossSupports.Single();
         Check(current.SeparateSlabCount==0 && currentCross.Towers!=null,"current three-beam report still returns complete slab transfer and its own crossing tower");
-        EndStripChecks(currentCross.Towers,currentInput.AreaLoad(600)*.3,3550);
+        EndStripChecks(currentCross.Towers,currentInput.AreaLoad(600)*.3,3150);
         foreach(var beam in current.Beams)foreach(var member in Members(beam))MemberChecks(member,270);
         Near(currentCross.LoadKn,18.79725,"current X1 UDL retains full concrete and construction load");
         Console.WriteLine($"CURRENT DRAWING REPORT: {current.LegCount} legs; peak {current.PeakLegKn:0.000} kN; X1 primary load model UDL.");
@@ -104,7 +109,7 @@ internal static class CrossEndStripTests
         Check(result.Beams.Length==8 && result.CrossSupports.Length==7 && result.SeparateSlabCount==0,"reported network supports all beams, crossings and slab bays");
         Check(result.PeakLegKn<=70+1e-8 && common.IgnoreUplift && common.Exclude600Standalone && common.StockEndSetbackMm==150,"leg, setback and standalone-600 settings remain in force");
         Check(network.UpperSpacingMm==275 && result.Input.UpperSpacingMm<=275 && result.Schedule.Contains("entered maximum 275"),"automatic spacing adjustment is within the unchanged input maximum and explained");
-        Check(result.CrossSupports.All(c=>c.Towers!=null && c.Bearings.Any(b=>b.IsConcreteEndZone)),"every crossing uses its own tower and direct concrete end-zone support");
+        Check(result.CrossSupports.All(c=>c.Towers!=null && c.Bearings.Any(b=>b.IsConcreteEndZone && !b.IsShutterEndZone) && c.Bearings.Any(b=>b.IsShutterEndZone)),"every mixed-depth crossing uses its own tower, a direct end zone and an existing side-shutter end zone");
         Check(result.CrossSupports.Any(c=>Math.Abs(c.TowerSpanOffsetMm)>0),"crossing tower supports can be displaced along their span");
         Check(result.CrossSupports.Any(c=>c.PrimaryNearExtensionMm+c.PrimaryFarExtensionMm>0),"short crossing spans coordinate permitted unloaded primary tails with complete tower footprints");
         foreach(var layout in result.Beams.Concat(result.CrossSupports.Select(c=>c.Towers)))
@@ -132,6 +137,8 @@ internal static class CrossEndStripTests
         }
         foreach(var crossing in result.CrossSupports)
         {
+            Check(CrossBeamSupportOptimizer.PrimaryShutterClash(result,crossing.CrossingIndex,crossing.Solids)==null,"every crossing primary stock end keeps the 200 mm side-shutter gap");
+            Check(crossing.Towers.Transfer.RowsMm.Skip(1).Where((x,i)=>x-crossing.Towers.Transfer.RowsMm[i]>network.UpperSpacingMm+1e-7).Any()==false,"every crossing secondary row interval respects the entered spacing limit");
             int bay=crossing.Input.BayNumber-1;double face=result.BeamCentresMm[bay]+network.Beams[bay].WidthMm/2;
             double expected=network.AreaLoad(1150)*.65*network.Bays[bay].WidthMm/1000;
             var reactions=crossing.Bearings.Where(b=>b.IsConcreteEndZone || b.IsDedicated && b.Label.StartsWith("Dedicated P")).ToArray();

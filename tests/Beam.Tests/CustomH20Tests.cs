@@ -64,12 +64,13 @@ internal static class CustomH20Tests
         Check(cross.CrossSupports.Single().Members.Any(m=>!crossCommon.StockLengthsMm.Contains(m.LengthMm)) && cross.Bays.All(b=>!b.IsCustomLength),"beam-only allows custom shared crossing H20s with catalogue slab H20s");
         crossCommon.CustomH20Scope=CustomH20LengthScope.SlabSupports;
         Reject(()=>TransferNetworkOptimizer.Optimize(crossCommon,crossInput),"slab-only cannot generate custom shared crossing H20s");
-        crossInput.CrossingBeams[0].SupportMode=CrossBeamSupportMode.DedicatedTowers;crossInput.CrossingBeams[0].BottomElevationMm=-1400;
+        crossInput.CrossingBeams[0].SupportMode=CrossBeamSupportMode.DedicatedTowers;crossInput.CrossingBeams[0].BottomElevationMm=-600;
         crossCommon.CustomH20Scope=CustomH20LengthScope.BeamSupports;
         var dedicated=TransferNetworkOptimizer.Optimize(crossCommon,crossInput).CrossSupports.Single();
-        Check(dedicated.Towers!=null && dedicated.Towers.StockPlan.Pieces.Any(p=>p.IsCustomLength),"beam-only scope reaches dedicated crossing tower primaries");
+        Check(dedicated.Towers!=null && dedicated.Bearings.Any(b=>b.IsConcreteEndZone) && dedicated.Towers.StockPlan.Pieces.Any(p=>p.IsCustomLength),"beam-only scope reaches dedicated crossing primaries with checked junction ends");
         crossCommon.CustomH20Scope=CustomH20LengthScope.SlabSupports;
-        Reject(()=>TransferNetworkOptimizer.Optimize(crossCommon,crossInput),"slab-only cannot cut dedicated crossing tower primaries");
+        var catalogueDedicated=TransferNetworkOptimizer.Optimize(crossCommon,crossInput).CrossSupports.Single();
+        Check(catalogueDedicated.Towers!=null && catalogueDedicated.Towers.StockPlan.Pieces.All(p=>!p.IsCustomLength && crossCommon.StockLengthsMm.Contains(p.StockLengthMm)) && !catalogueDedicated.Towers.Transfer.LowerCustom,"slab-only dedicated crossing uses available catalogue primary and secondary lengths");
         var vm=new BeamCalculatorViewModel {UseTowers=true,BeamLengthMm=2125,Depth=200,Width=300,StockLengthsText="1250",MaximumConcreteEndOverhangMm=0,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.BeamSupports};
         vm.OptimizeTowersAsync().GetAwaiter().GetResult();Check(vm.IsCalculationValid,"view model propagates beam-only scope");
         Check(vm.BuildDiagnosticReport().Contains("CustomH20Scope = BeamSupports"),"diagnostics include selected scope");

@@ -73,7 +73,7 @@ internal static class CrossSupportUiTests
         for(int i=0;i<vm.NetworkResult.CrossSupports.Length;i++)
         {
             workspace.Section.SelectMember(-i-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,$"coordinated-report-X{i+1}-section"));
-            Check(workspace.Section.DrawnConcreteEndZoneCount==1,$"X{i+1} section draws its direct concrete junction end zone");
+            Check(workspace.Section.DrawnConcreteEndZoneCount==vm.NetworkResult.CrossSupports[i].Bearings.Where(b=>b.IsConcreteEndZone).Select(b=>b.Beam).Distinct().Count(),$"X{i+1} section draws each direct or shutter-supported junction end zone");
         }
         int crossing=Array.FindIndex(vm.NetworkResult.CrossSupports,c=>Math.Abs(c.TowerSpanOffsetMm)>0);var support=vm.NetworkResult.CrossSupports[crossing];
         workspace.Section.SelectMember(-crossing-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,"coordinated-report-section"));
@@ -183,8 +183,10 @@ internal static class CrossSupportUiTests
         Check(jointCanvas.DrawnLegCount==junction.NetworkResult.LegCount && jointCanvas.DrawnCrossH20Count==junction.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"junction plan draws the actual central tower and trimmed members with no duplicate end-zone timber");
         Check(jointCanvas.LegTargets.Any(t=>t.Item2.Contains("concrete end zone on B1")),"plan end-zone targets describe concrete loads rather than timber bearings");
         Check(jointWorkspace.SelectedResultText.Contains("Dedicated central span") && jointWorkspace.SelectedResultText.Contains("Concrete end zone on B1"),"selected crossing explains which load reaches the main beam");
+        Check(jointWorkspace.SelectedResultText.Contains("existing side shutter") && jointWorkspace.SelectedResultText.Contains("100 mm"),"crossing inspector explains the same shutter load path as slab edges");
+        Check(jointCanvas.LegTargets.Any(t=>t.Item2.Contains("side shutter")),"plan junction selection identifies the existing shutter support");
         var jointSection=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true};jointSection.SetResult(junction.NetworkResult);jointSection.Measure(new Size(1200,420));jointSection.Arrange(new Rect(0,0,1200,420));jointSection.UpdateLayout();var jointSectionBitmap=new RenderTargetBitmap(1200,420,96,96,System.Windows.Media.PixelFormats.Pbgra32);jointSectionBitmap.Render(jointSection);Check(jointSection.MemberTargets.Any(t=>t.Item2<0),"junction central members are selectable in section");
-        Check(jointSection.DrawnConcreteEndZoneCount==1,"section draws one end zone on the receiving beam");
+        Check(jointSection.DrawnConcreteEndZoneCount==junction.NetworkResult.CrossSupports[0].Bearings.Where(b=>b.IsConcreteEndZone).Select(b=>b.Beam).Distinct().Count(),"section draws the direct and side-shutter end zones on the receiving beams");
         jointWorkspace.Drawing.Select(FormworkObject.Beam,0);Pump();jointWorkspace.Fields["DepthMm"].Text="1200";Check(jointWorkspace.CommitFields() && junction.NetworkBeams[0].BottomElevationMm==-1200,"workspace depth edit keeps the concrete top at zero");
         if(!string.IsNullOrEmpty(previewPath))
         {

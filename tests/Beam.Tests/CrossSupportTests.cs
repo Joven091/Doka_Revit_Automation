@@ -105,15 +105,19 @@ internal static class CrossSupportTests
         Near(unequalResult.CrossSupports[0].Bearings.First(bearing=>bearing.Beam==1).FillerHeightMm,550,"unequal right soffit gives different filler");
         Failed(common,Input(bottom: -401),"negative gap fails Existing supports only");
         Failed(common,Input(CrossBeamSupportMode.DedicatedTowers,-1000),"cross concrete intersecting existing main primaries is rejected");
-        var dedicated=TransferNetworkOptimizer.Optimize(common,Input(CrossBeamSupportMode.DedicatedTowers,-1400));
+        Failed(common,Input(CrossBeamSupportMode.DedicatedTowers,-1400),"zero end allowance cannot meet the shutter gap when receiving H20s are above the cross soffit");
+        var dedicatedCommon=Common();dedicatedCommon.MaximumConcreteEndOverhangMm=300;
+        var dedicated=TransferNetworkOptimizer.Optimize(dedicatedCommon,Input(CrossBeamSupportMode.DedicatedTowers,-1400));
         Check(dedicated.CrossSupports[0].Towers!=null,"requested dedicated tower arrangement calculated");
         Check(dedicated.LegCount==dedicated.Beams.Sum(l=>l.LegCount)+dedicated.CrossSupports[0].Towers.LegCount,"dedicated legs included in ranking and totals");
         Check(dedicated.CrossSupports[0].Members.All(m=>m.Utilization<=1+1e-8 && m.Analysis.Reactions.All(r=>r>=-1e-7)),"dedicated single secondaries and primary pairs checked");
         Near(dedicated.CrossSupports[0].LoadKn,input.AreaLoad(150)*.4*3.9,"dedicated clear-bay concrete load conserved");
         var fallbackInput=Input(CrossBeamSupportMode.Automatic,-1400);
-        var fallback=TransferNetworkOptimizer.Optimize(common,fallbackInput);
+        var fallback=TransferNetworkOptimizer.Optimize(dedicatedCommon,fallbackInput);
         Check(fallback.CrossSupports[0].Towers!=null && fallback.CrossSupports[0].SharedFailure.Contains("negative filler"),"Automatic falls back to towers for negative gap");
         var capacityCommon=Common();capacityCommon.Exclude600Standalone=true;
+        // The two checked shutter strips leave an exact 3500 mm central span.
+        capacityCommon.StockLengthsMm=capacityCommon.StockLengthsMm.Concat(new[] {3500.0}).Distinct().ToArray();
         var capacityInput=Input(CrossBeamSupportMode.Automatic,-600);foreach(var beam in capacityInput.Beams) {beam.WidthMm=1100;beam.DepthMm=1750;}
         capacityInput.CrossingBeams[0].WidthMm=600;capacityInput.CrossingBeams[0].DepthMm=600;
         var capacityFallback=TransferNetworkOptimizer.Optimize(capacityCommon,capacityInput);

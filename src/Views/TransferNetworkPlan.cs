@@ -149,7 +149,7 @@ namespace EngineeringDashboard
                 {
                     var rect=new Rect(new Point(xx(solid.X0),yy(solid.Y0)),new Point(xx(solid.X1),yy(solid.Y1)));
                     if(solid.IsLeg) {TowerPlanDrawing.Leg(dc,new Point(xx((solid.X0+solid.X1)/2),yy((solid.Y0+solid.Y1)/2)),support.Towers?.Rotated==true);DrawnTowerLegCount++;}
-                    else dc.DrawRectangle(Brushes.SandyBrown,new Pen(Brushes.SaddleBrown,1),rect);
+                    else dc.DrawRectangle(solid.IsSideShutter ? Brushes.LightSteelBlue : Brushes.SandyBrown,new Pen(solid.IsSideShutter ? Brushes.SteelBlue : Brushes.SaddleBrown,1),rect);
                 }
                 if(support.Towers!=null)
                 {
@@ -263,7 +263,7 @@ namespace EngineeringDashboard
                 if(solid.IsLeg) {dc.DrawLine(new Pen(Steel,2),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)+35));continue;}
                 var rect=new Rect(new Point(xx(solid.Y0),zz(solid.Z1)),new Point(xx(solid.Y1),zz(solid.Z0)));int member=Array.IndexOf(support.Members,solid.Member);
                 bool selected=selectedBeam==-support.CrossingIndex-1 && selectedRun==member;
-                if(solid.Member==null)dc.DrawRectangle(Brushes.SandyBrown,new Pen(Brushes.SaddleBrown,1),rect);
+                if(solid.Member==null)dc.DrawRectangle(solid.IsSideShutter ? Brushes.LightSteelBlue : Brushes.SandyBrown,new Pen(solid.IsSideShutter ? Brushes.SteelBlue : Brushes.SaddleBrown,1),rect);
                 else
                 {
                     if(solid.Y1-solid.Y0>solid.X1-solid.X0)H20Drawing.Longitudinal(dc,rect,selected);
@@ -278,7 +278,7 @@ namespace EngineeringDashboard
                 {
                     DrawnConcreteEndZoneCount++;
                     dc.DrawLine(new Pen(Brushes.DarkRed,3),new Point(xx(bearing.EndZoneStartMm),zz(bearing.ReceivingTopMm)),new Point(xx(bearing.EndZoneEndMm),zz(bearing.ReceivingTopMm)));
-                    Label(dc,$"End zone on B{bearing.Beam+1}: {bearing.EndZoneEndMm-bearing.EndZoneStartMm:0.###} mm",xx(bearing.Ymm),zz(bearing.ReceivingTopMm)-40);continue;
+                    Label(dc,$"End zone on B{bearing.Beam+1}: {bearing.EndZoneEndMm-bearing.EndZoneStartMm:0.###} mm"+(bearing.IsShutterEndZone ? " · side shutter" : ""),xx(bearing.Ymm),zz(bearing.ReceivingTopMm)-40);continue;
                 }
                 if(bearing.FillerHeightMm>1e-7)Label(dc,$"Filler {bearing.FillerHeightMm:0.###} mm",xx(bearing.Ymm)+4,zz(bearing.H20UndersideMm)+3);
             }

@@ -22,6 +22,17 @@ internal static class CrossJunctionTests
     {
         var input=Input();var clock=System.Diagnostics.Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(Common(),input);var cross=result.CrossSupports.Single();
         Check(result.SeparateSlabCount==0 && cross.Towers!=null && cross.Bearings.Any(b=>b.IsConcreteEndZone),"reported case returns a full slab transfer and central cross tower with checked end zones");
+        var shutter=cross.Bearings.Where(b=>b.IsShutterEndZone).ToArray();
+        Check(shutter.Length>=2 && shutter.All(b=>b.Beam==1),"deeper parallel beam receives its junction strip through the existing side shutter");
+        Check(cross.Solids.Count(s=>s.IsSideShutter)==1,"existing shutter is drawn and clash-checked once without introducing new packers");
+        foreach(var bearing in shutter)
+        {
+            Near(bearing.EndZoneEndMm-bearing.EndZoneStartMm,200,"shutter strip retains the requested primary clearance");
+            Near(result.BeamCentresMm[1]-input.Beams[1].WidthMm/2-bearing.Ymm,TransferredSlabInput.SideShutterReactionOffsetMm,"crossing uses the same 100 mm shutter reaction location as slab edges");
+            Near(bearing.FillerHeightMm,600,"shutter reaches from the deeper beam supports to the crossing soffit");
+        }
+        Check(CrossBeamSupportOptimizer.PrimaryShutterClash(result,0,cross.Solids)==null,"all crossing primary stock tails retain at least 200 mm clearance");
+        Check(cross.Towers.Transfer.RowsMm.Skip(1).Where((x,i)=>x-cross.Towers.Transfer.RowsMm[i]>input.UpperSpacingMm+1e-7).Any()==false,"crossing secondary spacing stays within the entered maximum");
         Check(result.Beams.All(l=>l.MaxLegKn<=70+1e-8) && cross.Towers.MaxLegKn<=70+1e-8,"every individual leg remains below its entered capacity");
         foreach(var l in result.Beams.Concat(new[] {cross.Towers}))foreach(var m in l.Transfer.PrimaryCases.Concat(l.Transfer.LowerCases).SelectMany(c=>c).Concat(l.Transfer.UpperMembers))Member(m);
         var solids=cross.Solids;var existing=CrossBeamSupportOptimizer.NetworkSolids(result).Concat(CrossBeamSupportOptimizer.Concrete(result)).ToArray();
@@ -36,6 +47,20 @@ internal static class CrossJunctionTests
             var t=result.Beams[beam].Transfer;var stage=Array.FindLastIndex(t.CaseNames,s=>s.Contains(" + X1"));
             if(stage<0)continue;string baseline=t.CaseNames[stage].Split(new[] {" + X1"},StringSplitOptions.None)[0];int baseStage=Array.IndexOf(t.CaseNames,baseline);
             Near(t.PrimaryCases[stage].Sum(m=>m.Analysis.TotalLoadKn)-t.PrimaryCases[baseStage].Sum(m=>m.Analysis.TotalLoadKn),cross.Bearings.Where(b=>b.IsConcreteEndZone && b.Beam==beam).Sum(b=>b.ReactionKn),"end-zone load reaches the receiving primary pairs without clipping or duplication");
+            Check(t.PrimaryCases[stage].All(m=>m.Points.Length==0),"shutter reactions remain footprint UDLs on receiving primary pairs");
+            foreach(var bearing in cross.Bearings.Where(b=>b.IsConcreteEndZone && b.Beam==beam))
+            {
+                var original=t.LowerCases[baseStage][bearing.Row];var loaded=t.LowerCases[stage][bearing.Row];
+                double pointForce=loaded.Points.Sum(p=>p.Kn)-original.Points.Sum(p=>p.Kn);
+                double udlForce=loaded.Uniform.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000)-original.Uniform.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000);
+                Near(pointForce,bearing.IsShutterEndZone ? bearing.ReactionKn : 0,"secondary receives shutter point reactions only for the deeper beam");
+                Near(udlForce,bearing.IsShutterEndZone ? 0 : bearing.ReactionKn,"coplanar concrete strip remains distributed on its receiving secondary");
+                if(bearing.IsShutterEndZone)
+                {
+                    double pointMoment=loaded.Points.Sum(p=>p.Kn*p.PositionMm)-original.Points.Sum(p=>p.Kn*p.PositionMm);
+                    Near(pointMoment,bearing.ReactionKn*(bearing.Ymm-result.BeamCentresMm[beam]-original.StartMm),"secondary shutter reaction acts at its actual bearing position");
+                }
+            }
         }
         Check(cross.Schedule.Contains("end zone") && cross.Schedule.Contains("eccentric concrete loads"),"schedule explains the actual junction and offset load path");
         Console.WriteLine($"REPORTED JUNCTION PASS: {result.LegCount} legs, peak {result.PeakLegKn:0.000} kN; {clock.Elapsed.TotalSeconds:0.00}s; {checks} checks.");

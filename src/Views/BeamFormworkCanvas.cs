@@ -265,20 +265,20 @@ namespace EngineeringDashboard
                 }
                 foreach(var group in timber.Where(g=>g.Key.H20Count==2 || ShowSecondaryH20s))draw(group);
                 if(support.Towers!=null && (AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex))DrawCrossDimensions(dc,support,timber.SelectMany(g=>g).Where(s=>s.Member.H20Count==2).ToArray());
-                foreach(var solid in support.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope && s.Member==null))dc.DrawRectangle(Brushes.SandyBrown,new Pen(Brushes.SaddleBrown,1),new Rect(Screen(solid.X0,solid.Y0),Screen(solid.X1,solid.Y1)));
+                foreach(var solid in support.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope && s.Member==null))dc.DrawRectangle(solid.IsSideShutter ? Brushes.LightSteelBlue : Brushes.SandyBrown,new Pen(solid.IsSideShutter ? Brushes.SteelBlue : Brushes.SaddleBrown,1),new Rect(Screen(solid.X0,solid.Y0),Screen(solid.X1,solid.Y1)));
                 foreach(var bearing in support.Bearings)
                 {
                     var point=Screen(bearing.Xmm,bearing.Ymm);
-                    string description=bearing.IsConcreteEndZone ? $"X{support.CrossingIndex+1} concrete end zone on B{bearing.Beam+1}/T{bearing.Row+1} · load {bearing.ReactionKn:0.###} kN included in H20, primary and leg checks"
+                    string description=bearing.IsConcreteEndZone ? $"X{support.CrossingIndex+1} concrete end zone on B{bearing.Beam+1}/T{bearing.Row+1}"+(bearing.IsShutterEndZone ? $" via side shutter · height {bearing.FillerHeightMm:0.###} mm" : "")+$" · load {bearing.ReactionKn:0.###} kN included in H20, primary and leg checks"
                         : $"X{support.CrossingIndex+1} bearing {bearing.Label??($"B{bearing.Beam+1}/T{bearing.Row+1}")} · filler {bearing.FillerHeightMm:0.###} mm · reaction {bearing.ReactionKn:0.###} kN";
                     LegTargets.Add(Tuple.Create(new Rect(point.X-5,point.Y-5,10,10),description));
                     if(bearing.IsConcreteEndZone && bearing==support.Bearings.First(b=>b.IsConcreteEndZone && b.Beam==bearing.Beam))
                     {
                         var zone=new Rect(Screen(bearing.FootprintStartMm,bearing.EndZoneStartMm),Screen(bearing.FootprintEndMm,bearing.EndZoneEndMm));
                         dc.DrawRectangle(null,new Pen(Brushes.DarkRed,1) {DashStyle=DashStyles.Dash},zone);
-                        if(AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex)Label(dc,$"End zone on B{bearing.Beam+1}",new Point(zone.Right+5,zone.Top+5),Brushes.DarkRed);
+                        if(AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex)Label(dc,$"End zone on B{bearing.Beam+1}"+(bearing.IsShutterEndZone ? " · side shutter" : ""),new Point(zone.Right+5,zone.Top+5),Brushes.DarkRed);
                     }
-                    else if(bearing.FillerHeightMm>1e-7 && (AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex))Label(dc,$"Filler {bearing.FillerHeightMm:0.###} mm",point+new Vector(5,5),Brushes.SaddleBrown);
+                    else if(!bearing.IsConcreteEndZone && bearing.FillerHeightMm>1e-7 && (AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex))Label(dc,$"Filler {bearing.FillerHeightMm:0.###} mm",point+new Vector(5,5),Brushes.SaddleBrown);
                 }
             }
         }
