@@ -351,9 +351,9 @@ namespace EngineeringDashboard
                                     // and equal timber retains the utilization tie-breaker.
                                     if(timber>Timber(best)+.01) {input.Trace?.Increment(BeamSearchCounter.EconomyPruned);continue;}
                                 }
-                                var candidate = Evaluate(input,geometry,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared,best);
+                                var candidate = OffsetReceiver(input,Evaluate(input,geometry,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared,best));
                                 if (candidate != null && (best == null || candidate.LegCount < best.LegCount || candidate.LegCount == best.LegCount
-                                    && (Timber(candidate) < Timber(best)-.01 || Math.Abs(Timber(candidate)-Timber(best)) < .01 && candidate.Utilization < best.Utilization))) best = candidate;
+                                    && (Timber(candidate) < Timber(best)-.01 || Math.Abs(Timber(candidate)-Timber(best)) < .01 && candidate.Utilization < best.Utilization)) && (input.TransferLayoutAcceptance==null || input.TransferLayoutAcceptance(candidate))) best = candidate;
                             }
                         }
                     }
@@ -476,9 +476,9 @@ namespace EngineeringDashboard
                         double timber=geometry.Stock.Sum(s=>s.StockLengthMm)*4+grid.Rows.Length*(cross.Stock+(cross.Left?.Stock??0)+(cross.Right?.Stock??0));
                         if(timber>Timber(best)+.01) {input.Trace?.Increment(BeamSearchCounter.EconomyPruned);continue;}
                     }
-                    var candidate=Evaluate(input,geometry,item.Width,item.Rotated,cross,grid,item.Edge,primaryCache,matrixCache,shared,best);
+                    var candidate=OffsetReceiver(input,Evaluate(input,geometry,item.Width,item.Rotated,cross,grid,item.Edge,primaryCache,matrixCache,shared,best));
                     if(candidate!=null && (best==null || candidate.LegCount<best.LegCount || candidate.LegCount==best.LegCount
-                        && (Timber(candidate)<Timber(best)-.01 || Math.Abs(Timber(candidate)-Timber(best))<.01 && candidate.Utilization<best.Utilization)))best=candidate;
+                        && (Timber(candidate)<Timber(best)-.01 || Math.Abs(Timber(candidate)-Timber(best))<.01 && candidate.Utilization<best.Utilization)) && (input.TransferLayoutAcceptance==null || input.TransferLayoutAcceptance(candidate)))best=candidate;
                 }
             }
             if (best == null) throw diag.Exception("No valid transferred-slab layout found within the bounded search.");
@@ -486,6 +486,17 @@ namespace EngineeringDashboard
         }
         private static double Timber(TowerLayout l) => l.StockPlan.TotalStockLengthMm+l.Transfer.AdditionalTimberMm;
         internal static double[] CoveredLengths(TowerInput input) => Covers(input).Select(c=>c.Sum()).Distinct().ToArray();
+        private static TowerLayout OffsetReceiver(TowerInput input,TowerLayout layout)
+        {
+            double offset=input.ReceiverTransverseOffsetMm;
+            if(layout==null || offset==0)return layout;
+            layout.TransverseOffsetMm=offset;layout.Transfer=layout.Transfer.Copy();
+            layout.Transfer.LowerStockStartMm+=offset;
+            // LowerCase members are cached across geometries; preserve that cache and
+            // express only the returned members' stock origins relative to the concrete.
+            layout.Transfer.LowerCases=layout.Transfer.LowerCases.Select(stage=>stage.Select(m=>new TransferMember {Name=m.Name,LoadCase=m.LoadCase,H20Count=m.H20Count,StartMm=m.StartMm+offset,LengthMm=m.LengthMm,SupportsMm=m.SupportsMm,Uniform=m.Uniform,Points=m.Points,Analysis=m.Analysis}).ToArray()).ToArray();
+            return layout;
+        }
         internal static double[][] StockCovers(TowerInput input) => Covers(input).ToArray();
         private static IEnumerable<double[]> Covers(TowerInput input)
         {
@@ -827,7 +838,7 @@ namespace EngineeringDashboard
                 bool isLeft=u==cross.Left; if(!(cross.Names[c].Contains(isLeft ? "left" : "right") || cross.Names[c].Contains("both"))) continue;
                 int run=Array.FindIndex(g.Stock,s=>rows[row]>=s.StartMm && rows[row]<s.EndMm);
                 double dl=primaryCases[c][run].Analysis.Response(rows[row]-g.Stock[run].StartMm)[2],dr=primaryCases[c][run+g.Stock.Length].Analysis.Response(rows[row]-g.Stock[run].StartMm)[2];
-                double x=(isLeft ? -1 : 1)*(input.TransferredSlab.BeamWidthMm/2+u.Foot);
+                double x=input.TransferredSlab.BeamCentreOffsetMm+(isLeft ? -1 : 1)*(input.TransferredSlab.BeamWidthMm/2+u.Foot);
                 double foot=lowerCases[c][row].Analysis.Response(x-cross.Start)[2]+dl+(dr-dl)*(x+width/2)/width;
                 var a=u.Analysis.Scale(transfer.UpperScale(isLeft,row));
                 transfer.SlabMovementMm=Math.Max(transfer.SlabMovementMm,a.DeflectionWithOffsetMm(foot));
@@ -914,7 +925,7 @@ namespace EngineeringDashboard
                 bool isLeft=u==cross.Left; if(!(cross.Names[c].Contains(isLeft ? "left" : "right") || cross.Names[c].Contains("both"))) continue;
                 int run=Array.FindIndex(g.Stock,s=>rows[row]>=s.StartMm && rows[row]<s.EndMm);
                 double dl=primaryCases[c][run].Analysis.Response(rows[row]-g.Stock[run].StartMm)[2],dr=primaryCases[c][run+g.Stock.Length].Analysis.Response(rows[row]-g.Stock[run].StartMm)[2];
-                double x=(isLeft ? -1 : 1)*(input.TransferredSlab.BeamWidthMm/2+u.Foot);
+                double x=input.TransferredSlab.BeamCentreOffsetMm+(isLeft ? -1 : 1)*(input.TransferredSlab.BeamWidthMm/2+u.Foot);
                 double foot=lowerCases[c][row].Analysis.Response(x-cross.Start)[2]+dl+(dr-dl)*(x+width/2)/width;
                 var a=u.Analysis.Scale(transfer.UpperScale(isLeft,row));
                 transfer.SlabMovementMm=Math.Max(transfer.SlabMovementMm,a.DeflectionWithOffsetMm(foot));

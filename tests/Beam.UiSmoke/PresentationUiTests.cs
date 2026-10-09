@@ -33,10 +33,12 @@ internal static class PresentationUiTests
         Func<int,int,byte> alpha=(x,y)=>pixels[(y*100+x)*4+3];
         Check(alpha(15,20)>0 && alpha(15,200)>0 && alpha(50,110)>0 && alpha(15,110)==0 && alpha(85,110)==0,"I profile has two solid flanges, a central web and clear side recesses");
         var vm=new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true};
+        var workspace=new BeamFormworkWorkspace(vm,null,null,null) {WindowState=WindowState.Normal,Width=1280,Height=860};workspace.Show();Pump();
+        // Start the search clock after loading the window: WPF initialization on a
+        // busy CI runner can itself take longer than the mascot's one-second delay.
         var trace=new BeamSearchTrace("presentation fixture");trace.Work("Transfer tower/support geometry");
         typeof(BeamCalculatorViewModel).GetField("beamSearchTrace",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(vm,trace);
-        SetBusy(vm,true);
-        var workspace=new BeamFormworkWorkspace(vm,null,null,null) {WindowState=WindowState.Normal,Width=1280,Height=860};workspace.Show();Pump();
+        SetBusy(vm,true);Pump();
         Check(workspace.Waiting.Visibility==Visibility.Visible && workspace.Waiting.Hugo.Visibility==Visibility.Hidden,"search stage appears immediately, mascot is delayed to avoid flashing");
         while(trace.ElapsedSeconds<1.2){Pump();Thread.Sleep(5);}workspace.Waiting.RefreshProgress();
         Check(workspace.Waiting.Hugo.Visibility==Visibility.Visible && workspace.Waiting.IsTimerRunning,"Hugo appears after one second and stays in the drawing overlay");

@@ -41,7 +41,9 @@ internal static class CrossSupportUiTests
             var c=vm.CrossingBeams[i];c.BayNumber=i+1;c.PositionMm=3450;c.WidthMm=650;c.DepthMm=1150;c.BottomElevationMm=-1150;
         }
         var task=vm.OptimizeTowersAsync();var timer=System.Diagnostics.Stopwatch.StartNew();
-        while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>300)throw new Exception("Coordinated report UI timeout");}task.GetAwaiter().GetResult();
+        // The full coordinated fixture also runs on .NET Framework; allow its
+        // production-runtime search to complete before checking the rendered values.
+        while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>600)throw new Exception("Coordinated report UI timeout");}task.GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
         Check(vm.UpperSupportSpacingMm==275 && vm.NetworkResult.Input.UpperSpacingMm<=275 && vm.BuildDiagnosticReport().Contains("entered maximum 275"),"coordinated search preserves the entered maximum and reports its actual spacing");
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Show();Pump();workspace.Drawing.Formwork=true;
@@ -49,6 +51,8 @@ internal static class CrossSupportUiTests
         Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"coordinated plan draws every real tower leg and crossing member");
         Check(workspace.Drawing.MemberTargets.All(t=>t.Item2<0 ? vm.NetworkResult.CrossSupports[-t.Item2-1].Members[t.Item3].H20Count==2 : t.Item3<vm.NetworkResult.Beams[t.Item2].StockPlan.Pieces.Length),"coordinated plan omits all secondary H20 strokes and targets");
         Check(workspace.Drawing.DrawnBracedBayCount==vm.NetworkResult.Beams.Concat(vm.NetworkResult.CrossSupports.Select(c=>c.Towers)).Sum(l=>l.Joined.Count(j=>j)),"Doka symbols brace only connected tower bays");
+        foreach(var leg in CrossBeamSupportOptimizer.NetworkSolids(vm.NetworkResult).Where(s=>s.IsLeg))
+            Check(workspace.Drawing.LegTargets.Any(target=>target.Item1.Contains(workspace.Drawing.Screen((leg.X0+leg.X1)/2,(leg.Y0+leg.Y1)/2))),"plan leg markers use the actual coordinated tower centres");
         var towerStrokes=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).OfType<GeometryDrawing>().ToArray();
         Check(towerStrokes.Any(g=>g.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.Gold) && towerStrokes.Any(g=>g.Geometry is RectangleGeometry && g.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.DarkCyan),"tower symbols use yellow crosses and cyan rectangular leg markers");
         for(int i=0;i<7;i++)
@@ -78,6 +82,16 @@ internal static class CrossSupportUiTests
         Check(workspace.Diagrams!=null && Descendants(workspace.Diagrams).Count(c=>c.GetType().Name=="LoadedResponsePlot")==3,"translated crossing supports retain all three response diagrams");
         Check(workspace.Diagrams.DisplayedTransferMember.SupportsMm.SequenceEqual(support.Members[target.Item3].SupportsMm),"diagram uses the actual displaced support positions");
         var body=(FrameworkElement)((ScrollViewer)workspace.Diagrams.Content).Content;body.Measure(new Size(900,double.PositiveInfinity));body.Arrange(new Rect(0,0,900,body.DesiredSize.Height));body.UpdateLayout();Capture(body,900,(int)Math.Ceiling(body.DesiredSize.Height),Preview(previewPath,"coordinated-report-primary"));
+        vm.SelectNetworkBeam(5);var cases=new TowerDiagramWindow(vm);cases.SelectMember(0,0,-1);cases.Show();Pump();
+        Check(cases.LoadCaseSelector.Items.Count==16 && cases.CheckedCasesTable.Items.Count==16 && !cases.CheckedCasesDetails.IsExpanded,"reported B6 retains sixteen checks behind one dropdown and collapsed details");
+        var labels=cases.LoadCaseSelector.Items.Cast<ComboBoxItem>().Select(item=>item.Content.ToString()).ToArray();
+        Check(labels.Any(label=>label=="B6 + S6 + X6") && labels.All(label=>!label.Contains("left slab") && !label.Contains("right slab") && !label.Contains("both slabs")),"reported case labels identify actual beams and slab bays");
+        var members=vm.NetworkResult.Beams[5].Transfer.PrimaryCases.Select(stage=>stage[0]).ToArray();
+        Check(cases.SelectedTransferMember.Utilization==members.Max(m=>m.Utilization),"reported B6 defaults to its actual governing member case");
+        Capture(cases.LoadingDiagram,900,270,Preview(previewPath,"reported-B6-loading"));
+        Check(cases.LoadingDiagram.DrawnUniformCount<cases.LoadingDiagram.SourceUniform.Length,"reported crossing contributions are combined in the loading diagram");
+        var caseBody=(FrameworkElement)((ScrollViewer)cases.Content).Content;caseBody.Measure(new Size(900,double.PositiveInfinity));caseBody.Arrange(new Rect(0,0,900,caseBody.DesiredSize.Height));caseBody.UpdateLayout();Capture(caseBody,900,(int)Math.Ceiling(caseBody.DesiredSize.Height),Preview(previewPath,"reported-B6-diagrams"));
+        cases.CheckedCasesDetails.IsExpanded=true;Pump();caseBody.Measure(new Size(900,double.PositiveInfinity));caseBody.Arrange(new Rect(0,0,900,caseBody.DesiredSize.Height));caseBody.UpdateLayout();Capture(caseBody,900,(int)Math.Ceiling(caseBody.DesiredSize.Height),Preview(previewPath,"reported-B6-checked-cases"));cases.Close();
         workspace.Close();
     }
     static void ReportedWorkspace(string previewPath)

@@ -262,7 +262,7 @@ namespace EngineeringDashboard
                 }
                 foreach(var group in timber.Where(g=>g.Key.H20Count==2))draw(group);
                 if(support.Towers!=null && (AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex))DrawCrossDimensions(dc,support,timber.SelectMany(g=>g).Where(s=>s.Member.H20Count==2).ToArray());
-                foreach(var solid in support.Solids.Where(s=>!s.IsLeg && s.Member==null))dc.DrawRectangle(Brushes.SandyBrown,new Pen(Brushes.SaddleBrown,1),new Rect(Screen(solid.X0,solid.Y0),Screen(solid.X1,solid.Y1)));
+                foreach(var solid in support.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope && s.Member==null))dc.DrawRectangle(Brushes.SandyBrown,new Pen(Brushes.SaddleBrown,1),new Rect(Screen(solid.X0,solid.Y0),Screen(solid.X1,solid.Y1)));
                 foreach(var bearing in support.Bearings)
                 {
                     var point=Screen(bearing.Xmm,bearing.Ymm);
@@ -299,7 +299,9 @@ namespace EngineeringDashboard
             vertical(legs.Last(),far,$"Last tower leg to B{bay+2} concrete face",96);
             Label(dc,$"B{bay+1} face",new Point(Screen(left,near).X-154,Screen(0,near).Y-19));
             Label(dc,$"B{bay+2} face",new Point(Screen(left,far).X-154,Screen(0,far).Y+7));
-            double y=Screen(0,legs[0]).Y-24;
+            // Keep the transverse setting-out chain above the primary stock labels
+            // and the separate vertical H20 overhang dimensions.
+            double y=Screen(0,legs[0]).Y-58;
             CrossingSettingOut.Add(Tuple.Create(index,"Beam start to near leg column",left));
             CrossingSettingOut.Add(Tuple.Create(index,"Tower width between leg centres",layout.WidthMm));
             CrossingSettingOut.Add(Tuple.Create(index,"Far leg column to beam end",Model.BeamLengthMm-right));
@@ -316,8 +318,8 @@ namespace EngineeringDashboard
         }
         private void DrawSupports(DrawingContext dc,TowerLayout layout,int beam,double centre,bool dims)
         {
-            double a=centre-layout.WidthMm/2,b=centre+layout.WidthMm/2;
-            DrawTowerFrames(dc,layout,$"B{beam+1}",(station,side)=>Screen(station,centre+side));
+            double a=centre+layout.TransverseOffsetMm-layout.WidthMm/2,b=centre+layout.TransverseOffsetMm+layout.WidthMm/2;
+            DrawTowerFrames(dc,layout,$"B{beam+1}",(station,side)=>Screen(station,centre+layout.TransverseOffsetMm+side));
             if(dims)for(int i=0;i<layout.Joined.Length;)
             {
                 int count=1;double step=layout.PositionsMm[i+1]-layout.PositionsMm[i];

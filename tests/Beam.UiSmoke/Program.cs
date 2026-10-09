@@ -204,7 +204,7 @@ internal static class Program
    var lowerHit=diagram.MemberTargets.First(h=>h.Item2>=vm.TowerResult.StockPlan.Pieces.Length && h.Item2<vm.TowerResult.StockPlan.Pieces.Length+transferred.RowsMm.Length);
    Check(diagram.SelectAt(new Point(lowerHit.Item1.X+lowerHit.Item1.Width/2,lowerHit.Item1.Y+lowerHit.Item1.Height/2)),"select lower paired bearer in main plan");Pump();
    Check(window.TowerDiagrams.LoadedAnalysis!=null && window.TowerDiagrams.Analysis==null,"transfer diagrams use distributed primary design analysis");
-   window.TowerDiagrams.SelectMember(0,0,-1);Pump();CheckUniformPrimary(window.TowerDiagrams,vm.DeflectionLimit.Denominator);Check(window.TowerDiagrams.ActualLoadedAnalysis==transferred.PrimaryCases.Last()[0].Analysis,"selected primary retains exact design reactions alongside its UDL view");
+   window.TowerDiagrams.SelectMember(0,0,-1);Pump();CheckUniformPrimary(window.TowerDiagrams,vm.DeflectionLimit.Denominator);Check(window.TowerDiagrams.ActualLoadedAnalysis==transferred.PrimaryCases[window.TowerDiagrams.SelectedLoadCase][0].Analysis,"selected primary retains exact design reactions alongside its UDL view");
    if(args.Length>0){var content=(FrameworkElement)((ScrollViewer)window.TowerDiagrams.Content).Content;content.Measure(new Size(868,double.PositiveInfinity));content.Arrange(new Rect(0,0,868,content.DesiredSize.Height));content.UpdateLayout();
     var bitmap=new RenderTargetBitmap((int)Math.Ceiling(content.ActualWidth),(int)Math.Ceiling(content.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(content);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"primary-udl.png")))encoder.Save(file);}
    var upperHit=diagram.MemberTargets.First(h=>h.Item2>=vm.TowerResult.StockPlan.Pieces.Length+transferred.RowsMm.Length);
@@ -234,22 +234,22 @@ internal static class Program
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
    var networkHit=networkPlan.MemberTargets.First(h=>h.Item2==1 && h.Item3==0 && h.Item4==0);
    Check(networkPlan.SelectAt(new Point(networkHit.Item1.X+networkHit.Item1.Width/2,networkHit.Item1.Y+networkHit.Item1.Height/2)),"select B2 primary directly from full plan");Pump();
-   Check(vm.SelectedNetworkBeam==1 && window.TowerDiagrams.ActualLoadedAnalysis==vm.NetworkResult.Beams[1].Transfer.PrimaryCases.Last()[0].Analysis,"diagrams retain the selected beam's own design analysis");
+   Check(vm.SelectedNetworkBeam==1 && window.TowerDiagrams.ActualLoadedAnalysis==vm.NetworkResult.Beams[1].Transfer.PrimaryCases[window.TowerDiagrams.SelectedLoadCase][0].Analysis,"diagrams retain the selected beam's own design analysis");
    for(int selectedBeam=0;selectedBeam<vm.NetworkResult.Beams.Length;selectedBeam++)
    {
     var layout=vm.NetworkResult.Beams[selectedBeam];int runs=layout.StockPlan.Pieces.Length;
     var primaryHit=networkPlan.MemberTargets.First(h=>h.Item2==selectedBeam && h.Item3==0 && h.Item4==1);
     Check(networkPlan.SelectAt(new Point(primaryHit.Item1.X+primaryHit.Item1.Width/2,primaryHit.Item1.Y+primaryHit.Item1.Height/2)),"select each network beam's right primary from plan");Pump();
-    Check(vm.SelectedNetworkBeam==selectedBeam && window.TowerDiagrams.ActualLoadedAnalysis==layout.Transfer.PrimaryCases.Last()[runs].Analysis,"primary design data matches the actual selected beam and line");
+    Check(vm.SelectedNetworkBeam==selectedBeam && window.TowerDiagrams.ActualLoadedAnalysis==layout.Transfer.PrimaryCases[window.TowerDiagrams.SelectedLoadCase][runs].Analysis,"primary design data matches the actual selected beam and line");
     Check(window.TowerDiagrams.SelectedTransferMember.H20Count==2 && window.TowerDiagrams.SelectedTransferMember.ShearLimitKn==22,"primary diagrams keep paired capacity");
     CheckUniformPrimary(window.TowerDiagrams,vm.DeflectionLimit.Denominator);
-    var beamCase=Find<Button>(window.TowerDiagrams).Single(b=>Equals(b.Content,"Beam"));beamCase.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
-    Check(window.TowerDiagrams.SelectedLoadCase==0 && window.TowerDiagrams.ActualLoadedAnalysis==layout.Transfer.PrimaryCases[0][runs].Analysis,"beam-only load-case button changes the retained actual analysis");
+    window.TowerDiagrams.LoadCaseSelector.SelectedIndex=0;Pump();
+    Check(window.TowerDiagrams.SelectedLoadCase==0 && window.TowerDiagrams.ActualLoadedAnalysis==layout.Transfer.PrimaryCases[0][runs].Analysis,"beam-only load-case selector changes the retained actual analysis");
     CheckUniformPrimary(window.TowerDiagrams,vm.DeflectionLimit.Denominator);
-    var allCase=Find<Button>(window.TowerDiagrams).Single(b=>Equals(b.Content,layout.Transfer.CaseNames.Last()));allCase.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+    window.TowerDiagrams.LoadCaseSelector.SelectedIndex=layout.Transfer.CaseNames.Length-1;Pump();
     var secondaryHit=networkPlan.MemberTargets.First(h=>h.Item2==selectedBeam && h.Item3>=runs && h.Item3<runs+layout.Transfer.RowsMm.Length);
     Check(networkPlan.SelectAt(new Point(secondaryHit.Item1.X+secondaryHit.Item1.Width/2,secondaryHit.Item1.Y+secondaryHit.Item1.Height/2)),"select each single lower secondary from section");Pump();
-    Check(window.TowerDiagrams.LoadedAnalysis==layout.Transfer.LowerCases.Last()[secondaryHit.Item3-runs].Analysis && window.TowerDiagrams.SelectedTransferMember.H20Count==1 && window.TowerDiagrams.SelectedTransferMember.ShearLimitKn==11 && window.TowerDiagrams.SelectedTransferMember.MomentLimitKnM==5,"lower secondary diagrams use their point loads and single capacity");
+    Check(window.TowerDiagrams.LoadedAnalysis==layout.Transfer.LowerCases[window.TowerDiagrams.SelectedLoadCase][secondaryHit.Item3-runs].Analysis && window.TowerDiagrams.SelectedTransferMember.H20Count==1 && window.TowerDiagrams.SelectedTransferMember.ShearLimitKn==11 && window.TowerDiagrams.SelectedTransferMember.MomentLimitKnM==5,"lower secondary diagrams use their point loads and single capacity");
    }
    for(int bay=0;bay<vm.NetworkResult.Bays.Length;bay++)
    {
@@ -305,6 +305,7 @@ internal static class Program
    var customWorkspaceRecord=window.CaptureCalculation();
    window.RestoreCalculation(networkSaved);Pump();Check(!vm.HasTowerFailure && failureExpander.Visibility==Visibility.Collapsed,"restoring inputs clears stale failure details");Optimize();Render();Check(vm.IsCalculationValid && !vm.HasTowerFailure,"successful retry hides failure report");
    checks+=PresentationUiTests.Run(args.Length>0 ? args[0] : null);
+   checks+=CaseDiagramUiTests.Run();
    checks+=CrossSupportUiTests.Run(args.Length>0 ? args[0] : null);
    WorkspaceTests.Run(window,vm,customWorkspaceRecord,args.Length>0 ? args[0] : null);
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
