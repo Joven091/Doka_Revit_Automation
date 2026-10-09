@@ -19,6 +19,8 @@ namespace EngineeringDashboard
         private void RemoveBeamBay_Click(object sender,RoutedEventArgs e)=>observedModel?.RemoveNetworkBay();
         internal TowerDiagramWindow TowerDiagrams { get; private set; }
         internal BeamFormworkWorkspace FormworkWorkspace {get;private set;}
+        internal object ClassicCalculatorContent {get;private set;}
+        private bool updatingWorkspace;
         internal BeamDiagnosticWindow Diagnostics {get;private set;}
         private void DiagnoseBeam_Click(object sender,RoutedEventArgs e)
         {
@@ -29,17 +31,23 @@ namespace EngineeringDashboard
         }
         private void DrawingWorkspace_Click(object sender,RoutedEventArgs e)
         {
-            if(observedModel==null || !observedModel.UseTowers)return;
-            if(FormworkWorkspace!=null){FormworkWorkspace.Activate();return;}
+            if(!IsLoaded || observedModel==null || !observedModel.UseTowers || !observedModel.HasSelectedSupportSystem || updatingWorkspace)return;
+            if(FormworkWorkspace!=null)return;
+            updatingWorkspace=true;
+            try
+            {
             CloseTowerDiagrams();
             FormworkWorkspace=new BeamFormworkWorkspace(observedModel,
-                ()=>CalculationFiles.Run(FormworkWorkspace,()=>CalculationFiles.Save(FormworkWorkspace,CaptureDrawingInputs(),"Beam")),
-                ()=>CalculationFiles.Run(FormworkWorkspace,()=> {var path=CalculationFiles.ChooseLoad(FormworkWorkspace);if(path!=null)RestoreCalculation(CalculationFiles.Read<CalculationRecord>(path));}),
-                ()=>CalculationFiles.Run(FormworkWorkspace,()=>CalculationFiles.ExportHtml(FormworkWorkspace,"Beam",BuildReport())),
-                ()=> {CloseTowerDiagrams();Diagnostics?.Close();foreach(var box in TextInputs(this))box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();RefreshInputValidity();});
-            FormworkWorkspace.Closed+=(s,args)=>FormworkWorkspace=null;
-            if(IsVisible)FormworkWorkspace.Owner=this;
-            FormworkWorkspace.Show();
+                ()=>CalculationFiles.Run(this,()=>CalculationFiles.Save(this,CaptureDrawingInputs(),"Beam")),
+                ()=>CalculationFiles.Run(this,()=> {var path=CalculationFiles.ChooseLoad(this);if(path!=null)RestoreCalculation(CalculationFiles.Read<CalculationRecord>(path));}),
+                ()=>CalculationFiles.Run(this,()=>CalculationFiles.ExportHtml(this,"Beam",BuildReport())),
+                ()=> {CloseTowerDiagrams();Diagnostics?.Close();RefreshInputValidity();},
+                ()=>ChangeSupportSystem_Click(null,null)) {HostWindow=this};
+            FormworkWorkspace.Closed+=(s,args)=> {FormworkWorkspace=null;Content=ClassicCalculatorContent;Title="Beam Calculator";MinWidth=900;};
+            var surface=FormworkWorkspace.Surface;FormworkWorkspace.Content=null;Content=surface;
+            Title=FormworkWorkspace.Title;MinWidth=980;Width=Math.Max(Width,1280);
+            }
+            finally {updatingWorkspace=false;}
         }
         private void PickProps_Click(object sender, RoutedEventArgs e) => SelectSupportSystem(false);
         private void PickTowers_Click(object sender, RoutedEventArgs e) => SelectSupportSystem(true);
@@ -48,6 +56,7 @@ namespace EngineeringDashboard
             if (observedModel == null) return;
             if (observedModel.UseTowers != towers) observedModel.UseTowers = towers;
             observedModel.HasSelectedSupportSystem = true;
+            if(towers)DrawingWorkspace_Click(null,null);
             InputScroll.ScrollToTop();
             RefreshInputValidity(); UpdateDiagram();
         }
@@ -73,6 +82,8 @@ namespace EngineeringDashboard
         }
         private void InitializeUi()
         {
+            ClassicCalculatorContent=Content;
+            Loaded+=(s,e)=>DrawingWorkspace_Click(null,null);
             NetworkPlan.SeparateSlabSelected+=bay=> {SeparateSlabNotice.ShowBay(bay);SeparateSlabNotice.BringIntoView();};
             NetworkPlan.MemberSelected+=(beam,run,line)=>
             {
@@ -105,11 +116,14 @@ namespace EngineeringDashboard
                 observedModel = DataContext as BeamCalculatorViewModel;
                 if(observedModel != null) observedModel.PropertyChanged += ModelChanged;
                 RefreshInputValidity(); UpdateDiagram();
+                if(observedModel?.UseTowers==true && observedModel.HasSelectedSupportSystem)DrawingWorkspace_Click(null,null);
             };
             Closed += (s,e) => { FormworkWorkspace?.Close();CloseTowerDiagrams(); if(observedModel != null) observedModel.PropertyChanged -= ModelChanged; };
         }
         private void ModelChanged(object sender, PropertyChangedEventArgs e)
         {
+            if(e.PropertyName==nameof(BeamCalculatorViewModel.UseTowers) || e.PropertyName==nameof(BeamCalculatorViewModel.HasSelectedSupportSystem))
+                Dispatcher.BeginInvoke(new Action(()=> {if(observedModel?.UseTowers==true && observedModel.HasSelectedSupportSystem)DrawingWorkspace_Click(null,null);}),DispatcherPriority.DataBind);
             if(e.PropertyName==nameof(BeamCalculatorViewModel.HasTowerFailure) && observedModel?.HasTowerFailure==true)
                 Dispatcher.BeginInvoke(new Action(()=> {if(observedModel?.HasTowerFailure==true)ReviewScroll.ScrollToTop();}),DispatcherPriority.Loaded);
             if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) { UpdateDiagram(); if (!observedModel.IsCalculationValid) CloseTowerDiagrams(); }
@@ -151,7 +165,7 @@ namespace EngineeringDashboard
             NetworkPlan.SetResult(observedModel?.NetworkResult);
             TowerPlanScroll.ScrollToLeftEnd();
             DiagramCaption.Text = observedModel == null || !observedModel.IsCalculationValid ? "Enter valid dimensions to show the support arrangement."
-                : observedModel.UseTowers ? $"Plan view · {observedModel.BeamLengthMm:0.###} mm beam · {observedModel.TowerResult.LegCount} legs\nP labels: H20 stock pieces · dotted: free member breaks\nSolid: frames · dashed: cross sides · gaps measured between leg planes"
+                : observedModel.UseTowers ? $"Plan view · {observedModel.BeamLengthMm:0.###} mm beam · {observedModel.TowerResult.LegCount} legs\nH20 labels: stock lengths in mm · dotted: free member breaks\nSolid: frames · dashed: cross sides · gaps measured between leg planes"
                 : $"Beam {observedModel.Width:0.##} × {observedModel.Depth:0.##} mm · {observedModel.NumberOfProps} props per primary line\nPrimary lines {observedModel.PrimaryLineSpacingMm:0.##} mm apart";
         }
         private void CancelBeamAnalysis_Click(object sender,RoutedEventArgs e)=>observedModel?.CancelOptimization();

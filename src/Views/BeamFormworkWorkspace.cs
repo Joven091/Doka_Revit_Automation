@@ -58,6 +58,9 @@ namespace EngineeringDashboard
         private bool sectionMode;
         private object selectedObject;
         internal BeamDiagnosticWindow Diagnostics {get;private set;}
+        internal Window HostWindow {get;set;}
+        internal Window DialogOwner=>HostWindow??this;
+        internal readonly FrameworkElement Surface;
         private sealed class NumberEditor {public TextBox Box;public Func<double> Get;public Action<double> Set;public double Minimum;public bool Dirty;}
         private sealed class StringEditor {public TextBox Box;public Func<string> Get;public Action<string> Set;public bool Dirty;}
         private sealed class State
@@ -69,16 +72,20 @@ namespace EngineeringDashboard
             internal int SelectedIndex;
         }
         private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,UpperSupportSpacingMm,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,Exclude600Standalone,DeflectionLimit,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
-        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null)
+        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null)
         {
             Model=model;save=saveInputs;load=loadInputs;export=exportReport;refreshInputs=refreshCalculatorInputs;
-            ConfirmNewSession=()=>MessageBox.Show(this,"Start a new beam formwork session? Current inputs, results and undo history will be cleared. Saved files are unchanged.","New session",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes;
+            ConfirmNewSession=()=>MessageBox.Show(DialogOwner,"Start a new beam formwork session? Current inputs, results and undo history will be cleared. Saved files are unchanged.","New session",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes;
             if(Model.IsTransferMode && !Model.UseBeamNetwork)Model.UseBeamNetwork=true;
             Drawing=new BeamFormworkCanvas(model);Waiting=new BeamSearchWaitingView {DataContext=model};SectionViewport=new FormworkDrawingViewport(Section);
-            Title="Beam formwork drawing";Width=1280;Height=860;MinWidth=980;MinHeight=620;WindowState=WindowState.Maximized;WindowStartupLocation=WindowStartupLocation.CenterOwner;
+            Title="Beam calculator · D3 shoring";Width=1280;Height=860;MinWidth=980;MinHeight=620;WindowState=WindowState.Maximized;WindowStartupLocation=WindowStartupLocation.CenterOwner;
             FontFamily=new FontFamily("Segoe UI");FontSize=13;Background=Brushes.WhiteSmoke;
             var root=new Grid {Background=Brushes.WhiteSmoke};root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
+            Surface=root;root.Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("CalculatorStyles.xaml",UriKind.Relative)});
             var toolbar=new WrapPanel {Margin=new Thickness(8)};
+            toolbar.Children.Add(new TextBlock {Text="D3 shoring",FontSize=20,FontWeight=FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,14,0)});
+            if(changeSystem!=null)toolbar.Children.Add(Button("ChangeSystem","Change system",changeSystem));
+            toolbar.Children.Add(Button("Close","Close",()=>DialogOwner.Close()));
             var newSession=Button("NewSession","New session",StartNewSession);newSession.ToolTip="Reset inputs and start a fresh beam formwork session.";toolbar.Children.Add(newSession);
             var files=new Menu {Background=Brushes.Transparent,VerticalAlignment=VerticalAlignment.Center};
             var file=new MenuItem {Header="_File",Padding=new Thickness(10,6,10,6)};files.Items.Add(file);
@@ -93,7 +100,7 @@ namespace EngineeringDashboard
             toolbar.Children.Add(Button("Delete","Delete selection",RemoveSelected));
             toolbar.Children.Add(Button("Undo","Undo",()=>History(undo,redo)));toolbar.Children.Add(Button("Redo","Redo",()=>History(redo,undo)));
             toolbar.Children.Add(new Border {Width=1,Height=26,Background=Brushes.LightGray,Margin=new Thickness(10,0,10,0)});
-            var calculate=Button("Calculate","Calculate",async()=>await CalculateAsync());calculate.Background=new SolidColorBrush(Color.FromRgb(242,205,36));calculate.FontWeight=FontWeights.SemiBold;toolbar.Children.Add(calculate);
+            var calculate=Button("Calculate","Calculate",async()=>await CalculateAsync());calculate.SetResourceReference(StyleProperty,"PrimaryAction");toolbar.Children.Add(calculate);
             toolbar.Children.Add(Button("Cancel","Cancel",()=> {Model.CancelOptimization();Refresh();}));
             toolbar.Children.Add(Button("Diagnose","Diagnose",ShowDiagnostics));root.Children.Add(toolbar);
             var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition());body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(325)});Grid.SetRow(body,1);root.Children.Add(body);
@@ -105,8 +112,10 @@ namespace EngineeringDashboard
             tabs.Children.Add(Button("Fit","Fit",()=> {if(sectionMode)SectionViewport.Fit();else Drawing.Fit();}));
             tabs.Children.Add(Button("ZoomOut","−",()=>Zoom(1/1.25)));tabs.Children.Add(Button("ZoomIn","+",()=>Zoom(1.25)));
             dimensions.Checked+=(s,e)=> {Drawing.AllDimensions=true;Section.ShowAllDimensions=true;Drawing.InvalidateVisual();Section.InvalidateVisual();};dimensions.Unchecked+=(s,e)=> {Drawing.AllDimensions=false;Section.ShowAllDimensions=false;Drawing.InvalidateVisual();Section.InvalidateVisual();};tabs.Children.Add(dimensions);main.Children.Add(tabs);
+            tabs.Children.Add(Button("SecondaryH20s","Show secondary H20s",()=> {Drawing.ShowSecondaryH20s=!Drawing.ShowSecondaryH20s;Drawing.InvalidateVisual();Refresh();}));
             Grid.SetRow(Drawing,1);main.Children.Add(Drawing);sectionHost.Child=SectionViewport;Grid.SetRow(sectionHost,1);main.Children.Add(sectionHost);Grid.SetRow(Waiting,1);main.Children.Add(Waiting);
             var inspector=new Grid {Background=Brushes.White};inspector.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});inspector.RowDefinitions.Add(new RowDefinition());Grid.SetColumn(inspector,1);body.Children.Add(inspector);
+            resultCard.Background=new SolidColorBrush(Color.FromRgb(255,246,219));resultCard.BorderBrush=new SolidColorBrush(Color.FromRgb(212,170,0));resultCard.BorderThickness=new Thickness(4,0,0,0);resultCard.CornerRadius=new CornerRadius(0);
             var results=new StackPanel();results.Children.Add(SeparateSlabNotice);results.Children.Add(resultHeading);results.Children.Add(networkSummary);results.Children.Add(selectedSummary);detailsExpander.Content=new ScrollViewer {Content=resultDetails,MaxHeight=220,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};results.Children.Add(detailsExpander);resultCard.Child=results;inspector.Children.Add(new ScrollViewer {Content=resultCard,MaxHeight=400,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});
             InspectorTabs.Items.Add(new TabItem {Header="Selection",Content=new ScrollViewer {Content=properties,VerticalScrollBarVisibility=ScrollBarVisibility.Auto}});
             InspectorTabs.Items.Add(new TabItem {Header="Shared settings",Content=new ScrollViewer {Content=SharedProperties,VerticalScrollBarVisibility=ScrollBarVisibility.Auto}});
@@ -120,8 +129,8 @@ namespace EngineeringDashboard
             Drawing.CrossingRequested+=(bay,x)=> {if(!CommitFields())return;Mutate(()=> {Model.AddCrossingBeam();var c=Model.CrossingBeams.Last();c.BayNumber=bay+1;c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,x));Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});Drawing.Cursor=Cursors.Arrow;};
             Drawing.MoveRequested+=(kind,index,delta)=> {if(!CommitFields())return;Mutate(()=> {if(kind==FormworkObject.Crossing) {var c=Model.CrossingBeams[index];c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,c.PositionMm+delta));}else Model.NetworkBays[index-1].WidthMm=Math.Max(500,Model.NetworkBays[index-1].WidthMm+delta);});};
             Model.PropertyChanged+=ModelChanged;
-            Loaded+=(s,e)=>Drawing.Fit();Closed+=(s,e)=> {closed=true;Diagnostics?.Close();Model.PropertyChanged-=ModelChanged;Model.SetAdditionalTextInputErrors(this,false);ClearDiagrams();};
-            PreviewKeyDown+=(s,e)=>
+            root.Loaded+=(s,e)=>Drawing.Fit();Closed+=(s,e)=> {closed=true;Diagnostics?.Close();Model.PropertyChanged-=ModelChanged;Model.SetAdditionalTextInputErrors(this,false);ClearDiagrams();};
+            root.PreviewKeyDown+=(s,e)=>
             {
                 if(e.Key==Key.Escape){Drawing.AddCrossing=false;Drawing.Cursor=Cursors.Arrow;Drawing.CancelSelectionGesture();}
                 if(Keyboard.FocusedElement is TextBox)return;
@@ -149,6 +158,7 @@ namespace EngineeringDashboard
                 Drawing.Select(FormworkObject.Beam,0,false);
                 dimensions.IsChecked=false;
                 Drawing.AllDimensions=false;
+                Drawing.ShowSecondaryH20s=false;
                 Section.ShowAllDimensions=false;Section.SetResult(null);SectionViewport.ResetView();InspectorTabs.SelectedIndex=0;
                 BuildProperties();Geometry();Drawing.Fit();
             }
@@ -159,7 +169,7 @@ namespace EngineeringDashboard
         {
             if(Diagnostics!=null){Diagnostics.RefreshReport();Diagnostics.Activate();return;}
             Diagnostics=new BeamDiagnosticWindow(remarks=>Model.BuildDiagnosticReport(remarks,"Source: Drawing workspace; selected "+Drawing.SelectedKind+" index "+Drawing.SelectedIndex+" (zero based)\n"+string.Join("\n",Fields.Select(f=>f.Key+" = "+f.Value.Text+"; enabled="+f.Value.IsEnabled))));
-            Diagnostics.Closed+=(s,e)=>Diagnostics=null;if(IsVisible)Diagnostics.Owner=this;Diagnostics.Show();
+            Diagnostics.Closed+=(s,e)=>Diagnostics=null;if(DialogOwner.IsVisible)Diagnostics.Owner=DialogOwner;Diagnostics.Show();
         }
         private void Geometry()
         {sectionMode=false;Drawing.Formwork=false;Drawing.AddCrossing=false;Drawing.CancelSelectionGesture();Drawing.Cursor=Cursors.Arrow;Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;Drawing.InvalidateVisual();Refresh();}
@@ -364,6 +374,9 @@ namespace EngineeringDashboard
             Buttons["Cancel"].IsEnabled=Model.CanCancelOptimization;
             Buttons["Formwork"].IsEnabled=Model.IsCalculationValid && !pending;
             Buttons["Section"].IsEnabled=Model.IsCalculationValid && Model.NetworkResult!=null && !pending;
+            Buttons["SecondaryH20s"].IsEnabled=!sectionMode && Drawing.Formwork && Model.IsCalculationValid && !pending;
+            ((Button)Buttons["SecondaryH20s"]).Content=Drawing.ShowSecondaryH20s ? "Hide secondary H20s" : "Show secondary H20s";
+            if(Buttons.ContainsKey("ChangeSystem"))Buttons["ChangeSystem"].IsEnabled=!Model.IsOptimizing;
             Buttons["AddAbove"].IsEnabled=Buttons["AddBelow"].IsEnabled=!sectionMode && !Drawing.Formwork && !Model.IsOptimizing && (!Model.IsNetworkMode || Model.CanAddNetworkBay);
             Buttons["AddCrossing"].IsEnabled=!sectionMode && !Drawing.Formwork && Model.IsNetworkMode && Model.CrossingBeams.Count<30 && !Model.IsOptimizing;
             Buttons["Delete"].IsEnabled=!sectionMode && !Drawing.Formwork && !Model.IsOptimizing && PlanRemoval().Allowed;
@@ -437,7 +450,7 @@ namespace EngineeringDashboard
                 Drawing.Select(FormworkObject.Crossing,support.CrossingIndex,false);BuildProperties();Refresh();
                 if(Diagrams==null || diagramBeam!=beam)
                 {
-                    ClearDiagrams();var window=new TowerDiagramWindow(Model,support) {Owner=this};Diagrams=window;diagramBeam=beam;
+                    ClearDiagrams();var window=new TowerDiagramWindow(Model,support) {Owner=DialogOwner};Diagrams=window;diagramBeam=beam;
                     window.Closed+=(sender,args)=> {if(ReferenceEquals(Diagrams,window)){Diagrams=null;diagramBeam=-1;Drawing.SelectMember(-1,-1,0);Section.SelectMember(-1,-1,0);}};
                     window.SelectMember(run,line,-1);window.Show();
                 }
@@ -448,7 +461,7 @@ namespace EngineeringDashboard
             Drawing.Select(FormworkObject.Beam,beam,false);BuildProperties();Refresh();
             if(Diagrams==null || diagramBeam!=beam)
             {
-                ClearDiagrams();var window=new TowerDiagramWindow(Model) {Owner=this};Diagrams=window;diagramBeam=beam;
+                ClearDiagrams();var window=new TowerDiagramWindow(Model) {Owner=DialogOwner};Diagrams=window;diagramBeam=beam;
                 window.Closed+=(sender,args)=> {if(ReferenceEquals(Diagrams,window)){Diagrams=null;diagramBeam=-1;Drawing.SelectMember(-1,-1,0);Section.SelectMember(-1,-1,0);}};
                 window.SelectMember(run,line,-1);window.Show();
             }

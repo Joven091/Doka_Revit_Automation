@@ -138,7 +138,7 @@ namespace EngineeringDashboard
             double top = cy - layout.WidthMm * transverseScale / 2, bottom = cy + layout.WidthMm * transverseScale / 2;
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
             dc.DrawRectangle(ConcreteTop, null, new Rect(x0, cy - model.Width * transverseScale / 2, layout.LengthMm * scale, model.Width * transverseScale));
-            if(layout.Transfer!=null) {Label(dc,$"mm · P = 2×H20/line · secondaries = single H20 @ {layout.Transfer.EnteredUpperSpacingMm:0}",x0,8);Label(dc,"Cyan: frames · yellow: crosses",x0,25);}
+            if(layout.Transfer!=null) {Label(dc,$"mm · primary = 2×H20/line · secondaries = single H20 @ {layout.Transfer.EnteredUpperSpacingMm:0}",x0,8);Label(dc,"Cyan: frames · yellow: crosses",x0,25);}
             if(layout.Transfer==null)Label(dc,"mm · cyan: frames · yellow: crosses",x0,8);
             for (int i = 0; i < layout.StockPlan.Pieces.Length; i++)
             {
@@ -161,7 +161,7 @@ namespace EngineeringDashboard
                     Label(dc, Math.Abs(ends[end] - legs[end]).ToString("0.###") + (layout.Transfer==null ? " mm" : ""), (a + b) / 2, dimY - 16, true);
                     DrawnEndDimensionCount++;
                 }
-                Label(dc, "P" + (i + 1) + (layout.Transfer==null ? "\n2 × " : " · ") + piece.StockLengthMm.ToString("0.###") + (layout.Transfer==null ? " mm" : ""),
+                Label(dc, "H20 · " + piece.StockLengthMm.ToString("0.###"),
                     x0 + (piece.StartMm + piece.StockLengthMm / 2) * scale, bottom + 12, true);
                 if (i > 0) dc.DrawLine(new Pen(ConcreteSide, 1) { DashStyle = DashStyles.Dot }, new Point(x0 + piece.StartMm * scale, top - 8), new Point(x0 + piece.StartMm * scale, bottom + 15));
             }

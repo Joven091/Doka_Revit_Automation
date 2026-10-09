@@ -20,7 +20,7 @@ internal static class WorkspaceTests
     static void Click(string key){var control=workspace.Buttons[key];control.RaiseEvent(new RoutedEventArgs(control is MenuItem ? MenuItem.ClickEvent : Button.ClickEvent));Pump();}
     static void Render(string path=null,int width=1280,int height=860)
     {
-        Pump();var root=(FrameworkElement)workspace.Content;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();
+        Pump();var root=workspace.Surface;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();
         if(path!=null){int imageWidth=(int)Math.Ceiling(root.ActualWidth),imageHeight=(int)Math.Ceiling(root.ActualHeight);var bitmap=new RenderTargetBitmap(imageWidth,imageHeight,96,96,PixelFormats.Pbgra32);var backdrop=new DrawingVisual();using(var dc=backdrop.RenderOpen())dc.DrawRectangle(Brushes.WhiteSmoke,null,new Rect(0,0,imageWidth,imageHeight));bitmap.Render(backdrop);bitmap.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}
     }
     static void RenderDiagrams(string path=null)
@@ -53,7 +53,7 @@ internal static class WorkspaceTests
     {workspace.Fields[key].Text=value;Check(workspace.CommitFields(),"valid field commits: "+key);Pump();Render();}
     static Point Centre(Rect r)=>new Point(r.Left+r.Width/2,r.Top+r.Height/2);
     static IEnumerable<T> Controls<T>(DependencyObject root) where T:DependencyObject
-    {foreach(object item in LogicalTreeHelper.GetChildren(root))if(item is DependencyObject child){if(child is T match)yield return match;foreach(var value in Controls<T>(child))yield return value;}}
+    {if(root is BeamFormworkWorkspace view)root=view.Surface;foreach(object item in LogicalTreeHelper.GetChildren(root))if(item is DependencyObject child){if(child is T match)yield return match;foreach(var value in Controls<T>(child))yield return value;}}
     static void CadSelection(BeamCalculatorViewModel model)
     {
         var drawing=workspace.Drawing;var original=model.NetworkConfigurationXml;
@@ -115,8 +115,9 @@ internal static class WorkspaceTests
     {
         try
         {
+            parent.Width=1280;parent.Show();Pump();
             var opener=(Button)parent.FindName("DrawingWorkspaceButton");opener.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();workspace=parent.FormworkWorkspace;
-            Check(workspace!=null && ReferenceEquals(workspace.Model,model) && workspace.WindowState==WindowState.Maximized,"opens a maximized workspace with shared state");
+            Check(workspace!=null && ReferenceEquals(workspace.Model,model) && ReferenceEquals(parent.Content,workspace.Surface) && parent.Title.Contains("D3 shoring"),"D3 opens the drawing as the calculator's main UI with shared state");
             opener.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(ReferenceEquals(workspace,parent.FormworkWorkspace),"opening again reuses the window");
             workspace.WindowState=WindowState.Normal;workspace.Width=1280;workspace.Height=860;Render();
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-geometry.png"));
@@ -134,6 +135,16 @@ internal static class WorkspaceTests
             copyWindow.RemarksBox.Text="Copy my remarks";copyWindow.CopyButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(copied==copyWindow.ReportBox.Text && copied.Contains("Copy my remarks") && copied.Contains("END BEAM FORMWORK"),"copy refreshes the complete report and remarks");copyWindow.Close();
             var drawing=workspace.Drawing;drawing.Fit();Render();
+            Click("Formwork");Render();var layout=model.NetworkResult;
+            Check(drawing.DrawnSecondaryH20Count==0,"secondary H20s start hidden in plan");
+            Click("SecondaryH20s");Render();
+            Check(drawing.DrawnSecondaryH20Count>0 && ReferenceEquals(layout,model.NetworkResult),"secondary H20 toggle shows real members without changing the solution");
+            var lowerTarget=drawing.MemberTargets.First(h=>h.Item2>=0 && h.Item3>=layout.Beams[h.Item2].StockPlan.Pieces.Length);
+            workspace.ShowMember(lowerTarget.Item2,lowerTarget.Item3,lowerTarget.Item4);Pump();
+            Check(workspace.Diagrams.SelectedTransferMember.H20Count==1 && workspace.Diagrams.LoadedAnalysis.DeflectionEvaluated,"visible secondary selection opens checked single-H20 diagrams");
+            workspace.Diagrams.Close();Click("SecondaryH20s");Render();
+            Check(drawing.DrawnSecondaryH20Count==0 && ReferenceEquals(layout,model.NetworkResult),"hiding secondaries leaves the layout and calculated checks intact");
+            Click("Geometry");Render();
             Check(workspace.NetworkResultText.Contains(model.NetworkResult.LegCount+" tower legs") && workspace.SelectedResultText.Contains("Selected beam · B1") && workspace.SelectedResultText.Contains(model.NetworkResult.Beams[0].LegCount+" tower legs"),"network totals and selected beam quantities have explicit independent labels");
             var details=Controls<Expander>(workspace).Single(e=>Equals(e.Header,"Details"));
             Check(!details.IsExpanded && !workspace.NetworkResultText.Contains("peak leg") && workspace.NetworkResultText.Contains(model.NetworkResult.H20Count+" H20s"),"network card defaults to support and timber counts with extra quantities collapsed");
@@ -148,7 +159,7 @@ internal static class WorkspaceTests
             Check(drawing.DrawnLegCount==model.NetworkResult.LegCount && drawing.MemberTargets.Count>0,"formwork overlays all calculated legs and primary pairs");
             Check(drawing.LegTargets.Count==drawing.DrawnLegCount && drawing.LegTargets.All(t=>t.Item2.Contains("/70 kN")),"every visible leg has load and permissible-capacity inspection");
             double planHeight=drawing.ActualHeight;var hit=drawing.MemberTargets.First();Check(drawing.SelectAt(Centre(hit.Item1)),"primary H20 is selected directly from plan");Pump();Render();
-            Check(workspace.Diagrams!=null && workspace.Diagrams.IsVisible && workspace.Diagrams.Owner==workspace && workspace.Diagrams.SelectedTransferMember.H20Count==2,"primary pair opens an owned separate diagram window");
+            Check(workspace.Diagrams!=null && workspace.Diagrams.IsVisible && workspace.Diagrams.Owner==parent && workspace.Diagrams.SelectedTransferMember.H20Count==2,"primary pair opens a diagram owned by the main D3 calculator");
             Check(Math.Abs(workspace.Diagrams.LoadedAnalysis.TotalLoadKn-model.NetworkResult.Beams[hit.Item2].Transfer.PrimaryCases[workspace.Diagrams.SelectedLoadCase][hit.Item3].Analysis.TotalLoadKn)<1e-8,"plan selection displays actual member load");
             Check(Controls<Border>(workspace.Diagrams).Count(b=>b.CornerRadius.TopLeft==8)==4 && !Controls<Border>(workspace).Any(b=>b.CornerRadius.TopLeft==8),"loading and response cards are outside the workspace");
             Check(Math.Abs(drawing.ActualHeight-planHeight)<.01,"opening diagrams does not shrink the drawing canvas");
@@ -302,7 +313,7 @@ internal static class WorkspaceTests
             Check(model.NetworkConfigurationXml==previousXml && ReferenceEquals(model.NetworkResult,previousResult) && ReferenceEquals(workspace.Diagrams,retainedDiagram),"declining new session preserves inputs, result and open diagrams");
             workspace.ConfirmNewSession=()=>true;Click("NewSession");Render();
             var defaults=new BeamCalculatorViewModel();
-            Check(workspace.IsVisible && ReferenceEquals(workspace.Model,model) && model.HasSelectedSupportSystem && model.UseTowers && model.UseBeamNetwork && model.TransferSlabLoads,"new session retains the shared model, selected mode and drawing workspace");
+            Check(workspace.Surface.IsVisible && ReferenceEquals(workspace.Model,model) && model.HasSelectedSupportSystem && model.UseTowers && model.UseBeamNetwork && model.TransferSlabLoads,"new session retains the shared model, selected mode and drawing workspace");
             Check(model.NetworkBeams.Count==2 && model.NetworkBays.Count==1 && model.CrossingBeams.Count==0 && model.SelectedNetworkBeam==0,"new session starts a fresh two-beam network without old crossing beams");
             Check(model.NetworkBeams.All(b=>b.WidthMm==defaults.Width && b.DepthMm==defaults.Depth) && model.BeamLengthMm==defaults.BeamLengthMm && model.StockLengthsText==defaults.StockLengthsText && model.TowerLegCapacityKn==defaults.TowerLegCapacityKn && model.UpperSupportSpacingMm==defaults.UpperSupportSpacingMm,"new session resets geometry, stock, capacity and spacing to defaults");
             Check(workspace.SeparateSlabNotice.Visibility==Visibility.Collapsed,"new session clears the previous independent-slab explanation");

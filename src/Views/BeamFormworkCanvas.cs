@@ -15,7 +15,7 @@ namespace EngineeringDashboard
         internal readonly BeamCalculatorViewModel Model;
         internal FormworkObject SelectedKind=FormworkObject.Beam;
         internal int SelectedIndex;
-        internal bool Formwork, AllDimensions, AddCrossing;
+        internal bool Formwork, AllDimensions, AddCrossing, ShowSecondaryH20s;
         private readonly HashSet<Tuple<FormworkObject,int>> selection=new HashSet<Tuple<FormworkObject,int>> {Tuple.Create(FormworkObject.Beam,0)};
         internal Tuple<FormworkObject,int>[] SelectedObjects=>selection.OrderBy(x=>x.Item1).ThenBy(x=>x.Item2).ToArray();
         internal Tuple<FormworkObject,int> HoveredObject {get;private set;}
@@ -42,6 +42,7 @@ namespace EngineeringDashboard
         private int memberBeam=-1,memberRun=-1,memberLine;
         internal int DrawnLegCount {get;private set;}
         internal int DrawnCrossH20Count {get;private set;}
+        internal int DrawnSecondaryH20Count {get;private set;}
         internal int DrawnBracedBayCount {get;private set;}
         internal readonly List<Tuple<int,string,double>> CrossingSettingOut=new List<Tuple<int,string,double>>();
         internal BeamFormworkCanvas(BeamCalculatorViewModel model)
@@ -162,6 +163,7 @@ namespace EngineeringDashboard
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();dimensions.Clear();AnnotationBounds.Clear();CrossingSettingOut.Clear();DrawnLegCount=DrawnCrossH20Count=DrawnBracedBayCount=0;
+            DrawnSecondaryH20Count=0;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if(!ValidGeometry()) {Label(dc,"Correct geometry to draw the plan.",new Point(30,30));return;}
             var beams=Beams();var ys=Centres();SceneBounds=Bounds();
@@ -250,9 +252,10 @@ namespace EngineeringDashboard
                     var last=alongY ? Screen((x0+x1)/2,y1) : Screen(x1,(y0+y1)/2);
                     H20Drawing.Plan(dc,first,last,m.H20Count,memberBeam==encoded && memberRun==member);
                     DrawnCrossH20Count+=m.H20Count;
+                    if(m.H20Count==1)DrawnSecondaryH20Count++;
                     var target=Tuple.Create(MemberHit(first,last),encoded,member,0);
                     MemberTargets.Add(target);
-                    if(m.H20Count==2 && m.Name.EndsWith(" R"))Label(dc,$"{m.Name.Split(' ')[0]} · {m.LengthMm:0}",new Point(first.X+10,(first.Y+last.Y)/2));
+                    if(m.H20Count==2 && m.Name.EndsWith(" R"))Label(dc,$"H20 · {m.LengthMm:0.###}",new Point(first.X+10,(first.Y+last.Y)/2));
                 };
                 if(support.Towers!=null)
                 {
@@ -260,7 +263,7 @@ namespace EngineeringDashboard
                     double origin=first.Y0-first.Member.StartMm,centre=(primary.Min(s=>s.X0)+primary.Max(s=>s.X1))/2;
                     DrawTowerFrames(dc,support.Towers,$"X{support.CrossingIndex+1}",(station,side)=>Screen(centre+side,origin+station));
                 }
-                foreach(var group in timber.Where(g=>g.Key.H20Count==2))draw(group);
+                foreach(var group in timber.Where(g=>g.Key.H20Count==2 || ShowSecondaryH20s))draw(group);
                 if(support.Towers!=null && (AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex))DrawCrossDimensions(dc,support,timber.SelectMany(g=>g).Where(s=>s.Member.H20Count==2).ToArray());
                 foreach(var solid in support.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope && s.Member==null))dc.DrawRectangle(Brushes.SandyBrown,new Pen(Brushes.SaddleBrown,1),new Rect(Screen(solid.X0,solid.Y0),Screen(solid.X1,solid.Y1)));
                 foreach(var bearing in support.Bearings)
@@ -297,8 +300,6 @@ namespace EngineeringDashboard
             vertical(near,legs[0],$"B{bay+1} concrete face to first tower leg",96);
             for(int i=0;i<legs.Length-1;i++)vertical(legs[i],legs[i+1],layout.Joined[i] ? "Braced tower bay" : "Gap between tower groups",96);
             vertical(legs.Last(),far,$"Last tower leg to B{bay+2} concrete face",96);
-            Label(dc,$"B{bay+1} face",new Point(Screen(left,near).X-154,Screen(0,near).Y-19));
-            Label(dc,$"B{bay+2} face",new Point(Screen(left,far).X-154,Screen(0,far).Y+7));
             // Keep the transverse setting-out chain above the primary stock labels
             // and the separate vertical H20 overhang dimensions.
             double y=Screen(0,legs[0]).Y-58;
@@ -336,12 +337,36 @@ namespace EngineeringDashboard
                     var first=Screen(p.StartMm,y);var last=Screen(p.EndMm,y);H20Drawing.Plan(dc,first,last,2,active);
                     MemberTargets.Add(Tuple.Create(MemberHit(first,last),beam,run,line));
                 }
-                Label(dc,$"P{run+1} · {p.StockLengthMm:0}",Screen((p.StartMm+p.EndMm)/2,b)+new Vector(0,10),null,true);
+                Label(dc,$"H20 · {p.StockLengthMm:0.###}",Screen((p.StartMm+p.EndMm)/2,b)+new Vector(0,10),null,true);
                 if(dims && (AllDimensions || memberBeam==beam && memberRun==run))
                 {
                     double y=Screen(0,b).Y+37;
                     Dimension(dc,new Point(Screen(p.StartMm,0).X,y),new Point(Screen(layout.PositionsMm[p.FirstSupport],0).X,y),(layout.PositionsMm[p.FirstSupport]-p.StartMm).ToString("0.###"),FormworkObject.Beam,beam,null,null);
                     Dimension(dc,new Point(Screen(layout.PositionsMm[p.LastSupport],0).X,y),new Point(Screen(p.EndMm,0).X,y),(p.EndMm-layout.PositionsMm[p.LastSupport]).ToString("0.###"),FormworkObject.Beam,beam,null);
+                }
+            }
+            if(ShowSecondaryH20s && layout.Transfer!=null)
+            {
+                var t=layout.Transfer;int runs=layout.StockPlan.Pieces.Length;
+                for(int row=0;row<t.RowsMm.Length;row++)
+                {
+                    var m=t.LowerCases[0][row];int encoded=runs+row;
+                    var first=Screen(t.RowsMm[row],centre+m.StartMm);var last=Screen(t.RowsMm[row],centre+m.StartMm+m.LengthMm);
+                    H20Drawing.Plan(dc,first,last,1,memberBeam==beam && memberRun==encoded);
+                    MemberTargets.Insert(0,Tuple.Create(MemberHit(first,last),beam,encoded,0));DrawnSecondaryH20Count++;
+                    for(int side=0;side<2;side++)
+                    {
+                        if(Model.IsNetworkMode && side==0)continue; // Each shared slab H20 appears once.
+                        var upper=t.UpperMembers.FirstOrDefault(u=>u.Name==(side==0 ? "Upper left" : "Upper right"));
+                        if(upper==null || t.UpperScale(side==0,row)<=0)continue;
+                        double beamWidth=Model.IsNetworkMode ? Model.NetworkResult.Input.Beams[beam].WidthMm : Model.Width;
+                        double face=centre+(side==0 ? -1 : 1)*beamWidth/2;
+                        double start=side==0 ? face-upper.StartMm-upper.LengthMm : face+upper.StartMm;
+                        first=Screen(t.RowsMm[row],start);last=Screen(t.RowsMm[row],start+upper.LengthMm);
+                        encoded=runs+t.RowsMm.Length+row*2+side;
+                        H20Drawing.Plan(dc,first,last,1,memberBeam==beam && memberRun==encoded);
+                        MemberTargets.Insert(0,Tuple.Create(MemberHit(first,last),beam,encoded,0));DrawnSecondaryH20Count++;
+                    }
                 }
             }
         }

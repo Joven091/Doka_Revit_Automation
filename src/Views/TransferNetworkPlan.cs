@@ -67,7 +67,7 @@ namespace EngineeringDashboard
             base.OnRender(dc);DrawnConcreteEndZoneCount=0;AnnotationBounds.Clear();MemberTargets.Clear();SeparateBayTargets.Clear();DrawnH20ProfileCount=DrawnPrimarySectionCount=0;DrawnTowerLegCount=DrawnPrimaryLengthCount=DrawnSecondaryLengthCount=DrawnCrossingBeamCount=0;if(result==null || ActualWidth<100)return;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));
             if(SectionOnly) {Section(dc,55);return;}
-            Label(dc,$"mm · primary P = 2×H20/line · secondaries = single H20 @ {result.Input.UpperSpacingMm:0}",30,8);
+            Label(dc,$"mm · primary = 2×H20/line · secondaries = single H20 @ {result.Input.UpperSpacingMm:0}",30,8);
             Label(dc,"Cyan: frames · yellow: crosses · beam W×D · slab t = thickness · transverse view schematic",30,27);
             var ys=Centres();var crossSolids=result.CrossSupports.SelectMany(c=>c.Solids).ToArray();
             double minX=Math.Min(0,crossSolids.Select(s=>s.X0).DefaultIfEmpty(0).Min()),maxX=Math.Max(result.Beams[0].LengthMm,crossSolids.Select(s=>s.X1).DefaultIfEmpty(0).Max());
@@ -106,7 +106,7 @@ namespace EngineeringDashboard
                         MemberTargets.Add(Tuple.Create(new Rect(xx(stock.StartMm),y-9,stock.StockLengthMm*scale,18),beam,i,line));
 
                     }
-                    Label(dc,$"P{i+1} · {stock.StockLengthMm:0}",xx(stock.StartMm+stock.StockLengthMm/2),bottom+12,true);DrawnPrimaryLengthCount++;
+                    Label(dc,$"H20 · {stock.StockLengthMm:0.###}",xx(stock.StartMm+stock.StockLengthMm/2),bottom+12,true);DrawnPrimaryLengthCount++;
                     double dimY=bottom+42;
                     Dim(dc,xx(stock.StartMm),xx(b.PositionsMm[stock.FirstSupport]),dimY,(b.PositionsMm[stock.FirstSupport]-stock.StartMm).ToString("0.###"));
                     Dim(dc,xx(b.PositionsMm[stock.LastSupport]),xx(stock.EndMm),dimY,(stock.EndMm-b.PositionsMm[stock.LastSupport]).ToString("0.###"));

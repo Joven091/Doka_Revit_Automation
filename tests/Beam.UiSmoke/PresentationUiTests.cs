@@ -47,9 +47,9 @@ internal static class PresentationUiTests
         Check(!workspace.Waiting.Cancel.IsEnabled,"waiting card cannot cancel a fixture with no active solver");
         Capture((FrameworkElement)workspace.Content,1280,860,output==null ? null : Path.ChangeExtension(output,"workspace-hugo.png"));
         SetBusy(vm,false);Pump();
-        Check(workspace.Waiting.Visibility==Visibility.Collapsed && !workspace.Waiting.IsTimerRunning,"completion removes the overlay and stops animation");
+        Check(workspace.Waiting.Visibility==Visibility.Collapsed && !workspace.Waiting.IsTimerRunning && !workspace.Waiting.Hugo.Animate,"completion removes the overlay and stops progress and frame animation");
         SetBusy(vm,true);Pump();Check(workspace.Waiting.IsTimerRunning,"a later search restarts the waiting card");
-        workspace.Close();Pump();Check(!workspace.Waiting.IsTimerRunning,"closing a drawing window releases its animation timer");
+        workspace.Close();Pump();Check(!workspace.Waiting.IsTimerRunning && !workspace.Waiting.Hugo.Animate,"closing a drawing window releases its progress and render callbacks");
         // A fresh loaded view can observe the same running model after an earlier view closes.
         var next=new BeamFormworkWorkspace(vm,null,null,null);next.Show();Pump();
         Check(next.Waiting.Visibility==Visibility.Visible && next.Waiting.IsTimerRunning,"new drawing view attaches to an already running search");

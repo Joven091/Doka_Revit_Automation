@@ -1,6 +1,24 @@
 name: Primary UDL design checks
 on: [pull_request]
 jobs:
+  d3-drawing-workspace:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release -- --side-shutters
+      - run: dotnet build tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release --warnaserror
+      - run: |
+          New-Item -ItemType Directory -Force tests/d3-ui-preview | Out-Null
+          tests/Beam.UiSmoke/bin/Release/net48/Beam.UiSmoke.exe --drawing-ui tests/d3-ui-preview/beam.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d3-drawing-preview
+          path: tests/d3-ui-preview/*.png
   primary-udl:
     runs-on: windows-latest
     # Run the reported coordinated layout on both runtimes, then its WPF previews.
