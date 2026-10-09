@@ -299,7 +299,9 @@ namespace EngineeringDashboard
             vertical(legs.Last(),far,$"Last tower leg to B{bay+2} concrete face",96);
             Label(dc,$"B{bay+1} face",new Point(Screen(left,near).X-154,Screen(0,near).Y-19));
             Label(dc,$"B{bay+2} face",new Point(Screen(left,far).X-154,Screen(0,far).Y+7));
-            double y=Screen(0,legs[0]).Y-24;
+            // Keep the transverse setting-out chain above the primary stock labels
+            // and the separate vertical H20 overhang dimensions.
+            double y=Screen(0,legs[0]).Y-58;
             CrossingSettingOut.Add(Tuple.Create(index,"Beam start to near leg column",left));
             CrossingSettingOut.Add(Tuple.Create(index,"Tower width between leg centres",layout.WidthMm));
             CrossingSettingOut.Add(Tuple.Create(index,"Far leg column to beam end",Model.BeamLengthMm-right));
