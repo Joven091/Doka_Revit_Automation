@@ -81,7 +81,7 @@ internal static class WorkspaceTests
         drawing.SelectAt(new Point(slab.Left+10,slab.Top+slab.Height/2),true);Render();
         Check(workspace.RemovalPreview.Contains("B2") && workspace.RemovalPreview.Contains("S1") && workspace.RemovalPreview.Contains("X1") && !workspace.RemovalPreview.Contains("X2"),"deletion preview names coupled geometry and dependent crossing beams");
         // Exercise the actual WPF preview-key route with drawing focus.
-        drawing.Focus();var delete=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(workspace),Environment.TickCount,Key.Delete){RoutedEvent=Keyboard.PreviewKeyDownEvent};drawing.RaiseEvent(delete);Pump();Render();
+        drawing.Focus();var delete=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(workspace.Surface),Environment.TickCount,Key.Delete){RoutedEvent=Keyboard.PreviewKeyDownEvent};drawing.RaiseEvent(delete);Pump();Render();
         Check(delete.Handled && model.NetworkBeams.Count==2 && model.NetworkBays.Count==1,"delete key removes a selected beam/slab pair only once");
         Check(model.CrossingBeams.Count==1 && model.CrossingBeams[0].BayNumber==1 && drawing.SelectedObjects.Length==0,"dependent crossing is removed and the retained crossing is correctly reindexed");
         Click("Undo");Render();Check(model.NetworkConfigurationXml==withCrossings && drawing.SelectedObjects.Length==2,"one undo restores the entire batch and its selection");
@@ -91,7 +91,7 @@ internal static class WorkspaceTests
         workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None);Check(model.NetworkConfigurationXml==two,"minimum-network deletion never partially removes geometry");
         Click("Undo");Render();Check(model.NetworkConfigurationXml==withCrossings,"rejected deletion creates no extra undo entry");
         drawing.Select(FormworkObject.Beam,1);Render();var depth=workspace.Fields["DepthMm"];
-        depth.Focus();var textDelete=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(workspace),Environment.TickCount,Key.Delete){RoutedEvent=Keyboard.PreviewKeyDownEvent};depth.RaiseEvent(textDelete);Pump();
+        depth.Focus();var textDelete=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(workspace.Surface),Environment.TickCount,Key.Delete){RoutedEvent=Keyboard.PreviewKeyDownEvent};depth.RaiseEvent(textDelete);Pump();
         Check(model.NetworkConfigurationXml==withCrossings,"delete while editing numeric text does not remove drawing geometry");
         Check(!workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None,true),"text editing bypasses drawing shortcuts");
         depth.Text="bad";Pump();drawing.Focus();workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None);
