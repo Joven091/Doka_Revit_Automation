@@ -27,6 +27,7 @@ namespace EngineeringDashboard
         internal readonly List<Tuple<Rect,FormworkObject,int>> ObjectTargets=new List<Tuple<Rect,FormworkObject,int>>();
         internal readonly List<Tuple<Rect,int,int,int>> MemberTargets=new List<Tuple<Rect,int,int,int>>();
         internal readonly List<Tuple<Rect,string>> LegTargets=new List<Tuple<Rect,string>>();
+        internal readonly List<string> AnnotationLabels=new List<string>();
         internal readonly List<Rect> AnnotationBounds=new List<Rect>();
         private readonly List<Tuple<Rect,FormworkObject,int,string>> dimensions=new List<Tuple<Rect,FormworkObject,int,string>>();
         internal event Action SelectionChanged;
@@ -148,7 +149,7 @@ namespace EngineeringDashboard
             if(centre)at.X-=f.Width/2;
             var box=new Rect(at.X-2,at.Y-1,f.Width+4,f.Height+2);
             if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>ActualHeight || AnnotationBounds.Any(r=>r.IntersectsWith(box)))return false;
-            AnnotationBounds.Add(box);dc.DrawRectangle(Brushes.White,null,box);dc.DrawText(f,at);return true;
+            AnnotationBounds.Add(box);AnnotationLabels.Add(text);dc.DrawRectangle(Brushes.White,null,box);dc.DrawText(f,at);return true;
         }
         private void Dimension(DrawingContext dc,Point a,Point b,string text,FormworkObject kind,int index,string field,Brush colour=null,double labelOffset=4)
         {
@@ -162,7 +163,7 @@ namespace EngineeringDashboard
         }
         protected override void OnRender(DrawingContext dc)
         {
-            base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();dimensions.Clear();AnnotationBounds.Clear();CrossingSettingOut.Clear();DrawnLegCount=DrawnCrossH20Count=DrawnBracedBayCount=0;
+            base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();dimensions.Clear();AnnotationLabels.Clear();AnnotationBounds.Clear();CrossingSettingOut.Clear();DrawnLegCount=DrawnCrossH20Count=DrawnBracedBayCount=0;
             DrawnSecondaryH20Count=0;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if(!ValidGeometry()) {Label(dc,"Correct geometry to draw the plan.",new Point(30,30));return;}
@@ -250,12 +251,13 @@ namespace EngineeringDashboard
                     bool alongY=y1-y0>x1-x0;
                     var first=alongY ? Screen((x0+x1)/2,y0) : Screen(x0,(y0+y1)/2);
                     var last=alongY ? Screen((x0+x1)/2,y1) : Screen(x1,(y0+y1)/2);
-                    H20Drawing.Plan(dc,first,last,m.H20Count,memberBeam==encoded && memberRun==member);
-                    DrawnCrossH20Count+=m.H20Count;
+                    if(m.IsPrimary)PrimaryDrawing.Plan(dc,first,last,m.Primary,memberBeam==encoded && memberRun==member);
+                    else H20Drawing.Plan(dc,first,last,1,memberBeam==encoded && memberRun==member);
+                    DrawnCrossH20Count+=m.H20Quantity;
                     if(m.H20Count==1)DrawnSecondaryH20Count++;
                     var target=Tuple.Create(MemberHit(first,last),encoded,member,0);
                     MemberTargets.Add(target);
-                    if(m.H20Count==2 && m.Name.EndsWith(" R"))Label(dc,$"H20 · {m.LengthMm:0.###}",new Point(first.X+10,(first.Y+last.Y)/2));
+                    if(m.H20Count==2 && m.Name.EndsWith(" R"))Label(dc,m.StockLabel,new Point(first.X+10,(first.Y+last.Y)/2));
                 };
                 if(support.Towers!=null)
                 {
@@ -313,8 +315,8 @@ namespace EngineeringDashboard
             Dimension(dc,new Point(Screen(right,0).X,y),new Point(Screen(Model.BeamLengthMm,0).X,y),(Model.BeamLengthMm-right).ToString("0.###"),FormworkObject.Crossing,index,null,null,-18);
             foreach(var piece in layout.StockPlan.Pieces)
             {
-                vertical(origin+piece.StartMm,legs[piece.FirstSupport],$"P{Array.IndexOf(layout.StockPlan.Pieces,piece)+1} near H20 overhang",36);
-                vertical(legs[piece.LastSupport],origin+piece.EndMm,$"P{Array.IndexOf(layout.StockPlan.Pieces,piece)+1} far H20 overhang",36);
+                vertical(origin+piece.StartMm,legs[piece.FirstSupport],$"P{Array.IndexOf(layout.StockPlan.Pieces,piece)+1} near {layout.Primary.Name} overhang",36);
+                vertical(legs[piece.LastSupport],origin+piece.EndMm,$"P{Array.IndexOf(layout.StockPlan.Pieces,piece)+1} far {layout.Primary.Name} overhang",36);
             }
         }
         private void DrawSupports(DrawingContext dc,TowerLayout layout,int beam,double centre,bool dims)
@@ -334,10 +336,10 @@ namespace EngineeringDashboard
                 for(int line=0;line<2;line++)
                 {
                     double y=line==0 ? a : b;bool active=memberBeam==beam && memberRun==run && memberLine==line;
-                    var first=Screen(p.StartMm,y);var last=Screen(p.EndMm,y);H20Drawing.Plan(dc,first,last,2,active);
+                    var first=Screen(p.StartMm,y);var last=Screen(p.EndMm,y);PrimaryDrawing.Plan(dc,first,last,layout.Primary,active);
                     MemberTargets.Add(Tuple.Create(MemberHit(first,last),beam,run,line));
                 }
-                Label(dc,$"H20 · {p.StockLengthMm:0.###}",Screen((p.StartMm+p.EndMm)/2,b)+new Vector(0,10),null,true);
+                Label(dc,$"{layout.Primary.Name} · {p.StockLengthMm:0.###}",Screen((p.StartMm+p.EndMm)/2,b)+new Vector(0,10),null,true);
                 if(dims && (AllDimensions || memberBeam==beam && memberRun==run))
                 {
                     double y=Screen(0,b).Y+37;

@@ -59,6 +59,7 @@ namespace EngineeringDashboard
             }
             return new[] { v, m, y / ei * 1000 };
         }
+        internal double WS10StrengthUtilization()=>PrimaryBeamProfile.WS10Strength(length*1000,supports.Select(x=>x*1000),(x,right)=>Response(x/1000,right));
         public static TowerBeamAnalysis Analyze(double length, double[] supports, double load, double ei, double leftEndLoad = 0, double rightEndLoad = 0)
         {
             if (!Finite(length) || length <= 0 || !Finite(load) || load <= 0 || !Finite(ei) || ei <= 0

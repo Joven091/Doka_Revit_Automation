@@ -8,7 +8,7 @@ namespace EngineeringDashboard
     public partial class BeamCalculatorViewModel
     {
         private BeamSearchTrace beamSearchTrace;
-        private const string DiagnosticInputs="UseTowers,TransferSlabLoads,UseBeamNetwork,Depth,Width,BeamLengthMm,FloorHeight,NumberOfProps,TowerLegCapacityKn,StockLengthsText,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,StockEndSetbackMm,MaximumConcreteEndOverhangMm,Exclude600Standalone,UpperSupportSpacingMm,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,SlabStripWidthMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
+        private const string DiagnosticInputs="UseTowers,TransferSlabLoads,UseBeamNetwork,Depth,Width,BeamLengthMm,FloorHeight,NumberOfProps,TowerLegCapacityKn,PrimaryMaterial,StockLengthsText,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,StockEndSetbackMm,MaximumConcreteEndOverhangMm,Exclude600Standalone,UpperSupportSpacingMm,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,SlabStripWidthMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
         private static string DiagnosticValue(object value)=>value is double number ? number.ToString("R",CultureInfo.InvariantCulture) : Convert.ToString(value,CultureInfo.InvariantCulture);
         private string CaptureDiagnosticInputs()
         {
@@ -52,8 +52,9 @@ namespace EngineeringDashboard
             if(IsCalculationValid)text.AppendLine("\nCURRENT RESULT\n"+(NetworkResult?.Summary??TowerResult?.Summary??("Prop spacing mm: "+MaximumPropSpacing.ToString("R",CultureInfo.InvariantCulture))));
             if(IsCalculationValid && NetworkResult!=null)text.AppendLine("\nSELECTED NETWORK LAYOUT\n"+NetworkResult.LayoutDiagnostics);
             if(!string.IsNullOrEmpty(TowerFailureDetails))text.AppendLine("\nCURRENT FAILURE DETAILS\n"+TowerFailureDetails);
+            text.AppendLine("\nPRIMARY MATERIAL BASIS\n"+PrimaryMaterialAssumptions);
             text.AppendLine("\nSEARCH LIMITS / RANKING");
-            text.AppendLine("Beam-only: ≤80 legs / 200000 sampled attempts; rank legs, braced bays, H20 quantity, utilization. Transfer: bounded covers, geometries and cross options; rank legs, timber, utilization. Network: bounded shared upper options and row phases; rank tower legs + upper feet, then timber. Custom mode compares catalogue and custom passes. Global optimality is not proven.");
+            text.AppendLine("Beam-only: ≤80 legs / 200000 sampled attempts; rank legs, braced bays, primary quantity, utilization. Transfer: bounded covers, geometries and cross options; rank legs, material length, utilization. Network: bounded shared upper options and row phases; rank tower legs + upper feet, then material length. Custom mode compares catalogue and custom passes. Global optimality is not proven.");
             text.AppendLine("=== END BEAM FORMWORK DIAGNOSTIC REPORT ===");return text.ToString();
         }
     }

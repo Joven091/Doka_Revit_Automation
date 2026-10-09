@@ -191,6 +191,7 @@ namespace EngineeringDashboard
             if(vm.NetworkBeams.Count>=2)record.Inputs.Add(CalculationFiles.Field("NetworkConfigurationXml",vm.NetworkConfigurationXml));
             record.Inputs.Add(CalculationFiles.Field("BeamLengthMm", vm.BeamLengthMm));
             record.Inputs.Add(CalculationFiles.Field("TowerLegCapacityKn", vm.TowerLegCapacityKn));
+            record.Inputs.Add(CalculationFiles.Field("PrimaryMaterial", vm.PrimaryMaterial));
             record.Inputs.Add(CalculationFiles.Field("StockLengthsText", vm.StockLengthsText));
             record.Inputs.Add(CalculationFiles.Field("StockEndSetbackMm", vm.StockEndSetbackMm));
             record.Inputs.Add(CalculationFiles.Field("MaximumConcreteEndOverhangMm", vm.MaximumConcreteEndOverhangMm));
@@ -220,6 +221,7 @@ namespace EngineeringDashboard
             target.TransferSlabLoads=candidate.TransferSlabLoads; target.UpperSupportSpacingMm=candidate.UpperSupportSpacingMm; target.LeftSlabBayMm=candidate.LeftSlabBayMm; target.RightSlabBayMm=candidate.RightSlabBayMm;
             target.UseBeamNetwork=candidate.UseBeamNetwork;if(candidate.NetworkBeams.Count>=2)target.NetworkConfigurationXml=candidate.NetworkConfigurationXml;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
+            target.PrimaryMaterial=candidate.PrimaryMaterial;
             target.AllowCustomH20Lengths = candidate.AllowCustomH20Lengths;
             target.CustomH20Scope = candidate.CustomH20Scope;
             target.IgnoreUplift = candidate.IgnoreUplift;
@@ -237,6 +239,13 @@ namespace EngineeringDashboard
             if (record.Inputs.Any(f => f.Name == "IgnoreUplift")) CalculationFiles.Apply(record, "Beam", vm, "IgnoreUplift");
             vm.AllowCustomH20Lengths = false;
             if (record.Inputs.Any(f => f.Name == "AllowCustomH20Lengths")) CalculationFiles.Apply(record, "Beam", vm, "AllowCustomH20Lengths");
+            vm.PrimaryMaterial=PrimaryBeamMaterial.DoubleH20;
+            var material=record.Inputs.SingleOrDefault(f=>f.Name=="PrimaryMaterial");
+            if(material!=null)
+            {
+                if(!Enum.TryParse(material.Value,out PrimaryBeamMaterial choice) || !Enum.IsDefined(typeof(PrimaryBeamMaterial),choice))throw new ArgumentException("Invalid primary beam material.");
+                vm.PrimaryMaterial=choice;
+            }
             vm.CustomH20Scope = CustomH20LengthScope.Both;
             var scope=record.Inputs.SingleOrDefault(f=>f.Name=="CustomH20Scope");
             if(scope!=null)
@@ -265,11 +274,11 @@ namespace EngineeringDashboard
                 var tower = vm.TowerResult;
                 var fields = new List<CalculationField> { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("ConcreteEndOverhangMm", tower.ConcreteEndOverhangMm), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis), CalculationFiles.Field("UpliftAcceptance", tower.UpliftSummary),
                     CalculationFiles.Field("LegUtilizationPercent", tower.MaxLegKn / vm.TowerLegCapacityKn * 100), CalculationFiles.Field("SupportSchedule", tower.Schedule),
-                    CalculationFiles.Field("PrimaryStockSchedule", tower.StockSchedule), CalculationFiles.Field("TotalPrimaryH20Count", tower.StockPlan.TotalH20Count),
+                    CalculationFiles.Field("PrimaryStockSchedule", tower.StockSchedule), CalculationFiles.Field("TotalPrimaryH20Count", tower.StockPlan.TotalH20Count),CalculationFiles.Field("TotalWS10Count",vm.NetworkResult?.WS10Count??tower.StockPlan.WS10Count),CalculationFiles.Field("PrimaryMaterialBasis",tower.PrimaryMaterialSummary),
                     CalculationFiles.Field("SearchStatus", vm.TowerSearchNote), CalculationFiles.Field("TotalLineLoadKnPerM", vm.TotalLineLoad),
                     CalculationFiles.Field("LeftLineLoadKnPerM", vm.LeftLineLoad), CalculationFiles.Field("RightLineLoadKnPerM", vm.RightLineLoad) };
                 if(tower.Transfer != null) {fields.Add(CalculationFiles.Field("TransferredSlabSummary",tower.Transfer.Summary));fields.Add(CalculationFiles.Field("EstimatedSlabSoffitMovementMm",tower.Transfer.SlabMovementMm));fields.Add(CalculationFiles.Field("ShutterLoadKn",tower.Transfer.ShutterLoadKn));}
-                if(vm.NetworkResult!=null) {fields.Add(CalculationFiles.Field("NetworkSummary",vm.NetworkResult.Summary));fields.Add(CalculationFiles.Field("NetworkSignedReactions",string.Join("\n",vm.NetworkResult.Beams.Select((b,i)=>$"B{i+1}: {b.UpliftSummary}"))));fields.Add(CalculationFiles.Field("AllBeamSchedules",vm.NetworkResult.Schedule));fields.Add(CalculationFiles.Field("TotalNetworkH20LengthMm",vm.NetworkResult.TimberMm));fields.Add(CalculationFiles.Field("TotalNetworkSlabLoadKn",vm.NetworkResult.SlabLoadKn));if(vm.NetworkResult.RequiresSeparateSlabFormwork)fields.Add(CalculationFiles.Field("FullTransferFailureDetails",vm.NetworkResult.FullTransferFailureDetails));}
+                if(vm.NetworkResult!=null) {fields.Add(CalculationFiles.Field("NetworkSummary",vm.NetworkResult.Summary));fields.Add(CalculationFiles.Field("NetworkSignedReactions",string.Join("\n",vm.NetworkResult.Beams.Select((b,i)=>$"B{i+1}: {b.UpliftSummary}"))));fields.Add(CalculationFiles.Field("AllBeamSchedules",vm.NetworkResult.Schedule));fields.Add(CalculationFiles.Field("TotalNetworkH20LengthMm",vm.NetworkResult.TimberMm));fields.Add(CalculationFiles.Field("TotalNetworkWS10LengthMm",vm.NetworkResult.WS10LengthMm));fields.Add(CalculationFiles.Field("TotalNetworkSlabLoadKn",vm.NetworkResult.SlabLoadKn));if(vm.NetworkResult.RequiresSeparateSlabFormwork)fields.Add(CalculationFiles.Field("FullTransferFailureDetails",vm.NetworkResult.FullTransferFailureDetails));}
                 return CalculationFiles.Report("Beam — shoring towers", record.Inputs, fields, vm.TowerCalculationBasis);
             }
             var results=CalculationFiles.Capture("Beam",vm,"MaximumPropSpacing,PrimaryBeamCantilever,MaximumPropLoad,PropCapacityKn,PrimaryDeflectionMm,PrimaryDeflectionUtilization,PropUtilizationPercent,PropExtensionMm,PropLookupExtensionMm,PrimaryLineSpacingMm,LeftLineLoad,RightLineLoad,TotalLineLoad,LimitingFactor,IsCalculationValid");

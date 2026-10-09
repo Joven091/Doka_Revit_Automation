@@ -36,6 +36,7 @@ namespace EngineeringDashboard
         private readonly TextBlock removalInfo=new TextBlock {TextWrapping=TextWrapping.Wrap,Foreground=Brushes.SlateGray,Margin=new Thickness(0,8,0,12)};
         private readonly Border resultCard=new Border {Background=Brushes.AliceBlue,Padding=new Thickness(14),Margin=new Thickness(8),CornerRadius=new CornerRadius(6)};
         private bool advancedExpanded;
+        private PrimaryBeamMaterial displayedPrimaryMaterial;
         internal string NetworkResultText=>networkSummary.Text;
         internal string SelectedResultText=>selectedSummary.Text;
         private readonly StackPanel properties=new StackPanel {Margin=new Thickness(16)};
@@ -71,7 +72,7 @@ namespace EngineeringDashboard
             internal FormworkObject SelectedKind;
             internal int SelectedIndex;
         }
-        private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,UpperSupportSpacingMm,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,Exclude600Standalone,DeflectionLimit,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
+        private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,UpperSupportSpacingMm,PrimaryMaterial,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,Exclude600Standalone,DeflectionLimit,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
         internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null)
         {
             Model=model;save=saveInputs;load=loadInputs;export=exportReport;refreshInputs=refreshCalculatorInputs;
@@ -305,7 +306,7 @@ namespace EngineeringDashboard
         }
         private void BuildProperties()
         {
-            changing=true;editors.Clear();stringEditors.Clear();syncControls.Clear();Fields.Clear();sharedFields.Clear();properties.Children.Clear();SharedProperties.Children.Clear();
+            changing=true;displayedPrimaryMaterial=Model.PrimaryMaterial;editors.Clear();stringEditors.Clear();syncControls.Clear();Fields.Clear();sharedFields.Clear();properties.Children.Clear();SharedProperties.Children.Clear();
             try
             {
                 int count=Model.IsNetworkMode ? Model.NetworkBeams.Count : 1;
@@ -325,11 +326,16 @@ namespace EngineeringDashboard
                 if(Drawing.SelectedObjects.Length>1)Text(Drawing.SelectedObjects.Length+" objects selected. Shift-click toggles selection; Delete removes the selected areas.");
                 int selectionControls=properties.Children.Count;var objectFields=new HashSet<string>(Fields.Keys);
                 Text("Applies to every beam and slab bay.");Number("BeamLengthMm","Beam length (mm)",()=>Model.BeamLengthMm,v=>Model.BeamLengthMm=v);Number("UpperSupportSpacingMm","Maximum secondary spacing (mm)",()=>Model.UpperSupportSpacingMm,v=>Model.UpperSupportSpacingMm=v);Number("TowerLegCapacityKn","Permissible leg load (kN)",()=>Model.TowerLegCapacityKn,v=>Model.TowerLegCapacityKn=v);
+                Text("Primary beam material");
+                var material=new ComboBox {Name="PrimaryMaterialSelector",ItemsSource=Model.PrimaryMaterialOptions,DisplayMemberPath="Label",SelectedValuePath="Value",SelectedValue=Model.PrimaryMaterial,Margin=new Thickness(0,0,0,12)};
+                material.SelectionChanged+=(s,e)=> {if(changing || !(material.SelectedValue is PrimaryBeamMaterial choice))return;if(CommitFields())Mutate(()=>Model.PrimaryMaterial=choice);else Refresh();};
+                syncControls.Add(()=>material.SelectedValue=Model.PrimaryMaterial);properties.Children.Add(material);
+                if(Model.PrimaryMaterial==PrimaryBeamMaterial.WS10)Text("WS10 primaries use uncut catalogue lengths. Custom lengths apply only to H20s.");
                 Text("Deflection criterion");var ratio=new ComboBox {ItemsSource=Model.DeflectionOptions,SelectedItem=Model.DeflectionLimit,DisplayMemberPath="Label",Margin=new Thickness(0,0,0,12)};
                 ratio.SelectionChanged+=(s,e)=> {if(changing || !(ratio.SelectedItem is BeamDeflectionOption option))return;if(CommitFields())Mutate(()=>Model.DeflectionLimit=option);else Refresh();};syncControls.Add(()=>ratio.SelectedItem=Model.DeflectionLimit);properties.Children.Add(ratio);
                 var exclude=new CheckBox {Content="Exclude standalone 600 mm towers",IsChecked=Model.Exclude600Standalone,Margin=new Thickness(0,0,0,14),ToolTip="Applies in either orientation; joined 600 mm bays remain allowed."};
                 exclude.Click+=(s,e)=> {bool value=exclude.IsChecked==true;if(CommitFields())Mutate(()=>Model.Exclude600Standalone=value);else Refresh();};syncControls.Add(()=>exclude.IsChecked=Model.Exclude600Standalone);properties.Children.Add(exclude);
-                var customH20=new CheckBox {Content="Allow custom H20 lengths (25 mm)",IsChecked=Model.AllowCustomH20Lengths,Margin=new Thickness(0,0,0,14),ToolTip="Optimize primary, lower secondary and slab H20s using catalogue or custom lengths in 25 mm increments."};
+                var customH20=new CheckBox {Content="Allow custom H20 lengths (25 mm)",IsChecked=Model.AllowCustomH20Lengths,Margin=new Thickness(0,0,0,14),ToolTip="Applies to H20s only. WS10 primaries always use catalogue lengths."};
                 customH20.Click+=(s,e)=> {bool value=customH20.IsChecked==true;if(CommitFields())Mutate(()=>Model.AllowCustomH20Lengths=value);else Refresh();};syncControls.Add(()=>customH20.IsChecked=Model.AllowCustomH20Lengths);properties.Children.Add(customH20);
                 Text("Custom lengths for");
                 var customScope=new ComboBox {Name="CustomH20ScopeSelector",ItemsSource=Model.CustomH20ScopeOptions,DisplayMemberPath="Label",SelectedValuePath="Value",SelectedValue=Model.CustomH20Scope,IsEnabled=Model.AllowCustomH20Lengths,Margin=new Thickness(0,0,0,12),ToolTip="Beam supports: primary and lower H20s, including crossings. Slab supports: slab H20s."};
@@ -339,7 +345,8 @@ namespace EngineeringDashboard
                 uplift.Click+=(s,e)=> {bool value=uplift.IsChecked==true;if(CommitFields())Mutate(()=>Model.IgnoreUplift=value);else Refresh();};syncControls.Add(()=>uplift.IsChecked=Model.IgnoreUplift);properties.Children.Add(uplift);
                 var advanced=new Expander {Header="Stock and load settings",IsExpanded=advancedExpanded,Margin=new Thickness(0,6,0,10)};var advancedPanel=new StackPanel();
                 int first=properties.Children.Count;
-                Text("H20 stocks (mm)");var stock=new TextBox {Text=Model.StockLengthsText,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,10)};properties.Children.Add(stock);Fields["StockLengthsText"]=stock;
+                Text("H20 stocks (mm)"+ (Model.PrimaryMaterial==PrimaryBeamMaterial.WS10 ? " · secondaries / slabs" : ""));var stock=new TextBox {Text=Model.StockLengthsText,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,10)};properties.Children.Add(stock);Fields["StockLengthsText"]=stock;
+                if(Model.PrimaryMaterial==PrimaryBeamMaterial.WS10)Text(Model.WS10CatalogueText);
                 var stockEditor=new StringEditor {Box=stock,Get=()=>Model.StockLengthsText,Set=v=>Model.StockLengthsText=v};stringEditors.Add(stockEditor);
                 stock.TextChanged+=(s,e)=> {if(changing)return;stockEditor.Dirty=true;Model.SetAdditionalTextInputErrors(this,true);Refresh();};stock.LostKeyboardFocus+=(s,e)=>CommitFields();
                 Number("StockEndSetbackMm","Support inset (mm)",()=>Model.StockEndSetbackMm,v=>Model.StockEndSetbackMm=v);Number("MaximumConcreteEndOverhangMm","Concrete end allowance (mm)",()=>Model.MaximumConcreteEndOverhangMm,v=>Model.MaximumConcreteEndOverhangMm=v,0);
@@ -360,7 +367,7 @@ namespace EngineeringDashboard
         {
             if((!Model.UseTowers || !Model.HasSelectedSupportSystem) && !closed){Close();return;}
             if(changing || refreshQueued || closed)return;refreshQueued=true;
-            Dispatcher.BeginInvoke(new Action(()=> {refreshQueued=false;if(closed)return;if(!ReferenceEquals(selectedObject,SelectedObject()) && !editors.Any(x=>x.Dirty))BuildProperties();Refresh();}),DispatcherPriority.DataBind);
+            Dispatcher.BeginInvoke(new Action(()=> {refreshQueued=false;if(closed)return;if((!ReferenceEquals(selectedObject,SelectedObject()) || displayedPrimaryMaterial!=Model.PrimaryMaterial) && !editors.Any(x=>x.Dirty))BuildProperties();Refresh();}),DispatcherPriority.DataBind);
         }
         private void ClearDiagrams(){Diagrams?.Close();Diagrams=null;diagramBeam=-1;Drawing.SelectMember(-1,-1,0);Section.SelectMember(-1,-1,0);}
         private void Refresh()
@@ -387,7 +394,7 @@ namespace EngineeringDashboard
             if(!Model.IsCalculationValid || pending) {ClearDiagrams();Section.SetResult(null);if(sectionMode)Geometry();}
             else Section.SetResult(Model.NetworkResult);
             Drawing.RefitIfNeeded();
-            status.Text=pending ? (valid ? "Finish editing, then calculate." : "Correct the red input before continuing.") : Model.IsOptimizing ? Model.SearchProgressText : Model.IsCalculationValid ? "Results ready · click a beam or H20 to open diagrams." : Model.HasTowerFailure ? "No solution found · open calculation failure details." : "Needs recalculation · "+Model.WarningMessage;
+            status.Text=pending ? (valid ? "Finish editing, then calculate." : "Correct the red input before continuing.") : Model.IsOptimizing ? Model.SearchProgressText : Model.IsCalculationValid ? "Results ready · click a member to open diagrams." : Model.HasTowerFailure ? "No solution found · open calculation failure details." : "Needs recalculation · "+Model.WarningMessage;
             removalInfo.Text=RemovalPreview;removalInfo.Visibility=!sectionMode && !Drawing.Formwork && Drawing.SelectedObjects.Length>0 ? Visibility.Visible : Visibility.Collapsed;
             RefreshResults(pending);
             failureExpander.Visibility=Model.HasTowerFailure ? Visibility.Visible : Visibility.Collapsed;
@@ -412,7 +419,7 @@ namespace EngineeringDashboard
             networkSummary.Text=selectedSummary.Text=resultDetails.Text="";if(!valid)return;
             var network=Model.NetworkResult;
             resultHeading.Text=network!=null ? "Network totals" : "Beam result";
-            networkSummary.Text=network!=null ? $"{network.LegCount} tower legs · {network.H20Count} H20s" : $"{Model.TowerResult.LegCount} tower legs · {Model.TowerResult.StockPlan.TotalH20Count} primary H20s";
+            networkSummary.Text=network!=null ? $"{network.LegCount} tower legs · {network.H20Count} H20s"+(network.WS10Count>0 ? $" · {network.WS10Count} WS10s" : "") : $"{Model.TowerResult.LegCount} tower legs · {Model.TowerResult.StockPlan.TotalPrimaryCount} primary {Model.TowerResult.Primary.Name}s";
             resultDetails.Text=network!=null ? network.Summary+"\n"+network.UpperFootCount+" upper feet (separate from tower legs)" : Model.TowerResult.CompactSummary+"\n"+Model.TowerResult.LegLoadSummary;
             if(Model.IgnoreUplift)resultDetails.Text+=$"\nUplift excluded · minimum signed reaction {(network!=null ? network.Beams.Min(b=>b.MinimumReactionKn) : Model.TowerResult.MinimumReactionKn):0.######} kN";
             if(network==null)return;
@@ -423,7 +430,7 @@ namespace EngineeringDashboard
             {
                 var beam=network.Beams[index];int lower=beam.Transfer.RowsMm.Length;
                 selectedSummary.Text=$"Selected beam · B{index+1} · {beam.LegCount} tower legs";
-                resultDetails.Text+=$"\n\nB{index+1} · {beam.GroupCount} tower groups\n{beam.LegLoadSummary}\n{beam.StockPlan.TotalH20Count} primary + {lower} lower H20s\nShared slab H20s are counted in network totals.";
+                resultDetails.Text+=$"\n\nB{index+1} · {beam.GroupCount} tower groups\n{beam.LegLoadSummary}\n{beam.StockPlan.TotalPrimaryCount} primary {beam.Primary.Name}s + {lower} lower H20s\nShared slab H20s are counted in network totals.";
             }
             else if(Drawing.SelectedKind==FormworkObject.Slab && index<network.Bays.Length)
             {

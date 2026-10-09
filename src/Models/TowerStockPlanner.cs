@@ -14,6 +14,7 @@ namespace EngineeringDashboard
         public double EndMm => StartMm + StockLengthMm;
         public int FirstSupport { get; internal set; }
         public int LastSupport { get; internal set; }
+        public double StrengthUtilization {get;internal set;}
         public double MomentKnM { get; internal set; }
         public double ShearKn { get; internal set; }
         public double DeflectionMm { get; internal set; }
@@ -30,22 +31,29 @@ namespace EngineeringDashboard
         public double ShearKn => Pieces.Max(x => x.ShearKn);
         public double DeflectionMm => Pieces.Max(x => x.DeflectionMm);
         public double DeflectionUtilization => Pieces.Max(x => x.DeflectionUtilization);
-        public int TotalH20Count => Pieces.Length * 4;
-        public double TotalStockLengthMm => Pieces.Sum(x => x.StockLengthMm) * 4;
+        public int TotalH20Count => Primary.IsWS10 ? 0 : Pieces.Length * 4;
+        public double TotalStockLengthMm => Primary.IsWS10 ? 0 : Pieces.Sum(x => x.StockLengthMm) * 4;
+        public PrimaryBeamMaterial PrimaryMaterial {get;internal set;}
+        public PrimaryBeamProfile Primary=>PrimaryBeamProfile.For(PrimaryMaterial);
+        public int TotalPrimaryCount=>Pieces.Length*2*Primary.CountPerLine;
+        public int WS10Count=>Primary.IsWS10 ? TotalPrimaryCount : 0;
+        public double PrimaryLengthMm=>Pieces.Sum(x=>x.StockLengthMm)*2*Primary.CountPerLine;
+        public double StrengthUtilization=>Pieces.Max(x=>x.StrengthUtilization);
         internal double Utilization;
         public string Schedule
         {
             get
             {
-                var lines = new List<string> { "Same stock arrangement on both primary lines: 2 H20s per piece per line (4 total). No cutting, overlaps or projection beyond concrete ends. Member breaks have no shared support or bending continuity." };
+                var lines = new List<string> { "Same stock arrangement on both primary lines: "+Primary.Description+" per line. No cutting, overlaps or projection beyond concrete ends. Member breaks have no shared support or bending continuity." };
                 for (int i = 0; i < Pieces.Length; i++)
                 {
                     var p = Pieces[i];
-                    lines.Add(string.Format(CultureInfo.CurrentCulture, "P{0}: 4 × {1:0.###} mm · x={2:0.###}–{3:0.###} mm · supports {4}–{5}\n  M {6:0.00} kNm · V {7:0.00} kN · d {8:0.00} mm",
-                        i + 1, p.StockLengthMm, p.StartMm, p.EndMm, p.FirstSupport + 1, p.LastSupport + 1, p.MomentKnM, p.ShearKn, p.DeflectionMm) + (p.IsCustomLength ? " · custom length (25 mm increments)" : ""));
+                    lines.Add(string.Format(CultureInfo.CurrentCulture, "P{0}: {9} × {10} · {1:0.###} mm · x={2:0.###}–{3:0.###} mm · supports {4}–{5}\n  M {6:0.00} kNm · V {7:0.00} kN · d {8:0.00} mm",
+                        i + 1, p.StockLengthMm, p.StartMm, p.EndMm, p.FirstSupport + 1, p.LastSupport + 1, p.MomentKnM, p.ShearKn, p.DeflectionMm, 2*Primary.CountPerLine, Primary.Name) + (p.IsCustomLength ? " · custom length (25 mm increments)" : ""));
                     lines.Add($"  Deflection: {p.GoverningDeflectionMm:0.00}/{p.GoverningDeflectionLimitMm:0.00} mm · {p.GoverningDeflectionRegion}");
                 }
-                lines.Add("Stock quantities: " + string.Join("; ", Pieces.GroupBy(p => p.StockLengthMm).OrderBy(g => g.Key).Select(g => string.Format(CultureInfo.CurrentCulture, "{0} × {1:0.###} mm", g.Count() * 4, g.Key))));
+                lines.Add("Stock quantities: " + string.Join("; ", Pieces.GroupBy(p => p.StockLengthMm).OrderBy(g => g.Key).Select(g => string.Format(CultureInfo.CurrentCulture, "{0} × {1:0.###} mm", g.Count() * 2*Primary.CountPerLine, g.Key))));
+                if(Primary.IsWS10)lines.Add(Primary.Assumptions);
                 return string.Join("\n", lines);
             }
         }
@@ -58,8 +66,8 @@ namespace EngineeringDashboard
         // Keep the entered catalogue separate: only additional lengths must be multiples of 25 mm.
         internal static double[] CandidateLengths(TowerInput input, double minimum, double maximum)
         {
-            var stocks = input.StockLengthsMm.Where(x => x >= minimum && x <= maximum);
-            if (!input.AllowCustomBeamLengths) return stocks.OrderBy(x => x).ToArray();
+            var stocks = input.PrimaryStockLengthsMm.Where(x => x >= minimum && x <= maximum);
+            if (!input.AllowCustomPrimaryLengths) return stocks.OrderBy(x => x).ToArray();
             int first = (int)Math.Ceiling(Math.Max(25, minimum) / 25), last = (int)Math.Floor(Math.Min(50000, maximum) / 25);
             return stocks.Concat(Enumerable.Range(first, Math.Max(0, last-first+1)).Select(x => x*25.0)).Distinct().OrderBy(x => x).ToArray();
         }
@@ -114,7 +122,7 @@ namespace EngineeringDashboard
             bool analyzed=false; int n = positions.Length; double length = input.LengthMm, setback = input.StockEndSetbackMm;
             var stocks = CandidateLengths(input,25,length);
             var states = new Dictionary<int, TowerStockPlan>();
-            states[0] = new TowerStockPlan { Pieces = new TowerStockPiece[0], Reactions = new double[n] };
+            states[0] = new TowerStockPlan { PrimaryMaterial=input.PrimaryMaterial, Pieces = new TowerStockPiece[0], Reactions = new double[n] };
             var pending = new SortedSet<int> { 0 };
             while (pending.Count > 0)
             {
@@ -133,21 +141,21 @@ namespace EngineeringDashboard
                     if (end < length - 1e-7 && last + 1 == n || Math.Abs(end - length) < 1e-7 && last + 1 != n) continue;
                     input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
                     analyzed=true;var response = TowerBeamAnalysis.Analyze(stock / 1000,
-                        positions.Skip(first).Take(last - first + 1).Select(x => (x - start) / 1000).ToArray(), load, TowerOptimizer.PairEI);
-                    var u = new[] { response.Reactions.Max() / input.LegCapacityKn, response.Moment / TowerOptimizer.PairMoment,
-                        response.Shear / TowerOptimizer.PairShear, response.DeflectionUtilization(input.DeflectionLimitMm, input.DeflectionDenominator) };
+                        positions.Skip(first).Take(last - first + 1).Select(x => (x - start) / 1000).ToArray(), load+input.Primary.SelfWeightKnM(stock), input.Primary.EI);
+                    var u = new[] { response.Reactions.Max() / input.LegCapacityKn, response.Moment / input.Primary.MomentLimitKnM,
+                        response.Shear / input.Primary.ShearLimitKn, response.DeflectionUtilization(input.DeflectionLimitMm, input.DeflectionDenominator), input.Primary.Strength(response) };
                     input.Diagnostics?.Primary(response,input,$"stock {stock:0} mm · x={start+input.DiagnosticOffsetMm:0.###}–{end+input.DiagnosticOffsetMm:0.###} mm · support x={string.Join(", ",positions.Skip(first).Take(last-first+1).Select(x=>(x+input.DiagnosticOffsetMm).ToString("0.###")))} mm · governing loaded line");
                     if ((!input.IgnoreUplift && response.Reactions.Min() < -1e-9 * response.Reactions.Max()) || u.Any(x => !TowerBeamAnalysis.Finite(x) || x > 1 + 1e-10)) continue;
                     var region = response.GoverningDeflection(input.DeflectionLimitMm, input.DeflectionDenominator);
-                    var piece = new TowerStockPiece { StartMm = start, StockLengthMm = stock, IsCustomLength = !input.StockLengthsMm.Contains(stock), FirstSupport = first, LastSupport = last,
-                        MomentKnM = response.Moment, ShearKn = response.Shear, DeflectionMm = response.DeflectionMm, DeflectionUtilization = u[3], GoverningDeflectionMm = region.PeakMm,
+                    var piece = new TowerStockPiece { StartMm = start, StockLengthMm = stock, IsCustomLength = !input.PrimaryStockLengthsMm.Contains(stock), FirstSupport = first, LastSupport = last,
+                        StrengthUtilization=u[4], MomentKnM = response.Moment, ShearKn = response.Shear, DeflectionMm = response.DeflectionMm, DeflectionUtilization = u[3], GoverningDeflectionMm = region.PeakMm,
                         GoverningDeflectionLimitMm = region.AllowableMm(input.DeflectionLimitMm, input.DeflectionDenominator),
                         GoverningDeflectionRegion = $"{(region.IsOverhang ? "overhang" : "span")} {region.EndMm-region.StartMm:0.###} mm" };
                     var reactions = (double[])previous.Reactions.Clone();
                     for (int k = first; k <= last; k++) reactions[k] = response.Reactions[k - first];
-                    var next = new TowerStockPlan { Pieces = previous.Pieces.Concat(new[] { piece }).ToArray(), Reactions = reactions, Utilization = Math.Max(previous.Utilization, u.Max()) };
+                    var next = new TowerStockPlan { PrimaryMaterial=input.PrimaryMaterial, Pieces = previous.Pieces.Concat(new[] { piece }).ToArray(), Reactions = reactions, Utilization = Math.Max(previous.Utilization, u.Max()) };
                     int key = (int)Math.Round(end);
-                    if (!states.TryGetValue(key, out var old) || next.TotalH20Count < old.TotalH20Count || next.TotalH20Count == old.TotalH20Count && next.Utilization < old.Utilization)
+                    if (!states.TryGetValue(key, out var old) || next.TotalPrimaryCount < old.TotalPrimaryCount || next.TotalPrimaryCount == old.TotalPrimaryCount && next.Utilization < old.Utilization)
                     { states[key] = next; if (end < length - 1e-7) pending.Add(key); }
                 }
             }

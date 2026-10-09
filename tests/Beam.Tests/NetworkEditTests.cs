@@ -18,11 +18,11 @@ internal static class NetworkEditTests
         vm.AddCrossingBeam();vm.CrossingBeams.Last().BayNumber=1;vm.RemoveNetworkBeam(0);
         Check(vm.CrossingBeams.Count==1 && ReferenceEquals(vm.CrossingBeams[0],crossing) && crossing.BayNumber==1,"removing bay removes only its crossing loads and reindexes survivors");
         int count=vm.NetworkBeams.Count;vm.RemoveNetworkBeam(0);Check(vm.NetworkBeams.Count==count && count==2,"minimum two beams retained");
-        for(int i=0;i<10;i++)vm.AddNetworkBay();Check(vm.NetworkBeams.Count==8 && vm.NetworkBays.Count==7,"maximum eight-beam bound retained");
-        vm.InsertNetworkBay(0,true);Check(vm.NetworkBeams.Count==8,"insertion cannot bypass solver beam limit");
+        for(int i=0;i<20;i++)vm.AddNetworkBay();Check(vm.NetworkBeams.Count==15 && vm.NetworkBays.Count==14,"maximum fifteen-beam bound retained");
+        vm.InsertNetworkBay(0,true);Check(vm.NetworkBeams.Count==15,"insertion cannot bypass solver beam limit");
         Check(vm.NetworkBeams.Select((b,i)=>b.Label=="B"+(i+1)).All(x=>x) && vm.NetworkBays.Select((b,i)=>b.Label=="S"+(i+1)).All(x=>x),"labels reflect final topology");
         var restored=new BeamCalculatorViewModel {UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true};restored.NetworkConfigurationXml=vm.NetworkConfigurationXml;
-        Check(restored.NetworkBeams.Count==8 && restored.CrossingBeams[0].BayNumber==1,"edited chain serializes with crossing associations");
+        Check(restored.NetworkBeams.Count==15 && restored.CrossingBeams[0].BayNumber==1,"edited chain serializes with crossing associations");
         restored.ValidateTowerInputs();
         object editor1=new object(),editor2=new object();restored.SetAdditionalTextInputErrors(editor1,true);restored.SetTextInputErrors(false);
         Check(!restored.CanOptimizeTowers,"parent validation cannot clear drawing-editor errors");

@@ -51,6 +51,44 @@ namespace EngineeringDashboard
             dc.DrawRectangle(Web,null,new Rect(bounds.Left+(bounds.Width-web)/2,bounds.Top+flange,web,bounds.Height-2*flange));
         }
     }
+    /// <summary>WS10 paired U100 channels; schematic plan and 153 × 100 mm section.</summary>
+    internal static class PrimaryDrawing
+    {
+        internal static readonly Brush WS10Colour=new SolidColorBrush(Color.FromRgb(44,91,156));
+        private static readonly Brush Fill=new SolidColorBrush(Color.FromRgb(176,197,224));
+        internal static void Plan(DrawingContext dc,Point start,Point end,PrimaryBeamProfile profile,bool selected,double separation=3)
+        {
+            if(!profile.IsWS10) {H20Drawing.Plan(dc,start,end,2,selected,separation);return;}
+            var delta=end-start;if(delta.Length<.1)return;
+            var normal=new Vector(-delta.Y,delta.X);normal.Normalize();normal*=separation;
+            var pen=new Pen(selected ? Brushes.MediumPurple : WS10Colour,selected ? 2.5 : 1.8);
+            foreach(double side in new[] {-1.0,1})dc.DrawLine(pen,start+normal*side,end+normal*side);
+            foreach(double fraction in new[] {0.0,.5,1}) {var at=start+delta*fraction;dc.DrawLine(pen,at-normal,at+normal);}
+        }
+        internal static void Longitudinal(DrawingContext dc,Rect bounds,bool selected=false)
+        {
+            if(bounds.Width<=0 || bounds.Height<=0)return;
+            var pen=new Pen(selected ? Brushes.MediumPurple : WS10Colour,selected ? 1.5 : .8);
+            dc.DrawRectangle(Fill,pen,bounds);
+            foreach(double fraction in new[] {.085,.915})dc.DrawLine(pen,new Point(bounds.Left,bounds.Top+bounds.Height*fraction),new Point(bounds.Right,bounds.Top+bounds.Height*fraction));
+        }
+        internal static void EndSection(DrawingContext dc,Rect bounds,bool selected=false)
+        {
+            if(bounds.Width<=0 || bounds.Height<=0)return;
+            var pen=new Pen(selected ? Brushes.MediumPurple : WS10Colour,selected ? 1.5 : .8);
+            double channel=bounds.Width*50/153,web=bounds.Width*6/153,flange=bounds.Height*.085;
+            foreach(bool right in new[] {false,true})
+            {
+                Func<double,double> xx=x=>right ? bounds.Right-x : bounds.Left+x;
+                var shape=new StreamGeometry();using(var path=shape.Open())
+                {
+                    path.BeginFigure(new Point(xx(0),bounds.Top),true,true);
+                    foreach(var p in new[] {new Point(xx(channel),bounds.Top),new Point(xx(channel),bounds.Top+flange),new Point(xx(web),bounds.Top+flange),new Point(xx(web),bounds.Bottom-flange),new Point(xx(channel),bounds.Bottom-flange),new Point(xx(channel),bounds.Bottom),new Point(xx(0),bounds.Bottom)})path.LineTo(p,true,false);
+                }
+                shape.Freeze();dc.DrawGeometry(Fill,pen,shape);
+            }
+        }
+    }
     /// <summary>Schematic Doka plan symbol anchored to calculated leg centres.</summary>
     internal static class TowerPlanDrawing
     {

@@ -138,16 +138,17 @@ namespace EngineeringDashboard
             double top = cy - layout.WidthMm * transverseScale / 2, bottom = cy + layout.WidthMm * transverseScale / 2;
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
             dc.DrawRectangle(ConcreteTop, null, new Rect(x0, cy - model.Width * transverseScale / 2, layout.LengthMm * scale, model.Width * transverseScale));
-            if(layout.Transfer!=null) {Label(dc,$"mm · primary = 2×H20/line · secondaries = single H20 @ {layout.Transfer.EnteredUpperSpacingMm:0}",x0,8);Label(dc,"Cyan: frames · yellow: crosses",x0,25);}
+            if(layout.Transfer!=null) {Label(dc,$"mm · primary = {layout.Primary.Description}/line · secondaries = single H20 @ {layout.Transfer.EnteredUpperSpacingMm:0}",x0,8);Label(dc,"Cyan: frames · yellow: crosses",x0,25);}
             if(layout.Transfer==null)Label(dc,"mm · cyan: frames · yellow: crosses",x0,8);
             for (int i = 0; i < layout.StockPlan.Pieces.Length; i++)
             {
                 var piece = layout.StockPlan.Pieces[i];
-                for (int line = 0; line < 2; line++) for (int member = 0; member < 2; member++)
+                for (int line = 0; line < 2; line++) for (int member = 0; member < layout.Primary.CountPerLine; member++)
                 {
-                    double y = line == 0 ? top : bottom, offset = member == 0 ? -5 : 5;
+                    double y = line == 0 ? top : bottom, offset = layout.Primary.IsWS10 ? 0 : member == 0 ? -5 : 5;
                     bool selected = i == selectedRun && line == selectedLine && (selectedMember < 0 || member == selectedMember);
-                    dc.DrawLine(new Pen(selected ? Brushes.DodgerBlue : i % 2 == 0 ? Gold : GoldSide, selected ? 4 : 2), new Point(x0 + piece.StartMm * scale, y + offset), new Point(x0 + piece.EndMm * scale, y + offset));
+                    if(layout.Primary.IsWS10)PrimaryDrawing.Plan(dc,new Point(x0+piece.StartMm*scale,y),new Point(x0+piece.EndMm*scale,y),layout.Primary,selected,4);
+                    else dc.DrawLine(new Pen(selected ? Brushes.DodgerBlue : i % 2 == 0 ? Gold : GoldSide, selected ? 4 : 2), new Point(x0 + piece.StartMm * scale, y + offset), new Point(x0 + piece.EndMm * scale, y + offset));
                     MemberTargets.Add(Tuple.Create(new Rect(x0 + piece.StartMm * scale, y + offset - 4, piece.StockLengthMm * scale, 8), i, line, member));
                     DrawnStockPieceCount++;
                 }
@@ -161,7 +162,7 @@ namespace EngineeringDashboard
                     Label(dc, Math.Abs(ends[end] - legs[end]).ToString("0.###") + (layout.Transfer==null ? " mm" : ""), (a + b) / 2, dimY - 16, true);
                     DrawnEndDimensionCount++;
                 }
-                Label(dc, "H20 · " + piece.StockLengthMm.ToString("0.###"),
+                Label(dc, layout.Primary.Name+" · " + piece.StockLengthMm.ToString("0.###"),
                     x0 + (piece.StartMm + piece.StockLengthMm / 2) * scale, bottom + 12, true);
                 if (i > 0) dc.DrawLine(new Pen(ConcreteSide, 1) { DashStyle = DashStyles.Dot }, new Point(x0 + piece.StartMm * scale, top - 8), new Point(x0 + piece.StartMm * scale, bottom + 15));
             }
@@ -221,8 +222,9 @@ namespace EngineeringDashboard
                     H20Drawing.Longitudinal(dc,new Rect(start,beamBottom,t.LowerStockLengthMm*scale,20),selected);DrawnH20ProfileCount++;
                     foreach(double support in new[] {-layout.WidthMm/2,layout.WidthMm/2})
                     {
-                        foreach(int pair in new[] {-1,1}) {H20Drawing.EndSection(dc,new Rect(xx(centre+support+pair*40-40),beamBottom+20,80*scale,20));DrawnH20ProfileCount++;}
-                        dc.DrawLine(new Pen(Steel,3),new Point(xx(centre+support),beamBottom+40),new Point(xx(centre+support),beamBottom+65));
+                        if(layout.Primary.IsWS10)PrimaryDrawing.EndSection(dc,new Rect(xx(centre+support-76.5),beamBottom+20,153*scale,10));
+                        else foreach(int pair in new[] {-1,1}) {H20Drawing.EndSection(dc,new Rect(xx(centre+support+pair*40-40),beamBottom+20,80*scale,20));DrawnH20ProfileCount++;}
+                        dc.DrawLine(new Pen(Steel,3),new Point(xx(centre+support),beamBottom+20+layout.Primary.DepthMm*.1),new Point(xx(centre+support),beamBottom+45+layout.Primary.DepthMm*.1));
                     }
                 }
             Action<double,double,double,string> dim=(a,b,y,label)=>
