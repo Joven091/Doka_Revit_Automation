@@ -143,7 +143,9 @@ namespace EngineeringDashboard
     public sealed class TowerInput
     {
         internal TowerSearchDiagnostics Diagnostics;
-        internal Dictionary<Tuple<int,double,double,double,double,double,double>,DedicatedCrossSearch> DedicatedCrossCache;
+        internal Dictionary<string,DedicatedCrossSearch> DedicatedCrossCache;
+        internal Func<TowerLayout,bool> TransferLayoutAcceptance;
+        internal double ReceiverTransverseOffsetMm;
         internal BeamSearchTrace Trace;
         // Tests can replay the original search without reuse; production searches reuse work.
         internal bool ReuseSearchWork = true;
@@ -206,6 +208,7 @@ namespace EngineeringDashboard
         public const string ConnectedFormworkAssumption = "Uplift excluded from acceptance: connected plywood and stabilizing deadweight are assumed by the user. Signed reactions are retained. Deadweight adequacy and connections are not calculated; negative reactions indicate required restraint. Strength, deflection and maximum individual leg loads remain checked.";
         public string UpliftSummary => (IgnoreUplift ? ConnectedFormworkAssumption : "Bearing-only supports: uplift is rejected.") + $" Minimum signed reaction {MinimumReactionKn:0.######} kN.";
         public double[] PositionsMm { get; internal set; }
+        public double TransverseOffsetMm { get; internal set; }
         public bool[] Joined { get; internal set; }
         public double WidthMm { get; internal set; }
         public bool Rotated { get; internal set; }
@@ -266,6 +269,7 @@ namespace EngineeringDashboard
                     if (i < Joined.Length) lines.Add(string.Format(CultureInfo.CurrentCulture, "  {0}: {1:0.###} mm", Joined[i] ? (Rotated ? "Frame span" : "Cross bay") : "Clear gap between leg planes", PositionsMm[i + 1] - PositionsMm[i]));
                 }
                 lines.Add(string.Format(CultureInfo.CurrentCulture, "End overhangs: {0:0.###} / {1:0.###} mm", PositionsMm[0], LengthMm - PositionsMm.Last()));
+                if(TransverseOffsetMm!=0)lines.Add($"Tower centre offset from concrete beam centre: {TransverseOffsetMm:0.###} mm; eccentric concrete and slab reactions are included.");
                 return string.Join("\n", lines);
             }
         }

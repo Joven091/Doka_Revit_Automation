@@ -93,7 +93,7 @@ namespace EngineeringDashboard
             }
             for(int beam=0;beam<result.Beams.Length;beam++)
             {
-                var b=result.Beams[beam];double cy=ys[beam],top=cy-b.WidthMm*.055/2,bottom=cy+b.WidthMm*.055/2;
+                var b=result.Beams[beam];double cy=ys[beam],top=cy+(b.TransverseOffsetMm-b.WidthMm/2)*.055,bottom=cy+(b.TransverseOffsetMm+b.WidthMm/2)*.055;
                 Label(dc,$"B{beam+1} · {result.Input.Beams[beam].WidthMm:0}×{result.Input.Beams[beam].DepthMm:0} · {b.LegCount} legs · {(b.Rotated ? "Cross" : "Frame")} {b.WidthMm:0} across",40,top-65);
                 dc.DrawRectangle(Concrete,null,new Rect(xx(0),cy-result.Input.Beams[beam].WidthMm*.055/2,b.LengthMm*scale,result.Input.Beams[beam].WidthMm*.055));
                 for(int i=0;i<b.StockPlan.Pieces.Length;i++)
@@ -145,7 +145,7 @@ namespace EngineeringDashboard
             foreach(var support in result.CrossSupports)
             {
                 int encoded=-support.CrossingIndex-1;
-                foreach(var solid in support.Solids.Where(s=>s.Member==null))
+                foreach(var solid in support.Solids.Where(s=>s.Member==null && !s.IsTowerEnvelope))
                 {
                     var rect=new Rect(new Point(xx(solid.X0),yy(solid.Y0)),new Point(xx(solid.X1),yy(solid.Y1)));
                     if(solid.IsLeg) {TowerPlanDrawing.Leg(dc,new Point(xx((solid.X0+solid.X1)/2),yy((solid.Y0+solid.Y1)/2)),support.Towers?.Rotated==true);DrawnTowerLegCount++;}
@@ -200,7 +200,7 @@ namespace EngineeringDashboard
                 MemberTargets.Add(Tuple.Create(lowerRect,beam,encoded,0));
                 // The transverse section cuts the two longitudinal members in each primary line.
                 int primaryRun=Array.FindIndex(b.StockPlan.Pieces,p=>t.RowsMm[row]>=p.StartMm && t.RowsMm[row]<=p.EndMm);
-                foreach(double support in new[] {-b.WidthMm/2,b.WidthMm/2})
+                foreach(double support in new[] {b.TransverseOffsetMm-b.WidthMm/2,b.TransverseOffsetMm+b.WidthMm/2})
                 {
                     foreach(int pair in new[] {-1,1})
                     {
@@ -258,7 +258,7 @@ namespace EngineeringDashboard
             int bay=support.Input.BayNumber-1;double face=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2;
             dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(new Point(xx(face),zz(support.Input.BottomElevationMm+support.Input.DepthMm)),new Point(xx(face+result.Input.Bays[bay].WidthMm),zz(support.Input.BottomElevationMm))));
             Label(dc,$"X{support.CrossingIndex+1} section @ x={support.Input.PositionMm:0.###} · bottom {support.Input.BottomElevationMm:0.###} mm",xx(face),zz(support.Input.BottomElevationMm)-20);
-            foreach(var solid in support.Solids)
+            foreach(var solid in support.Solids.Where(s=>!s.IsTowerEnvelope))
             {
                 if(solid.IsLeg) {dc.DrawLine(new Pen(Steel,2),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)+35));continue;}
                 var rect=new Rect(new Point(xx(solid.Y0),zz(solid.Z1)),new Point(xx(solid.Y1),zz(solid.Z0)));int member=Array.IndexOf(support.Members,solid.Member);

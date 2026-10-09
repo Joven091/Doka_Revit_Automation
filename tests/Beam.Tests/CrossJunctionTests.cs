@@ -25,7 +25,7 @@ internal static class CrossJunctionTests
         Check(result.Beams.All(l=>l.MaxLegKn<=70+1e-8) && cross.Towers.MaxLegKn<=70+1e-8,"every individual leg remains below its entered capacity");
         foreach(var l in result.Beams.Concat(new[] {cross.Towers}))foreach(var m in l.Transfer.PrimaryCases.Concat(l.Transfer.LowerCases).SelectMany(c=>c).Concat(l.Transfer.UpperMembers))Member(m);
         var solids=cross.Solids;var existing=CrossBeamSupportOptimizer.NetworkSolids(result).Concat(CrossBeamSupportOptimizer.Concrete(result)).ToArray();
-        foreach(var s in solids) {foreach(var other in existing)Check(!s.Overlaps(other),"complete cross timber and legs clear existing timber, legs and concrete");foreach(var other in solids.Where(v=>!ReferenceEquals(v,s)))Check(!s.Overlaps(other),"cross members clear one another");}
+        foreach(var s in solids) {foreach(var other in existing)Check(!s.Conflicts(other),"complete cross timber and legs clear existing timber, legs and concrete");foreach(var other in solids.Where(v=>!ReferenceEquals(v,s)))Check(!s.Conflicts(other),"cross members clear one another");}
         double expected=input.AreaLoad(1150)*.65*2.575;Near(cross.LoadKn,expected,"full crossing concrete and allowances conserved");
         var reactions=cross.Bearings.Where(b=>b.IsConcreteEndZone || b.IsDedicated && b.Label.StartsWith("Dedicated P")).ToArray();
         Near(reactions.Sum(b=>b.ReactionKn),expected,"full cross load reaches receiving supports and dedicated legs exactly once");

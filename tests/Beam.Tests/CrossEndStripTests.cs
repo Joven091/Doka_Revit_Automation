@@ -77,7 +77,7 @@ internal static class CrossEndStripTests
         var dedicated=TransferNetworkOptimizer.Optimize(commonNetwork,Small());var cross=dedicated.CrossSupports.Single();
         Check(cross.Towers!=null && cross.Towers.ConcreteEndOverhangMm>0 && cross.Schedule.Contains("end strips"),"dedicated support retains end-strip detail in its schedule");
         EndStripChecks(cross.Towers,Small().AreaLoad(150)*.4,2677);
-        foreach(var solid in cross.Solids)foreach(var existing in CrossBeamSupportOptimizer.NetworkSolids(dedicated))Check(!solid.Overlaps(existing),"end allowance does not bypass physical clashes");
+        foreach(var solid in cross.Solids)foreach(var existing in CrossBeamSupportOptimizer.NetworkSolids(dedicated))Check(!solid.Conflicts(existing),"end allowance does not bypass physical clashes");
         commonNetwork.MaximumConcreteEndOverhangMm=0;
         bool failed=false;
         try {TransferNetworkOptimizer.Optimize(commonNetwork,Small(CrossBeamSupportMode.Automatic));}
@@ -97,6 +97,7 @@ internal static class CrossEndStripTests
     }
     public static void Reported()
     {
+        TowerFrameClearanceTests.Run();
         var network=new TransferNetworkInput {UpperSpacingMm=275,Beams=Enumerable.Range(0,8).Select(i=>new TransferBeamRow {WidthMm=i%2==0 ? 800 : 650,DepthMm=i%2==0 ? 1750 : 1150}).ToArray(),Bays=new[] {2677.0,1875,3275,2275,2278,2272,2252}.Select(w=>new TransferBayRow {WidthMm=w,ThicknessMm=300}).ToArray(),CrossingBeams=Enumerable.Range(1,7).Select(i=>new TransferCrossingBeamRow {BayNumber=i,PositionMm=3450,WidthMm=650,DepthMm=1150,SupportMode=CrossBeamSupportMode.Automatic}).ToArray()};
         var common=Common();common.StockLengthsMm=new[] {1250.0,1800,2450,2650,2900,3300,3600,3900,4500,4900};
         var timer=System.Diagnostics.Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,network);
@@ -105,6 +106,7 @@ internal static class CrossEndStripTests
         Check(network.UpperSpacingMm==275 && result.Input.UpperSpacingMm<=275 && result.Schedule.Contains("entered maximum 275"),"automatic spacing adjustment is within the unchanged input maximum and explained");
         Check(result.CrossSupports.All(c=>c.Towers!=null && c.Bearings.Any(b=>b.IsConcreteEndZone)),"every crossing uses its own tower and direct concrete end-zone support");
         Check(result.CrossSupports.Any(c=>Math.Abs(c.TowerSpanOffsetMm)>0),"crossing tower supports can be displaced along their span");
+        Check(result.CrossSupports.Any(c=>c.PrimaryNearExtensionMm+c.PrimaryFarExtensionMm>0),"short crossing spans coordinate permitted unloaded primary tails with complete tower footprints");
         foreach(var layout in result.Beams.Concat(result.CrossSupports.Select(c=>c.Towers)))
         {
             Check(layout.MaxLegKn<=70+1e-8,"each tower retains the individual leg limit");
@@ -125,8 +127,8 @@ internal static class CrossEndStripTests
         var crossingSolids=result.CrossSupports.SelectMany(c=>c.Solids).ToArray();
         foreach(var solid in crossingSolids)
         {
-            foreach(var obstacle in obstacles)Check(!solid.Overlaps(obstacle),"cross timber and full tower columns clear all main formwork and concrete");
-            foreach(var other in crossingSolids.Where(o=>!ReferenceEquals(o,solid)))Check(!solid.Overlaps(other),"all crossing members and columns clear one another");
+            foreach(var obstacle in obstacles)Check(!solid.Conflicts(obstacle),"cross timber and full tower columns clear all main formwork and concrete");
+            foreach(var other in crossingSolids.Where(o=>!ReferenceEquals(o,solid)))Check(!solid.Conflicts(other),"all crossing members and columns clear one another");
         }
         foreach(var crossing in result.CrossSupports)
         {
