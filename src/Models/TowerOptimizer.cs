@@ -147,7 +147,7 @@ namespace EngineeringDashboard
         private PrimaryBeamProfile(PrimaryBeamMaterial material) {Material=material;}
         private static readonly PrimaryBeamProfile H20=new PrimaryBeamProfile(PrimaryBeamMaterial.DoubleH20),Steel=new PrimaryBeamProfile(PrimaryBeamMaterial.WS10);
         public static PrimaryBeamProfile For(PrimaryBeamMaterial material)
-        {if(!Enum.IsDefined(typeof(PrimaryBeamMaterial),material))throw new ArgumentException("Select a valid primary beam material.");return material==PrimaryBeamMaterial.WS10 ? Steel : H20;}
+        {if(material==PrimaryBeamMaterial.DoubleH20)return H20;if(material==PrimaryBeamMaterial.WS10)return Steel;throw new ArgumentException("Select a valid primary beam material.");}
         public bool IsWS10=>Material==PrimaryBeamMaterial.WS10;
         public string Name=>IsWS10 ? "WS10" : "H20";
         public string Description=>IsWS10 ? "single WS10 Top50" : "double H20";
