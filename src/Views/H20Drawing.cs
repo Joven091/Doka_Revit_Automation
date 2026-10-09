@@ -51,4 +51,34 @@ namespace EngineeringDashboard
             dc.DrawRectangle(Web,null,new Rect(bounds.Left+(bounds.Width-web)/2,bounds.Top+flange,web,bounds.Height-2*flange));
         }
     }
+    /// <summary>Schematic Doka plan symbol anchored to calculated leg centres.</summary>
+    internal static class TowerPlanDrawing
+    {
+        private static readonly Pen Frame=new Pen(Brushes.DarkCyan,1.1);
+        private static readonly Pen Cross=new Pen(Brushes.Gold,1.1);
+        private static void PairedLine(DrawingContext dc,Pen pen,Point a,Point b)
+        {
+            var delta=b-a;if(delta.Length<.1)return;
+            var offset=new Vector(-delta.Y,delta.X);offset.Normalize();
+            foreach(double side in new[] {-1.0,1.0})dc.DrawLine(pen,a+offset*side,b+offset*side);
+        }
+        internal static void Station(DrawingContext dc,Point a,Point b,bool rotated)=>PairedLine(dc,rotated ? Cross : Frame,a,b);
+        internal static void BracedBay(DrawingContext dc,Point a,Point b,Point c,Point d,bool rotated)
+        {
+            // Rotated towers have their frame planes along the primary axis.
+            var connecting=rotated ? Frame : Cross;
+            PairedLine(dc,connecting,a,c);PairedLine(dc,connecting,b,d);
+            PairedLine(dc,Cross,a,d);PairedLine(dc,Cross,b,c);
+        }
+        internal static void Leg(DrawingContext dc,Point at,bool verticalFrame)
+        {
+            double w=verticalFrame ? 6 : 10,h=verticalFrame ? 10 : 6;
+            var bounds=new Rect(at.X-w/2,at.Y-h/2,w,h);
+            dc.DrawRectangle(Brushes.White,Frame,bounds);
+            dc.DrawLine(new Pen(Brushes.DarkCyan,.65),new Point(bounds.Left+1,at.Y),new Point(bounds.Right-1,at.Y));
+            dc.DrawLine(new Pen(Brushes.DarkCyan,.65),new Point(at.X,bounds.Top+1),new Point(at.X,bounds.Bottom-1));
+            dc.DrawEllipse(Brushes.DarkCyan,null,at,1,1);
+        }
+    }
+
 }

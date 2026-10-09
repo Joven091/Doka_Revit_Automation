@@ -136,11 +136,10 @@ namespace EngineeringDashboard
             double extent = Math.Max(layout.WidthMm,model.Width);
             double transverseScale = Math.Min(scale, (planHeight - 200) / extent);
             double top = cy - layout.WidthMm * transverseScale / 2, bottom = cy + layout.WidthMm * transverseScale / 2;
-            var frame = new Pen(SteelSide, 2); var cross = new Pen(Steel, 1.5) { DashStyle = DashStyles.Dash };
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
             dc.DrawRectangle(ConcreteTop, null, new Rect(x0, cy - model.Width * transverseScale / 2, layout.LengthMm * scale, model.Width * transverseScale));
-            if(layout.Transfer!=null) {Label(dc,$"mm · P = 2×H20/line · secondaries = single H20 @ {layout.Transfer.EnteredUpperSpacingMm:0}",x0,8);Label(dc,"Red: braced bays · grey: gaps",x0,25);}
-            if(layout.Transfer==null)Label(dc,"mm · red: braced bays · grey: gaps",x0,8);
+            if(layout.Transfer!=null) {Label(dc,$"mm · P = 2×H20/line · secondaries = single H20 @ {layout.Transfer.EnteredUpperSpacingMm:0}",x0,8);Label(dc,"Cyan: frames · yellow: crosses",x0,25);}
+            if(layout.Transfer==null)Label(dc,"mm · cyan: frames · yellow: crosses",x0,8);
             for (int i = 0; i < layout.StockPlan.Pieces.Length; i++)
             {
                 var piece = layout.StockPlan.Pieces[i];
@@ -169,13 +168,13 @@ namespace EngineeringDashboard
             for (int i = 0; i < layout.PositionsMm.Length; i++)
             {
                 double x = x0 + layout.PositionsMm[i] * scale;
-                dc.DrawLine(layout.Rotated ? cross : frame, new Point(x, top), new Point(x, bottom));
-                foreach (double y in new[] { top, bottom }) { dc.DrawEllipse(SteelSide, null, new Point(x, y), 3.5, 3.5); DrawnTowerLegCount++; }
+                TowerPlanDrawing.Station(dc,new Point(x,top),new Point(x,bottom),layout.Rotated);
+                foreach (double y in new[] { top, bottom }) { TowerPlanDrawing.Leg(dc,new Point(x,y),!layout.Rotated); DrawnTowerLegCount++; }
                 if(layout.Transfer==null)Label(dc, (i + 1).ToString(), x - 4, top - 22);
                 if (i < layout.Joined.Length && layout.Joined[i])
                 {
                     double next = x0 + layout.PositionsMm[i + 1] * scale;
-                    foreach (double y in new[] { top, bottom }) dc.DrawLine(new Pen(Brushes.Firebrick,1.5){DashStyle=layout.Rotated ? DashStyles.Solid : DashStyles.Dash}, new Point(x, y), new Point(next, y));
+                    TowerPlanDrawing.BracedBay(dc,new Point(x,top),new Point(x,bottom),new Point(next,top),new Point(next,bottom),layout.Rotated);
                 }
                 if (i < layout.Joined.Length && layout.Transfer==null)
                 {
