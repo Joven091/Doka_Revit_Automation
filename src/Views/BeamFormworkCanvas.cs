@@ -42,6 +42,8 @@ namespace EngineeringDashboard
         private int memberBeam=-1,memberRun=-1,memberLine;
         internal int DrawnLegCount {get;private set;}
         internal int DrawnCrossH20Count {get;private set;}
+        internal int DrawnBracedBayCount {get;private set;}
+        internal readonly List<Tuple<int,string,double>> CrossingSettingOut=new List<Tuple<int,string,double>>();
         internal BeamFormworkCanvas(BeamCalculatorViewModel model)
         {Model=model;Focusable=true;ClipToBounds=true;SizeChanged+=(s,e)=> {if(fitted || e.PreviousSize.Width==0)Fit();};}
         internal double[] Centres()
@@ -159,7 +161,7 @@ namespace EngineeringDashboard
         }
         protected override void OnRender(DrawingContext dc)
         {
-            base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();dimensions.Clear();AnnotationBounds.Clear();DrawnLegCount=DrawnCrossH20Count=0;
+            base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();dimensions.Clear();AnnotationBounds.Clear();CrossingSettingOut.Clear();DrawnLegCount=DrawnCrossH20Count=DrawnBracedBayCount=0;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if(!ValidGeometry()) {Label(dc,"Correct geometry to draw the plan.",new Point(30,30));return;}
             var beams=Beams();var ys=Centres();SceneBounds=Bounds();
@@ -188,7 +190,7 @@ namespace EngineeringDashboard
                 dc.DrawRectangle(Brushes.LightGray,ObjectPen(FormworkObject.Crossing,i,rect,Brushes.SlateGray,2),rect);
                 ObjectTargets.Insert(0,Tuple.Create(rect,FormworkObject.Crossing,i));
                 Label(dc,$"X{i+1} · {c.WidthMm:0}×{c.DepthMm:0}",new Point(rect.Right+7,rect.Top+rect.Height/2-8));
-                if(AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Crossing && SelectedIndex==i)
+                if(!Formwork && (AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Crossing && SelectedIndex==i))
                     Dimension(dc,Screen(0,ys[bay]+beams[bay].WidthMm/2+200),Screen(c.PositionMm,ys[bay]+beams[bay].WidthMm/2+200),$"x {c.PositionMm:0.###}",FormworkObject.Crossing,i,"PositionMm");
             }
             for(int i=0;i<beams.Length;i++)
@@ -216,19 +218,21 @@ namespace EngineeringDashboard
         private void DrawTowerFrames(DrawingContext dc,TowerLayout layout,string label,Func<double,double,Point> project)
         {
             double a=-layout.WidthMm/2,b=layout.WidthMm/2;
-            var pen=new Pen(layout.Rotated ? Brushes.Firebrick : Brushes.SlateGray,1.2){DashStyle=layout.Rotated ? DashStyles.Dash : DashStyles.Solid};
             for(int i=0;i<layout.PositionsMm.Length;i++)
             {
-                double x=layout.PositionsMm[i];dc.DrawLine(pen,project(x,a),project(x,b));
-                for(int line=0;line<2;line++)
-                {
-                    var point=project(x,line==0 ? a : b);dc.DrawEllipse(Brushes.SlateGray,null,point,3.5,3.5);DrawnLegCount++;
-                    double reaction=line==0 ? layout.LeftReactions[i] : layout.RightReactions[i];
-                    LegTargets.Add(Tuple.Create(new Rect(point.X-6,point.Y-6,12,12),$"{label} · leg {i+1} {(line==0 ? "L" : "R")} · {reaction:0.##}/{layout.LegCapacityKn:0.##} kN"+(layout.IgnoreUplift ? $" · minimum signed reaction {layout.MinimumLegReaction(line==0,i):0.######} kN · uplift excluded" : "")));
-                }
+                double x=layout.PositionsMm[i];var frameA=project(x,a);var frameB=project(x,b);
+                TowerPlanDrawing.Station(dc,frameA,frameB,layout.Rotated);
                 if(i>=layout.Joined.Length || !layout.Joined[i])continue;
-                Brush colour=layout.Rotated ? Brushes.SlateGray : Brushes.Firebrick;
-                foreach(double y in new[] {a,b})dc.DrawLine(new Pen(colour,1.5){DashStyle=layout.Rotated ? DashStyles.Solid : DashStyles.Dash},project(x,y),project(layout.PositionsMm[i+1],y));
+                double next=layout.PositionsMm[i+1];
+                TowerPlanDrawing.BracedBay(dc,frameA,frameB,project(next,a),project(next,b),layout.Rotated);
+                DrawnBracedBayCount++;
+            }
+            for(int i=0;i<layout.PositionsMm.Length;i++)for(int line=0;line<2;line++)
+            {
+                double x=layout.PositionsMm[i];var frame=project(x,b)-project(x,a);var point=project(x,line==0 ? a : b);
+                TowerPlanDrawing.Leg(dc,point,(Math.Abs(frame.Y)>Math.Abs(frame.X)) != layout.Rotated);DrawnLegCount++;
+                double reaction=line==0 ? layout.LeftReactions[i] : layout.RightReactions[i];
+                LegTargets.Add(Tuple.Create(new Rect(point.X-6,point.Y-6,12,12),$"{label} · leg {i+1} {(line==0 ? "L" : "R")} · {reaction:0.##}/{layout.LegCapacityKn:0.##} kN"+(layout.IgnoreUplift ? $" · minimum signed reaction {layout.MinimumLegReaction(line==0,i):0.######} kN · uplift excluded" : "")));
             }
         }
         private void DrawCrossSupports(DrawingContext dc)
@@ -237,7 +241,6 @@ namespace EngineeringDashboard
             {
                 int encoded=-support.CrossingIndex-1;
                 var timber=support.Solids.Where(s=>s.Member!=null).GroupBy(s=>s.Member).ToArray();
-                var lowerTargets=new List<Tuple<Rect,int,int,int>>();
                 Action<IGrouping<TransferMember,FormworkSolid>> draw=group=>
                 {
                     var m=group.Key;int member=Array.IndexOf(support.Members,m);
@@ -248,10 +251,9 @@ namespace EngineeringDashboard
                     H20Drawing.Plan(dc,first,last,m.H20Count,memberBeam==encoded && memberRun==member);
                     DrawnCrossH20Count+=m.H20Count;
                     var target=Tuple.Create(MemberHit(first,last),encoded,member,0);
-                    if(m.H20Count==1)lowerTargets.Add(target);else MemberTargets.Add(target);
+                    MemberTargets.Add(target);
                     if(m.H20Count==2 && m.Name.EndsWith(" R"))Label(dc,$"{m.Name.Split(' ')[0]} · {m.LengthMm:0}",new Point(first.X+10,(first.Y+last.Y)/2));
                 };
-                foreach(var group in timber.Where(g=>g.Key.H20Count==1))draw(group);
                 if(support.Towers!=null)
                 {
                     var primary=timber.Where(g=>g.Key.H20Count==2).SelectMany(g=>g).ToArray();var first=primary[0];
@@ -259,7 +261,7 @@ namespace EngineeringDashboard
                     DrawTowerFrames(dc,support.Towers,$"X{support.CrossingIndex+1}",(station,side)=>Screen(centre+side,origin+station));
                 }
                 foreach(var group in timber.Where(g=>g.Key.H20Count==2))draw(group);
-                MemberTargets.AddRange(lowerTargets);
+                if(support.Towers!=null && (AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex))DrawCrossDimensions(dc,support,timber.SelectMany(g=>g).Where(s=>s.Member.H20Count==2).ToArray());
                 foreach(var solid in support.Solids.Where(s=>!s.IsLeg && s.Member==null))dc.DrawRectangle(Brushes.SandyBrown,new Pen(Brushes.SaddleBrown,1),new Rect(Screen(solid.X0,solid.Y0),Screen(solid.X1,solid.Y1)));
                 foreach(var bearing in support.Bearings)
                 {
@@ -277,17 +279,44 @@ namespace EngineeringDashboard
                 }
             }
         }
+        private void DrawCrossDimensions(DrawingContext dc,CrossBeamSupportResult support,FormworkSolid[] primary)
+        {
+            int index=support.CrossingIndex,bay=support.Input.BayNumber-1;var result=Model.NetworkResult;var layout=support.Towers;
+            double origin=primary[0].Y0-primary[0].Member.StartMm,centre=(primary.Min(s=>s.X0)+primary.Max(s=>s.X1))/2;
+            double left=centre-layout.WidthMm/2,right=centre+layout.WidthMm/2;
+            var legs=layout.PositionsMm.Select(x=>origin+x).ToArray();
+            double near=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2,far=result.BeamCentresMm[bay+1]-result.Input.Beams[bay+1].WidthMm/2;
+            Action<double,double,string,double> vertical=(a,b,role,offset)=>
+            {
+                double x=Screen(left,0).X-offset;double distance=b-a;
+                CrossingSettingOut.Add(Tuple.Create(index,role,distance));
+                foreach(double level in new[] {a,b})dc.DrawLine(new Pen(Brushes.LightSlateGray,.5),Screen(left,level),new Point(x-4,Screen(0,level).Y));
+                Dimension(dc,new Point(x,Screen(0,a).Y),new Point(x,Screen(0,b).Y),distance.ToString("0.###"),FormworkObject.Crossing,index,null);
+                var hit=new Rect(new Point(x,Screen(0,a).Y),new Point(x,Screen(0,b).Y));hit.Inflate(8,8);LegTargets.Add(Tuple.Create(hit,$"X{index+1} · {role}: {distance:0.###} mm"));
+            };
+            vertical(near,legs[0],$"B{bay+1} concrete face to first tower leg",72);
+            for(int i=0;i<legs.Length-1;i++)vertical(legs[i],legs[i+1],layout.Joined[i] ? "Braced tower bay" : "Gap between tower groups",72);
+            vertical(legs.Last(),far,$"Last tower leg to B{bay+2} concrete face",72);
+            Label(dc,$"B{bay+1} face",new Point(Screen(left,near).X-128,Screen(0,near).Y-19));
+            Label(dc,$"B{bay+2} face",new Point(Screen(left,far).X-128,Screen(0,far).Y+7));
+            double y=Screen(0,legs[0]).Y-24;
+            CrossingSettingOut.Add(Tuple.Create(index,"Beam start to near leg column",left));
+            CrossingSettingOut.Add(Tuple.Create(index,"Tower width between leg centres",layout.WidthMm));
+            CrossingSettingOut.Add(Tuple.Create(index,"Far leg column to beam end",Model.BeamLengthMm-right));
+            foreach(double x in new[] {0.0,left,right,Model.BeamLengthMm})
+                dc.DrawLine(new Pen(Brushes.LightSlateGray,.5),Screen(x,legs[0]),new Point(Screen(x,0).X,y-4));
+            Dimension(dc,new Point(Screen(0,0).X,y),new Point(Screen(left,0).X,y),left.ToString("0.###"),FormworkObject.Crossing,index,null,null,-18);
+            Dimension(dc,new Point(Screen(left,0).X,y),new Point(Screen(right,0).X,y),layout.WidthMm.ToString("0.###"),FormworkObject.Crossing,index,null,Brushes.DarkCyan,-18);
+            Dimension(dc,new Point(Screen(right,0).X,y),new Point(Screen(Model.BeamLengthMm,0).X,y),(Model.BeamLengthMm-right).ToString("0.###"),FormworkObject.Crossing,index,null,null,-18);
+            foreach(var piece in layout.StockPlan.Pieces)
+            {
+                vertical(origin+piece.StartMm,legs[piece.FirstSupport],$"P{Array.IndexOf(layout.StockPlan.Pieces,piece)+1} near H20 overhang",36);
+                vertical(legs[piece.LastSupport],origin+piece.EndMm,$"P{Array.IndexOf(layout.StockPlan.Pieces,piece)+1} far H20 overhang",36);
+            }
+        }
         private void DrawSupports(DrawingContext dc,TowerLayout layout,int beam,double centre,bool dims)
         {
             double a=centre-layout.WidthMm/2,b=centre+layout.WidthMm/2;
-            var lowerTargets=new List<Tuple<Rect,int,int,int>>();
-            if(layout.Transfer!=null)for(int row=0;row<layout.Transfer.RowsMm.Length;row++)
-            {
-                var transfer=layout.Transfer;int run=layout.StockPlan.Pieces.Length+row;
-                var first=Screen(transfer.RowsMm[row],centre+transfer.LowerStockStartMm);var last=Screen(transfer.RowsMm[row],centre+transfer.LowerStockStartMm+transfer.LowerStockLengthMm);
-                H20Drawing.Plan(dc,first,last,1,memberBeam==beam && memberRun==run);
-                lowerTargets.Add(Tuple.Create(MemberHit(first,last),beam,run,0));
-            }
             DrawTowerFrames(dc,layout,$"B{beam+1}",(station,side)=>Screen(station,centre+side));
             if(dims)for(int i=0;i<layout.Joined.Length;)
             {
@@ -313,7 +342,6 @@ namespace EngineeringDashboard
                     Dimension(dc,new Point(Screen(layout.PositionsMm[p.LastSupport],0).X,y),new Point(Screen(p.EndMm,0).X,y),(p.EndMm-layout.PositionsMm[p.LastSupport]).ToString("0.###"),FormworkObject.Beam,beam,null);
                 }
             }
-            MemberTargets.AddRange(lowerTargets);
         }
         internal bool SelectAt(Point point,bool toggle=false)
         {

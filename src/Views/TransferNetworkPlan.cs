@@ -68,7 +68,7 @@ namespace EngineeringDashboard
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));
             if(SectionOnly) {Section(dc,55);return;}
             Label(dc,$"mm · primary P = 2×H20/line · secondaries = single H20 @ {result.Input.UpperSpacingMm:0}",30,8);
-            Label(dc,"Red: braced bays · grey: gaps · beam W×D · slab t = thickness · transverse view schematic",30,27);
+            Label(dc,"Cyan: frames · yellow: crosses · beam W×D · slab t = thickness · transverse view schematic",30,27);
             var ys=Centres();var crossSolids=result.CrossSupports.SelectMany(c=>c.Solids).ToArray();
             double minX=Math.Min(0,crossSolids.Select(s=>s.X0).DefaultIfEmpty(0).Min()),maxX=Math.Max(result.Beams[0].LengthMm,crossSolids.Select(s=>s.X1).DefaultIfEmpty(0).Max());
             double scale=(ActualWidth-80)/(maxX-minX);Func<double,double> xx=x=>40+(x-minX)*scale;
@@ -114,10 +114,11 @@ namespace EngineeringDashboard
                 }
                 for(int leg=0;leg<b.PositionsMm.Length;leg++)
                 {
-                    double x=xx(b.PositionsMm[leg]);dc.DrawLine(new Pen(Steel,1.5){DashStyle=b.Rotated ? DashStyles.Dash : DashStyles.Solid},new Point(x,top),new Point(x,bottom));
-                    foreach(double y in new[] {top,bottom}) {dc.DrawEllipse(Steel,null,new Point(x,y),3.5,3.5);DrawnTowerLegCount++;}
-                    if(leg==b.Joined.Length)continue;double next=xx(b.PositionsMm[leg+1]);
-                    if(b.Joined[leg])foreach(double y in new[] {top,bottom})dc.DrawLine(new Pen(Brushes.Firebrick,1.5){DashStyle=b.Rotated ? DashStyles.Solid : DashStyles.Dash},new Point(x,y),new Point(next,y));
+                    double x=xx(b.PositionsMm[leg]);var a=new Point(x,top);var c=new Point(x,bottom);
+                    TowerPlanDrawing.Station(dc,a,c,b.Rotated);
+                    foreach(var at in new[] {a,c}) {TowerPlanDrawing.Leg(dc,at,!b.Rotated);DrawnTowerLegCount++;}
+                    if(leg<b.Joined.Length && b.Joined[leg])
+                        TowerPlanDrawing.BracedBay(dc,a,c,new Point(xx(b.PositionsMm[leg+1]),top),new Point(xx(b.PositionsMm[leg+1]),bottom),b.Rotated);
                 }
                 for(int leg=0;leg<b.Joined.Length;)
                 {
@@ -147,10 +148,26 @@ namespace EngineeringDashboard
                 foreach(var solid in support.Solids.Where(s=>s.Member==null))
                 {
                     var rect=new Rect(new Point(xx(solid.X0),yy(solid.Y0)),new Point(xx(solid.X1),yy(solid.Y1)));
-                    if(solid.IsLeg) {dc.DrawEllipse(Steel,null,new Point(xx((solid.X0+solid.X1)/2),yy((solid.Y0+solid.Y1)/2)),3.5,3.5);DrawnTowerLegCount++;}
+                    if(solid.IsLeg) {TowerPlanDrawing.Leg(dc,new Point(xx((solid.X0+solid.X1)/2),yy((solid.Y0+solid.Y1)/2)),support.Towers?.Rotated==true);DrawnTowerLegCount++;}
                     else dc.DrawRectangle(Brushes.SandyBrown,new Pen(Brushes.SaddleBrown,1),rect);
                 }
-                foreach(var group in support.Solids.Where(s=>s.Member!=null).GroupBy(s=>s.Member))
+                if(support.Towers!=null)
+                {
+                    var timber=support.Solids.Where(s=>s.Member?.H20Count==2).ToArray();
+                    double centre=(timber.Min(s=>s.X0)+timber.Max(s=>s.X1))/2,origin=timber[0].Y0-timber[0].Member.StartMm;
+                    var tower=support.Towers;
+                    for(int leg=0;leg<tower.PositionsMm.Length;leg++)
+                    {
+                        double y=yy(origin+tower.PositionsMm[leg]);var a=new Point(xx(centre-tower.WidthMm/2),y);var b=new Point(xx(centre+tower.WidthMm/2),y);
+                        TowerPlanDrawing.Station(dc,a,b,tower.Rotated);
+                        if(leg<tower.Joined.Length && tower.Joined[leg])
+                        {
+                            double next=yy(origin+tower.PositionsMm[leg+1]);
+                            TowerPlanDrawing.BracedBay(dc,a,b,new Point(a.X,next),new Point(b.X,next),tower.Rotated);
+                        }
+                    }
+                }
+                foreach(var group in support.Solids.Where(s=>s.Member!=null && s.Member.H20Count==2).GroupBy(s=>s.Member))
                 {
                     double x0=group.Min(s=>s.X0),x1=group.Max(s=>s.X1),y0=group.Min(s=>s.Y0),y1=group.Max(s=>s.Y1);
                     bool alongY=y1-y0>x1-x0;int member=Array.IndexOf(support.Members,group.Key);

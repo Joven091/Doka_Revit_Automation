@@ -46,7 +46,22 @@ internal static class CrossSupportUiTests
         Check(vm.UpperSupportSpacingMm==275 && vm.NetworkResult.Input.UpperSpacingMm<=275 && vm.BuildDiagnosticReport().Contains("entered maximum 275"),"coordinated search preserves the entered maximum and reports its actual spacing");
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Show();Pump();workspace.Drawing.Formwork=true;
         Capture(workspace.Drawing,2000,1100);workspace.Drawing.Fit();Capture(workspace.Drawing,2000,1100,Preview(previewPath,"coordinated-report-plan"));
-        Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.H20Count),"coordinated plan draws every real tower leg and crossing member");
+        Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"coordinated plan draws every real tower leg and crossing member");
+        Check(workspace.Drawing.MemberTargets.All(t=>t.Item2<0 ? vm.NetworkResult.CrossSupports[-t.Item2-1].Members[t.Item3].H20Count==2 : t.Item3<vm.NetworkResult.Beams[t.Item2].StockPlan.Pieces.Length),"coordinated plan omits all secondary H20 strokes and targets");
+        Check(workspace.Drawing.DrawnBracedBayCount==vm.NetworkResult.Beams.Concat(vm.NetworkResult.CrossSupports.Select(c=>c.Towers)).Sum(l=>l.Joined.Count(j=>j)),"Doka symbols brace only connected tower bays");
+        var towerStrokes=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).OfType<GeometryDrawing>().ToArray();
+        Check(towerStrokes.Any(g=>g.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.Gold) && towerStrokes.Any(g=>g.Geometry is RectangleGeometry && g.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.DarkCyan),"tower symbols use yellow crosses and cyan rectangular leg markers");
+        for(int i=0;i<7;i++)
+        {
+            workspace.Drawing.Select(FormworkObject.Crossing,i);Pump();Capture(workspace.Drawing,2000,1100);
+            var setting=workspace.Drawing.CrossingSettingOut.Where(d=>d.Item1==i).ToArray();
+            Check(setting.Any(d=>d.Item2.Contains("concrete face to first")) && setting.Any(d=>d.Item2.Contains("concrete face") && d.Item2.Contains("Last")),"crossing legs are dimensioned from both parallel concrete faces");
+            Check(Math.Abs(setting.Where(d=>d.Item2.Contains("concrete face") || d.Item2=="Braced tower bay" || d.Item2=="Gap between tower groups").Sum(d=>d.Item3)-vm.NetworkBays[i].WidthMm)<1e-7,"setting-out chain closes to the entered bay width");
+            Check(setting.Where(d=>d.Item2.Contains("H20 overhang")).All(d=>d.Item3>=150-1e-7),"crossing dimensions use actual stock end setbacks");
+        }
+        workspace.Drawing.Select(FormworkObject.Crossing,0);Pump();var primary=vm.NetworkResult.CrossSupports[0].Solids.Where(s=>s.Member?.H20Count==2).ToArray();
+        var focus=workspace.Drawing.Screen((primary.Min(s=>s.X0)+primary.Max(s=>s.X1))/2,(primary.Min(s=>s.Y0)+primary.Max(s=>s.Y1))/2);workspace.Drawing.PanBy(new Vector(1000-focus.X,550-focus.Y));workspace.Drawing.ZoomAt(3,new Point(1000,550));
+        Capture(workspace.Drawing,2000,1100,Preview(previewPath,"coordinated-report-setting-out"));
         workspace.Drawing.Select(FormworkObject.Slab,1);Pump();Check(workspace.SelectedResultText.Contains("entered maximum 275"),"slab inspector explains tighter junction spacing");
         workspace.Buttons["Section"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
         for(int i=0;i<vm.NetworkResult.CrossSupports.Length;i++)
@@ -82,8 +97,8 @@ internal static class CrossSupportUiTests
             var labels=glyphs.Where(g=>g.Text==value).ToArray();Check(labels.Length>=2,"reported overhang dimension labels are visible: "+value);
             Check(labels.GroupBy(g=>Math.Round(g.Y,3)).All(g=>g.Count()>=2),"overhang labels share a single baseline on each beam: "+value);
         }
-        Check(workspace.Drawing.MemberTargets.Any(t=>t.Item2>=0 && t.Item3>=vm.NetworkResult.Beams[t.Item2].StockPlan.Pieces.Length),"main lower H20s use the same selectable plan strokes as X1 secondaries");
-        Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.H20Count),"common plan rendering retains every actual leg and crossing H20");
+        Check(workspace.Drawing.MemberTargets.All(t=>t.Item2<0 ? vm.NetworkResult.CrossSupports[-t.Item2-1].Members[t.Item3].H20Count==2 : t.Item3<vm.NetworkResult.Beams[t.Item2].StockPlan.Pieces.Length),"plan hides main and crossing secondaries; section keeps their selectable diagrams");
+        Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"common plan rendering retains every actual leg and crossing H20");
         workspace.Buttons["Section"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Capture(workspace.Section,1200,420,Preview(previewPath,"current-report-section"));
         var section=Primitives(VisualTreeHelper.GetDrawing(workspace.Section)).ToArray();
         Check(!section.OfType<GeometryDrawing>().Any(g=>g.Geometry is EllipseGeometry && g.Brush is SolidColorBrush brush && brush.Color==Colors.DarkRed),"section omits crossing bearing dots");
@@ -107,6 +122,16 @@ internal static class CrossSupportUiTests
     }
     public static int Run(string previewPath=null)
     {
+        foreach(bool rotated in new[] {false,true})
+        {
+            var visual=new DrawingVisual();using(var dc=visual.RenderOpen())
+            {
+                TowerPlanDrawing.Station(dc,new Point(0,0),new Point(0,100),rotated);
+                TowerPlanDrawing.BracedBay(dc,new Point(0,0),new Point(0,100),new Point(150,0),new Point(150,100),rotated);
+            }
+            var cyan=Primitives(visual.Drawing).OfType<GeometryDrawing>().Where(g=>g.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.DarkCyan).Select(g=>g.Geometry).OfType<LineGeometry>().ToArray();
+            Check(cyan.Length>0 && cyan.All(l=>rotated ? Math.Abs(l.StartPoint.Y-l.EndPoint.Y)<.01 : Math.Abs(l.StartPoint.X-l.EndPoint.X)<.01),"cyan frame planes follow actual tower rotation");
+        }
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,UpperSupportSpacingMm=100,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70};
         foreach(var b in vm.NetworkBeams) {b.WidthMm=300;b.DepthMm=600;}
         vm.NetworkBays[0].WidthMm=3900;vm.NetworkBays[0].ThicknessMm=100;
@@ -122,7 +147,7 @@ internal static class CrossSupportUiTests
         Check(diagrams.SelectedTransferMember==vm.NetworkResult.CrossSupports[0].Members[0] && diagrams.ActualLoadedAnalysis==diagrams.LoadedAnalysis,"cross diagram uses its actual concrete and formwork loads");diagrams.Close();
         var canvas=new BeamFormworkCanvas(vm) {Width=1200,Height=600,Formwork=true};canvas.Measure(new Size(1200,600));canvas.Arrange(new Rect(0,0,1200,600));canvas.Fit();canvas.UpdateLayout();
         var planBitmap=new RenderTargetBitmap(1200,600,96,96,System.Windows.Media.PixelFormats.Pbgra32);planBitmap.Render(canvas);
-        Check(canvas.MemberTargets.Any(t=>t.Item2<0) && canvas.DrawnLegCount==vm.NetworkResult.LegCount && canvas.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.H20Count),"workspace cross H20 targets and calculated tower legs drawn");
+        Check(!canvas.MemberTargets.Any(t=>t.Item2<0) && canvas.DrawnLegCount==vm.NetworkResult.LegCount && canvas.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"workspace cross H20 targets and calculated tower legs drawn");
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Drawing.Select(FormworkObject.Crossing,0);workspace.Show();Pump();
         Check(workspace.Fields.ContainsKey("BottomElevationMm"),"cross bottom elevation exposed in workspace");
         workspace.Drawing.Select(FormworkObject.Slab,0);Pump();
@@ -139,7 +164,7 @@ internal static class CrossSupportUiTests
         var jointWorkspace=new BeamFormworkWorkspace(junction,null,null,null);jointWorkspace.Show();jointWorkspace.Drawing.Formwork=true;jointWorkspace.Drawing.Select(FormworkObject.Crossing,0);Pump();
         var jointCanvas=jointWorkspace.Drawing;jointCanvas.Measure(new Size(1200,600));jointCanvas.Arrange(new Rect(0,0,1200,600));jointCanvas.Fit();jointCanvas.UpdateLayout();
         var jointBitmap=new RenderTargetBitmap(1200,600,96,96,System.Windows.Media.PixelFormats.Pbgra32);jointBitmap.Render(jointCanvas);
-        Check(jointCanvas.DrawnLegCount==junction.NetworkResult.LegCount && jointCanvas.DrawnCrossH20Count==junction.NetworkResult.CrossSupports.Sum(c=>c.H20Count),"junction plan draws the actual central tower and trimmed members with no duplicate end-zone timber");
+        Check(jointCanvas.DrawnLegCount==junction.NetworkResult.LegCount && jointCanvas.DrawnCrossH20Count==junction.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"junction plan draws the actual central tower and trimmed members with no duplicate end-zone timber");
         Check(jointCanvas.LegTargets.Any(t=>t.Item2.Contains("concrete end zone on B1")),"plan end-zone targets describe concrete loads rather than timber bearings");
         Check(jointWorkspace.SelectedResultText.Contains("Dedicated central span") && jointWorkspace.SelectedResultText.Contains("Concrete end zone on B1"),"selected crossing explains which load reaches the main beam");
         var jointSection=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true};jointSection.SetResult(junction.NetworkResult);jointSection.Measure(new Size(1200,420));jointSection.Arrange(new Rect(0,0,1200,420));jointSection.UpdateLayout();var jointSectionBitmap=new RenderTargetBitmap(1200,420,96,96,System.Windows.Media.PixelFormats.Pbgra32);jointSectionBitmap.Render(jointSection);Check(jointSection.MemberTargets.Any(t=>t.Item2<0),"junction central members are selectable in section");
