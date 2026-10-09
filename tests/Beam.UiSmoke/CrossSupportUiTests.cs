@@ -29,6 +29,40 @@ internal static class CrossSupportUiTests
         if(path!=null) {var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=System.IO.File.Create(path))encoder.Save(file);}return bitmap;
     }
     static string Preview(string path,string name)=>string.IsNullOrEmpty(path) ? null : System.IO.Path.ChangeExtension(path,name+".png");
+    static void CoordinatedWorkspace(string previewPath)
+    {
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=6900,UpperSupportSpacingMm=275,TowerLegCapacityKn=70,StockLengthsText="1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900",AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+        while(vm.NetworkBeams.Count<8)vm.AddNetworkBay();
+        for(int i=0;i<8;i++) {vm.NetworkBeams[i].WidthMm=i%2==0 ? 800 : 650;vm.NetworkBeams[i].DepthMm=i%2==0 ? 1750 : 1150;vm.NetworkBeams[i].BottomElevationMm=-vm.NetworkBeams[i].DepthMm;}
+        var widths=new[] {2677.0,1875,3275,2275,2278,2272,2252};
+        for(int i=0;i<7;i++)
+        {
+            vm.NetworkBays[i].WidthMm=widths[i];vm.NetworkBays[i].ThicknessMm=300;vm.AddCrossingBeam();
+            var c=vm.CrossingBeams[i];c.BayNumber=i+1;c.PositionMm=3450;c.WidthMm=650;c.DepthMm=1150;c.BottomElevationMm=-1150;
+        }
+        var task=vm.OptimizeTowersAsync();var timer=System.Diagnostics.Stopwatch.StartNew();
+        while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>300)throw new Exception("Coordinated report UI timeout");}task.GetAwaiter().GetResult();
+        Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
+        Check(vm.UpperSupportSpacingMm==275 && vm.NetworkResult.Input.UpperSpacingMm<=275 && vm.BuildDiagnosticReport().Contains("entered maximum 275"),"coordinated search preserves the entered maximum and reports its actual spacing");
+        var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Show();Pump();workspace.Drawing.Formwork=true;
+        Capture(workspace.Drawing,2000,1100);workspace.Drawing.Fit();Capture(workspace.Drawing,2000,1100,Preview(previewPath,"coordinated-report-plan"));
+        Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.H20Count),"coordinated plan draws every real tower leg and crossing member");
+        workspace.Drawing.Select(FormworkObject.Slab,1);Pump();Check(workspace.SelectedResultText.Contains("entered maximum 275"),"slab inspector explains tighter junction spacing");
+        workspace.Buttons["Section"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+        for(int i=0;i<vm.NetworkResult.CrossSupports.Length;i++)
+        {
+            workspace.Section.SelectMember(-i-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,$"coordinated-report-X{i+1}-section"));
+            Check(workspace.Section.DrawnConcreteEndZoneCount==1,$"X{i+1} section draws its direct concrete junction end zone");
+        }
+        int crossing=Array.FindIndex(vm.NetworkResult.CrossSupports,c=>Math.Abs(c.TowerSpanOffsetMm)>0);var support=vm.NetworkResult.CrossSupports[crossing];
+        workspace.Section.SelectMember(-crossing-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,"coordinated-report-section"));
+        var target=workspace.Section.MemberTargets.First(t=>t.Item2==-crossing-1 && support.Members[t.Item3].H20Count==2);
+        workspace.Section.SelectAt(new Point(target.Item1.X+target.Item1.Width/2,target.Item1.Y+target.Item1.Height/2));Pump();
+        Check(workspace.Diagrams!=null && Descendants(workspace.Diagrams).Count(c=>c.GetType().Name=="LoadedResponsePlot")==3,"translated crossing supports retain all three response diagrams");
+        Check(workspace.Diagrams.DisplayedTransferMember.SupportsMm.SequenceEqual(support.Members[target.Item3].SupportsMm),"diagram uses the actual displaced support positions");
+        var body=(FrameworkElement)((ScrollViewer)workspace.Diagrams.Content).Content;body.Measure(new Size(900,double.PositiveInfinity));body.Arrange(new Rect(0,0,900,body.DesiredSize.Height));body.UpdateLayout();Capture(body,900,(int)Math.Ceiling(body.DesiredSize.Height),Preview(previewPath,"coordinated-report-primary"));
+        workspace.Close();
+    }
     static void ReportedWorkspace(string previewPath)
     {
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=10450,UpperSupportSpacingMm=275,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,MaximumConcreteEndOverhangMm=75,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
@@ -116,6 +150,6 @@ internal static class CrossSupportUiTests
             var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(jointBitmap));using(var file=System.IO.File.Create(System.IO.Path.ChangeExtension(previewPath,"junction-plan.png")))encoder.Save(file);
             encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(jointSectionBitmap));using(var file=System.IO.File.Create(System.IO.Path.ChangeExtension(previewPath,"junction-section.png")))encoder.Save(file);
         }
-        jointWorkspace.Close();ReportedWorkspace(previewPath);Console.WriteLine("Cross UI: section, filler, actual diagrams, elevation editor and reported junction passed.");return checks;
+        jointWorkspace.Close();ReportedWorkspace(previewPath);CoordinatedWorkspace(previewPath);Console.WriteLine("Cross UI: section, filler, actual diagrams, elevation editor and reported junctions passed.");return checks;
     }
 }

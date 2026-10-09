@@ -45,4 +45,11 @@ jobs:
           name: beam-ui-previews
           path: artifacts/
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revit2024-addin
+          path: |
+            src/bin/Release/net48/MyRevitAddin.dll
+            src/bin/Release/net48/OxyPlot*.dll
+          if-no-files-found: error
 

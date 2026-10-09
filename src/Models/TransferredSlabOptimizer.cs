@@ -67,6 +67,7 @@ namespace EngineeringDashboard
     }
     public sealed class TransferredSlabResult
     {
+        internal TransferredSlabResult Copy() => (TransferredSlabResult)MemberwiseClone();
         public double[] RowsMm, TributaryWidthsMm;
         public double[] LeftUpperScales, RightUpperScales;
         public double UpperScale(bool left,int row)

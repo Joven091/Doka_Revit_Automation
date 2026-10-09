@@ -98,16 +98,46 @@ internal static class CrossEndStripTests
     public static void Reported()
     {
         var network=new TransferNetworkInput {UpperSpacingMm=275,Beams=Enumerable.Range(0,8).Select(i=>new TransferBeamRow {WidthMm=i%2==0 ? 800 : 650,DepthMm=i%2==0 ? 1750 : 1150}).ToArray(),Bays=new[] {2677.0,1875,3275,2275,2278,2272,2252}.Select(w=>new TransferBayRow {WidthMm=w,ThicknessMm=300}).ToArray(),CrossingBeams=Enumerable.Range(1,7).Select(i=>new TransferCrossingBeamRow {BayNumber=i,PositionMm=3450,WidthMm=650,DepthMm=1150,SupportMode=CrossBeamSupportMode.Automatic}).ToArray()};
-        var timer=System.Diagnostics.Stopwatch.StartNew();bool failed=false;
-        try {TransferNetworkOptimizer.Optimize(Common(),network);}
-        catch(TowerOptimizationException e)
+        var common=Common();common.StockLengthsMm=new[] {1250.0,1800,2450,2650,2900,3300,3600,3900,4500,4900};
+        var timer=System.Diagnostics.Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,network);
+        Check(result.Beams.Length==8 && result.CrossSupports.Length==7 && result.SeparateSlabCount==0,"reported network supports all beams, crossings and slab bays");
+        Check(result.PeakLegKn<=70+1e-8 && common.IgnoreUplift && common.Exclude600Standalone && common.StockEndSetbackMm==150,"leg, setback and standalone-600 settings remain in force");
+        Check(network.UpperSpacingMm==275 && result.Input.UpperSpacingMm<=275 && result.Schedule.Contains("entered maximum 275"),"automatic spacing adjustment is within the unchanged input maximum and explained");
+        Check(result.CrossSupports.All(c=>c.Towers!=null && c.Bearings.Any(b=>b.IsConcreteEndZone)),"every crossing uses its own tower and direct concrete end-zone support");
+        Check(result.CrossSupports.Any(c=>Math.Abs(c.TowerSpanOffsetMm)>0),"crossing tower supports can be displaced along their span");
+        foreach(var layout in result.Beams.Concat(result.CrossSupports.Select(c=>c.Towers)))
         {
-            failed=true;
-            Check(e.Message.Contains("Physical overlap:") && e.Message.Contains("X1"),"reported case identifies its actual cross timber clash");
-            Check(!e.Message.Contains("leg load:") && !e.Details.Contains("2677–2677"),"reported case is no longer blocked by exact-span coverage or an unrelated main-leg example");
-            Console.WriteLine($"REPORTED AUTOMATIC {timer.Elapsed.TotalSeconds:0.00}s; remaining geometry rejection: {e.Message}");
+            Check(layout.MaxLegKn<=70+1e-8,"each tower retains the individual leg limit");
+            foreach(var piece in layout.StockPlan.Pieces)
+            {
+                Check(layout.PositionsMm[piece.FirstSupport]-piece.StartMm>=150-1e-7 && piece.EndMm-layout.PositionsMm[piece.LastSupport]>=150-1e-7,"each real support retains the stock end setbacks after translation");
+                Check(!piece.IsCustomLength || piece.StockLengthMm%25==0,"custom beam stocks retain 25 mm increments");
+            }
+            for(int first=0;first<layout.PositionsMm.Length;)
+            {
+                int last=first;while(last<layout.Joined.Length && layout.Joined[last])last++;
+                Check(last!=first+1 || Math.Abs(layout.PositionsMm[last]-layout.PositionsMm[first]-600)>1e-7,"no standalone 600 mm tower is introduced");first=last+1;
+            }
+            foreach(var member in Members(layout))MemberChecks(member,270);
+            Check(layout.Transfer.PrimaryCases.SelectMany(c=>c).All(m=>m.Points.Length==0),"primary member checks retain their UDL design model");
         }
-        Check(failed,"reported coincident timber geometry remains rejected rather than bypassing clashes");
-        Console.WriteLine($"Reported Automatic diagnosis: {checks} checks passed.");
+        var obstacles=CrossBeamSupportOptimizer.NetworkSolids(result).Concat(CrossBeamSupportOptimizer.Concrete(result)).ToArray();
+        var crossingSolids=result.CrossSupports.SelectMany(c=>c.Solids).ToArray();
+        foreach(var solid in crossingSolids)
+        {
+            foreach(var obstacle in obstacles)Check(!solid.Overlaps(obstacle),"cross timber and full tower columns clear all main formwork and concrete");
+            foreach(var other in crossingSolids.Where(o=>!ReferenceEquals(o,solid)))Check(!solid.Overlaps(other),"all crossing members and columns clear one another");
+        }
+        foreach(var crossing in result.CrossSupports)
+        {
+            int bay=crossing.Input.BayNumber-1;double face=result.BeamCentresMm[bay]+network.Beams[bay].WidthMm/2;
+            double expected=network.AreaLoad(1150)*.65*network.Bays[bay].WidthMm/1000;
+            var reactions=crossing.Bearings.Where(b=>b.IsConcreteEndZone || b.IsDedicated && b.Label.StartsWith("Dedicated P")).ToArray();
+            Near(crossing.LoadKn,expected,"full crossing concrete and construction load conserved");
+            Near(reactions.Sum(b=>b.ReactionKn),expected,"cross load reaches the direct end zone and tower legs exactly once");
+            Near(reactions.Sum(b=>b.ReactionKn*b.Xmm/1000),expected*3.45,"eccentric width placement preserves force moment along the main beams");
+            Near(reactions.Sum(b=>b.ReactionKn*b.Ymm/1000),expected*(face+network.Bays[bay].WidthMm/2)/1000,"translated tower legs preserve force moment along the crossing span");
+        }
+        Console.WriteLine($"REPORTED COORDINATED PASS: {result.LegCount} legs; peak {result.PeakLegKn:0.000} kN; secondary spacing {result.Input.UpperSpacingMm:0.###}/275 mm; {timer.Elapsed.TotalSeconds:0.00}s; {checks} checks.");
     }
 }

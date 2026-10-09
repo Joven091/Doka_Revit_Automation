@@ -27,6 +27,7 @@ jobs:
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --custom-h20-scope
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --cross-junction
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --cross-end-strips
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --cross-reported
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --cross-supports
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --symmetric-slab-supports
       - run: dotnet build tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release --warnaserror

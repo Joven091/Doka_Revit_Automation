@@ -38,6 +38,7 @@ namespace EngineeringDashboard
         public double LoadKn,MovementMm;
         public string SharedFailure;
         public string JunctionNotice;
+        public double TowerSpanOffsetMm;
         public int H20Count=>Towers==null ? Members.Sum(m=>m.H20Count) : Towers.StockPlan.TotalH20Count+Towers.Transfer.AdditionalH20Count;
         public double TimberMm=>Towers==null ? Members.Sum(m=>m.LengthMm*m.H20Count) : Towers.StockPlan.TotalStockLengthMm+Towers.Transfer.AdditionalTimberMm;
         public const string Limitations="Filler heights are geometric gaps only: filler timber bearing strength, restraint and stability are not verified. H20 bearing/connection design, sheathing, tower stability, bracing and foundations require separate verification. H20 depth is 200 mm and flange width is 80 mm. Clash checks include full stock tails, H20 pairs and tower leg columns; tower braces and hardware are not modelled. Cross-beam load includes concrete and applicable construction/formwork allowances, with no slab tributary. Shared reactions are added over their actual longitudinal footprints to the main primary UDL design model. Construction stages include every subset of up to eight shared crossings; larger sets use conservative demand and reaction bounds covering every subset. Search is bounded and does not prove a global optimum.";
@@ -208,9 +209,9 @@ namespace EngineeringDashboard
             }
             return null;
         }
-        private static CrossBeamSupportResult DedicatedCandidate(TowerInput common,TransferNetworkResult r,int index,double spacing,out string failure,double nearTrim=0,double farTrim=0,double? width=null,double transverseOffset=0)
+        private static CrossBeamSupportResult DedicatedCandidate(TowerInput common,TransferNetworkResult r,int index,double spacing,out string failure,double nearTrim=0,double farTrim=0,double? width=null,double transverseOffset=0,double spanOffset=0)
         {
-            var cacheKey=Tuple.Create(index,spacing,nearTrim,farTrim,width??0,transverseOffset);
+            var cacheKey=Tuple.Create(index,spacing,nearTrim,farTrim,width??0,transverseOffset,spanOffset);
             if(common.DedicatedCrossCache!=null && common.DedicatedCrossCache.TryGetValue(cacheKey,out var cached)) {failure=cached.Failure;return cached.Result;}
             var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2+nearTrim,span=r.Input.Bays[bay].WidthMm-nearTrim-farTrim;
             failure=null;
@@ -221,13 +222,27 @@ namespace EngineeringDashboard
             input.NetworkLegCeiling=int.MaxValue;
             input.TransferredSlab=new TransferredSlabInput {IsNetwork=true,IncludeConcreteEndStrips=true,FixedTowerWidthMm=width,BeamCentreOffsetMm=-transverseOffset,BeamWidthMm=c.WidthMm,BeamLineLoadKnM=r.Input.AreaLoad(c.DepthMm)*c.WidthMm/1000,UpperSpacingMm=spacing};
             TowerLayout l;
-            try {l=TransferredSlabOptimizer.Optimize(input,true);}catch(TowerOptimizationException ex) {failure=$"X{index+1} dedicated towers: {ex.Message}";if(common.DedicatedCrossCache!=null)common.DedicatedCrossCache[cacheKey]=new DedicatedCrossSearch {Failure=failure};return null;}
+            if(spanOffset==0)
+            {
+                try {l=TransferredSlabOptimizer.Optimize(input,true);}catch(TowerOptimizationException ex) {failure=$"X{index+1} dedicated towers: {ex.Message}";if(common.DedicatedCrossCache!=null)common.DedicatedCrossCache[cacheKey]=new DedicatedCrossSearch {Failure=failure};return null;}
+            }
+            else
+            {
+                var centred=DedicatedCandidate(common,r,index,spacing,out failure,nearTrim,farTrim,width,transverseOffset);
+                if(centred==null)return null;
+                l=Copy(centred.Towers);l.Transfer=l.Transfer.Copy();
+                l.PositionsMm=l.PositionsMm.Select(x=>x+spanOffset).ToArray();
+                foreach(var piece in l.StockPlan.Pieces)
+                    if(l.PositionsMm[piece.FirstSupport]-piece.StartMm<common.StockEndSetbackMm-1e-7 || piece.EndMm-l.PositionsMm[piece.LastSupport]<common.StockEndSetbackMm-1e-7)
+                    {failure="Cross tower span offset violates the entered stock end setback.";return null;}
+            }
             var primary=new TransferMember[l.Transfer.PrimaryCases[0].Length];
             var left=new double[l.PositionsMm.Length];var right=new double[left.Length];
             int primaryRuns=l.StockPlan.Pieces.Length;
             for(int line=0;line<2;line++)for(int run=0;run<primaryRuns;run++)
             {
                 var original=l.Transfer.PrimaryCases[0][run+line*primaryRuns];
+                if(spanOffset!=0)original=new TransferMember {Name=original.Name,StartMm=original.StartMm,LengthMm=original.LengthMm,H20Count=original.H20Count,Uniform=original.Uniform,Points=original.Points,SupportsMm=original.SupportsMm.Select(x=>x+spanOffset).ToArray()};
                 var uniform=original.Uniform;
                 var m=Analyze(original,original.Points,uniform,input,"Cross concrete + construction/formwork + end strips");
                 if(!Pass(m,input,$"X{index+1} dedicated primary UDL + end strips") || m.Analysis.Reactions.Max()>common.LegCapacityKn+1e-8) {failure="Dedicated primary UDL or leg check failed.";return null;}
@@ -235,6 +250,8 @@ namespace EngineeringDashboard
                 for(int leg=0;leg<m.Analysis.Reactions.Length;leg++)(line==0 ? left : right)[l.StockPlan.Pieces[run].FirstSupport+leg]=m.Analysis.Reactions[leg];
             }
             l.Transfer.PrimaryCases=new[] {primary};l.LeftReactions=left;l.RightReactions=right;l.MinimumLeftReactions=(double[])left.Clone();l.MinimumRightReactions=(double[])right.Clone();l.MaxLegKn=Math.Max(left.Max(),right.Max());
+            var checkedMembers=primary.Concat(l.Transfer.LowerCases.SelectMany(s=>s)).Concat(l.Transfer.UpperMembers).ToArray();
+            l.MomentKnM=checkedMembers.Max(m=>m.Analysis.MomentKnM);l.ShearKn=checkedMembers.Max(m=>m.Analysis.ShearKn);l.DeflectionMm=checkedMembers.Max(m=>m.Analysis.DeflectionMm);l.Utilization=Math.Max(l.MaxLegKn/l.LegCapacityKn,checkedMembers.Max(m=>m.Utilization));l.Governing=l.MaxLegKn/l.LegCapacityKn>=checkedMembers.Max(m=>m.Utilization) ? "Leg capacity" : checkedMembers.OrderByDescending(m=>m.Utilization).First().Name;
             RefreshStockDemands(l);
             // The full concrete UDL, including end strips, is included in every primary and leg check.
             var solids=new List<FormworkSolid>();var members=new List<TransferMember>();var bearings=new List<CrossBeamBearing>();double bottom=c.BottomElevationMm;
@@ -252,7 +269,7 @@ namespace EngineeringDashboard
                 solids.Add(Timber($"X{index+1} {m.Name}",c.PositionMm+transverseOffset+m.StartMm,face+l.Transfer.RowsMm[row],m.LengthMm,true,bottom,m));
             }
             foreach(double station in l.PositionsMm)foreach(int side in new[] {-1,1})solids.Add(new FormworkSolid {Name=$"X{index+1} tower leg",X0=c.PositionMm+transverseOffset+side*l.WidthMm/2-40,X1=c.PositionMm+transverseOffset+side*l.WidthMm/2+40,Y0=face+station-40,Y1=face+station+40,Z0=-1e6,Z1=bottom-400,IsLeg=true});
-            var result=new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.DedicatedTowers,Towers=l,Members=members.ToArray(),Solids=solids.ToArray(),Bearings=bearings.ToArray(),LoadKn=l.Transfer.BeamLoadKn};
+            var result=new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.DedicatedTowers,Towers=l,Members=members.ToArray(),Solids=solids.ToArray(),Bearings=bearings.ToArray(),LoadKn=l.Transfer.BeamLoadKn,TowerSpanOffsetMm=spanOffset};
             if(common.DedicatedCrossCache!=null)common.DedicatedCrossCache[cacheKey]=new DedicatedCrossSearch {Result=result};return result;
         }
         private static CrossBeamSupportResult Junction(TowerInput common,TransferNetworkResult r,int index,FormworkSolid[] obstacles,out string failure)
@@ -288,10 +305,22 @@ namespace EngineeringDashboard
             {
                 common.Trace?.CheckCancellation();
                 if(width==600 && common.Exclude600Standalone)continue;
-                var result=DedicatedCandidate(common,r,index,spacing,out string reason,near,far,width,offset);
-                if(result!=null)reason=Clash(result.Solids,obstacles);
-                if(result==null || reason!=null) {failure=reason;continue;}
-                return new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.DedicatedTowers,Towers=result.Towers,Members=result.Members,Solids=result.Solids,Bearings=result.Bearings.Concat(zones).ToArray(),LoadKn=result.LoadKn+zones.Sum(b=>b.ReactionKn),JunctionNotice=$"Dedicated central span {span-near-far:0.###} mm; near end zone {near:0.###} mm, far end zone {far:0.###} mm carried directly by existing receiving H20s at the same soffit. Every end-zone load is included in the receiving H20, primary and individual leg stage checks. Tower centre offset {offset:0.###} mm along the main beam; eccentric concrete loads are included. Centre H20s stop clear of receiving timber."};
+                var centred=DedicatedCandidate(common,r,index,spacing,out string reason,near,far,width,offset);
+                if(centred==null) {failure=reason;continue;}
+                // Sliding the legs cannot repair a timber intersection. Discard that
+                // geometry before reanalysing any support translations.
+                reason=Clash(centred.Solids.Where(s=>!s.IsLeg),obstacles);
+                if(reason!=null) {failure=reason;continue;}
+                foreach(double alongSpan in new[] {0.0,25,-25,50,-50,75,-75,100,-100,125,-125,150,-150})
+                {
+                    var shiftedLegs=centred.Solids.Where(s=>s.IsLeg).Select(s=>new FormworkSolid {Name=s.Name,X0=s.X0,X1=s.X1,Y0=s.Y0+alongSpan,Y1=s.Y1+alongSpan,Z0=s.Z0,Z1=s.Z1});
+                    reason=Clash(shiftedLegs,obstacles);
+                    if(reason!=null) {failure=reason;continue;}
+                    var result=alongSpan==0 ? centred : DedicatedCandidate(common,r,index,spacing,out reason,near,far,width,offset,alongSpan);
+                    if(result!=null)reason=Clash(result.Solids,obstacles);
+                    if(result==null || reason!=null) {failure=reason;continue;}
+                    return new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.DedicatedTowers,Towers=result.Towers,Members=result.Members,Solids=result.Solids,Bearings=result.Bearings.Concat(zones).ToArray(),LoadKn=result.LoadKn+zones.Sum(b=>b.ReactionKn),TowerSpanOffsetMm=alongSpan,JunctionNotice=$"Dedicated central span {span-near-far:0.###} mm; near end zone {near:0.###} mm, far end zone {far:0.###} mm carried directly by existing receiving H20s at the same soffit. Every end-zone load is included in the receiving H20, primary and individual leg stage checks. Tower centre offset {offset:0.###} mm along the main beam, leg offset {alongSpan:0.###} mm along the crossing span; eccentric concrete loads are included. Centre H20s stop clear of receiving timber."};
+                }
             }
             return null;
         }
@@ -311,7 +340,7 @@ namespace EngineeringDashboard
         {
             return new TowerLayout {IgnoreUplift=l.IgnoreUplift,MinimumLeftReactions=l.MinimumLeftReactions,MinimumRightReactions=l.MinimumRightReactions,Transfer=l.Transfer,PositionsMm=l.PositionsMm,Joined=l.Joined,WidthMm=l.WidthMm,Rotated=l.Rotated,LengthMm=l.LengthMm,ConcreteEndOverhangMm=l.ConcreteEndOverhangMm,LeftReactions=l.LeftReactions,RightReactions=l.RightReactions,LeftLineLoad=l.LeftLineLoad,RightLineLoad=l.RightLineLoad,LegCapacityKn=l.LegCapacityKn,MaxLegKn=l.MaxLegKn,StockPlan=l.StockPlan,DeflectionDenominator=l.DeflectionDenominator,DeflectionLimitMm=l.DeflectionLimitMm,MomentKnM=l.MomentKnM,ShearKn=l.ShearKn,DeflectionMm=l.DeflectionMm,Utilization=l.Utilization,Governing=l.Governing};
         }
-        internal static bool Complete(TowerInput common,TransferNetworkResult r)
+        internal static bool Complete(TowerInput common,TransferNetworkResult r,bool partial=false)
         {
             if(!Modern(r.Input))return true;
             var original=r.Beams;var existing=NetworkSolids(r).ToArray();var concrete=Concrete(r).ToArray();
@@ -349,7 +378,7 @@ namespace EngineeringDashboard
                     var support=Dedicated(common,r,index,existing.Concat(concrete).Concat(accepted.SelectMany(a=>a.Solids)),out towerFailure);
                     if(support!=null)
                     {
-                        support=new CrossBeamSupportResult {CrossingIndex=support.CrossingIndex,Input=support.Input,Arrangement=support.Arrangement,Towers=support.Towers,Members=support.Members,Solids=support.Solids,Bearings=support.Bearings,LoadKn=support.LoadKn,SharedFailure=sharedFailure,JunctionNotice=support.JunctionNotice};
+                        support=new CrossBeamSupportResult {CrossingIndex=support.CrossingIndex,Input=support.Input,Arrangement=support.Arrangement,Towers=support.Towers,Members=support.Members,Solids=support.Solids,Bearings=support.Bearings,LoadKn=support.LoadKn,SharedFailure=sharedFailure,JunctionNotice=support.JunctionNotice,TowerSpanOffsetMm=support.TowerSpanOffsetMm};
                         accepted.Add(support);if(arrange(index+1))return true;accepted.RemoveAt(accepted.Count-1);
                         towerFailure=$"X{index+1}: dedicated towers do not permit a complete passing cross-beam combination.";
                     }
@@ -359,6 +388,9 @@ namespace EngineeringDashboard
             if(!arrange(0))return false;
             r.CrossSupports=accepted.ToArray();
             if(!Recheck(common,r,original,r.CrossSupports))return false;
+            // A prefix may include the next bay's slab loading on its final receiver.
+            // Full-network conservation and movements are checked after the chain closes.
+            if(partial)return true;
             // Cross load is distinct from the reduced slab load and conserved in its full clear-bay footprint.
             foreach(var s in accepted)
             {
