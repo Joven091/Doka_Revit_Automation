@@ -294,11 +294,11 @@ namespace EngineeringDashboard
                 Dimension(dc,new Point(x,Screen(0,a).Y),new Point(x,Screen(0,b).Y),distance.ToString("0.###"),FormworkObject.Crossing,index,null);
                 var hit=new Rect(new Point(x,Screen(0,a).Y),new Point(x,Screen(0,b).Y));hit.Inflate(8,8);LegTargets.Add(Tuple.Create(hit,$"X{index+1} · {role}: {distance:0.###} mm"));
             };
-            vertical(near,legs[0],$"B{bay+1} concrete face to first tower leg",72);
-            for(int i=0;i<legs.Length-1;i++)vertical(legs[i],legs[i+1],layout.Joined[i] ? "Braced tower bay" : "Gap between tower groups",72);
-            vertical(legs.Last(),far,$"Last tower leg to B{bay+2} concrete face",72);
-            Label(dc,$"B{bay+1} face",new Point(Screen(left,near).X-128,Screen(0,near).Y-19));
-            Label(dc,$"B{bay+2} face",new Point(Screen(left,far).X-128,Screen(0,far).Y+7));
+            vertical(near,legs[0],$"B{bay+1} concrete face to first tower leg",96);
+            for(int i=0;i<legs.Length-1;i++)vertical(legs[i],legs[i+1],layout.Joined[i] ? "Braced tower bay" : "Gap between tower groups",96);
+            vertical(legs.Last(),far,$"Last tower leg to B{bay+2} concrete face",96);
+            Label(dc,$"B{bay+1} face",new Point(Screen(left,near).X-154,Screen(0,near).Y-19));
+            Label(dc,$"B{bay+2} face",new Point(Screen(left,far).X-154,Screen(0,far).Y+7));
             double y=Screen(0,legs[0]).Y-24;
             CrossingSettingOut.Add(Tuple.Create(index,"Beam start to near leg column",left));
             CrossingSettingOut.Add(Tuple.Create(index,"Tower width between leg centres",layout.WidthMm));

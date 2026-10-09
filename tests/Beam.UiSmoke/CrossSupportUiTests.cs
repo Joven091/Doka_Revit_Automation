@@ -62,6 +62,8 @@ internal static class CrossSupportUiTests
         workspace.Drawing.Select(FormworkObject.Crossing,0);Pump();var primary=vm.NetworkResult.CrossSupports[0].Solids.Where(s=>s.Member?.H20Count==2).ToArray();
         var focus=workspace.Drawing.Screen((primary.Min(s=>s.X0)+primary.Max(s=>s.X1))/2,(primary.Min(s=>s.Y0)+primary.Max(s=>s.Y1))/2);workspace.Drawing.PanBy(new Vector(1000-focus.X,550-focus.Y));workspace.Drawing.ZoomAt(3,new Point(1000,550));
         Capture(workspace.Drawing,2000,1100,Preview(previewPath,"coordinated-report-setting-out"));
+        var settingLabels=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).OfType<GlyphRunDrawing>().Select(g=>new string(g.GlyphRun.Characters.ToArray())).ToArray();
+        Check(workspace.Drawing.CrossingSettingOut.Where(d=>d.Item1==0).All(d=>settingLabels.Contains(d.Item3.ToString("0.###"))),"focused crossing displays every setting-out value, including both H20 overhangs");
         workspace.Drawing.Select(FormworkObject.Slab,1);Pump();Check(workspace.SelectedResultText.Contains("entered maximum 275"),"slab inspector explains tighter junction spacing");
         workspace.Buttons["Section"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
         for(int i=0;i<vm.NetworkResult.CrossSupports.Length;i++)
