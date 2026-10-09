@@ -143,12 +143,13 @@ namespace EngineeringDashboard
     public sealed class TowerInput
     {
         internal TowerSearchDiagnostics Diagnostics;
-        internal Dictionary<Tuple<int,double,double,double,double,double>,DedicatedCrossSearch> DedicatedCrossCache;
+        internal Dictionary<Tuple<int,double,double,double,double,double,double>,DedicatedCrossSearch> DedicatedCrossCache;
         internal BeamSearchTrace Trace;
         // Tests can replay the original search without reuse; production searches reuse work.
         internal bool ReuseSearchWork = true;
         // Regression tests can replay the former common-primary-coverage restriction.
         internal bool IndependentNetworkPrimaryCoverage = true;
+        internal bool CoordinateCrossingLayouts;
         internal int NetworkSearchWorkers = Math.Min(4,Environment.ProcessorCount);
         internal bool PruneUneconomicCandidates = true;
         internal bool StagePrimaryChecks = true;
