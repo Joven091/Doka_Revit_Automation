@@ -467,43 +467,51 @@ namespace EngineeringDashboard
             var shutters=zones.Where(z=>z.IsShutterEndZone).GroupBy(z=>z.Beam).Select(g=>g.First()).Select(z=>new FormworkSolid {Name=$"X{index+1} side shutter on B{z.Beam+1}",IsSideShutter=true,X0=z.FootprintStartMm,X1=z.FootprintEndMm,Y0=z.EndZoneStartMm,Y1=z.EndZoneEndMm,Z0=z.ReceivingTopMm,Z1=z.H20UndersideMm}).ToArray();
             if(Clash(shutters,obstacles)!=null){failure=$"X{index+1}: side-shutter assembly clashes with existing formwork.";return null;}
             obstacles=obstacles.Concat(shutters).ToArray();
-            foreach(double spacing in new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7))
-            foreach(double width in new[] {1000.0,1500,2000,1524,600})
-            foreach(double offset in new[] {0.0,25,-25,50,-50,75,-75,100,-100,125,-125,150,-150})
+            var spacings=new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7).ToArray();
+            var widths=new[] {1000.0,1500,2000,1524,600};
+            var offsets=new[] {0.0,25,-25,50,-50,75,-75,100,-100,125,-125,150,-150};
+            foreach(double spacing in spacings)
+            foreach(double width in widths)
             {
-                common.Trace?.CheckCancellation();
                 if(width==600 && common.Exclude600Standalone)continue;
-                var projectedShifts=JunctionOffsets(common,r,index,width,offset,near,far,obstacles);
-                // Exhaust the positions for each larger bay before accepting a smaller bay at an earlier shift.
-                foreach(double preferredBay in width==1524 ? TowerOptimizer.BaysMm.Where(x=>!common.Exclude600Standalone || x!=600).OrderByDescending(x=>x).ToArray() : new[] {1524.0})
-                foreach(double shift in projectedShifts)
+                // Compare transverse placements at each longitudinal shift before
+                // accepting uneven cantilevers at a fixed transverse position.
+                var shifts=offsets.SelectMany(offset=>JunctionOffsets(common,r,index,width,offset,near,far,obstacles)).Distinct().OrderBy(Math.Abs).ToArray();
+                foreach(double preferredBay in (width==1524 ? TowerOptimizer.BaysMm.Where(x=>!common.Exclude600Standalone || x!=600).OrderByDescending(x=>x).ToArray() : new[] {1524.0})
+                    .Where(towerBay=>TailStocks(common,Math.Max(towerBay+2*common.StockEndSetbackMm,span-near-far-2*common.MaximumConcreteEndOverhangMm),span-2*SideShutterClearanceMm,true).Any()))
+                foreach(double shift in shifts)
+                foreach(double offset in offsets)
                 {
-                    var projected=ProjectedJunction(common,r,index,spacing,width,offset,shift,near,far,obstacles,out string projectedFailure,preferredBay);
-                    if(projected==null) {if(projectedFailure!=null)failure=projectedFailure;continue;}
-                    return JunctionResult(c,index,projected,zones,shutters,near,far,span,offset,shift);
-                }
-                var centred=DedicatedCandidate(common,r,index,spacing,out string reason,near,far,width,offset);
-                if(centred==null) {failure=reason;continue;}
-                // Sliding the legs cannot repair a timber intersection. Discard that
-                // geometry before reanalysing any support translations.
-                reason=Clash(centred.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope),obstacles);
-                if(reason!=null) {failure=reason;continue;}
-                foreach(double alongSpan in new[] {0.0}.Concat(Enumerable.Range(1,20).SelectMany(i=>new[] {i*25.0,-i*25.0})))
-                {
-                    var shiftedLegs=centred.Solids.Where(s=>s.IsLeg || s.IsTowerEnvelope).Select(s=>new FormworkSolid {Name=s.Name,IsLeg=s.IsLeg,IsTowerEnvelope=s.IsTowerEnvelope,TowerOwner=s.TowerOwner,X0=s.X0,X1=s.X1,Y0=s.Y0+alongSpan,Y1=s.Y1+alongSpan,Z0=s.Z0,Z1=s.Z1});
-                    reason=Clash(shiftedLegs,obstacles);
+                        var projected=ProjectedJunction(common,r,index,spacing,width,offset,shift,near,far,obstacles,out string projectedFailure,preferredBay);
+                        if(projected==null) {if(projectedFailure!=null)failure=projectedFailure;continue;}
+                        return JunctionResult(c,index,projected,zones,shutters,near,far,span,offset,shift);
+                    }
+                    foreach(double offset in offsets)
+                    {
+                    common.Trace?.CheckCancellation();
+                    var centred=DedicatedCandidate(common,r,index,spacing,out string reason,near,far,width,offset);
+                    if(centred==null) {failure=reason;continue;}
+                    // Sliding the legs cannot repair a timber intersection. Discard that
+                    // geometry before reanalysing any support translations.
+                    reason=Clash(centred.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope),obstacles);
                     if(reason!=null) {failure=reason;continue;}
-                    // Coordinate support translation with the real primary stock ends.
-                    // Only unloaded primary tails project into the junction; coplanar
-                    // secondary rows and every physical load stay in their original place.
-                    var first=centred.Towers.StockPlan.Pieces.First();var last=centred.Towers.StockPlan.Pieces.Last();
-                    double nearExtension=Math.Max(0,25*Math.Ceiling((common.StockEndSetbackMm-(centred.Towers.PositionsMm[first.FirstSupport]+alongSpan-first.StartMm))/25));
-                    double farExtension=Math.Max(0,25*Math.Ceiling((common.StockEndSetbackMm-(last.EndMm-centred.Towers.PositionsMm[last.LastSupport]-alongSpan))/25));
-                    if(nearExtension>near+1e-7 || farExtension>far+1e-7)continue;
-                    var result=alongSpan==0 ? centred : DedicatedCandidate(common,r,index,spacing,out reason,near,far,width,offset,alongSpan,nearExtension,farExtension);
-                    if(result!=null)reason=Clash(result.Solids,obstacles);
-                    if(result==null || reason!=null) {failure=reason;continue;}
-                    return JunctionResult(c,index,result,zones,shutters,near,far,span,offset,alongSpan);
+                    foreach(double alongSpan in new[] {0.0}.Concat(Enumerable.Range(1,20).SelectMany(i=>new[] {i*25.0,-i*25.0})))
+                    {
+                        var shiftedLegs=centred.Solids.Where(s=>s.IsLeg || s.IsTowerEnvelope).Select(s=>new FormworkSolid {Name=s.Name,IsLeg=s.IsLeg,IsTowerEnvelope=s.IsTowerEnvelope,TowerOwner=s.TowerOwner,X0=s.X0,X1=s.X1,Y0=s.Y0+alongSpan,Y1=s.Y1+alongSpan,Z0=s.Z0,Z1=s.Z1});
+                        reason=Clash(shiftedLegs,obstacles);
+                        if(reason!=null) {failure=reason;continue;}
+                        // Coordinate support translation with the real primary stock ends.
+                        // Only unloaded primary tails project into the junction; coplanar
+                        // secondary rows and every physical load stay in their original place.
+                        var first=centred.Towers.StockPlan.Pieces.First();var last=centred.Towers.StockPlan.Pieces.Last();
+                        double nearExtension=Math.Max(0,25*Math.Ceiling((common.StockEndSetbackMm-(centred.Towers.PositionsMm[first.FirstSupport]+alongSpan-first.StartMm))/25));
+                        double farExtension=Math.Max(0,25*Math.Ceiling((common.StockEndSetbackMm-(last.EndMm-centred.Towers.PositionsMm[last.LastSupport]-alongSpan))/25));
+                        if(nearExtension>near+1e-7 || farExtension>far+1e-7)continue;
+                        var result=alongSpan==0 ? centred : DedicatedCandidate(common,r,index,spacing,out reason,near,far,width,offset,alongSpan,nearExtension,farExtension);
+                        if(result!=null)reason=Clash(result.Solids,obstacles);
+                        if(result==null || reason!=null) {failure=reason;continue;}
+                        return JunctionResult(c,index,result,zones,shutters,near,far,span,offset,alongSpan);
+                    }
                 }
             }
             return null;

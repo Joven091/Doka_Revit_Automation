@@ -20,6 +20,7 @@ namespace EngineeringDashboard
         internal readonly List<Rect> AnnotationBounds=new List<Rect>();
         public event Action<int,int,int> MemberSelected;
         public event Action<int> SeparateSlabSelected;
+        public event Action<int> BeamOptionsRequested;
         internal readonly List<Tuple<Rect,int>> SeparateBayTargets=new List<Tuple<Rect,int>>();
         public int DrawnWS10ProfileCount {get;private set;}
         public int DrawnH20ProfileCount {get;private set;}
@@ -43,6 +44,12 @@ namespace EngineeringDashboard
             if(!IsSelectionEnabled)return false;
             foreach(var hit in MemberTargets)if(hit.Item1.Contains(point)) {SelectMember(hit.Item2,hit.Item3,hit.Item4);MemberSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}
             foreach(var hit in SeparateBayTargets)if(hit.Item1.Contains(point)){SeparateSlabSelected?.Invoke(hit.Item2);return true;}return false;
+        }
+        protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+        {
+            base.OnMouseRightButtonDown(e);if(!IsSelectionEnabled || result==null)return;
+            var hit=MemberTargets.FirstOrDefault(h=>h.Item2>=0 && h.Item1.Contains(e.GetPosition(this)));
+            if(hit!=null){BeamOptionsRequested?.Invoke(hit.Item2);e.Handled=true;}
         }
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e) {base.OnMouseLeftButtonDown(e);if(SelectAt(e.GetPosition(this)))e.Handled=true;}
         protected override Size MeasureOverride(Size available)=>new Size(Math.Max(MinWidth,double.IsInfinity(available.Width) ? MinWidth : available.Width),Height);

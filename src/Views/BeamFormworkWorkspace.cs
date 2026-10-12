@@ -127,6 +127,7 @@ namespace EngineeringDashboard
             Drawing.SelectionChanged+=()=> {InspectorTabs.SelectedIndex=0;BuildProperties();Refresh();
                 if(Drawing.SelectedKind==FormworkObject.Slab && Drawing.SelectedObjects.Length==1)SeparateSlabNotice.ShowBay(Drawing.SelectedIndex);};
             Drawing.DimensionSelected+=(kind,index,field)=> {if(Fields.TryGetValue(field,out var box)){InspectorTabs.SelectedIndex=sharedFields.Contains(field) ? 1 : 0;box.Focus();box.SelectAll();}};
+            Drawing.BeamOptionsRequested+=async beam=>await NetworkBeamOptionsMenu.OpenAsync(Model,beam,Drawing,()=> {ClearDiagrams();Drawing.RefitIfNeeded();Refresh();});
             Drawing.MemberSelected+=ShowMember;Section.MemberSelected+=ShowMember;Section.SeparateSlabSelected+=bay=>SeparateSlabNotice.ShowBay(bay);
             Drawing.CrossingRequested+=(bay,x)=> {if(!CommitFields())return;Mutate(()=> {Model.AddCrossingBeam();var c=Model.CrossingBeams.Last();c.BayNumber=bay+1;c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,x));Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});Drawing.Cursor=Cursors.Arrow;};
             Drawing.MoveRequested+=(kind,index,delta)=> {if(!CommitFields())return;Mutate(()=> {if(kind==FormworkObject.Crossing) {var c=Model.CrossingBeams[index];c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,c.PositionMm+delta));}else Model.NetworkBays[index-1].WidthMm=Math.Max(500,Model.NetworkBays[index-1].WidthMm+delta);});};
@@ -487,6 +488,32 @@ namespace EngineeringDashboard
             Drawing.SelectMember(beam,run,line);Section.SelectMember(beam,run,line);
         }
     }
+    internal static class NetworkBeamOptionsMenu
+    {
+        internal static async Task<ContextMenu> OpenAsync(BeamCalculatorViewModel model,int beam,FrameworkElement target,Action selected=null)
+        {
+            var menu=new ContextMenu {PlacementTarget=target,Placement=System.Windows.Controls.Primitives.PlacementMode.MousePoint};
+            menu.Items.Add(new MenuItem {Header=$"B{beam+1} layout options",IsEnabled=false});
+            menu.Items.Add(new MenuItem {Header="Checking complete arrangements…",IsEnabled=false});
+            target.ContextMenu=menu;menu.IsOpen=true;
+            var source=model.NetworkResult;var options=await model.GetNetworkBeamOptionsAsync(beam);
+            menu.Items.Clear();menu.Items.Add(new MenuItem {Header=$"B{beam+1} layout options",IsEnabled=false});
+            if(!ReferenceEquals(source,model.NetworkResult) || !model.IsCalculationValid) {menu.IsOpen=false;return menu;}
+            foreach(var option in options)
+            {
+                var item=new MenuItem {Header=option.Label,IsEnabled=option.IsAvailable,IsCheckable=option.IsAvailable,IsChecked=ReferenceEquals(option.Result,model.NetworkResult),ToolTip=option.RejectionReason};
+                if(!option.IsAvailable)
+                {
+                    ToolTipService.SetShowOnDisabled(item,true);
+                    item.ToolTip=new ToolTip {Content=new TextBlock {Text=option.RejectionReason,MaxWidth=500,TextWrapping=TextWrapping.Wrap}};
+                }
+                item.Click+=(s,e)=> {if(model.ApplyNetworkBeamOption(option))selected?.Invoke();};menu.Items.Add(item);
+            }
+            if(options.Count(o=>o.IsAvailable)<=1)menu.Items.Add(new MenuItem {Header=options.Length==0 ? "Alternative search unavailable or cancelled" : "No additional layout passed the complete checks",IsEnabled=false});
+            return menu;
+        }
+    }
+
 }
 
 

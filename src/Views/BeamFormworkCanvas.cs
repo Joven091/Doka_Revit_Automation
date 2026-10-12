@@ -34,6 +34,7 @@ namespace EngineeringDashboard
         internal event Action<FormworkObject,int,string> DimensionSelected;
         internal event Action<int,int,int> MemberSelected;
         internal event Action<int,double> CrossingRequested;
+        internal event Action<int> BeamOptionsRequested;
         internal event Action<FormworkObject,int,double> MoveRequested;
         internal Func<bool> CanInteract;
         private bool fitted=true;
@@ -399,10 +400,19 @@ namespace EngineeringDashboard
         protected override void OnLostMouseCapture(MouseEventArgs e)
         {base.OnLostMouseCapture(e);panning=dragging=selecting=false;InvalidateVisual();}
         protected override void OnMouseWheel(MouseWheelEventArgs e) {ZoomAt(e.Delta>0 ? 1.2 : 1/1.2,e.GetPosition(this));e.Handled=true;}
+        internal bool OpenBeamOptionsAt(Point point)
+        {
+            if(!Formwork || !Model.IsCalculationValid || Model.NetworkResult==null || Model.IsOptimizing || CanInteract!=null && !CanInteract())return false;
+            var member=MemberTargets.FirstOrDefault(h=>h.Item2>=0 && h.Item1.Contains(point));
+            var beam=ObjectTargets.FirstOrDefault(h=>h.Item2==FormworkObject.Beam && h.Item1.Contains(point));
+            int index=member?.Item2??beam?.Item3??-1;if(index<0)return false;
+            Select(FormworkObject.Beam,index);Model.SelectNetworkBeam(index);BeamOptionsRequested?.Invoke(index);return true;
+        }
         protected override void OnMouseDown(MouseButtonEventArgs e)
         {
             base.OnMouseDown(e);Focus();mouseStart=e.GetPosition(this);
-            if(e.ChangedButton==MouseButton.Middle) {panning=true;panStart=Pan;CaptureMouse();e.Handled=true;}
+            if(e.ChangedButton==MouseButton.Right) {e.Handled=OpenBeamOptionsAt(mouseStart);}
+            else if(e.ChangedButton==MouseButton.Middle) {panning=true;panStart=Pan;CaptureMouse();e.Handled=true;}
             else if(e.ChangedButton==MouseButton.Left)
             {
                 if(e.ClickCount==2) {Fit();e.Handled=true;return;}
