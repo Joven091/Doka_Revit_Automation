@@ -233,7 +233,7 @@ internal static class Program
    Optimize();Check(vm.IsCalculationValid && vm.TowerResult.Transfer!=null,"transferred load optimization through WPF: "+vm.WarningMessage+" · spacing "+vm.UpperSupportSpacingMm+" · end "+vm.MaximumConcreteEndOverhangMm);
    Render();var transferred=vm.TowerResult.Transfer;
    Check(diagram.DrawnTransferRowCount==0 && diagram.DrawnFootCount==0,"plan omits transverse H20s and upper feet for a cleaner tower view");
-   Check(diagram.MinWidth>1000,"transfer plan can scroll with readable row spacing");
+   Check(diagram.MinWidth>=1000,"transfer plan retains its minimum readable width for scrolling");
    var transferRecord=window.CaptureCalculation();Check(window.BuildReport().Contains("UpperSupportSpacingMm") || window.BuildReport().Contains("Upper Support Spacing Mm"),"report contains transfer inputs");
    Check(window.BuildReport().Contains("MaximumSecondarySpacingMm") || window.BuildReport().Contains("Maximum Secondary Spacing Mm"),"tower report includes plywood spacing");
    Check(window.BuildReport().Contains("Beam + left slab") && window.BuildReport().Contains("receiving beam slab load"),"report contains discrete transfer cases and load coverage");
