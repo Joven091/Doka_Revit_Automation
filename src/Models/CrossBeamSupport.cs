@@ -467,21 +467,32 @@ namespace EngineeringDashboard
             var shutters=zones.Where(z=>z.IsShutterEndZone).GroupBy(z=>z.Beam).Select(g=>g.First()).Select(z=>new FormworkSolid {Name=$"X{index+1} side shutter on B{z.Beam+1}",IsSideShutter=true,X0=z.FootprintStartMm,X1=z.FootprintEndMm,Y0=z.EndZoneStartMm,Y1=z.EndZoneEndMm,Z0=z.ReceivingTopMm,Z1=z.H20UndersideMm}).ToArray();
             if(Clash(shutters,obstacles)!=null){failure=$"X{index+1}: side-shutter assembly clashes with existing formwork.";return null;}
             obstacles=obstacles.Concat(shutters).ToArray();
-            foreach(double spacing in new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7))
-            foreach(double width in new[] {1000.0,1500,2000,1524,600})
-            foreach(double offset in new[] {0.0,25,-25,50,-50,75,-75,100,-100,125,-125,150,-150})
+            var spacings=new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7).ToArray();
+            var widths=new[] {1000.0,1500,2000,1524,600};
+            var offsets=new[] {0.0,25,-25,50,-50,75,-75,100,-100,125,-125,150,-150};
+            foreach(double spacing in spacings)
+            foreach(double width in widths)
             {
-                common.Trace?.CheckCancellation();
                 if(width==600 && common.Exclude600Standalone)continue;
-                var projectedShifts=JunctionOffsets(common,r,index,width,offset,near,far,obstacles);
-                // Exhaust the positions for each larger bay before accepting a smaller bay at an earlier shift.
-                foreach(double preferredBay in width==1524 ? TowerOptimizer.BaysMm.Where(x=>!common.Exclude600Standalone || x!=600).OrderByDescending(x=>x).ToArray() : new[] {1524.0})
-                foreach(double shift in projectedShifts)
+                // Compare transverse placements at each longitudinal shift before
+                // accepting uneven cantilevers at a fixed transverse position.
+                var shifts=offsets.SelectMany(offset=>JunctionOffsets(common,r,index,width,offset,near,far,obstacles)).Distinct().OrderBy(Math.Abs).ToArray();
+                foreach(double preferredBay in (width==1524 ? TowerOptimizer.BaysMm.Where(x=>!common.Exclude600Standalone || x!=600).OrderByDescending(x=>x).ToArray() : new[] {1524.0})
+                    .Where(towerBay=>TailStocks(common,Math.Max(towerBay+2*common.StockEndSetbackMm,span-near-far-2*common.MaximumConcreteEndOverhangMm),span-2*SideShutterClearanceMm,true).Any()))
+                foreach(double shift in shifts)
+                foreach(double offset in offsets)
                 {
                     var projected=ProjectedJunction(common,r,index,spacing,width,offset,shift,near,far,obstacles,out string projectedFailure,preferredBay);
                     if(projected==null) {if(projectedFailure!=null)failure=projectedFailure;continue;}
                     return JunctionResult(c,index,projected,zones,shutters,near,far,span,offset,shift);
                 }
+            }
+            foreach(double spacing in spacings)
+            foreach(double width in widths)
+            foreach(double offset in offsets)
+            {
+                common.Trace?.CheckCancellation();
+                if(width==600 && common.Exclude600Standalone)continue;
                 var centred=DedicatedCandidate(common,r,index,spacing,out string reason,near,far,width,offset);
                 if(centred==null) {failure=reason;continue;}
                 // Sliding the legs cannot repair a timber intersection. Discard that

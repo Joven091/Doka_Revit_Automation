@@ -612,8 +612,55 @@ namespace EngineeringDashboard
             // Keep fully mirrored regular groups even when the inset-based beam-search cap drops them.
             var symmetric=SymmetricGeometries(stock,rotated,input).GroupBy(g=>g.Positions.Length).SelectMany(g=>g.Take(24));
             states=states.Concat(symmetric).GroupBy(g=>Values(g.Positions)+"|"+string.Join(";",g.Joined)).Select(g=>g.First()).ToList();
+            if(input.TransferredSlab?.IsNetwork==true)states=states.SelectMany(g=>SiteGeometries(g,input.StockEndSetbackMm)).GroupBy(g=>Values(g.Positions)+"|"+string.Join(";",g.Joined)).Select(g=>g.First()).ToList();
             foreach(var geometry in states)geometry.MemberSupports=geometry.Stock.Select(s=>geometry.Positions.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(x=>x-s.StartMm).ToArray()).ToArray();
             return states;
+        }
+        // Set-out gaps between independent towers use 25 mm increments. Translate
+        // each complete group; never stretch catalogue frames or linked brace bays.
+        internal static IEnumerable<Geometry> SiteGeometries(Geometry source,double setback)
+        {
+            var groups=new List<Tuple<int,int,double,double>>();
+            for(int first=0;first<source.Positions.Length;)
+            {
+                int last=first;while(last<source.Joined.Length && source.Joined[last])last++;
+                double minimum=double.NegativeInfinity,maximum=double.PositiveInfinity;
+                for(int leg=first;leg<=last;leg++)
+                {
+                    var stock=source.Stock.Single(p=>leg>=p.FirstSupport && leg<=p.LastSupport);
+                    minimum=Math.Max(minimum,stock.StartMm+setback-source.Positions[leg]);
+                    maximum=Math.Min(maximum,stock.EndMm-setback-source.Positions[leg]);
+                }
+                groups.Add(Tuple.Create(first,last,minimum,maximum));first=last+1;
+            }
+            if(Enumerable.Range(0,source.Joined.Length).Where(i=>!source.Joined[i]).All(i=>Math.Abs((source.Positions[i+1]-source.Positions[i])/25-Math.Round((source.Positions[i+1]-source.Positions[i])/25))<1e-8))
+            {yield return source;yield break;}
+            foreach(int anchor in new[] {groups.Count/2,0,groups.Count-1}.Distinct())
+            {
+                var positions=(double[])source.Positions.Clone();bool valid=true;
+                foreach(int i in Enumerable.Range(anchor+1,groups.Count-anchor-1).Concat(Enumerable.Range(0,anchor).Reverse()))
+                {
+                    var group=groups[i];bool right=i>anchor;
+                    int leg=right ? group.Item1 : group.Item2;
+                    double reference=right ? positions[groups[i-1].Item2] : positions[groups[i+1].Item1];
+                    double low=Math.Ceiling((source.Positions[leg]+group.Item3-reference)/25-1e-9);
+                    double high=Math.Floor((source.Positions[leg]+group.Item4-reference)/25+1e-9);
+                    if(right)low=Math.Max(low,1);else high=Math.Min(high,-1);
+                    if(low>high){valid=false;break;}
+                    double shift=reference+25*Math.Max(low,Math.Min(high,Math.Round((source.Positions[leg]-reference)/25)))-source.Positions[leg];
+                    for(int j=group.Item1;j<=group.Item2;j++)positions[j]+=shift;
+                }
+                if(valid)yield return new Geometry {Stock=source.Stock,Positions=positions,Joined=source.Joined};
+            }
+        }
+        internal static GeometryCache FixedGeometry(TowerLayout layout)
+        {
+            double origin=layout.StockPlan.Pieces[0].StartMm;
+            var geometry=new Geometry {Stock=layout.StockPlan.Pieces.Select(p=>new TowerStockPiece {StartMm=p.StartMm-origin,StockLengthMm=p.StockLengthMm,IsCustomLength=p.IsCustomLength,FirstSupport=p.FirstSupport,LastSupport=p.LastSupport}).ToArray(),Positions=layout.PositionsMm.Select(x=>x-origin).ToArray(),Joined=layout.Joined};
+            geometry.MemberSupports=geometry.Stock.Select(p=>geometry.Positions.Skip(p.FirstSupport).Take(p.LastSupport-p.FirstSupport+1).Select(x=>x-p.StartMm).ToArray()).ToArray();
+            var cache=new GeometryCache();bool hit;
+            cache.Get((layout.Rotated ? "R:" : "N:")+Values(geometry.Stock.Select(p=>p.StockLengthMm).ToArray()),()=>new[] {geometry},out hit);
+            return cache;
         }
         private static IEnumerable<Geometry> SymmetricGeometries(double[] stock,bool rotated,TowerInput input)
         {

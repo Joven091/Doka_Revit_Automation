@@ -87,6 +87,11 @@ namespace EngineeringDashboard
             ((FrameworkElement)ClassicCalculatorContent).SetBinding(FrameworkElement.DataContextProperty,new System.Windows.Data.Binding("DataContext") {Source=this});
             Loaded+=(s,e)=>DrawingWorkspace_Click(null,null);
             NetworkPlan.SeparateSlabSelected+=bay=> {SeparateSlabNotice.ShowBay(bay);SeparateSlabNotice.BringIntoView();};
+            NetworkPlan.BeamOptionsRequested+=async beam=>
+            {
+                if(!TryGetValidCalculation(out var vm) || vm.NetworkResult==null || vm.IsOptimizing)return;
+                await NetworkBeamOptionsMenu.OpenAsync(vm,beam,NetworkPlan,()=> {TowerDiagrams?.Close();TowerDiagrams=null;diagramBeam=-1;NetworkPlan.SelectMember(-1,-1,0);});
+            };
             NetworkPlan.MemberSelected+=(beam,run,line)=>
             {
                 if(!NetworkPlan.IsSelectionEnabled || !TryGetValidCalculation(out var vm) || vm.NetworkResult==null)return;

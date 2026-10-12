@@ -1,5 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
@@ -128,6 +131,36 @@ namespace EngineeringDashboard
         internal void SelectNetworkBeam(int beam)
         {
             if(NetworkResult==null || beam<0 || beam>=NetworkResult.Beams.Length)return;SelectedNetworkBeam=beam;TowerResult=NetworkResult.Beams[beam];LeftLineLoad=TowerResult.LeftLineLoad;RightLineLoad=TowerResult.RightLineLoad;TotalLineLoad=LeftLineLoad+RightLineLoad;LimitingFactor=TowerResult.Governing;NotifyTower();NotifyNetwork();
+        }
+        private readonly Dictionary<int,NetworkBeamOption[]> networkBeamOptions=new Dictionary<int,NetworkBeamOption[]>();
+        internal async Task<NetworkBeamOption[]> GetNetworkBeamOptionsAsync(int beam)
+        {
+            var source=NetworkResult;
+            if(!IsCalculationValid || source==null || beam<0 || beam>=source.Beams.Length || IsOptimizing)return new NetworkBeamOption[0];
+            if(networkBeamOptions.TryGetValue(beam,out var cached) && cached.Any(o=>ReferenceEquals(o.Result,source)))return cached;
+            var cancellation=towerCancellation=new CancellationTokenSource();
+            var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs(),cancellation.Token);
+            int revision=towerRevision;IsOptimizing=true;WarningMessage=$"Checking alternatives for B{beam+1}…";NotifyTower();
+            try
+            {
+                var input=CreateTowerInput();input.Trace=trace;
+                var options=await Task.Run(()=>TransferNetworkOptimizer.BeamOptions(input,source,beam));
+                cancellation.Token.ThrowIfCancellationRequested();
+                if(revision!=towerRevision || !ReferenceEquals(NetworkResult,source)){trace.Complete("Discarded: inputs or selection changed");return new NetworkBeamOption[0];}
+                networkBeamOptions[beam]=options;WarningMessage="";
+                trace.Complete("Alternatives checked",details:string.Join("\n\n",options.Where(o=>!o.IsAvailable).Select(o=>o.Label+"\n"+o.RejectionReason)),summary:$"B{beam+1}: {options.Count(o=>o.IsAvailable)} complete-network options.");return options;
+            }
+            catch(OperationCanceledException) when(cancellation.IsCancellationRequested){WarningMessage="Alternative search cancelled; the selected layout is retained.";trace.Complete("Cancelled");}
+            catch(Exception ex){trace.Complete("Alternative search failed",ex.ToString());if(revision==towerRevision)WarningMessage="Could not complete the alternative search. Select Diagnose for details.";}
+            finally{IsOptimizing=false;towerCancellation=null;cancellation.Dispose();NotifyTower();}
+            return new NetworkBeamOption[0];
+        }
+        internal bool ApplyNetworkBeamOption(NetworkBeamOption option)
+        {
+            if(option==null || !option.IsAvailable || IsOptimizing || !IsCalculationValid || !networkBeamOptions.TryGetValue(option.BeamIndex,out var options)
+                || !options.Contains(option) || !options.Any(o=>ReferenceEquals(o.Result,NetworkResult)))return false;
+            NetworkResult=option.Result;networkBeamOptions.Clear();networkBeamOptions[option.BeamIndex]=options;
+            SelectNetworkBeam(option.BeamIndex);WarningMessage="";NotifyTower();NotifyNetwork();return true;
         }
         private void NotifyNetwork()
         {

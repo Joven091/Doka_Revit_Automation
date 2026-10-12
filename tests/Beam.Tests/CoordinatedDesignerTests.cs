@@ -54,6 +54,33 @@ internal static class CoordinatedDesignerTests
             return result;
         }
     }
+    public static void Options()
+    {
+        var common=Common();common.MaximumConcreteEndOverhangMm=150;
+        var current=Solve("25 mm and alternatives",common,Network());string original=current.Schedule;
+        foreach(var beam in current.Beams)for(int i=0;i<beam.Joined.Length;i++)if(!beam.Joined[i])
+            Near((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25,Math.Round((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25),"independent tower gaps use 25 mm increments");
+        Check(Math.Abs(current.CrossSupports[0].TowerSpanOffsetMm)<225,"X1 checks transverse placements before accepting the former 225 mm span shift");
+        var options=TransferNetworkOptimizer.BeamOptions(common,current,1);
+        Check(options.Count(o=>o.IsAvailable)>1 && ReferenceEquals(options[0].Result,current),"current layout and complete alternatives retained");
+        Check(current.Schedule==original,"searching alternatives does not mutate selected stages or stock demands");
+        var repeated=options.FirstOrDefault(o=>o.Label.Contains("as B3"));
+        Check(repeated!=null,"B3 pattern is explicitly evaluated on B2");
+        if(repeated.IsAvailable){Near(repeated.Result.Beams[1].SymmetryErrorMm,0,"B2 alternate pattern is symmetric");Check(repeated.Result.LegCount<=current.LegCount,"repeated pattern does not add legs");}
+        else Check(repeated.RejectionReason.Contains("X2"),"unavailable B3 pattern explains its remaining X2 constraint");
+        foreach(var option in options.Where(o=>o.IsAvailable))
+        {
+            Check(option.Result.CrossSupports.Length==2,"both crossings checked for each option");
+            foreach(var beam in option.Result.Beams)
+            {
+                Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r<=70+1e-7),"alternate network individual leg capacities pass");
+                foreach(var m in beam.Transfer.PrimaryCases.Concat(beam.Transfer.LowerCases).SelectMany(c=>c))Member(m);
+                for(int i=0;i<beam.Joined.Length;i++)if(!beam.Joined[i])Near((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25,Math.Round((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25),"alternate gaps use 25 mm increments");
+            }
+            Console.WriteLine(option.Label+" · "+option.Result.TimberMm/1000+" m timber");
+        }
+        Console.WriteLine($"Beam alternatives: {checks} checks passed.");
+    }
     public static void Run()
     {
         var covers=TransferredSlabOptimizer.StockCovers(Common());Check(covers.Any(c=>c.SequenceEqual(new[] {1800.0,3300,1800})),"mirrored centre-stock family survives short-cover DP");
