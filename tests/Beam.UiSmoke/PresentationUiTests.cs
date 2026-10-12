@@ -24,6 +24,21 @@ internal static class PresentationUiTests
         typeof(BeamCalculatorViewModel).GetProperty(nameof(vm.IsOptimizing)).SetValue(vm,busy);
         typeof(BeamCalculatorViewModel).GetMethod("NotifyTower",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(vm,null);
     }
+    static int PumpWithRenderTraffic()
+    {
+        var dispatcher=Dispatcher.CurrentDispatcher;var frame=new DispatcherFrame();
+        bool running=true;int renders=0;
+        Action render=null;
+        render=()=> {if(!running)return;renders++;dispatcher.BeginInvoke(DispatcherPriority.Render,render);};
+        // A higher-priority stop makes the starvation regression bounded even
+        // when the production progress timer is still at Background priority.
+        var stop=new DispatcherTimer(DispatcherPriority.Send,dispatcher) {Interval=TimeSpan.FromSeconds(2)};
+        stop.Tick+=(s,e)=> {running=false;frame.Continue=false;};
+        dispatcher.BeginInvoke(DispatcherPriority.Render,render);stop.Start();
+        try {Dispatcher.PushFrame(frame);}
+        finally {running=false;stop.Stop();}
+        return renders;
+    }
     public static int Run(string output)
     {
         // Check visible flange/web geometry independently of labels or draw counters.
@@ -47,8 +62,12 @@ internal static class PresentationUiTests
         while(trace.ElapsedSeconds<1.2){Pump();Thread.Sleep(5);}workspace.Waiting.RefreshProgress();
         Check(workspace.Waiting.Hugo.Visibility==Visibility.Visible && workspace.Waiting.IsTimerRunning,"Hugo appears after one second and stays in the drawing overlay");
         Check(workspace.Waiting.Hugo.Animate==SystemParameters.ClientAreaAnimation,"frame motion runs only when the Windows animation preference allows it");
-        trace.Work("Transfer slab and lower secondary options");workspace.Waiting.RefreshProgress();
-        Check(workspace.Waiting.Stage.Text=="Checking secondary H20s" && workspace.Waiting.Elapsed.Text.Contains("seconds elapsed"),"waiting card shows live stage and elapsed time without a fabricated percentage");
+        string elapsed=workspace.Waiting.Elapsed.Text;
+        trace.Work("Transfer slab and lower secondary options");
+        int renders=PumpWithRenderTraffic();
+        Check(renders>0 && workspace.Waiting.Hugo.Visibility==Visibility.Visible,"render-priority traffic is active while Hugo is shown");
+        Check(workspace.Waiting.Stage.Text=="Checking secondary H20s","waiting card polls a changed solver stage during rendering without a forced refresh");
+        Check(workspace.Waiting.Elapsed.Text!=elapsed && workspace.Waiting.Elapsed.Text.Contains("seconds elapsed"),"elapsed seconds advance automatically during rendering without a forced refresh");
         Check(!workspace.Waiting.Cancel.IsEnabled,"waiting card cannot cancel a fixture with no active solver");
         Capture((FrameworkElement)workspace.Content,1280,860,output==null ? null : Path.ChangeExtension(output,"workspace-hugo.png"));
         SetBusy(vm,false);Pump();

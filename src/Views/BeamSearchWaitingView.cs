@@ -27,7 +27,9 @@ namespace EngineeringDashboard
             stack.Children.Add(Stage);stack.Children.Add(Elapsed);stack.Children.Add(Cancel);Children.Add(stack);
             AutomationProperties.SetName(Hugo,"Hugo, the H20 helper");
             AutomationProperties.SetLiveSetting(Stage,AutomationLiveSetting.Polite);
-            timer=new DispatcherTimer(DispatcherPriority.Background,Dispatcher) {Interval=TimeSpan.FromMilliseconds(120)};
+            // Rendering is above Background priority. Keep progress polling above
+            // Hugo's render callbacks so animation cannot starve stage/time updates.
+            timer=new DispatcherTimer(DispatcherPriority.Normal,Dispatcher) {Interval=TimeSpan.FromMilliseconds(120)};
             timer.Tick+=(s,e)=>RefreshProgress();
             Cancel.Click+=(s,e)=> {model?.CancelOptimization();RefreshProgress();};
             Loaded+=(s,e)=>Attach();Unloaded+=(s,e)=>Detach();DataContextChanged+=(s,e)=> {if(IsLoaded)Attach();};
