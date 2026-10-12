@@ -259,7 +259,7 @@ internal static class Program
    var spacingInput=Input("UpperSupportSpacingMm");Check(spacingInput.IsReadOnly && !spacingInput.IsEnabled && spacingInput.GetBindingExpression(TextBox.TextProperty).ParentBinding.Mode==System.Windows.Data.BindingMode.OneWay,"automatic secondary spacing is locked and greyed out");
    vm.Depth=vm.Depth+25;Pump();Check(spacingInput.Text==vm.UpperSupportSpacingMm.ToString(CultureInfo.CurrentCulture),"locked field refreshes when geometry changes");vm.Depth=vm.Depth-25;Pump();
    // The designer may choose a closer listed spacing within the plywood maximum.
-   vm.SelectedPlywood=PlywoodCatalog.Default;vm.LeftSlabBayMm=3900;vm.Depth=1500;
+   vm.SelectedPlywood=PlywoodCatalog.Default;vm.LeftSlabBayMm=3900;vm.Depth=1500;vm.Width=400;
    ((Button)window.FindName("AddBeamBayButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render();
    Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBays.Count==2,"add button extends to three beams and two slab bays");
    Check(!Input("Depth").IsEnabled && !Input("LeftSlabBayMm").IsEnabled,"network uses individual beam and bay inputs");
