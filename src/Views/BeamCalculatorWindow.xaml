@@ -247,8 +247,19 @@
                 <TextBox IsEnabled="{Binding UseProps}" AutomationProperties.Name="Floor height (mm)" Text="{Binding FloorHeight, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
               </StackPanel>
               <StackPanel Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Prop type and outer tube position"/>
-                <ComboBox IsEnabled="{Binding UseProps}" AutomationProperties.Name="Prop type and outer tube position" ItemsSource="{Binding PropOptions}" SelectedItem="{Binding SelectedProp, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" DisplayMemberPath="Label"/>
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="Prop family"/>
+                    <ComboBox x:Name="PropFamilyInput" IsEnabled="{Binding UseProps}" AutomationProperties.Name="Prop family" ItemsSource="{Binding PropFamilyOptions}" SelectedItem="{Binding PropFamily, UpdateSourceTrigger=PropertyChanged}"/>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Text="Prop size"/>
+                    <ComboBox x:Name="PropSizeInput" IsEnabled="{Binding UseProps}" AutomationProperties.Name="Prop size" ItemsSource="{Binding PropSizeOptions}" SelectedItem="{Binding PropSize, UpdateSourceTrigger=PropertyChanged}"/>
+                  </StackPanel>
+                </Grid>
+                <TextBlock Text="Outer tube position"/>
+                <ComboBox x:Name="OuterTubePositionInput" IsEnabled="{Binding UseProps}" AutomationProperties.Name="Outer tube position" ItemsSource="{Binding PropOrientationOptions}" SelectedItem="{Binding OuterTubePosition, UpdateSourceTrigger=PropertyChanged}"/>
               </StackPanel>
               <Border Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}" Background="#F0F2F3" Padding="10">
                 <StackPanel>
@@ -295,6 +306,11 @@
               <TextBlock Text="{Binding MaximumPropSpacing, StringFormat='{}{0:F0} mm'}" FontSize="34" FontWeight="Bold" Margin="0,4,0,12" Foreground="#202A33"/>
               <Border Height="1" Background="#E7DCA7" Margin="0,0,0,6"/>
               <Grid Margin="0,5">
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Text="Primary overhang at each end" Margin="0,0,12,0"/>
+                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding PrimaryBeamCantilever, StringFormat='{}{0:F0} mm'}"/>
+              </Grid>
+              <Grid Margin="0,5">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition/>
                   <ColumnDefinition Width="Auto"/>
@@ -333,7 +349,7 @@
           <Border Background="#ECEFF1" Padding="14" Margin="0,0,0,12">
             <StackPanel>
               <TextBlock Style="{StaticResource Subheading}" Text="Beam and support section" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
-              <TextBlock Style="{StaticResource Hint}" Text="Schematic · secondary H20 perpendicular to primary H20" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
+              <TextBlock Style="{StaticResource Hint}" Text="Click a longitudinal primary H20 for shear, moment and deflection. Transverse secondaries are illustrative; their response is not calculated." Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}"/>
               <TextBlock Style="{StaticResource Subheading}" Text="Tower layout · plan" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
               <Grid x:Name="BeamDrawingArea">
                 <Grid.Style><Style TargetType="Grid"><Setter Property="MinHeight" Value="0"/><Style.Triggers><DataTrigger Binding="{Binding UseTowers}" Value="True"><Setter Property="MinHeight" Value="300"/></DataTrigger></Style.Triggers></Style></Grid.Style>
@@ -369,14 +385,6 @@
                       <ColumnDefinition/>
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Primary overhang" Margin="0,0,12,0"/>
-                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding PrimaryBeamCantilever, StringFormat='{}{0:F0} mm'}"/>
-                  </Grid>
-                  <Grid Margin="0,5">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
                     <TextBlock Text="Governing check" Margin="0,0,12,0"/>
                     <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding LimitingFactor, StringFormat='{}{0}'}"/>
                   </Grid>
@@ -400,14 +408,8 @@
               </Expander>
             </StackPanel>
           </Border>
-          <Border Style="{StaticResource Card}">
+          <Border Style="{StaticResource Card}" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}">
             <StackPanel>
-              <Expander Header="Calculation assumptions" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
-                <StackPanel Margin="0,10,0,0" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
-                  <TextBlock Style="{StaticResource Hint}" Text="Two primary lines support transverse secondary beams. Each checked slab contributes the entered strip width (default 300 mm). Primary-line spacing = (beam width + 1400) Ã· 2. Eccentric loads are distributed by equilibrium; the heavier line governs."/>
-                  <TextBlock Style="{StaticResource Hint}" Text="Uniform loading and equal longitudinal spans. Extension = floor height âˆ’ beam depth âˆ’ 418 mm. The prop table rounds extension up to the next 100 mm. Sheeting, secondary beams, joints and restraint require separate checks. The drawn secondary-beam quantity is illustrative."/>
-                </StackPanel>
-              </Expander>
               <Expander Header="Tower calculation basis" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}">
                 <TextBlock Style="{StaticResource Hint}" Margin="0,10,0,0" Text="{Binding TowerCalculationBasis}"/>
               </Expander>

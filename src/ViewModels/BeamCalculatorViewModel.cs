@@ -40,7 +40,50 @@ namespace EngineeringDashboard
         private double floorHeight = 3000;
         private BeamPropOption selectedProp = BeamPropOption.All.First(p => p.CapacityKey == "300 at bottom");
         public IReadOnlyList<BeamPropOption> PropOptions => BeamPropOption.All;
-        public BeamPropOption SelectedProp { get => selectedProp; set { selectedProp = value; Changed(); } }
+        public BeamPropOption SelectedProp
+        {
+            get => selectedProp;
+            set { selectedProp = value; Changed(); NotifyPropSelection(); }
+        }
+        public IReadOnlyList<string> PropFamilyOptions => BeamPropOption.All.Select(p => p.Family).Distinct().ToArray();
+        public IReadOnlyList<string> PropSizeOptions => BeamPropOption.All.Where(p => p.Family == PropFamily).Select(p => p.Size).Distinct().ToArray();
+        public IReadOnlyList<string> PropOrientationOptions => BeamPropOption.All.Where(p => p.Family == PropFamily && p.Size == PropSize).Select(p => p.Orientation).Distinct().ToArray();
+        public string PropFamily
+        {
+            get => SelectedProp?.Family;
+            set { if (value != null && value != PropFamily) SelectProp(BeamPropOption.All.Where(p => p.Family == value), PropSize, OuterTubePosition); }
+        }
+        public string PropSize
+        {
+            get => SelectedProp?.Size;
+            set { if (value != null && value != PropSize) SelectProp(BeamPropOption.All.Where(p => p.Family == PropFamily && p.Size == value), value, OuterTubePosition); }
+        }
+        public string OuterTubePosition
+        {
+            get => SelectedProp?.Orientation;
+            set { if (value != null && value != OuterTubePosition) SelectProp(BeamPropOption.All.Where(p => p.Family == PropFamily && p.Size == PropSize && p.Orientation == value), PropSize, value); }
+        }
+        private void SelectProp(IEnumerable<BeamPropOption> candidates, string size, string orientation)
+        {
+            var choices = candidates.ToArray();
+            var choice = choices.FirstOrDefault(p => p.Size == size && p.Orientation == orientation)
+                ?? choices.FirstOrDefault(p => p.Size == size) ?? choices.FirstOrDefault();
+            if (choice != null) SelectedProp = choice;
+        }
+        private void NotifyPropSelection()
+        {
+            foreach (string name in new[] { nameof(PropFamilyOptions), nameof(PropSizeOptions), nameof(PropOrientationOptions), nameof(PropFamily), nameof(PropSize), nameof(OuterTubePosition) }) OnPropertyChanged(name);
+        }
+        public TowerBeamAnalysis AnalyzePropPrimary(int line, int supportCount)
+        {
+            if (UseTowers || !IsCalculationValid) throw new ArgumentException("Calculate a valid Dokaflex layout first.");
+            if (line < 0 || line > 1 || (NumberOfProps == "4+" ? supportCount < 4 || supportCount > 12 : supportCount.ToString() != NumberOfProps))
+                throw new ArgumentException("Select a primary line and a supported prop count.");
+            double span = MaximumPropSpacing / 1000, end = PrimaryBeamCantilever / 1000;
+            return TowerBeamAnalysis.Analyze((supportCount - 1) * span + 2 * end,
+                Enumerable.Range(0, supportCount).Select(i => end + i * span).ToArray(),
+                line == 0 ? LeftLineLoad : RightLineLoad, 449.8756);
+        }
         public double FloorHeight { get => floorHeight; set { floorHeight = value; Changed(); } }
         public const double FormworkDepthMm = 418;
         public double PropExtensionMm => FloorHeight - Depth - FormworkDepthMm;

@@ -8,6 +8,9 @@ namespace EngineeringDashboard
     {
         public string Label { get; }
         public string CapacityKey { get; }
+        public string Family => CapacityKey.StartsWith("DokaFit Prop", StringComparison.Ordinal) ? "DokaFit Prop" : "Prop Type Eurex eco 20";
+        public string Size => CapacityKey.Replace("DokaFit Prop ", "").Split(' ')[0];
+        public string Orientation => CapacityKey.Substring(CapacityKey.IndexOf("at ", StringComparison.Ordinal));
         public double MinimumMm { get; }
         public double MaximumMm { get; }
         private BeamPropOption(string label,string key,double min,double max)

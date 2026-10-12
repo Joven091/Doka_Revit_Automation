@@ -62,6 +62,19 @@ internal static class Program
    ((Button)window.FindName("PickPropsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render();
    Check(vm.HasSelectedSupportSystem && !vm.UseTowers && picker.Visibility==Visibility.Collapsed,"prop card reveals prop calculator");
    Check(import.IsEnabled,"initial import");Check(diagram.DrawnPropCount==4,"two props per primary line");Check(diagram.DrawnSlabCount==0,"no slabs by default");
+   Check(!Find<Expander>(window).Any(e=>Equals(e.Header,"Calculation assumptions")),"Dokaflex calculation assumptions dropdown removed");
+   Check(diagram.IsSelectionEnabled && diagram.MemberTargets.Count==2,"Dokaflex primary H20s selectable without arming a button");
+   for(int line=0;line<2;line++)
+   {
+    var bounds=diagram.MemberTargets.Single(t=>t.Item3==line).Item1;bool clicked=false;
+    for(double y=bounds.Top;y<=bounds.Bottom && !clicked;y+=2)
+     for(double x=bounds.Left;x<=bounds.Right && !clicked;x+=2)
+      if(diagram.SelectAt(new Point(x,y)) && window.TowerDiagrams.SelectedLine==line)clicked=true;
+    Check(clicked && window.TowerDiagrams.Title.Contains("single H20"),"click primary opens the selected Dokaflex single-H20 response");
+    var analysis=window.TowerDiagrams.Analysis;var expected=vm.AnalyzePropPrimary(line,2);
+    Check(Math.Abs(analysis.Moment-expected.Moment)<1e-9 && window.TowerDiagrams.LoadingDiagram!=null,"Dokaflex diagram uses actual line response and includes loading plot");
+   }
+   vm.Width+=25;Pump();Check(window.TowerDiagrams==null && diagram.IsSelectionEnabled,"valid input edit closes stale response and leaves primaries clickable");
    Enter("Depth","abc");Check(!vm.IsCalculationValid,"invalid text invalidates VM");Check(!import.IsEnabled,"invalid import disabled");Check(results.Visibility==Visibility.Collapsed,"stale results hidden");Check(Input("Depth").Text=="abc","invalid text preserved");
    Check(!window.TryGetValidCalculation(out var ignored),"import guard rejects conversion error");
    Enter("Depth","500");Check(vm.IsCalculationValid&&import.IsEnabled,"valid text recovers");
@@ -72,7 +85,14 @@ internal static class Program
    vm.HasLeftSlab=false;Render();Check(diagram.DrawnSlabCount==1,"unchecked slab removed");vm.HasRightSlab=false;
    vm.NumberOfProps="4+";var combo=Find<ComboBox>(window).Single(c=>c.SelectedItem is BeamDeflectionOption);Check(combo.Items.Count==3,"typed deflection options loaded");combo.SelectedIndex=2;Pump();Check(vm.DeflectionLimit.Denominator==270,"L/270 selection maps numerically");Check(vm.PrimaryDeflectionUtilization<=1,"ratio criteria control rounded spacing");
    Thread.CurrentThread.CurrentCulture=CultureInfo.GetCultureInfo("de-DE");vm.Width=701;Render();Check(diagram.DrawnPropCount==8,"decimal comma vector diagram");Check(vm.IsCalculationValid,"decimal comma calculation");
-   var props=Find<ComboBox>(window).Single(c=>c.SelectedItem is BeamPropOption);Check(props.Items.Count==BeamPropOption.All.Count,"prop dropdown shares catalog");props.SelectedItem=BeamPropOption.All.First(p=>p.CapacityKey=="DokaFit Prop 300 at top");Pump();Check(vm.SelectedProp.CapacityKey=="DokaFit Prop 300 at top","prop selection binding");Enter("FloorHeight","9999");Check(!vm.IsCalculationValid&&!import.IsEnabled,"unsupported extension blocks import");Enter("FloorHeight","3000");Check(vm.IsCalculationValid,"floor height recovery");
+   var families=(ComboBox)window.FindName("PropFamilyInput");var sizes=(ComboBox)window.FindName("PropSizeInput");var positions=(ComboBox)window.FindName("OuterTubePositionInput");
+   Check(families.Items.Count==2 && Equals(families.SelectedItem,"Prop Type Eurex eco 20"),"separate prop family dropdown shares catalog");
+   families.SelectedItem="DokaFit Prop";Pump();sizes.SelectedItem="300";Pump();positions.SelectedItem="at top";Pump();
+   Check(vm.SelectedProp.CapacityKey=="DokaFit Prop 300 at top","three prop selectors update existing capacity selection");
+   Check(!positions.Items.Contains("fixed"),"unsupported outer tube position excluded");
+   vm.SelectedProp=BeamPropOption.All.First(p=>p.CapacityKey=="400 at bottom");Pump();
+   Check(Equals(families.SelectedItem,"Prop Type Eurex eco 20") && Equals(sizes.SelectedItem,"400") && Equals(positions.SelectedItem,"at bottom"),"restored prop configuration synchronizes all selectors");
+   vm.SelectedProp=BeamPropOption.All.First(p=>p.CapacityKey=="DokaFit Prop 300 at top");Pump();Enter("FloorHeight","9999");Check(!vm.IsCalculationValid&&!import.IsEnabled,"unsupported extension blocks import");Enter("FloorHeight","3000");Check(vm.IsCalculationValid,"floor height recovery");
    Thread.CurrentThread.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
    vm.Width=200;vm.HasLeftSlab=true;vm.HasRightSlab=true;vm.NumberOfProps="3";var picture=Render();
    vm.SlabStripWidthMm=450;Pump(); var saved=window.CaptureCalculation();double savedSpacing=vm.MaximumPropSpacing,savedLoad=vm.MaximumPropLoad;

@@ -56,6 +56,34 @@ internal static class Program
    foreach(var criterion in BeamCalculatorViewModel.AvailableDeflectionOptions) { v.DeflectionLimit=criterion;Check(v.IsCalculationValid,"ratio sweep valid");ReferenceBeam.Verify(v); }
    double lw=v.LeftLineLoad,rw=v.RightLineLoad;bool left=v.HasLeftSlab;v.HasLeftSlab=v.HasRightSlab;v.HasRightSlab=left;Equal(lw,v.RightLineLoad,"sweep mirror right");Equal(rw,v.LeftLineLoad,"sweep mirror left");
   }
+  v=new BeamCalculatorViewModel();
+  foreach(var option in BeamPropOption.All)
+  {
+   v.SelectedProp=option;
+   Check(v.PropFamily==option.Family && v.PropSize==option.Size && v.OuterTubePosition==option.Orientation,"saved prop maps to separate selectors");
+   Check(v.PropSizeOptions.Contains(option.Size) && v.PropOrientationOptions.Contains(option.Orientation),"selector options include restored configuration");
+  }
+  v=new BeamCalculatorViewModel();v.PropFamily="DokaFit Prop";v.PropSize="400";v.OuterTubePosition="at top";
+  Check(v.SelectedProp.CapacityKey=="DokaFit Prop 400 at top","selector changes map to capacity key");
+  v.PropFamily="Prop Type Eurex eco 20";
+  Check(v.SelectedProp.CapacityKey=="400 at top","family change retains supported size and orientation");
+  foreach(string n in new[]{"2","3","4+"})
+  {
+   v=new BeamCalculatorViewModel {Width=500,Depth=700,HasLeftSlab=true,NumberOfProps=n};
+   int first=n=="4+" ? 4 : int.Parse(n),last=n=="4+" ? 12 : first;
+   for(int supports=first;supports<=last;supports++)
+   {
+    var leftResponse=v.AnalyzePropPrimary(0,supports);var rightResponse=v.AnalyzePropPrimary(1,supports);
+    double length=((supports-1)*v.MaximumPropSpacing+2*v.PrimaryBeamCantilever)/1000;
+    Equal(v.LeftLineLoad*length,leftResponse.Reactions.Sum(),"left primary diagram force equilibrium");
+    Equal(v.RightLineLoad*length,rightResponse.Reactions.Sum(),"right primary diagram force equilibrium");
+    Equal(v.LeftLineLoad*length*length/2,leftResponse.Reactions.Select((r,i)=>r*(v.PrimaryBeamCantilever+i*v.MaximumPropSpacing)/1000).Sum(),"primary diagram moment equilibrium");
+    Equal(leftResponse.Moment*v.RightLineLoad/v.LeftLineLoad,rightResponse.Moment,"primary diagram uses each line's load");
+    Check(leftResponse.DeflectionUtilization(v.DeflectionLimit.Millimetres,v.DeflectionLimit.Denominator)<=1+1e-9,"diagram respects selected local deflection limits");
+   }
+  }
+  bool rejectedDiagram=false;try{v.AnalyzePropPrimary(0,13);}catch(ArgumentException){rejectedDiagram=true;}Check(rejectedDiagram,"unsupported diagram layout rejected");
+  v.Depth=0;rejectedDiagram=false;try{v.AnalyzePropPrimary(0,4);}catch(ArgumentException){rejectedDiagram=true;}Check(rejectedDiagram,"invalid inputs cannot open stale primary analysis");
   Console.WriteLine($"Passed {count} beam checks across {scenarios} sweep scenarios.");
  }
 }
