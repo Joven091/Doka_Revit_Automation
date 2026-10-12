@@ -29,7 +29,7 @@ internal static class CaseDiagramUiTests
         var lower=new[] {new[] {Member(1,"T1",1)},new[] {Member(6,"T1",1)},new[] {Member(2,"T1",1)}};
         var transfer=new TransferredSlabResult {RowsMm=new[] {1000.0},CaseNames=new[] {"Beam","Beam + left slab","Beam + both slabs"},PrimaryCases=primary,LowerCases=lower,EnteredUpperSpacingMm=250};
         var layout=new TowerLayout {DeflectionDenominator=270,StockPlan=new TowerStockPlan {Pieces=new[] {new TowerStockPiece {StockLengthMm=2000}}},Transfer=transfer};
-        var vm=new BeamCalculatorViewModel();typeof(BeamCalculatorViewModel).GetProperty("TowerResult").SetValue(vm,layout);
+        var vm=new BeamCalculatorViewModel {UseTowers=true};typeof(BeamCalculatorViewModel).GetProperty("TowerResult").SetValue(vm,layout);
         var window=new TowerDiagramWindow(vm);window.SelectMember(0,0,-1);
         Check(window.SelectedLoadCase==0 && window.SelectedTransferMember==primary[0][0],"default uses the governing member case, even when it is not last");
         Check(window.LoadCaseSelector.Items.Count==3 && !window.CheckedCasesDetails.IsExpanded && window.CheckedCasesTable.Items.Count==3,"one selector retains all cases in collapsed details");
