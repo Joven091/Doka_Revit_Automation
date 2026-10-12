@@ -184,7 +184,7 @@ namespace EngineeringDashboard
             dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
             dc.DrawRectangle(ConcreteTop, null, new Rect(x0, cy - model.Width * transverseScale / 2, layout.LengthMm * scale, model.Width * transverseScale));
             if(layout.Transfer!=null) {Label(dc,$"mm · primary = {layout.Primary.Description}/line · secondaries = single H20 @ {layout.Transfer.EnteredUpperSpacingMm:0}",x0,8);Label(dc,"Cyan: frames · yellow: crosses",x0,25);}
-            if(layout.Transfer==null)Label(dc,"mm · cyan: frames · yellow: crosses",x0,8);
+            if(layout.Transfer==null)Label(dc,$"mm · secondary spacing ≤ {model.MaximumSecondarySpacingMm:0} · cyan: frames · yellow: crosses",x0,8);
             for (int i = 0; i < layout.StockPlan.Pieces.Length; i++)
             {
                 var piece = layout.StockPlan.Pieces[i];

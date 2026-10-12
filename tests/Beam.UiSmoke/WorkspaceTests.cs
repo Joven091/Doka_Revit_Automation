@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -126,6 +127,11 @@ internal static class WorkspaceTests
             workspace.Width=1280;workspace.Height=860;workspace.InspectorTabs.SelectedIndex=0;Render();
             Check(workspace.Buttons["Save"] is MenuItem && workspace.Buttons["Load"] is MenuItem && workspace.Buttons["AddAbove"] is MenuItem,"file and add actions use compact menus");
             Check(workspace.InspectorTabs.Items.Count==2 && ((TabItem)workspace.InspectorTabs.Items[1]).Header.Equals("Shared settings"),"object properties and shared settings have separate inspector tabs");
+            var plywoodSelector=Controls<ComboBox>(workspace).Single(c=>c.SelectedItem is PlywoodProfile);
+            Check(plywoodSelector.Items.Count==3 && plywoodSelector.SelectedItem==model.SelectedPlywood,"drawing workspace shares plywood selector");
+            var originalPlywood=model.SelectedPlywood;plywoodSelector.SelectedItem=model.PlywoodOptions.Single(p=>p.ThicknessMm==21);Pump();
+            Check(model.SelectedPlywood.ThicknessMm==21 && !model.IsCalculationValid && workspace.Fields["UpperSupportSpacingMm"].IsReadOnly,"workspace plywood change recalculates locked spacing and invalidates layout");
+            Click("Undo");Check(model.SelectedPlywood==originalPlywood,"undo restores plywood choice");Calculate();
             var originalResult=model.TowerResult;Click("Diagnose");var diagnosis=workspace.Diagnostics;
             Check(diagnosis!=null && diagnosis.IsVisible && diagnosis.ReportBox.IsReadOnly && diagnosis.ReportBox.Text.Contains("BEAM FORMWORK DIAGNOSTIC REPORT v1"),"diagnose opens copyable report window");
             Check(ReferenceEquals(model.TowerResult,originalResult),"opening diagnosis retains calculated result");
@@ -270,11 +276,13 @@ internal static class WorkspaceTests
             var sectionHit=workspace.Section.MemberTargets.First(h=>h.Item3>=model.NetworkResult.Beams[h.Item2].StockPlan.Pieces.Length+model.NetworkResult.Beams[h.Item2].Transfer.RowsMm.Length);
             Check(workspace.Section.SelectAt(Centre(sectionHit.Item1)),"slab secondary selected from section");Pump();Check(workspace.Diagrams.SelectedTransferMember.H20Count==1,"section selection uses single slab H20 diagrams");
             var record=parent.CaptureCalculation();parent.RestoreCalculation(record);Pump();Check(model.NetworkBeams[1].DepthMm==1200 && model.NetworkBays[0].WidthMm==3900,"drawing inputs round-trip through existing calculation files");
-            parent.RestoreCalculation(customSetup);Pump();Render();Enter("UpperSupportSpacingMm","750");Calculate();
-            Check(!model.IsCalculationValid && workspace.FailureDetails.Contains("Lower secondary") && workspace.FailureTargets.Any(),"failed calculation exposes member demands and drawing targets");
-            Check(parent.CaptureDrawingInputs().Inputs.Any(f=>f.Name=="BeamLengthMm" && f.Value=="10600"),"no-solution geometry can be saved independently of acceptance");
-            var failureTarget=workspace.FailureTargets.First();failureTarget.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Render();Check(drawing.SelectedKind==FormworkObject.Beam && drawing.SelectedIndex==0,"failure selects affected beam without displaying a failed tower layout");
-            Enter("UpperSupportSpacingMm","200");Calculate();Check(model.IsCalculationValid && drawing.DrawnLegCount==model.NetworkResult.LegCount && model.NetworkResult.Bays[0].IsCustomLength,"enabled custom setup calculates and draws every selected leg");
+            parent.RestoreCalculation(customSetup);Pump();Render();
+            var spacingField=workspace.Fields["UpperSupportSpacingMm"];
+            Check(spacingField.IsReadOnly && !spacingField.IsEnabled && spacingField.Text==model.UpperSupportSpacingMm.ToString("0.###",CultureInfo.CurrentCulture),"workspace shows locked calculated row spacing");
+            var legacySpacing=parent.CaptureDrawingInputs();legacySpacing.Inputs.Single(f=>f.Name=="UpperSupportSpacingMm").Value="750";
+            parent.RestoreCalculation(legacySpacing);Pump();Check(model.UpperSupportSpacingMm==model.MaximumSecondarySpacingMm && model.UpperSupportSpacingMm!=750,"saved manual spacing cannot override the calculated maximum");
+            model.NetworkBeams[0].DepthMm=900;model.NetworkBeams[1].DepthMm=900;Pump();Calculate();
+            Check(model.IsCalculationValid && drawing.DrawnLegCount==model.NetworkResult.LegCount && model.NetworkResult.Bays[0].IsCustomLength,"custom setup calculates at the automatic spacing and draws every selected leg");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-custom.png"));
             Click("Section");Render(output==null ? null : Path.ChangeExtension(output,"workspace-section.png"));
             var customHit=workspace.Section.MemberTargets.Last();workspace.Section.SelectAt(Centre(customHit.Item1));Pump();
@@ -294,7 +302,7 @@ internal static class WorkspaceTests
             var calculatorDiagnose=(Button)parent.FindName("DiagnoseBeamButton");calculatorDiagnose.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
             Check(parent.Diagnostics!=null && parent.Diagnostics.ReportBox.Text.Contains("Source: Beam calculator"),"calculator provides the same diagnostic report");parent.Diagnostics.Close();
             var beforeFallback=parent.CaptureDrawingInputs();
-            model.AllowCustomH20Lengths=false;model.BeamLengthMm=3300;model.TowerLegCapacityKn=70;model.UpperSupportSpacingMm=200;
+            model.AllowCustomH20Lengths=false;model.BeamLengthMm=3300;model.TowerLegCapacityKn=70;
             model.DeflectionLimit=model.DeflectionOptions.Single(d=>d.Label=="L/350");model.Exclude600Standalone=false;
             while(model.NetworkBeams.Count<3)model.AddNetworkBay();while(model.NetworkBeams.Count>3)model.RemoveNetworkBay();
             foreach(var crossing in model.CrossingBeams.ToArray())model.RemoveCrossingBeam(crossing);

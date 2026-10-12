@@ -41,7 +41,7 @@ internal static class WS10UiTests
             host.Show();Pump();((Button)host.FindName("PickTowersButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
             var view=host.FormworkWorkspace;model.TransferSlabLoads=true;model.UseBeamNetwork=true;
             foreach(var beam in model.NetworkBeams){beam.WidthMm=300;beam.SetDepthKeepingTopMm(600);}
-            model.NetworkBays[0].WidthMm=2900;model.NetworkBays[0].ThicknessMm=100;model.UpperSupportSpacingMm=200;Pump();
+            model.NetworkBays[0].WidthMm=2900;model.NetworkBays[0].ThicknessMm=100;Pump();
             var selector=Find<ComboBox>(view.SharedProperties).Single(c=>c.Name=="PrimaryMaterialSelector");
             Check(Equals(selector.SelectedValue,PrimaryBeamMaterial.DoubleH20),"legacy/default material is double H20");
             selector.SelectedValue=PrimaryBeamMaterial.WS10;Pump();

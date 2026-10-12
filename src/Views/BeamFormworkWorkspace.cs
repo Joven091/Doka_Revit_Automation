@@ -72,7 +72,7 @@ namespace EngineeringDashboard
             internal FormworkObject SelectedKind;
             internal int SelectedIndex;
         }
-        private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,UpperSupportSpacingMm,PrimaryMaterial,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,Exclude600Standalone,DeflectionLimit,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
+        private const string StateProperties="Depth,Width,BeamLengthMm,TowerLegCapacityKn,PrimaryMaterial,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,Exclude600Standalone,DeflectionLimit,SelectedPlywood,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
         internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null)
         {
             Model=model;save=saveInputs;load=loadInputs;export=exportReport;refreshInputs=refreshCalculatorInputs;
@@ -286,6 +286,12 @@ namespace EngineeringDashboard
             box.TextChanged+=(s,e)=> {if(changing)return;editor.Dirty=true;ValidateEditor(editor);Model.SetAdditionalTextInputErrors(this,true);Refresh();};
             box.LostKeyboardFocus+=(s,e)=>CommitFields();box.KeyDown+=(s,e)=> {if(e.Key==Key.Enter){CommitFields();e.Handled=true;}};
         }
+        private void CalculatedNumber(string name,string label)
+        {
+            Text(label);var box=new TextBox {Name="Edit"+name,IsReadOnly=true,IsEnabled=false,Background=Brushes.LightGray,Padding=new Thickness(7),Margin=new Thickness(0,0,0,8),ToolTip="Calculated from the selected plywood chart."};
+            box.SetBinding(TextBox.TextProperty,new System.Windows.Data.Binding(name) {Source=Model,Mode=System.Windows.Data.BindingMode.OneWay,StringFormat="0.###"});
+            Fields[name]=box;properties.Children.Add(box);
+        }
         private bool ValidateEditor(NumberEditor editor)
         {
             bool valid=double.TryParse(editor.Box.Text,NumberStyles.Float,CultureInfo.CurrentCulture,out var v) && TowerBeamAnalysis.Finite(v) && v>=editor.Minimum;
@@ -326,7 +332,11 @@ namespace EngineeringDashboard
                 {var c=Model.CrossingBeams[index];Text("X"+(index+1)+" · crossing beam",true);Number("PositionMm","Position along beam (mm)",()=>c.PositionMm,v=>c.PositionMm=v,0);Number("WidthMm","Width (mm)",()=>c.WidthMm,v=>c.WidthMm=v);Number("DepthMm","Total depth (mm)",()=>c.DepthMm,c.SetDepthKeepingTopMm);Number("BottomElevationMm","Bottom / soffit elevation (mm)",()=>c.BottomElevationMm,v=>c.BottomElevationMm=v,-1000000);ConcreteTop(()=>c.BottomElevationMm,()=>c.DepthMm);Text("Cross-beam supports");var mode=new ComboBox {ItemsSource=c.SupportModes,DisplayMemberPath="Label",SelectedValuePath="Value",SelectedValue=c.SupportMode,Margin=new Thickness(0,0,0,12)};mode.SelectionChanged+=(sender,args)=> {if(changing || !(mode.SelectedValue is CrossBeamSupportMode value))return;if(CommitFields())Mutate(()=>c.SupportMode=value);else Refresh();};syncControls.Add(()=>mode.SelectedValue=c.SupportMode);properties.Children.Add(mode);Text(CrossBeamSupportResult.Limitations);Text("Slab bay");var bay=new ComboBox {ItemsSource=Model.NetworkBays.Select(s=>s.Label).ToArray(),SelectedIndex=c.BayNumber-1,Margin=new Thickness(0,0,0,12)};bay.SelectionChanged+=(s,e)=> {if(changing || bay.SelectedIndex<0)return;int choice=bay.SelectedIndex;if(CommitFields())Mutate(()=>c.BayNumber=choice+1);else Refresh();};syncControls.Add(()=>bay.SelectedIndex=c.BayNumber-1);properties.Children.Add(bay);}
                 if(Drawing.SelectedObjects.Length>1)Text(Drawing.SelectedObjects.Length+" objects selected. Shift-click toggles selection; Delete removes the selected areas.");
                 int selectionControls=properties.Children.Count;var objectFields=new HashSet<string>(Fields.Keys);
-                Text("Applies to every beam and slab bay.");Number("BeamLengthMm","Beam length (mm)",()=>Model.BeamLengthMm,v=>Model.BeamLengthMm=v);Number("UpperSupportSpacingMm","Maximum secondary spacing (mm)",()=>Model.UpperSupportSpacingMm,v=>Model.UpperSupportSpacingMm=v);Number("TowerLegCapacityKn","Permissible leg load (kN)",()=>Model.TowerLegCapacityKn,v=>Model.TowerLegCapacityKn=v);
+                var plywoodSummary = new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,12)};
+                plywoodSummary.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding(nameof(Model.SecondarySpacingSummary)) {Source=Model});properties.Children.Add(plywoodSummary);
+                Text("Applies to every beam and slab bay.");Number("BeamLengthMm","Beam length (mm)",()=>Model.BeamLengthMm,v=>Model.BeamLengthMm=v);CalculatedNumber("UpperSupportSpacingMm","Maximum secondary spacing (mm) · calculated");Number("TowerLegCapacityKn","Permissible leg load (kN)",()=>Model.TowerLegCapacityKn,v=>Model.TowerLegCapacityKn=v);
+                Text("Plywood");var plywood=new ComboBox {Name="WorkspacePlywoodSelector",ItemsSource=Model.PlywoodOptions,SelectedItem=Model.SelectedPlywood,DisplayMemberPath="Label",Margin=new Thickness(0,0,0,12)};
+                plywood.SelectionChanged+=(s,e)=> {if(changing || !(plywood.SelectedItem is PlywoodProfile option))return;if(CommitFields())Mutate(()=>Model.SelectedPlywood=option);else Refresh();};syncControls.Add(()=>plywood.SelectedItem=Model.SelectedPlywood);properties.Children.Add(plywood);
                 Text("Primary beam material");
                 var material=new ComboBox {Name="PrimaryMaterialSelector",ItemsSource=Model.PrimaryMaterialOptions,DisplayMemberPath="Label",SelectedValuePath="Value",SelectedValue=Model.PrimaryMaterial,Margin=new Thickness(0,0,0,12)};
                 material.SelectionChanged+=(s,e)=> {if(changing || !(material.SelectedValue is PrimaryBeamMaterial choice))return;if(CommitFields())Mutate(()=>Model.PrimaryMaterial=choice);else Refresh();};
