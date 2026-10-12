@@ -9,47 +9,11 @@
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
   <AddIn Type="Command">
-    <Text>Isolate Pour Box</Text>
-    <Description>Isolate Pour Box Command</Description>
-    <Assembly>MyRevitAddin.dll</Assembly>
-    <FullClassName>MyRevitAddin.Commands.PourBoxIsolator</FullClassName>
-    <ClientId>1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d</ClientId>
-    <VendorId>DOKA</VendorId>
-    <VendorDescription>Doka Designer</VendorDescription>
-  </AddIn>
-  <AddIn Type="Command">
     <Text>Engineering Dashboard</Text>
     <Description>Engineering Dashboard Command</Description>
     <Assembly>MyRevitAddin.dll</Assembly>
     <FullClassName>EngineeringDashboard.Command</FullClassName>
     <ClientId>2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e</ClientId>
-    <VendorId>DOKA</VendorId>
-    <VendorDescription>Doka Designer</VendorDescription>
-  </AddIn>
-  <AddIn Type="Command">
-    <Text>Calculate Selected Line Length</Text>
-    <Description>Calculates the total length of selected lines in millimeters</Description>
-    <Assembly>MyRevitAddin.dll</Assembly>
-    <FullClassName>MyRevitAddin.Commands.LineLengthCalculator</FullClassName>
-    <ClientId>3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f</ClientId>
-    <VendorId>DOKA</VendorId>
-    <VendorDescription>Doka Designer</VendorDescription>
-  </AddIn>
-  <AddIn Type="Command">
-    <Text>Replace Table Helper</Text>
-    <Description>Replaces Table Helper families with matching Table families</Description>
-    <Assembly>MyRevitAddin.dll</Assembly>
-    <FullClassName>MyRevitAddin.Commands.ReplaceTableHelperCommand</FullClassName>
-    <ClientId>5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b</ClientId>
-    <VendorId>DOKA</VendorId>
-    <VendorDescription>Doka Designer</VendorDescription>
-  </AddIn>
-  <AddIn Type="Command">
-    <Text>Flip Visibility</Text>
-    <Description>Flips the visibility of elements in the Active View</Description>
-    <Assembly>MyRevitAddin.dll</Assembly>
-    <FullClassName>MyRevitAddin.Commands.VisibilityFlipper</FullClassName>
-    <ClientId>98d9c84b-f1c2-4238-b1da-b703b4dbfd0a</ClientId>
     <VendorId>DOKA</VendorId>
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
