@@ -17,6 +17,8 @@ internal static class SearchReuseTests
     static void Compare(bool custom,bool crossing)
     {
         var plain=Common(false,custom);var cached=Common(true,custom);var network=Network(crossing);
+        // Exercise reuse separately from preference pruning, which can skip duplicates.
+        plain.PruneUneconomicCandidates=false;cached.PruneUneconomicCandidates=false;
         var a=TransferNetworkOptimizer.Optimize(plain,network);var b=TransferNetworkOptimizer.Optimize(cached,network);
         Check(Signature(a)==Signature(b),"selected layouts, member demands, quantities and movement match without reuse");
         var before=Demands(a);var after=Demands(b);

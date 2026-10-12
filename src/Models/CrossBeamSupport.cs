@@ -406,9 +406,9 @@ namespace EngineeringDashboard
                     foreach(int side in new[] {-1,1})geometry.AddRange(PrimarySolids($"X{index+1} projected primary",c.PositionMm+offset+side*width/2,face+start,stock,false,c.BottomElevationMm-200,common.Primary));
                     if(Clash(geometry,obstacles)!=null)continue;
                     double lowerLo=Math.Min(-width/2,-offset-c.WidthMm/2)-150,lowerHi=Math.Max(width/2,-offset+c.WidthMm/2)+150;
-                    foreach(double lowerStock in TailStocks(common,lowerHi-lowerLo,50000))
+                    foreach(double lowerStock in TailStocks(common,2*Math.Max(-offset-lowerLo,lowerHi+offset),50000))
                     {
-                        double lowerStart=(lowerLo+lowerHi-lowerStock)/2;
+                        double lowerStart=-offset-lowerStock/2;
                         double covered=span-2*edge;
                         // Leave the full 80 mm flange clear of the receiving timber
                         // or shutter at each junction while respecting maximum spacing.

@@ -88,8 +88,26 @@ internal static class CrossSupportUiTests
         Check(labels.Any(label=>label=="B6 + S6 + X6") && labels.All(label=>!label.Contains("left slab") && !label.Contains("right slab") && !label.Contains("both slabs")),"reported case labels identify actual beams and slab bays");
         var members=vm.NetworkResult.Beams[5].Transfer.PrimaryCases.Select(stage=>stage[0]).ToArray();
         Check(cases.SelectedTransferMember.Utilization==members.Max(m=>m.Utilization),"reported B6 defaults to its actual governing member case");
+        // The designer ranking can change B6's stock breaks and governing case.
+        // Select an actual overlapping-load member, rather than assuming P1 carries a crossing.
+        int runs=vm.NetworkResult.Beams[5].StockPlan.Pieces.Length;
+        var overlapping=vm.NetworkResult.Beams[5].Transfer.PrimaryCases.SelectMany((stage,index)=>stage.Take(runs).Select((member,run)=>new {Member=member,Case=index,Run=run}))
+            .First(item=>item.Member.Uniform.SelectMany((q,i)=>item.Member.Uniform.Skip(i+1).Select(other=>Math.Min(q.EndMm,other.EndMm)>Math.Max(q.StartMm,other.StartMm)+1e-7)).Any(overlap=>overlap));
+        cases.SelectMember(overlapping.Run,0,-1);Pump();cases.LoadCaseSelector.SelectedIndex=overlapping.Case;Pump();
+        Check(ReferenceEquals(cases.SelectedTransferMember,overlapping.Member),"loading diagram selects the member carrying overlapping crossing loads");
         Capture(cases.LoadingDiagram,900,270,Preview(previewPath,"reported-B6-loading"));
-        Check(cases.LoadingDiagram.DrawnUniformCount<cases.LoadingDiagram.SourceUniform.Length,"reported crossing contributions are combined in the loading diagram");
+        var source=cases.LoadingDiagram.SourceUniform;var combined=cases.LoadingDiagram.CombinedUniform.OrderBy(q=>q.StartMm).ToArray();
+        Check(cases.LoadingDiagram.DrawnUniformCount==combined.Length && combined.Skip(1).Select((q,i)=>q.StartMm>=combined[i].EndMm-1e-7).All(clear=>clear),"crossing loads render as non-overlapping intensity segments");
+        var cuts=source.Concat(combined).SelectMany(q=>new[] {q.StartMm,q.EndMm}).Distinct().OrderBy(x=>x).ToArray();
+        for(int i=1;i<cuts.Length;i++)
+        {
+            double middle=(cuts[i-1]+cuts[i])/2;
+            double expected=source.Where(q=>q.StartMm<middle && q.EndMm>middle).Sum(q=>q.KnPerM);
+            double shown=combined.Where(q=>q.StartMm<middle && q.EndMm>middle).Sum(q=>q.KnPerM);
+            Check(Math.Abs(shown-expected)<1e-7*Math.Max(1,Math.Abs(expected)),"combined crossing intensity matches the actual member loads");
+        }
+        double sourceForce=source.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000),shownForce=combined.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000);
+        Check(Math.Abs(sourceForce-shownForce)<1e-7*Math.Max(1,Math.Abs(sourceForce)),"loading diagram preserves total crossing force");
         var caseBody=(FrameworkElement)((ScrollViewer)cases.Content).Content;caseBody.Measure(new Size(900,double.PositiveInfinity));caseBody.Arrange(new Rect(0,0,900,caseBody.DesiredSize.Height));caseBody.UpdateLayout();Capture(caseBody,900,(int)Math.Ceiling(caseBody.DesiredSize.Height),Preview(previewPath,"reported-B6-diagrams"));
         cases.CheckedCasesDetails.IsExpanded=true;Pump();caseBody.Measure(new Size(900,double.PositiveInfinity));caseBody.Arrange(new Rect(0,0,900,caseBody.DesiredSize.Height));caseBody.UpdateLayout();Capture(caseBody,900,(int)Math.Ceiling(caseBody.DesiredSize.Height),Preview(previewPath,"reported-B6-checked-cases"));cases.Close();
         workspace.Close();

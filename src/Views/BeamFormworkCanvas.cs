@@ -204,6 +204,7 @@ namespace EngineeringDashboard
                 Label(dc,$"B{i+1} · {b.WidthMm:0}×{b.DepthMm:0}",new Point(rect.Left+8,rect.Top+5));
 
             }
+            if(Formwork)Label(dc,"Primary H20: orange · secondary H20: purple",new Point(16,16));
             if(Formwork)for(int i=0;i<beams.Length;i++)if(Layout(i)!=null)DrawSupports(dc,Layout(i),i,ys[i],selection.Contains(Tuple.Create(FormworkObject.Beam,i)) || AllDimensions);
             if(Formwork && Model.NetworkResult!=null)DrawCrossSupports(dc);
             double bottomY=Pan.Y+SceneBounds.Bottom*Zoom+42;

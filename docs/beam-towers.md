@@ -102,3 +102,12 @@ The option is saved with the Beam inputs, included in diagnostic reports, and re
 For the uploaded 6,900 mm legacy crossing case, the current primary UDL solver retains leg-capacity rejection at 275 mm upper spacing with uplift excluded. At 250 mm it finds a complete layout with 118 tower legs and a 42.24 kN peak leg load; every calculated H20 passes moment, shear and relative deflection. These results supersede the earlier point-load calculation. The replay explicitly uses Legacy slab rows, matching the uploaded report; modern crossings are separately tested with shared and dedicated supports.
 
 Run `tests/Beam.Tests` with `--uplift` for assumption/force-propagation checks and `--uplift-reported` to replay the uploaded case and the closer-spacing search. The default regression suite retains bearing-only behavior. Windows smoke tests cover both checkboxes, result invalidation, save/load, old-file defaults and drawing undo/redo.
+
+
+## Designer preferences and centred secondary H20s
+
+At equal support count, beam and network searches avoid standalone 600 mm towers, minimize braced-bay count, prefer wider standalone cross braces, then minimize member quantity/length. Linked groups receive no standalone-width penalty; redundant-connection removal retains the fewest existing links needed to avoid narrow standalone groups when possible. Rotated towers use the actual cross dimension, rather than the 1524 mm frame span. Smaller standalone braces remain available when required for a feasible layout. Support/brace counts are cost proxies, not catalogue prices or a height-dependent stability check. The same comparison applies to search bounds, catalogue/custom selection, receiver-chain states and final results, including dedicated crossing towers.
+
+Each lower secondary H20 is centred on its concrete beam, including when tower legs are offset. Stock selection must enclose every bearing and load, with the required end allowance on both ends; member analysis and drawings use these actual centred coordinates. Plan H20 colours distinguish orange paired primaries from purple single secondaries; the existing secondary-visibility toggle and member selection remain available. Diagnostics include tower preferences and secondary midpoint offsets.
+
+`dotnet run --project tests/Beam.Tests -c Release -- --designer-preferences` checks wide/narrow/linked/rotated tower choices, mirrored one-sided secondary centring and the diagnostic's three parallel-beam dimensions.

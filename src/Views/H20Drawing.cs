@@ -11,20 +11,20 @@ namespace EngineeringDashboard
         internal static void Plan(DrawingContext dc,Point start,Point end,int count,bool active,double separation=3)
         {
             var delta=end-start;var normal=new Vector(-delta.Y,delta.X);normal.Normalize();normal*=separation;
-            var pen=new Pen(active ? Brushes.DodgerBlue : Brushes.Goldenrod,active || count==2 ? 2 : 1.3);
+            var pen=new Pen(active ? Brushes.DodgerBlue : count==1 ? Brushes.MediumPurple : Brushes.Goldenrod,active || count==2 ? 2 : 1.3);
             foreach(double side in count==2 ? new[] {-1.0,1} : new[] {0.0})dc.DrawLine(pen,start+normal*side,end+normal*side);
         }
         private static readonly Brush Flange=new SolidColorBrush(Color.FromRgb(231,183,70));
         private static readonly Brush Web=new SolidColorBrush(Color.FromRgb(185,137,73));
         private static readonly Brush Grain=new SolidColorBrush(Color.FromArgb(80,113,76,35));
         private static Pen Outline(bool selected)=>new Pen(selected ? Brushes.DodgerBlue : Brushes.SaddleBrown,selected ? 1.5 : .65);
-        internal static void Longitudinal(DrawingContext dc,Rect bounds,bool selected=false)
+        internal static void Longitudinal(DrawingContext dc,Rect bounds,bool selected=false,bool secondary=false)
         {
             if(bounds.Width<=0 || bounds.Height<=0)return;
             double flange=bounds.Height*.2;
-            dc.DrawRectangle(Web,null,bounds);
-            dc.DrawRectangle(Flange,null,new Rect(bounds.Left,bounds.Top,bounds.Width,flange));
-            dc.DrawRectangle(Flange,null,new Rect(bounds.Left,bounds.Bottom-flange,bounds.Width,flange));
+            dc.DrawRectangle(secondary ? Brushes.Plum : Web,null,bounds);
+            dc.DrawRectangle(secondary ? Brushes.MediumPurple : Flange,null,new Rect(bounds.Left,bounds.Top,bounds.Width,flange));
+            dc.DrawRectangle(secondary ? Brushes.MediumPurple : Flange,null,new Rect(bounds.Left,bounds.Bottom-flange,bounds.Width,flange));
             var edge=Outline(selected);
             dc.DrawRectangle(null,edge,bounds);
             foreach(double y in new[] {bounds.Top+flange,bounds.Bottom-flange})

@@ -69,7 +69,7 @@ namespace EngineeringDashboard
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));
             if(SectionOnly) {Section(dc,55);return;}
             Label(dc,$"mm · primary = {result.Beams[0].Primary.Description}/line · secondaries = single H20 @ {result.Input.UpperSpacingMm:0}",30,8);
-            Label(dc,"Cyan: frames · yellow: crosses · beam W×D · slab t = thickness · transverse view schematic",30,27);
+            Label(dc,"Primary H20: orange · secondary H20: purple · cyan: frames · yellow: crosses",30,27);
             var ys=Centres();var crossSolids=result.CrossSupports.SelectMany(c=>c.Solids).ToArray();
             double minX=Math.Min(0,crossSolids.Select(s=>s.X0).DefaultIfEmpty(0).Min()),maxX=Math.Max(result.Beams[0].LengthMm,crossSolids.Select(s=>s.X1).DefaultIfEmpty(0).Max());
             double scale=(ActualWidth-80)/(maxX-minX);Func<double,double> xx=x=>40+(x-minX)*scale;
@@ -197,7 +197,7 @@ namespace EngineeringDashboard
                 int row=Enumerable.Range(0,t.RowsMm.Length).OrderByDescending(r=>t.LowerCases.Max(c=>c[r].Utilization)).First(),encoded=b.StockPlan.Pieces.Length+row;
                 double start=xx(centre+t.LowerStockStartMm),end=xx(centre+t.LowerStockStartMm+t.LowerStockLengthMm);
                 var lowerRect=new Rect(start,bottom,end-start,200*depthScale);
-                H20Drawing.Longitudinal(dc,lowerRect,beam==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;
+                H20Drawing.Longitudinal(dc,lowerRect,beam==selectedBeam && selectedRun==encoded,true);DrawnH20ProfileCount++;
                 MemberTargets.Add(Tuple.Create(lowerRect,beam,encoded,0));
                 // The transverse section cuts the two longitudinal members in each primary line.
                 int primaryRun=Array.FindIndex(b.StockPlan.Pieces,p=>t.RowsMm[row]>=p.StartMm && t.RowsMm[row]<=p.EndMm);
@@ -239,7 +239,7 @@ namespace EngineeringDashboard
                 if(result.SlabRowCount(bay)==0)continue;
                 int encoded=result.Beams[bay].StockPlan.Pieces.Length+result.Beams[bay].Transfer.RowsMm.Length+row*2+1;
                 var upperRect=new Rect(xx(a),soffit,plan.StockLengthMm*scale,200*depthScale);
-                H20Drawing.Longitudinal(dc,upperRect,bay==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;
+                H20Drawing.Longitudinal(dc,upperRect,bay==selectedBeam && selectedRun==encoded,true);DrawnH20ProfileCount++;
                 MemberTargets.Add(Tuple.Create(upperRect,bay,encoded,0));
                 for(int side=0;side<2;side++)
                 {

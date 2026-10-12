@@ -41,6 +41,16 @@ internal static class PresentationUiTests
     }
     public static int Run(string output)
     {
+        // Verify the actual plan pixels distinguish primary and secondary members.
+        var plan=new DrawingVisual();using(var dc=plan.RenderOpen())
+        {
+            PrimaryDrawing.Plan(dc,new Point(10,20),new Point(90,20),PrimaryBeamProfile.For(PrimaryBeamMaterial.DoubleH20),false);
+            H20Drawing.Plan(dc,new Point(10,50),new Point(90,50),1,false);
+        }
+        var palette=new RenderTargetBitmap(100,70,96,96,PixelFormats.Pbgra32);palette.Render(plan);
+        var colours=new byte[100*70*4];palette.CopyPixels(colours,400,0);
+        Func<int,int,Color> pixel=(x,y)=>Color.FromArgb(colours[(y*100+x)*4+3],colours[(y*100+x)*4+2],colours[(y*100+x)*4+1],colours[(y*100+x)*4]);
+        Check(pixel(50,17).R>pixel(50,17).B && pixel(50,50).B>pixel(50,50).G,"orange primary and purple secondary remain visually distinct");
         // Check visible flange/web geometry independently of labels or draw counters.
         var drawing=new DrawingVisual();using(var dc=drawing.RenderOpen())H20Drawing.EndSection(dc,new Rect(10,10,80,200));
         var profile=new RenderTargetBitmap(100,220,96,96,PixelFormats.Pbgra32);profile.Render(drawing);
