@@ -21,11 +21,10 @@ internal static class NetworkEconomyTests
             foreach(var beam in result.Beams)
             {
                 var index=Array.IndexOf(result.Beams,beam);double beamLength=common.LengthMm-2*beam.ConcreteEndOverhangMm;
-                Near(beam.Transfer.RowsMm.Sum(),result.Beams[0].Transfer.RowsMm.Sum(),"same absolute slab rows");
-                Check(beam.Transfer.RowsMm.SequenceEqual(result.Beams[0].Transfer.RowsMm),"shared rows align");
+                Check(beam.Transfer.SlabRowIndices.Select(i=>beam.Transfer.RowsMm[i]).SequenceEqual(result.SlabRowsMm),"shared slab rows align despite local beam rows");
                 Check(beamLength>=result.SlabCoveredLengthMm-1e-7 && beam.ConcreteEndOverhangMm<=75,"primary supports shared coverage within end allowance");
-                Near(beam.Transfer.TributaryWidthsMm.Sum(),beamLength,"actual primary coverage reaches beam end tributaries");
-                double beamLoad=network.AreaLoad(network.Beams[index].DepthMm)*network.Beams[index].WidthMm/1000*beamLength/1000;
+                Near(beam.Transfer.TributaryWidthsMm.Sum(),common.LengthMm,"actual primary coverage reaches beam end tributaries");
+                double beamLoad=network.AreaLoad(network.Beams[index].DepthMm)*network.Beams[index].WidthMm/1000*common.LengthMm/1000;
                 Check(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad-1e-7,"secondary design retains full tributaries at ends");
                 Check(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"primary UDL covers physical beam and slab load");
                 Check(beam.MaxLegKn<=70+1e-8 && beam.LeftReactions.Concat(beam.RightReactions).All(r=>r>=-1e-7 && r<=70+1e-8),"individual leg capacity and no uplift");
@@ -54,8 +53,7 @@ internal static class NetworkEconomyTests
             Check(a.MomentKnM==b.MomentKnM && a.ShearKn==b.ShearKn && a.DeflectionMm==b.DeflectionMm && a.DeflectionUtilization==b.DeflectionUtilization && a.Reactions.SequenceEqual(b.Reactions),"exact case has identical unrounded member demands with serial or automatic worker counts");
         }
         Check(after.Beams.SelectMany(b=>b.Transfer.PrimaryCases.SelectMany(c=>c)).All(m=>m.Points.Length==0 && m.Uniform.Length>0 && m.Utilization<=1+1e-8),"economy ranking uses only passing UDL primary members");
-        Check(after.LegCount+after.UpperFootCount<=before.LegCount+before.UpperFootCount,"network supports do not increase");
-        Check(after.LegCount+after.UpperFootCount<before.LegCount+before.UpperFootCount || after.TimberMm<=before.TimberMm,"network cost ranking improves or retains baseline");
+        Check(after.EconomyScoreMm<=before.EconomyScoreMm+.01,"full-network economic ranking improves or retains the baseline with separately weighted steel supports");
         Console.WriteLine("Network economy checks passed.");
     }
 }

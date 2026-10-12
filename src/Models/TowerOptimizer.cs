@@ -301,11 +301,12 @@ namespace EngineeringDashboard
         public string MaterialQuantities=>$"{StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s"+(StockPlan.WS10Count==0 ? "" : $" · {StockPlan.WS10Count} WS10s");
         public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {MaterialQuantities}";
         public string LegLoadSummary => $"Peak leg: {MaxLegKn:0.00} / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
-        public string CapacityBasis => Transfer != null ? "Every leg is checked for beam, one-sided and combined slab loading. Search minimizes receiving-beam legs, then standalone-600 towers, braced bays, standalone brace penalties and total member length. Leg values are load-case envelopes." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then standalone-600 towers, braced bays, standalone brace penalties, primary quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
+        public string CapacityBasis => Transfer != null ? "Every leg is checked for beam, one-sided and combined slab loading. Search uses separately weighted tower legs, upper feet and material length, then brace preference, symmetry and utilization. Leg values are load-case envelopes." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then standalone-600 towers, braced bays, standalone brace penalties, primary quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
         public string StockSchedule => StockPlan.Schedule + (Transfer == null ? "" : "\n" + Transfer.Schedule);
         public int LegCount => PositionsMm.Length * 2;
         public int GroupCount => 1 + Joined.Count(x => !x);
         public int BayCount => Joined.Count(x => x);
+        public int SharedFrameCount=>Math.Max(0,2*BayCount-PositionsMm.Length);
         public int Standalone600Count => TowerOptimizer.Standalone600Count(PositionsMm,Joined,WidthMm,Rotated);
         public double StandaloneBracePenalty => TowerOptimizer.StandaloneBracePenalty(PositionsMm,Joined,WidthMm,Rotated);
         public string BracePreferenceSummary => $"Standalone 600 mm towers: {Standalone600Count}; braced bays: {BayCount}; standalone brace preference: {StandaloneBracePenalty:0.###} mm (lower preferred). Width preference is a layout heuristic; tower height/stability requires separate verification.";
@@ -317,6 +318,7 @@ namespace EngineeringDashboard
         public double ShearKn { get; internal set; }
         public double DeflectionMm { get; internal set; }
         public double Utilization { get; internal set; }
+        public double SymmetryErrorMm=>TowerOptimizer.SymmetryError(PositionsMm,StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray(),LengthMm/2);
         public string Governing { get; internal set; }
         public int Tested { get; internal set; }
         public bool MinimumLegCountProven { get; internal set; }
@@ -359,6 +361,14 @@ namespace EngineeringDashboard
     {
         public static readonly double[] BaysMm = { 600, 1000, 1500, 2000 };
         public const double PairEI = 2 * 449.8756, PairMoment = 10, PairShear = 22;
+        // Relative design costs, expressed as equivalent timber length, not currency or a supplier quotation.
+        // Two tower legs outweigh 5 m of extra timber. Upper feet are priced separately from tower legs.
+        public const double TowerLegTimberEquivalentMm=5000, UpperFootTimberEquivalentMm=500;
+        internal static double SymmetryError(double[] positions,double[] stock,double centre)
+        {
+            double support=positions.Select((x,i)=>Math.Abs(x+positions[positions.Length-1-i]-2*centre)).Sum()/2;
+            return support+stock.Select((x,i)=>Math.Abs(x-stock[stock.Length-1-i])).Sum()/2;
+        }
         // Rank physical standalone groups, not unbraced gaps or the 1524 mm frame dimension.
         // Linked bays do not receive the standalone-width penalty. This is not a stability calculation.
         internal static double[] StandaloneBraces(double[] positions,bool[] joined,double width,bool rotated)

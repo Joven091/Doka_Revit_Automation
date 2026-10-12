@@ -104,7 +104,7 @@ internal static class CustomH20Tests
         var timer=System.Diagnostics.Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,network);
         foreach(var beam in result.Beams)Members(beam,common.StockLengthsMm);
         Check(result.Bays.All(b=>b.StockLengthMm%25==0) && result.Beams.All(b=>b.Transfer.LowerCustom),"network propagates custom mode to shared upper and every receiving beam");
-        Check(result.Beams[0].Transfer.RowsMm.SequenceEqual(result.Beams[1].Transfer.RowsMm),"network support rows remain aligned");
+        Check(result.Beams[0].Transfer.SlabRowIndices.Select(i=>result.Beams[0].Transfer.RowsMm[i]).SequenceEqual(result.Beams[1].Transfer.SlabRowIndices.Select(i=>result.Beams[1].Transfer.RowsMm[i])),"network support rows remain aligned");
         Check(timer.Elapsed.TotalSeconds<45,"small custom network completes within workspace calculation budget");
         var vm=new BeamCalculatorViewModel {UseTowers=true,BeamLengthMm=2125,Depth=200,Width=300,StockLengthsText="1250",MaximumConcreteEndOverhangMm=0,AllowCustomH20Lengths=true};
         vm.OptimizeTowersAsync().GetAwaiter().GetResult();Check(vm.IsCalculationValid,"view model passes custom setting to optimizer");

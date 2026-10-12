@@ -25,8 +25,8 @@ internal static class NetworkFallbackTests
             }
         }
         Near(result.SlabLoadKn,input.AreaLoad(300)*input.Bays[1].WidthMm/1000*result.SlabCoveredLengthMm/1000,"only the retained bay load transfers");
-        Near(result.TimberMm,result.Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*b.Transfer.LowerStockLengthMm)+result.Bays[1].StockLengthMm*result.Beams[0].Transfer.RowsMm.Length,"separate slab timber is excluded");
-        Check(result.UpperFootCount==2*result.Beams[0].Transfer.RowsMm.Length,"separate slab feet are excluded");
+        Near(result.TimberMm,result.Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*b.Transfer.LowerStockLengthMm)+result.Bays[1].StockLengthMm*result.SlabRowsMm.Length,"separate slab timber is excluded");
+        Check(result.UpperFootCount==2*result.SlabRowsMm.Length,"separate slab feet are excluded");
     }
     public static void Run()
     {
