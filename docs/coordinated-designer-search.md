@@ -8,7 +8,7 @@ The October 12 reference drawing demonstrates a useful stock/support family: two
 - Protect mirrored regular tower groups separately from the inset-based geometry cap. These are general catalogue families, not fixed coordinates for the reference drawing.
 - Keep the shared slab row grid. Add local beam-only end secondaries where the complete beam/end-strip tributaries exceed the entered spacing. They carry no slab feet or slab/shutter tributary.
 - Compare a coordinated modern-crossing search at the winning shared coverage and phase even after the ordinary search finds a passing network. Retain different receiving widths/orientations until their junctions have been checked.
-- Try larger normal crossing bays before 600 mm bays. Every candidate still requires stock, bearing, member, individual leg and complete footprint checks.
+- Try every searched placement of each larger normal crossing bay before a 600 mm fallback; an early passing narrow placement must not hide a larger bay at a later shift. Every candidate still requires stock, bearing, member, individual leg and complete footprint checks.
 
 The search remains bounded. Selected stock, tower and junction configurations need not match a person's drawing when its omitted bearing, secondary or connection details differ from the model.
 
@@ -38,7 +38,7 @@ dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release -- --coordina
 
 The reported geometry is 6,900 mm long, with main beams 800/650/800 mm wide and 1,750/1,150/1,750 mm deep, 300 mm slabs, clear bays 2,677/1,875 mm, and centred 650 × 1,150 mm crossings. The drawing's 2,752/1,950 mm bays are tested separately. Catalogue-only beam supports, custom slab stock, 275 mm maximum spacing, 70 kN entered leg capacity, L/270 and the report's connected-formwork uplift assumption are retained.
 
-The reported and drawing-dimension fixtures each find 46-leg networks. The reported fixture discovers B1's mirrored 1,800/3,300/1,800 mm layout and shared centre frame; its peak leg is about 41.36 kN. Its complete-load timber quantity is about 378.80 m. An offset-crossing fixture uses 48 legs, rather than forcing the reference topology. A longer beam with unequal loads and no crossings tests adaptation independently of the reference junctions.
+The reported and drawing-dimension fixtures each find 46-leg networks. The reported fixture discovers B1's mirrored 1,800/3,300/1,800 mm layout and shared centre frame, and X1 avoids the unnecessary standalone 600 mm bay; its peak leg is about 41.36 kN. Its complete-load timber quantity is about 378.80 m. An offset-crossing fixture uses 48 legs, rather than forcing the reference topology. A longer beam with unequal loads and no crossings tests adaptation independently of the reference junctions.
 
 Checks include complete beam-concrete force, physical slab transfer, independently summed member force/moment equilibrium, all calculated member stages, individual leg capacities, centred secondaries, aligned shared slab rows, and zero invented slab-foot loads on local beam rows. Existing crossing completion retains full geometry and junction checks. Windows CI also runs the reference suite on .NET Framework 4.8.
 

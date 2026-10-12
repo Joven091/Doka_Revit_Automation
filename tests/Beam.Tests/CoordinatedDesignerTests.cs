@@ -65,6 +65,7 @@ internal static class CoordinatedDesignerTests
         Check(reference.Beams[0].GroupCount==3 && reference.Beams[0].Joined.Count(j=>j)==4,"linked centre saves a support frame without adding braced bays");
         Check(reference.Beams.Any(b=>b.Transfer.BeamOnlyRowCount>0),"local beam-secondary refinement is exercised");
         Near(reference.Beams[0].SymmetryErrorMm,0,"B1 stock and supports mirror the concrete centre");
+        Check(reference.CrossSupports[0].Towers.Standalone600Count==0,"X1 tries larger bays at later passing shifts before a narrow early-position fallback");
         Solve("drawing bay dimensions",Common(),Network(2752,1950));
         var shifted=Network();shifted.CrossingBeams[0].PositionMm=3100;shifted.CrossingBeams[1].PositionMm=3800;
         Solve("offset crossings",Common(),shifted);

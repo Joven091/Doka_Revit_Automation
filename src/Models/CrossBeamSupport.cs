@@ -382,12 +382,12 @@ namespace EngineeringDashboard
             }
             return values.Where(v=>Math.Abs(v)<=500+1e-7).Distinct().ToArray();
         }
-        private static CrossBeamSupportResult ProjectedJunction(TowerInput common,TransferNetworkResult r,int index,double spacing,double width,double offset,double alongSpan,double near,double far,FormworkSolid[] obstacles,out string failure)
+        private static CrossBeamSupportResult ProjectedJunction(TowerInput common,TransferNetworkResult r,int index,double spacing,double width,double offset,double alongSpan,double near,double far,FormworkSolid[] obstacles,out string failure,double? preferredBay=null)
         {
             failure=null;var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;
             double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2+near,span=r.Input.Bays[bay].WidthMm-near-far;
             bool rotated=width!=1524;
-            foreach(double towerBay in rotated ? new[] {1524.0} : TowerOptimizer.BaysMm.Where(x=>!common.Exclude600Standalone || x!=600).OrderByDescending(x=>x).ToArray())
+            foreach(double towerBay in (rotated ? new[] {1524.0} : TowerOptimizer.BaysMm.Where(x=>!common.Exclude600Standalone || x!=600).OrderByDescending(x=>x).ToArray()).Where(x=>!preferredBay.HasValue || x==preferredBay.Value))
             {
                 common.Trace?.CheckCancellation();
                 double[] positions={span/2+alongSpan-towerBay/2,span/2+alongSpan+towerBay/2};
@@ -473,9 +473,12 @@ namespace EngineeringDashboard
             {
                 common.Trace?.CheckCancellation();
                 if(width==600 && common.Exclude600Standalone)continue;
-                foreach(double shift in JunctionOffsets(common,r,index,width,offset,near,far,obstacles))
+                var projectedShifts=JunctionOffsets(common,r,index,width,offset,near,far,obstacles);
+                // Exhaust the positions for each larger bay before accepting a smaller bay at an earlier shift.
+                foreach(double preferredBay in width==1524 ? TowerOptimizer.BaysMm.Where(x=>!common.Exclude600Standalone || x!=600).OrderByDescending(x=>x).ToArray() : new[] {1524.0})
+                foreach(double shift in projectedShifts)
                 {
-                    var projected=ProjectedJunction(common,r,index,spacing,width,offset,shift,near,far,obstacles,out string projectedFailure);
+                    var projected=ProjectedJunction(common,r,index,spacing,width,offset,shift,near,far,obstacles,out string projectedFailure,preferredBay);
                     if(projected==null) {if(projectedFailure!=null)failure=projectedFailure;continue;}
                     return JunctionResult(c,index,projected,zones,shutters,near,far,span,offset,shift);
                 }
