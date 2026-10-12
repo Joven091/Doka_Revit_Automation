@@ -33,6 +33,7 @@ jobs:
       - run: dotnet run --project tests/Dome.Tests/Dome.Tests.csproj -c Release
       - run: dotnet run --project tests/D3Slab.Tests/D3Slab.Tests.csproj -c Release
       - run: dotnet run --project tests/D3Slab.UiSmoke/D3Slab.UiSmoke.csproj -c Release
+      - run: dotnet run --project tests/Slab.CoreTests/Slab.CoreTests.csproj -c Release
       - run: dotnet run --project tests/Slab.Tests/Slab.Tests.csproj -c Release
       # The default Beam.Tests run already includes SearchReuseTests.
       - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release

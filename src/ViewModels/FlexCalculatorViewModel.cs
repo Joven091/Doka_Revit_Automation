@@ -30,7 +30,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
 
     // --- Inputs: Secondary Beam Layout ---
     private string _primaryBeamCount = "3";
-    private double _secondaryBeamSpacing = 488;
+    private PlywoodProfile _selectedPlywood = PlywoodCatalog.Default;
     private double _secondaryBeamCantilever = 500;
     private string _deflectionLimit = "L/350";
 
@@ -44,7 +44,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
 
     public bool IsCalculationValid { get; private set; }
     private bool textErrors;
-    public double PropExtensionMm => FloorHeight - SlabThickness - 418;
+    public double PropExtensionMm => FloorHeight - SlabThickness - (400 + (SelectedPlywood?.ThicknessMm ?? 18));
     public double PropLookupExtensionMm { get; private set; }
     public double PrimaryDeflectionMm { get; private set; }
     public void SetTextInputErrors(bool value) { if (textErrors != value) { textErrors = value; Calculate(); } }
@@ -78,7 +78,20 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public double CustomLiveLoad { get => _customLiveLoad; set { _customLiveLoad = value; OnPropertyChanged(); Calculate(); } }
     public double CustomFormworkLoad { get => _customFormworkLoad; set { _customFormworkLoad = value; OnPropertyChanged(); Calculate(); } }
 
-    public double SecondaryBeamSpacing { get => _secondaryBeamSpacing; set { _secondaryBeamSpacing = value; OnPropertyChanged(); Calculate(); } }
+    public IReadOnlyList<PlywoodProfile> PlywoodOptions => PlywoodCatalog.All;
+    public PlywoodProfile SelectedPlywood
+    {
+        get => _selectedPlywood;
+        set { _selectedPlywood=value; OnPropertyChanged(); OnPropertyChanged(nameof(PlywoodProfileId));
+            OnPropertyChanged(nameof(PlywoodCalculationBasis)); Calculate(); }
+    }
+    public string PlywoodProfileId { get => SelectedPlywood?.Id; set => SelectedPlywood=PlywoodCatalog.FromId(value); }
+    public PlywoodSpacingResult PlywoodResult { get; private set; }
+    public double SecondaryBeamSpacing => PlywoodResult?.MaximumSpacingMm ?? 0;
+    public string PlywoodCalculationBasis => (SelectedPlywood?.Basis ?? "Select plywood.") + " " + PlywoodSpacing.SheetBasis;
+    public string PlywoodSpacingSummary => PlywoodResult == null ? WarningMessage
+        : $"{SelectedPlywood.Label} · 2440 × 1220 mm · secondary spacing {SecondaryBeamSpacing:0} mm\n"
+        + $"Chart maximum {PlywoodResult.ChartMaximumSpacingMm:0} mm · {PlywoodResult.PressureKnM2:0.00} kN/m² · L/{PlywoodResult.Denominator} · shorter spans at sheet joints";
     public string PrimaryBeamCount { get => _primaryBeamCount; set { _primaryBeamCount = value; OnPropertyChanged(); Calculate(); } }
     public double SecondaryBeamCantilever { get => _secondaryBeamCantilever; set { _secondaryBeamCantilever = value; OnPropertyChanged(); Calculate(); } }
     public string DeflectionLimit { get => _deflectionLimit; set { _deflectionLimit = value; OnPropertyChanged(); Calculate(); } }
@@ -161,7 +174,8 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     {
         if (textErrors) throw new ArgumentException("Correct the highlighted input before calculating or importing.");
         CheckNumber(SlabThickness, "Slab thickness"); CheckNumber(FloorHeight, "Floor height");
-        CheckNumber(SecondaryBeamSpacing, "Secondary spacing"); CheckNumber(PropSpacing, "Prop spacing");
+        CheckNumber(PropSpacing, "Prop spacing");
+        if (SelectedPlywood==null || !PlywoodOptions.Contains(SelectedPlywood)) throw new ArgumentException("Select a plywood product and thickness.");
         if (PropSpacing < 1) throw new ArgumentException("Prop spacing must be at least 1 mm.");
         CheckNumber(SecondaryBeamCantilever, "Secondary cantilever", false); CheckNumber(PrimaryBeamCantilever, "Primary cantilever", false);
         if (UseCustomLoads) { CheckNumber(CustomLiveLoad, "Live load", false); CheckNumber(CustomFormworkLoad, "Formwork load", false); }
@@ -173,14 +187,19 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     {
         IsCalculationValid = false; SuggestedPrimaryBeamSpacing = ActualPropLoad = H20Shear = H20Utilization = UtilizationRate = PropCapacityLimit = 0;
         PrimaryDeflectionMm = PropLookupExtensionMm = 0;
+        PlywoodResult = null;
         PrimaryDiagramViewModel = SecondaryDiagramViewModel = null;
     }
     private void Calculate()
     {
         ClearResults();
-        try { ValidateInputs(); CalculateValidInputs(); IsCalculationValid = SuggestedPrimaryBeamSpacing > 0 && string.IsNullOrEmpty(WarningMessage); }
+        try { ValidateInputs();
+            double pressure=UseCustomLoads ? 25*SlabThickness/1000+CustomLiveLoad+CustomFormworkLoad : SlabLoadHelper.CalculateTotalLoad(SlabThickness);
+            PlywoodResult=PlywoodSpacing.CalculateForSheet(SelectedPlywood,pressure,int.Parse(DeflectionLimit.Substring(2)));
+            CalculateValidInputs(); IsCalculationValid = SuggestedPrimaryBeamSpacing > 0 && string.IsNullOrEmpty(WarningMessage); }
         catch (ArgumentException ex) { ClearResults(); WarningMessage = ex.Message; }
         OnPropertyChanged(nameof(IsCalculationValid)); OnPropertyChanged(nameof(PropExtensionMm)); OnPropertyChanged(nameof(PropLookupExtensionMm)); OnPropertyChanged(nameof(PrimaryDeflectionMm));
+        OnPropertyChanged(nameof(PlywoodResult)); OnPropertyChanged(nameof(SecondaryBeamSpacing)); OnPropertyChanged(nameof(PlywoodSpacingSummary));
         CommandManager.InvalidateRequerySuggested();
     }
     private void CalculateValidInputs()

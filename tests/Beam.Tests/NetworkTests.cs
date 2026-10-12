@@ -89,9 +89,9 @@ internal static class NetworkTests
         crossingInput.CrossingBeams[0].DepthMm=350;crossingInput.CrossingBeams=new[] {crossingInput.CrossingBeams[0],new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,PositionMm=3100,WidthMm=300,DepthMm=400}};rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"overlapping crossing beams rejected to avoid duplicate volume");
         var failureVm=new BeamCalculatorViewModel {AllowCustomH20Lengths=true,UseTowers=true,Depth=1750,Width=800,BeamLengthMm=10600,TowerLegCapacityKn=70,HasRightSlab=true,RightSlabThickness=300,RightSlabBayMm=2575,TransferSlabLoads=true,Exclude600Standalone=true,UseBeamNetwork=true};
         failureVm.NetworkBeams[1].WidthMm=650;failureVm.NetworkBeams[1].DepthMm=1150;
-        Check(failureVm.MaximumSecondarySpacingMm==295 && failureVm.UpperSupportSpacingMm==295,"deep beam automatically sets common network spacing before search");
+        Check(failureVm.MaximumSecondarySpacingMm==275 && failureVm.UpperSupportSpacingMm==275,"deep beam automatically sets common network spacing before search");
         failureVm.NetworkBeams[0].DepthMm=900;failureVm.NetworkBeams[1].DepthMm=900;
-        Check(failureVm.UpperSupportSpacingMm==365 && !failureVm.HasTowerFailure,"changing depth updates spacing and clears stale results");
+        Check(failureVm.UpperSupportSpacingMm==350 && !failureVm.HasTowerFailure,"changing depth updates spacing and clears stale results");
         failureVm.OptimizeTowersAsync().GetAwaiter().GetResult();
         var customResult=failureVm.NetworkResult;
         Check(failureVm.IsCalculationValid && customResult!=null && !failureVm.HasTowerFailure,"custom slab length passes using the calculated row spacing");
@@ -99,9 +99,11 @@ internal static class NetworkTests
         Check(customResult.Bays[0].IsCustomLength && customResult.Beams[0].Transfer.RightUpperCustom && customResult.Beams[1].Transfer.LeftUpperCustom && customResult.Schedule.Contains(customResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"custom identity survives reversal and is visible in report");
         Near(customResult.SlabLoadKn,9.4*2.575*customResult.SlabCoveredLengthMm/1000,"custom-covered slab plus shutter strips conserve full bay load");
         Check(failureVm.BuildDiagnosticReport().Contains("SELECTED NETWORK LAYOUT") && customResult.LayoutDiagnostics.Contains("B1: legs=") && customResult.LayoutDiagnostics.Contains("primary runs=") && customResult.LayoutDiagnostics.Contains("S1: H20="),"diagnosis includes selected grid, per-beam legs and actual stocks and shared feet");
+        foreach(double joint in new[] {2440.0,4880,7320,9760})
+            Check(customResult.SlabRowsMm.Any(x=>Math.Abs(x-joint)<1e-7),"shared network upper H20 rows retain each plywood joint");
         foreach(var beam in customResult.Beams)
         {
-            Near(beam.Transfer.EnteredUpperSpacingMm,failureVm.MaximumSecondarySpacingMm,"optimizer uses the displayed automatic spacing for every beam");
+            Check(beam.Transfer.EnteredUpperSpacingMm<=failureVm.MaximumSecondarySpacingMm && PlywoodSpacing.StandardSpacingsMm.Contains(beam.Transfer.EnteredUpperSpacingMm),"optimizer uses a listed spacing within the displayed maximum for every beam");
             Check(beam.MaxLegKn<=70 && beam.StockPlan.Pieces.All(piece=>common.StockLengthsMm.Contains(piece.StockLengthMm) || piece.StockLengthMm%25==0),"enabled custom lengths do not change capacity and retain permitted stock/cut lengths");
             foreach(var member in beam.Transfer.PrimaryCases.SelectMany(c=>c).Concat(beam.Transfer.LowerCases.SelectMany(c=>c)).Concat(beam.Transfer.UpperMembers))
             {

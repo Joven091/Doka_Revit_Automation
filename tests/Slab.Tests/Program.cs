@@ -56,7 +56,7 @@ class Program
   Equal(22.9,SlabLoadHelper.CalculateTotalLoad(800),"heaping cap");Equal(9.15,SlabLoadHelper.CalculateTotalLoad(290),"load precision");Equal(5.003125,SlabLoadHelper.CalculateTotalLoad(124.125),"decimal slab thickness");
   Check(new FlexCalculatorViewModel{PropCount="5+",PropSpacing=1000,PrimaryBeamCantilever=500}.IsCalculationValid,"continuous layout is not restricted to stock H20 length");
   var v=new FlexCalculatorViewModel();Check(v.IsCalculationValid,"default valid");Equal(2282,v.PropExtensionMm,"automatic extension");
-  foreach(string name in new[]{"SlabThickness","FloorHeight","SecondaryBeamSpacing","PropSpacing"})foreach(double bad in new[]{0,-1,double.NaN,double.PositiveInfinity}){v=new FlexCalculatorViewModel();typeof(FlexCalculatorViewModel).GetProperty(name).SetValue(v,bad);Invalid(v,"invalid "+name);}
+  foreach(string name in new[]{"SlabThickness","FloorHeight","PropSpacing"})foreach(double bad in new[]{0,-1,double.NaN,double.PositiveInfinity}){v=new FlexCalculatorViewModel();typeof(FlexCalculatorViewModel).GetProperty(name).SetValue(v,bad);Invalid(v,"invalid "+name);}
   foreach(string name in new[]{"SecondaryBeamCantilever","PrimaryBeamCantilever","CustomLiveLoad","CustomFormworkLoad"})foreach(double bad in new[]{-1,double.NaN,double.PositiveInfinity}){v=new FlexCalculatorViewModel{UseCustomLoads=true};typeof(FlexCalculatorViewModel).GetProperty(name).SetValue(v,bad);Invalid(v,"invalid "+name);}
   v=new FlexCalculatorViewModel{CustomLiveLoad=double.NaN};Check(v.IsCalculationValid,"inactive custom ignored");v.UseCustomLoads=true;Invalid(v,"custom activated");
   v=new FlexCalculatorViewModel{FloorHeight=10000};Invalid(v,"stale diagrams cleared");v.FloorHeight=3000;Check(v.IsCalculationValid&&v.PrimaryDiagramViewModel!=null,"diagram recovery");
@@ -91,6 +91,15 @@ class Program
   }
   Console.WriteLine($"Sweep: 432 input combinations; {accepted} valid layouts.");
   RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;window=new FlexCalculatorWindow();var visualRoot=(FrameworkElement)window.Content;visualRoot.Measure(new Size(1040,860));visualRoot.Arrange(new Rect(0,0,1040,860));visualRoot.UpdateLayout();Pump();v=(FlexCalculatorViewModel)window.DataContext;var import=(Button)window.FindName("ImportButton");Check(import.IsEnabled,"initial import");
+  var plywood=(ComboBox)window.FindName("PlywoodSelector");
+  Check(plywood.Items.Count==3 && plywood.SelectedItem==PlywoodCatalog.Default,"slab plywood selector default");
+  var secondary=(TextBox)window.FindName("CalculatedSecondarySpacingInput");
+  Check(secondary.IsReadOnly && !secondary.IsEnabled && secondary.GetBindingExpression(TextBox.TextProperty).ParentBinding.Mode==System.Windows.Data.BindingMode.OneWay,"slab secondary spacing is locked");
+  v.SlabThickness=150;plywood.SelectedItem=PlywoodCatalog.All[0];Pump();Check(v.SecondaryBeamSpacing==275 && v.IsCalculationValid,"slab selector recalculates sheet spacing");
+  var savedPlywood=window.CaptureCalculation();plywood.SelectedItem=PlywoodCatalog.All[2];window.RestoreCalculation(savedPlywood);Pump();Check(v.SelectedPlywood.ThicknessMm==9,"slab plywood survives save/load");
+  savedPlywood.Inputs.Single(f=>f.Name=="SecondaryBeamSpacing").Value="999";savedPlywood.Inputs.RemoveAll(f=>f.Name=="PlywoodProfileId");window.RestoreCalculation(savedPlywood);Pump();Check(v.SelectedPlywood==PlywoodCatalog.Default && v.SecondaryBeamSpacing==488,"legacy manual slab spacing cannot override calculation");
+  savedPlywood.Inputs.Add(CalculationFiles.Field("PlywoodProfileId","unknown"));bool invalidPlywood=false;try{window.RestoreCalculation(savedPlywood);}catch(ArgumentException){invalidPlywood=true;}Check(invalidPlywood && v.SelectedPlywood==PlywoodCatalog.Default,"unknown slab plywood leaves retained inputs unchanged");
+  v.SlabThickness=300;Pump();
   Enter("SlabThickness","abc");Invalid(v,"text conversion");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var ignored),"import guard");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"results hidden");
   Enter("SlabThickness","300");Check(v.IsCalculationValid&&import.IsEnabled,"text repair");v.UseCustomLoads=true;Pump();Enter("CustomLiveLoad","bad");Invalid(v,"custom text");v.UseCustomLoads=false;Pump();Check(v.IsCalculationValid,"inactive conversion ignored");v.UseCustomLoads=true;Pump();Invalid(v,"reactivated conversion");Enter("CustomLiveLoad","2.25");v.UseCustomLoads=false;
   Enter("PrimaryBeamCantilever","1000");Invalid(v,"UI uplift");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var upliftIgnored),"uplift import blocked");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"uplift results hidden");Enter("PrimaryBeamCantilever","500");Check(v.IsCalculationValid&&import.IsEnabled,"UI uplift recovery");

@@ -229,7 +229,7 @@ namespace EngineeringDashboard
         {
             failure=null;
             var obstacleArray=obstacles.ToArray();
-            foreach(double spacing in new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,250,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7))
+            foreach(double spacing in r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(s=>s<=r.Input.UpperSpacingMm) : new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,250,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7))
             {
                 var result=DedicatedCandidate(common,r,index,spacing,out string reason);
                 if(result!=null)reason=Clash(result.Solids,obstacleArray);
@@ -263,7 +263,7 @@ namespace EngineeringDashboard
             input.DiagnosticScope=$"X{index+1} dedicated · ";
             input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace,ignoreUplift:input.IgnoreUplift) {LazyLocations=input.LazySearchDiagnostics};
             input.NetworkLegCeiling=int.MaxValue;
-            input.TransferredSlab=new TransferredSlabInput {IsNetwork=true,IncludeConcreteEndStrips=true,FixedTowerWidthMm=width,BeamCentreOffsetMm=-transverseOffset,BeamWidthMm=c.WidthMm,BeamLineLoadKnM=r.Input.AreaLoad(c.DepthMm)*c.WidthMm/1000,UpperSpacingMm=spacing};
+            input.TransferredSlab=new TransferredSlabInput {PlywoodSheetLengthMm=r.Input.PlywoodSheetLengthMm,IsNetwork=true,IncludeConcreteEndStrips=true,FixedTowerWidthMm=width,BeamCentreOffsetMm=-transverseOffset,BeamWidthMm=c.WidthMm,BeamLineLoadKnM=r.Input.AreaLoad(c.DepthMm)*c.WidthMm/1000,UpperSpacingMm=spacing};
             TowerLayout l;
             if(spanOffset==0 && nearExtension==0 && farExtension==0)
             {
@@ -413,7 +413,7 @@ namespace EngineeringDashboard
                         // Leave the full 80 mm flange clear of the receiving timber
                         // or shutter at each junction while respecting maximum spacing.
                         int count=Math.Max(2,(int)Math.Ceiling((covered-H20WidthMm)/spacing)+1);double actualSpacing=(covered-H20WidthMm)/(count-1);
-                        var rows=Enumerable.Range(0,count).Select(i=>(span-(count-1)*actualSpacing)/2+i*actualSpacing).ToArray();
+                        var rows=r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.SheetSupportRows(edge,span-edge,spacing,r.Input.PlywoodSheetLengthMm) : Enumerable.Range(0,count).Select(i=>(span-(count-1)*actualSpacing)/2+i*actualSpacing).ToArray();
                         if(rows.Any(y=>y<start-1e-7 || y>=start+stock-1e-7))continue;
                         var secondarySolids=rows.Select(y=>Timber($"X{index+1} junction secondary",c.PositionMm+offset+lowerStart,face+y,lowerStock,true,c.BottomElevationMm)).ToArray();
                         if(Clash(secondarySolids,obstacles)!=null)continue;
@@ -467,7 +467,7 @@ namespace EngineeringDashboard
             var shutters=zones.Where(z=>z.IsShutterEndZone).GroupBy(z=>z.Beam).Select(g=>g.First()).Select(z=>new FormworkSolid {Name=$"X{index+1} side shutter on B{z.Beam+1}",IsSideShutter=true,X0=z.FootprintStartMm,X1=z.FootprintEndMm,Y0=z.EndZoneStartMm,Y1=z.EndZoneEndMm,Z0=z.ReceivingTopMm,Z1=z.H20UndersideMm}).ToArray();
             if(Clash(shutters,obstacles)!=null){failure=$"X{index+1}: side-shutter assembly clashes with existing formwork.";return null;}
             obstacles=obstacles.Concat(shutters).ToArray();
-            var spacings=new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7).ToArray();
+            var spacings=(r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(s=>s<=r.Input.UpperSpacingMm) : new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7)).ToArray();
             var widths=new[] {1000.0,1500,2000,1524,600};
             var offsets=new[] {0.0,25,-25,50,-50,75,-75,100,-100,125,-125,150,-150};
             foreach(double spacing in spacings)
