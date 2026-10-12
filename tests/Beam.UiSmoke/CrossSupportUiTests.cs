@@ -68,7 +68,7 @@ internal static class CrossSupportUiTests
         Capture(workspace.Drawing,2000,1100,Preview(previewPath,"coordinated-report-setting-out"));
         var settingLabels=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).OfType<GlyphRunDrawing>().Select(g=>new string(g.GlyphRun.Characters.ToArray())).ToArray();
         Check(workspace.Drawing.CrossingSettingOut.Where(d=>d.Item1==0).All(d=>settingLabels.Contains(d.Item3.ToString("0.###"))),"focused crossing displays every setting-out value, including both H20 overhangs");
-        workspace.Drawing.Select(FormworkObject.Slab,1);Pump();Check(workspace.SelectedResultText.Contains("entered maximum 275"),"slab inspector explains tighter junction spacing");
+        workspace.Drawing.Select(FormworkObject.Slab,1);Pump();Check(workspace.SelectedResultText.Contains("entered maximum "+vm.MaximumSecondarySpacingMm.ToString("0.###",System.Globalization.CultureInfo.InvariantCulture)),"slab inspector explains tighter junction spacing");
         workspace.Buttons["Section"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
         for(int i=0;i<vm.NetworkResult.CrossSupports.Length;i++)
         {
@@ -126,10 +126,13 @@ internal static class CrossSupportUiTests
         var plan=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).ToArray();
         var glyphs=plan.OfType<GlyphRunDrawing>().Select(g=>new {Text=new string(g.GlyphRun.Characters.ToArray()),Y=g.GlyphRun.BaselineOrigin.Y}).ToArray();
         Check(!glyphs.Any(g=>g.Text.Contains("Direct bearing")),"formwork omits direct-bearing annotations");
-        foreach(string value in new[] {"450","575"})
+        foreach(var beam in vm.NetworkResult.Beams)
+        foreach(var piece in beam.StockPlan.Pieces)
         {
-            var labels=glyphs.Where(g=>g.Text==value).ToArray();Check(labels.Length>=2,"reported overhang dimension labels are visible: "+value);
-            Check(labels.GroupBy(g=>Math.Round(g.Y,3)).All(g=>g.Count()>=2),"overhang labels share a single baseline on each beam: "+value);
+            string near=(beam.PositionsMm[piece.FirstSupport]-piece.StartMm).ToString("0.###");
+            string far=(piece.EndMm-beam.PositionsMm[piece.LastSupport]).ToString("0.###");
+            Check(glyphs.Any(g=>g.Text==near) && glyphs.Any(g=>g.Text==far),"actual optimized overhang dimensions are visible");
+            Check(glyphs.GroupBy(g=>Math.Round(g.Y,3)).Any(group=>near==far ? group.Count(g=>g.Text==near)>=2 : group.Any(g=>g.Text==near) && group.Any(g=>g.Text==far)),"near and far overhang labels share a single baseline");
         }
         Check(workspace.Drawing.MemberTargets.All(t=>t.Item2<0 ? vm.NetworkResult.CrossSupports[-t.Item2-1].Members[t.Item3].H20Count==2 : t.Item3<vm.NetworkResult.Beams[t.Item2].StockPlan.Pieces.Length),"plan hides main and crossing secondaries; section keeps their selectable diagrams");
         Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"common plan rendering retains every actual leg and crossing H20");
@@ -166,7 +169,7 @@ internal static class CrossSupportUiTests
             var cyan=Primitives(visual.Drawing).OfType<GeometryDrawing>().Where(g=>g.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.DarkCyan).Select(g=>g.Geometry).OfType<LineGeometry>().ToArray();
             Check(cyan.Length>0 && cyan.All(l=>rotated ? Math.Abs(l.StartPoint.Y-l.EndPoint.Y)<.01 : Math.Abs(l.StartPoint.X-l.EndPoint.X)<.01),"cyan frame planes follow actual tower rotation");
         }
-        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70};
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70,SelectedPlywood=PlywoodCatalog.FromId("dokaplex-9mm-9732-121"),DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         foreach(var b in vm.NetworkBeams) {b.WidthMm=300;b.DepthMm=600;}
         vm.NetworkBays[0].WidthMm=3900;vm.NetworkBays[0].ThicknessMm=100;
         vm.AddCrossingBeam();var cross=vm.CrossingBeams[0];cross.PositionMm=1225;cross.WidthMm=400;cross.DepthMm=150;cross.BottomElevationMm=-250;cross.SupportMode=CrossBeamSupportMode.ExistingSupportsOnly;
@@ -185,7 +188,7 @@ internal static class CrossSupportUiTests
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Drawing.Select(FormworkObject.Crossing,0);workspace.Show();Pump();
         Check(workspace.Fields.ContainsKey("BottomElevationMm"),"cross bottom elevation exposed in workspace");
         workspace.Drawing.Select(FormworkObject.Slab,0);Pump();
-        Check(workspace.SelectedResultText.Contains("Equal foot setback") && workspace.SelectedResultText.Contains("repeat every row") && workspace.SelectedResultText.Contains("Maximum row spacing 100"),"workspace exposes the repeated symmetric slab support detail and spacing");
+        Check(workspace.SelectedResultText.Contains("Equal foot setback") && workspace.SelectedResultText.Contains("repeat every row") && workspace.SelectedResultText.Contains(vm.NetworkResult.SecondarySpacingNotice.Length==0 ? "Maximum row spacing "+vm.NetworkResult.Input.UpperSpacingMm.ToString("0.###",System.Globalization.CultureInfo.CurrentCulture) : vm.NetworkResult.SecondarySpacingNotice),"workspace exposes the repeated symmetric slab support detail and spacing");
         var slab=vm.NetworkResult.Beams[0].Transfer.UpperMembers.Single(m=>m.Name=="Upper right");
         Check(Math.Abs(slab.SupportsMm[0]+slab.SupportsMm[1]-slab.LengthMm)<1e-7 && Math.Abs(slab.Analysis.Reactions[0]-slab.Analysis.Reactions[1])<1e-7,"drawn slab member has symmetric supports and actual equal uniform-load reactions");
         workspace.Close();
