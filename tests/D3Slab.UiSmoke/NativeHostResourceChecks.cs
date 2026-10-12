@@ -38,14 +38,16 @@ public sealed class NativeHostResourceChecks : MarshalByRefObject
                 try
                 {
                     window.Show();
+                    var pickerContent = window.Content;
                     ((Button)window.FindName("PickTowersButton")).RaiseEvent(
                         new RoutedEventArgs(Button.ClickEvent));
                     Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
                     window.UpdateLayout();
                     if (!model.HasSelectedSupportSystem || !model.UseTowers ||
-                        ((Grid)window.FindName("CalculatorWorkspace")).Visibility != Visibility.Visible)
+                        ReferenceEquals(window.Content, pickerContent))
                         throw new Exception("D3 selection did not reveal the calculator.");
-                    if (!(window.FindResource("PrimaryAction") is Style))
+                    var surface = (FrameworkElement)window.Content;
+                    if (!(surface.Resources["PrimaryAction"] is Style))
                         throw new Exception("Shared calculator styles did not load.");
                 }
                 finally { window.Close(); }
@@ -57,5 +59,6 @@ public sealed class NativeHostResourceChecks : MarshalByRefObject
         thread.Start();
         thread.Join();
         if (failure != null) throw new Exception("Native-host D3 resource check failed.", failure);
+        Console.WriteLine("PASS D3 drawing workspace with no managed entry assembly.");
     }
 }
