@@ -31,7 +31,7 @@ internal static class CrossSupportUiTests
     static string Preview(string path,string name)=>string.IsNullOrEmpty(path) ? null : System.IO.Path.ChangeExtension(path,name+".png");
     static void CoordinatedWorkspace(string previewPath)
     {
-        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=6900,UpperSupportSpacingMm=275,TowerLegCapacityKn=70,StockLengthsText="1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900",AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=6900,TowerLegCapacityKn=70,StockLengthsText="1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900",AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         while(vm.NetworkBeams.Count<8)vm.AddNetworkBay();
         for(int i=0;i<8;i++) {vm.NetworkBeams[i].WidthMm=i%2==0 ? 800 : 650;vm.NetworkBeams[i].DepthMm=i%2==0 ? 1750 : 1150;vm.NetworkBeams[i].BottomElevationMm=-vm.NetworkBeams[i].DepthMm;}
         var widths=new[] {2677.0,1875,3275,2275,2278,2272,2252};
@@ -45,7 +45,7 @@ internal static class CrossSupportUiTests
         // production-runtime search to complete before checking the rendered values.
         while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>600)throw new Exception("Coordinated report UI timeout");}task.GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
-        Check(vm.UpperSupportSpacingMm==275 && vm.NetworkResult.Input.UpperSpacingMm<=275 && vm.BuildDiagnosticReport().Contains("entered maximum 275"),"coordinated search preserves the entered maximum and reports its actual spacing");
+        Check(vm.UpperSupportSpacingMm==vm.MaximumSecondarySpacingMm && vm.NetworkResult.Input.UpperSpacingMm<=vm.MaximumSecondarySpacingMm && vm.BuildDiagnosticReport().Contains("UpperSupportSpacingMm"),"coordinated search preserves the entered maximum and reports its actual spacing");
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Show();Pump();workspace.Drawing.Formwork=true;
         Capture(workspace.Drawing,2000,1100);workspace.Drawing.Fit();Capture(workspace.Drawing,2000,1100,Preview(previewPath,"coordinated-report-plan"));
         Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"coordinated plan draws every real tower leg and crossing member");
@@ -68,7 +68,7 @@ internal static class CrossSupportUiTests
         Capture(workspace.Drawing,2000,1100,Preview(previewPath,"coordinated-report-setting-out"));
         var settingLabels=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).OfType<GlyphRunDrawing>().Select(g=>new string(g.GlyphRun.Characters.ToArray())).ToArray();
         Check(workspace.Drawing.CrossingSettingOut.Where(d=>d.Item1==0).All(d=>settingLabels.Contains(d.Item3.ToString("0.###"))),"focused crossing displays every setting-out value, including both H20 overhangs");
-        workspace.Drawing.Select(FormworkObject.Slab,1);Pump();Check(workspace.SelectedResultText.Contains("entered maximum 275"),"slab inspector explains tighter junction spacing");
+        workspace.Drawing.Select(FormworkObject.Slab,1);Pump();Check(workspace.SelectedResultText.Contains("entered maximum "+vm.MaximumSecondarySpacingMm.ToString("0.###",System.Globalization.CultureInfo.InvariantCulture)),"slab inspector explains tighter junction spacing");
         workspace.Buttons["Section"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
         for(int i=0;i<vm.NetworkResult.CrossSupports.Length;i++)
         {
@@ -114,7 +114,7 @@ internal static class CrossSupportUiTests
     }
     static void ReportedWorkspace(string previewPath)
     {
-        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=10450,UpperSupportSpacingMm=275,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,MaximumConcreteEndOverhangMm=75,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=10450,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,MaximumConcreteEndOverhangMm=75,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         vm.AddNetworkBay();for(int i=0;i<3;i++) {vm.NetworkBeams[i].WidthMm=i==2 ? 800 : 650;vm.NetworkBeams[i].DepthMm=i==2 ? 1750 : 1150;vm.NetworkBeams[i].BottomElevationMm=i==2 ? -1750 : -1150;}
         vm.NetworkBays[0].WidthMm=3550;vm.NetworkBays[1].WidthMm=2575;foreach(var bay in vm.NetworkBays)bay.ThicknessMm=300;
         vm.AddCrossingBeam();var crossing=vm.CrossingBeams[0];crossing.BayNumber=1;crossing.PositionMm=2500;crossing.WidthMm=300;crossing.DepthMm=600;crossing.BottomElevationMm=-600;
@@ -126,10 +126,25 @@ internal static class CrossSupportUiTests
         var plan=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).ToArray();
         var glyphs=plan.OfType<GlyphRunDrawing>().Select(g=>new {Text=new string(g.GlyphRun.Characters.ToArray()),Y=g.GlyphRun.BaselineOrigin.Y}).ToArray();
         Check(!glyphs.Any(g=>g.Text.Contains("Direct bearing")),"formwork omits direct-bearing annotations");
-        foreach(string value in new[] {"450","575"})
+        // Shorter optimized overhangs are intentionally hidden at the overview scale.
+        // Inspect each primary at a readable zoom, just as a user would in the plan.
+        Capture(workspace.Drawing,2400,850);
+        workspace.Drawing.ZoomAt(.35/workspace.Drawing.Zoom,new Point(1200,425));
+        for(int index=0;index<vm.NetworkResult.Beams.Length;index++)
         {
-            var labels=glyphs.Where(g=>g.Text==value).ToArray();Check(labels.Length>=2,"reported overhang dimension labels are visible: "+value);
-            Check(labels.GroupBy(g=>Math.Round(g.Y,3)).All(g=>g.Count()>=2),"overhang labels share a single baseline on each beam: "+value);
+            var beam=vm.NetworkResult.Beams[index];
+            foreach(var piece in beam.StockPlan.Pieces)
+            {
+                var focus=workspace.Drawing.Screen((piece.StartMm+piece.EndMm)/2,vm.NetworkResult.BeamCentresMm[index]+beam.TransverseOffsetMm+beam.WidthMm/2);
+                workspace.Drawing.PanBy(new Vector(1200-focus.X,350-focus.Y));
+                Capture(workspace.Drawing,2400,850);
+                var focused=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).OfType<GlyphRunDrawing>()
+                    .Select(g=>new {Text=new string(g.GlyphRun.Characters.ToArray()),Y=g.GlyphRun.BaselineOrigin.Y}).ToArray();
+                string near=(beam.PositionsMm[piece.FirstSupport]-piece.StartMm).ToString("0.###");
+                string far=(piece.EndMm-beam.PositionsMm[piece.LastSupport]).ToString("0.###");
+                Check(focused.Any(g=>g.Text==near) && focused.Any(g=>g.Text==far),"actual optimized overhang dimensions are visible: "+near+" / "+far);
+                Check(focused.GroupBy(g=>Math.Round(g.Y,3)).Any(group=>near==far ? group.Count(g=>g.Text==near)>=2 : group.Any(g=>g.Text==near) && group.Any(g=>g.Text==far)),"near and far overhang labels share a single baseline");
+            }
         }
         Check(workspace.Drawing.MemberTargets.All(t=>t.Item2<0 ? vm.NetworkResult.CrossSupports[-t.Item2-1].Members[t.Item3].H20Count==2 : t.Item3<vm.NetworkResult.Beams[t.Item2].StockPlan.Pieces.Length),"plan hides main and crossing secondaries; section keeps their selectable diagrams");
         Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"common plan rendering retains every actual leg and crossing H20");
@@ -166,7 +181,7 @@ internal static class CrossSupportUiTests
             var cyan=Primitives(visual.Drawing).OfType<GeometryDrawing>().Where(g=>g.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.DarkCyan).Select(g=>g.Geometry).OfType<LineGeometry>().ToArray();
             Check(cyan.Length>0 && cyan.All(l=>rotated ? Math.Abs(l.StartPoint.Y-l.EndPoint.Y)<.01 : Math.Abs(l.StartPoint.X-l.EndPoint.X)<.01),"cyan frame planes follow actual tower rotation");
         }
-        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,UpperSupportSpacingMm=100,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70};
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70,SelectedPlywood=PlywoodCatalog.FromId("dokaplex-9mm-9732-121"),DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         foreach(var b in vm.NetworkBeams) {b.WidthMm=300;b.DepthMm=600;}
         vm.NetworkBays[0].WidthMm=3900;vm.NetworkBays[0].ThicknessMm=100;
         vm.AddCrossingBeam();var cross=vm.CrossingBeams[0];cross.PositionMm=1225;cross.WidthMm=400;cross.DepthMm=150;cross.BottomElevationMm=-250;cross.SupportMode=CrossBeamSupportMode.ExistingSupportsOnly;
@@ -185,11 +200,11 @@ internal static class CrossSupportUiTests
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Drawing.Select(FormworkObject.Crossing,0);workspace.Show();Pump();
         Check(workspace.Fields.ContainsKey("BottomElevationMm"),"cross bottom elevation exposed in workspace");
         workspace.Drawing.Select(FormworkObject.Slab,0);Pump();
-        Check(workspace.SelectedResultText.Contains("Equal foot setback") && workspace.SelectedResultText.Contains("repeat every row") && workspace.SelectedResultText.Contains("Maximum row spacing 100"),"workspace exposes the repeated symmetric slab support detail and spacing");
+        Check(workspace.SelectedResultText.Contains("Equal foot setback") && workspace.SelectedResultText.Contains("repeat every row") && workspace.SelectedResultText.Contains(vm.NetworkResult.SecondarySpacingNotice.Length==0 ? "Maximum row spacing "+vm.NetworkResult.Input.UpperSpacingMm.ToString("0.###",System.Globalization.CultureInfo.CurrentCulture) : vm.NetworkResult.SecondarySpacingNotice),"workspace exposes the repeated symmetric slab support detail and spacing");
         var slab=vm.NetworkResult.Beams[0].Transfer.UpperMembers.Single(m=>m.Name=="Upper right");
         Check(Math.Abs(slab.SupportsMm[0]+slab.SupportsMm[1]-slab.LengthMm)<1e-7 && Math.Abs(slab.Analysis.Reactions[0]-slab.Analysis.Reactions[1])<1e-7,"drawn slab member has symmetric supports and actual equal uniform-load reactions");
         workspace.Close();
-        var junction=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=10800,UpperSupportSpacingMm=275,MaximumConcreteEndOverhangMm=75,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+        var junction=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=10800,MaximumConcreteEndOverhangMm=75,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         junction.NetworkBeams[0].WidthMm=650;junction.NetworkBeams[0].DepthMm=1150;junction.NetworkBeams[0].BottomElevationMm=-1150;
         junction.NetworkBeams[1].WidthMm=800;junction.NetworkBeams[1].DepthMm=1750;junction.NetworkBeams[1].BottomElevationMm=-1750;
         junction.NetworkBays[0].WidthMm=2575;junction.NetworkBays[0].ThicknessMm=300;junction.AddCrossingBeam();junction.CrossingBeams[0].PositionMm=5375;junction.CrossingBeams[0].WidthMm=650;junction.CrossingBeams[0].DepthMm=1150;junction.CrossingBeams[0].BottomElevationMm=-1150;

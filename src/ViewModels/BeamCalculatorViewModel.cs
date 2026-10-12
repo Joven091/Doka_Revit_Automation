@@ -32,7 +32,7 @@ namespace EngineeringDashboard
             return option;
         }
         public IReadOnlyList<BeamDeflectionOption> DeflectionOptions => deflection?.Denominator == 0 ? AvailableDeflectionOptions.Concat(new[] { deflection }).ToArray() : AvailableDeflectionOptions;
-        public string DeflectionCriteriaNote => "L = each H20 support span; overhangs use their own length. Includes support rotation.";
+        public string DeflectionCriteriaNote => "L = each H20 support span (overhangs use their own length) or plywood span between secondary supports. H20 checks include support rotation.";
         public double PrimaryDeflectionMm { get; private set; }
         public double PrimaryDeflectionUtilization { get; private set; }
         public string PrimaryDeflectionSummary => $"H20 deflection: {PrimaryDeflectionMm:0.00} mm · {PrimaryDeflectionUtilization*100:0.0}% of criterion";
@@ -85,7 +85,7 @@ namespace EngineeringDashboard
                 line == 0 ? LeftLineLoad : RightLineLoad, 449.8756);
         }
         public double FloorHeight { get => floorHeight; set { floorHeight = value; Changed(); } }
-        public const double FormworkDepthMm = 418;
+        public double FormworkDepthMm => 400 + (SelectedPlywood?.ThicknessMm ?? double.NaN);
         public double PropExtensionMm => FloorHeight - Depth - FormworkDepthMm;
         public double PropCapacityKn { get; private set; }
         public double PropLookupExtensionMm { get; private set; }
@@ -163,6 +163,7 @@ namespace EngineeringDashboard
             LeftLineLoad = RightLineLoad = TotalLineLoad = 0;
             PropCapacityKn = PropLookupExtensionMm = PropUtilizationPercent = 0;
             LimitingFactor = string.Empty; WarningMessage = string.Empty;
+            CalculatePlywoodSpacing();
             if (UseTowers)
             {
                 try { CreateTowerInput(); WarningMessage = "Select Optimize towers to calculate the current inputs."; }
@@ -173,7 +174,7 @@ namespace EngineeringDashboard
             {
                 if (textErrors) throw new ArgumentException("Correct the highlighted input before calculating or importing.");
                 Check(Depth, "Beam depth", true); Check(Width, "Beam width", true);
-                Check(FloorHeight, "Floor height", true); Check(PropExtensionMm, "Prop extension (floor height minus beam depth and 418 mm formwork)", true);
+                Check(FloorHeight, "Floor height", true); Check(PropExtensionMm, "Prop extension (floor height minus beam depth, two H20 layers and selected plywood thickness)", true);
                 if (SelectedProp == null || !BeamPropOption.All.Contains(SelectedProp)) throw new ArgumentException("Select a prop type and orientation.");
                 double capacity = SelectedProp.Capacity(PropExtensionMm, out double lookupMeters);
                 if (HasAnySlab) Check(SlabStripWidthMm, "Adjacent slab strip width", true);
@@ -183,6 +184,7 @@ namespace EngineeringDashboard
                 if (NumberOfProps != "2" && NumberOfProps != "3" && NumberOfProps != "4+") throw new ArgumentException("Select a supported number of props.");
                 if (DeflectionLimit == null || !ContainsOption(DeflectionLimit)) throw new ArgumentException("Select a deflection limit.");
 
+                ValidatePlywoodSpacing();
                 double beam = AreaLoad(Depth) * Width / 1000;
                 double left = HasLeftSlab ? AreaLoad(LeftSlabThickness) * SlabStripWidthMm / 1000 : 0;
                 double right = HasRightSlab ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;

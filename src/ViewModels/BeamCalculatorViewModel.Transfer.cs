@@ -3,19 +3,19 @@ namespace EngineeringDashboard
     public partial class BeamCalculatorViewModel
     {
         private bool transferSlabLoads;
-        private double upperSupportSpacingMm = 750, leftSlabBayMm = 3900, rightSlabBayMm = 3900;
+        private double leftSlabBayMm = 3900, rightSlabBayMm = 3900;
         public bool TransferSlabLoads { get => transferSlabLoads; set { transferSlabLoads=value; Changed(); NotifyTransfer(); } }
         public bool IsTransferMode => TransferSlabLoads && UseTowers && (HasAnySlab || UseBeamNetwork);
         public bool ShowSlabStrip => HasAnySlab && !IsTransferMode;
         public bool CanSelectTransfer => UseTowers && (HasAnySlab || UseBeamNetwork);
         public bool ShowLeftBay => ShowSingleTransfer && HasLeftSlab;
         public bool ShowRightBay => ShowSingleTransfer && HasRightSlab;
-        public double UpperSupportSpacingMm { get => upperSupportSpacingMm; set { upperSupportSpacingMm=value; Changed(); } }
+        public double UpperSupportSpacingMm => MaximumSecondarySpacingMm;
         public double LeftSlabBayMm { get => leftSlabBayMm; set { leftSlabBayMm=value; Changed(); } }
         public double RightSlabBayMm { get => rightSlabBayMm; set { rightSlabBayMm=value; Changed(); } }
         public string TransferSummary => TowerResult?.Transfer?.Summary ?? "";
         public string TransferSchedule => TowerResult?.Transfer?.Schedule ?? "";
-        public string TowerCalculationBasis => (IgnoreUplift ? TowerBaseCalculationBasis.Replace("negative bearing reactions invalidate a candidate.", "uplift is excluded under the user-selected connected formwork assumption.") : TowerBaseCalculationBasis) + "\n" + (IgnoreUplift ? TowerLayout.ConnectedFormworkAssumption : "Bearing-only supports: uplift is rejected.");
+        public string TowerCalculationBasis => (IgnoreUplift ? TowerBaseCalculationBasis.Replace("negative bearing reactions invalidate a candidate.", "uplift is excluded under the user-selected connected formwork assumption.") : TowerBaseCalculationBasis) + "\n" + (IgnoreUplift ? TowerLayout.ConnectedFormworkAssumption : "Bearing-only supports: uplift is rejected.") + "\n" + PlywoodCalculationBasis;
         private string TowerBaseCalculationBasis => PrimaryMaterialAssumptions+"\n"+(IsTransferMode ? (IsNetworkMode && NetworkResult?.CrossSupports.Length>0 ? CrossBeamSupportResult.Limitations+"\n"+TransferredSlabResult.Assumptions : TransferredSlabResult.Assumptions) : TowerAssumptions);
         private void NotifyTransfer()
         {

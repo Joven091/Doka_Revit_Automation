@@ -58,7 +58,7 @@ internal static class TransferTests
         Near(point.Response(0,true)[0]-point.Response(0,false)[0],point.Reactions[0],"support jump at stock start");
         Near(point.Response(2000,true)[0]-point.Response(2000,false)[0],point.Reactions[1],"support jump at stock end");
         Console.WriteLine($"Transfer sample: {layout.LegCount} legs, width {layout.WidthMm}, {t.LeftUpperStockMm} mm upper, {t.LowerStockLengthMm} mm transverse, peak {layout.MaxLegKn:0.00} kN, movement {t.SlabMovementMm:0.00} mm");
-        var vm=new BeamCalculatorViewModel {UseTowers=true,HasLeftSlab=true,Depth=1750,Width=1100,BeamLengthMm=6750,TowerLegCapacityKn=70,TransferSlabLoads=true,UpperSupportSpacingMm=275};
+        var vm=new BeamCalculatorViewModel {UseTowers=true,HasLeftSlab=true,Depth=1750,Width=1100,BeamLengthMm=6750,TowerLegCapacityKn=70,TransferSlabLoads=true};
         vm.ValidateTowerInputs(); Check(vm.IsTransferMode && !vm.ShowSlabStrip,"mode selection");
         vm.HasLeftSlab=false; Check(!vm.IsTransferMode,"no selected slab restores beam-only mode");
         input.TransferredSlab=new TransferredSlabInput {BeamWidthMm=1100,BeamLineLoadKnM=50,UpperSpacingMm=200,RightBayMm=3900,RightAreaLoadKnM2=9.4};
