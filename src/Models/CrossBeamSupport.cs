@@ -582,8 +582,10 @@ namespace EngineeringDashboard
                 if(c.SupportMode!=CrossBeamSupportMode.ExistingSupportsOnly)
                 foreach(var allowance in CrossShutterAllowance.Candidates)
                 {
-                    // Exhaust the standard detail and its complete downstream/stage checks
-                    // before relaxing one local end, then (only if needed) both ends.
+                    // A reduced allowance repairs a junction that cannot fit locally.
+                    // Keep an already fitting standard detail when a later crossing fails;
+                    // network pattern search handles that failure without multiplying
+                    // unrelated allowance combinations across the entire network.
                     var support=Dedicated(common,r,index,existing.Concat(concrete).Concat(accepted.SelectMany(a=>a.Solids)),out string detail,allowance);
                     if(detail!=null)towerFailure=(towerFailure??"")+ $" X{index+1} allowance near {allowance.Near:0} mm / far {allowance.Far:0} mm: "+detail;
                     if(support!=null)
@@ -591,6 +593,7 @@ namespace EngineeringDashboard
                         support=new CrossBeamSupportResult {CrossingIndex=support.CrossingIndex,Input=support.Input,Arrangement=support.Arrangement,Towers=support.Towers,Members=support.Members,Solids=support.Solids,Bearings=support.Bearings,LoadKn=support.LoadKn,SharedFailure=sharedFailure,JunctionNotice=support.JunctionNotice,TowerSpanOffsetMm=support.TowerSpanOffsetMm,PrimaryNearExtensionMm=support.PrimaryNearExtensionMm,PrimaryFarExtensionMm=support.PrimaryFarExtensionMm,NearShutterClearanceMm=support.NearShutterClearanceMm,FarShutterClearanceMm=support.FarShutterClearanceMm};
                         accepted.Add(support);if(arrange(index+1))return true;accepted.RemoveAt(accepted.Count-1);
                         towerFailure=(towerFailure??"")+$" X{index+1}: dedicated towers with {allowance.Near:0}/{allowance.Far:0} mm allowances do not permit a complete passing cross-beam combination.";
+                        break;
                     }
                 }
                 Reject(common,(sharedFailure??"")+" "+(towerFailure??"")+" No valid requested cross-beam support arrangement.");return false;
