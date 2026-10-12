@@ -174,6 +174,7 @@ internal static class WorkspaceTests
             var optionSource=model.NetworkResult;
             var optionTask=model.GetNetworkBeamOptionsAsync(1);var optionDeadline=DateTime.UtcNow.AddMinutes(2);
             while(!optionTask.IsCompleted && DateTime.UtcNow<optionDeadline){Pump();Thread.Sleep(10);}
+            if(!optionTask.IsCompleted || optionTask.Result.Count(o=>o.IsAvailable)<=1)Console.WriteLine(model.BuildDiagnosticReport());
             Check(optionTask.IsCompleted && optionTask.Result.Count(o=>o.IsAvailable)>1,"beam alternatives are generated without blocking the drawing dispatcher");
             var beamTarget=drawing.ObjectTargets.First(t=>t.Item2==FormworkObject.Beam && t.Item3==1);
             Check(drawing.OpenBeamOptionsAt(Centre(beamTarget.Item1)),"right click targets B2's beam geometry");Pump();

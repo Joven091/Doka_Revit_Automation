@@ -182,10 +182,10 @@ internal static class CrossSupportUiTests
             var cyan=Primitives(visual.Drawing).OfType<GeometryDrawing>().Where(g=>g.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.DarkCyan).Select(g=>g.Geometry).OfType<LineGeometry>().ToArray();
             Check(cyan.Length>0 && cyan.All(l=>rotated ? Math.Abs(l.StartPoint.Y-l.EndPoint.Y)<.01 : Math.Abs(l.StartPoint.X-l.EndPoint.X)<.01),"cyan frame planes follow actual tower rotation");
         }
-        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70,SelectedPlywood=PlywoodCatalog.All[0],DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
-        foreach(var b in vm.NetworkBeams) {b.WidthMm=300;b.DepthMm=300;}
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70,SelectedPlywood=PlywoodCatalog.Default,UseCustomLoads=true,CustomLiveLoad=0,CustomFormworkLoad=0,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+        foreach(var b in vm.NetworkBeams) {b.WidthMm=300;b.DepthMm=600;}
         vm.NetworkBays[0].WidthMm=3900;vm.NetworkBays[0].ThicknessMm=100;
-        vm.AddCrossingBeam();var cross=vm.CrossingBeams[0];cross.PositionMm=1225;cross.WidthMm=400;cross.DepthMm=150;cross.BottomElevationMm=-250;cross.SupportMode=CrossBeamSupportMode.ExistingSupportsOnly;
+        vm.AddCrossingBeam();var cross=vm.CrossingBeams[0];cross.PositionMm=1225;cross.WidthMm=400;cross.DepthMm=50;cross.BottomElevationMm=-250;cross.SupportMode=CrossBeamSupportMode.ExistingSupportsOnly;
         var task=vm.OptimizeTowersAsync();var timer=System.Diagnostics.Stopwatch.StartNew();while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>90)throw new Exception("Cross UI search timeout");}task.GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
         Check(vm.NetworkResult.CrossSupports.Where(c=>c.Towers?.Transfer!=null).All(c=>PlywoodSpacing.StandardSpacingsMm.Contains(c.Towers.Transfer.EnteredUpperSpacingMm)),"crossing formwork uses only permitted sheet spacings");
