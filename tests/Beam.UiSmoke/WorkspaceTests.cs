@@ -191,6 +191,7 @@ internal static class WorkspaceTests
             Check(Controls<Border>(workspace.Diagrams).Count(b=>b.CornerRadius.TopLeft==8)==4 && !Controls<Border>(workspace).Any(b=>b.CornerRadius.TopLeft==8),"loading and response cards are outside the workspace");
             Check(Math.Abs(drawing.ActualHeight-planHeight)<.01,"opening diagrams does not shrink the drawing canvas");
             RenderDiagrams();Check(workspace.Diagrams.LoadingDiagram.DrawnSupportCount==workspace.Diagrams.SelectedTransferMember.SupportsMm.Length && workspace.Diagrams.LoadingDiagram.DrawnUniformCount==workspace.Diagrams.LoadingDiagram.CombinedUniform.Length,"loading schematic renders every support and combined distributed design interval");
+            Check(workspace.Diagrams.LoadingDiagram.DrawnReactionLabelCount==workspace.Diagrams.SelectedTransferMember.SupportsMm.Length,"loading diagram displays every reaction value");
             Check(workspace.Diagrams.DisplayedTransferMember==workspace.Diagrams.SelectedTransferMember && workspace.Diagrams.DisplayedTransferMember.Points.Length==0,"primary shows the optimizer UDL model directly");
             Check(!Controls<CheckBox>(workspace.Diagrams).Any(),"primary has no point-load approximation switch");
             var udlDetails=Controls<Expander>(workspace.Diagrams).Single(e=>Equals(e.Header,"UDL support reactions"));

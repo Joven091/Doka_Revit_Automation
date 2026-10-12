@@ -153,6 +153,7 @@ namespace EngineeringDashboard
             foreach(var support in result.CrossSupports)
             {
                 int encoded=-support.CrossingIndex-1;
+                if(support.HasReducedShutterClearance)Label(dc,$"X{support.CrossingIndex+1} shutter allowance: {support.NearShutterClearanceMm:0}/{support.FarShutterClearanceMm:0} mm (exception)",xx(support.Input.PositionMm+support.Input.WidthMm/2)+8,yy(result.BeamCentresMm[support.Input.BayNumber-1]+result.Input.Beams[support.Input.BayNumber-1].WidthMm/2));
                 foreach(var solid in support.Solids.Where(s=>s.Member==null && !s.IsTowerEnvelope))
                 {
                     var rect=new Rect(new Point(xx(solid.X0),yy(solid.Y0)),new Point(xx(solid.X1),yy(solid.Y1)));
@@ -289,7 +290,7 @@ namespace EngineeringDashboard
                 {
                     DrawnConcreteEndZoneCount++;
                     dc.DrawLine(new Pen(Brushes.DarkRed,3),new Point(xx(bearing.EndZoneStartMm),zz(bearing.ReceivingTopMm)),new Point(xx(bearing.EndZoneEndMm),zz(bearing.ReceivingTopMm)));
-                    Label(dc,$"End zone on B{bearing.Beam+1}: {bearing.EndZoneEndMm-bearing.EndZoneStartMm:0.###} mm"+(bearing.IsShutterEndZone ? " · side shutter" : ""),xx(bearing.Ymm),zz(bearing.ReceivingTopMm)-40);continue;
+                    Label(dc,$"End zone on B{bearing.Beam+1}: {bearing.EndZoneEndMm-bearing.EndZoneStartMm:0.###} mm"+(bearing.IsShutterEndZone ? " · side shutter"+(bearing.EndZoneEndMm-bearing.EndZoneStartMm<200 ? " (exception)" : "") : ""),xx(bearing.Ymm),zz(bearing.ReceivingTopMm)-40);continue;
                 }
                 if(bearing.FillerHeightMm>1e-7)Label(dc,$"Filler {bearing.FillerHeightMm:0.###} mm",xx(bearing.Ymm)+4,zz(bearing.H20UndersideMm)+3);
             }

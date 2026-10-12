@@ -17,10 +17,17 @@ internal static class SideShutterClearanceTests
         }
         timber.Member.H20Count=1;
         if(CrossBeamSupportOptimizer.PrimaryShutterClash(result,0,new[] {timber})!=null)throw new Exception("Primary-end clearance must not remove receiving secondary support.");
+        timber.Member.H20Count=2;timber.Y0=475;timber.Y1=2800;
+        if(CrossBeamSupportOptimizer.PrimaryShutterClash(result,0,new[] {timber},175,200)!=null)throw new Exception("Exactly 175 mm local clearance must pass at the selected end.");
+        timber.Y0=474.99;
+        if(CrossBeamSupportOptimizer.PrimaryShutterClash(result,0,new[] {timber},175,200)==null)throw new Exception("Even the exception must check the full stock end at its exact boundary.");
+        timber.Y0=475;timber.Y1=2800.01;
+        if(CrossBeamSupportOptimizer.PrimaryShutterClash(result,0,new[] {timber},175,200)==null)throw new Exception("A local near exception must not relax the opposite end.");
         var input=new TransferNetworkInput {UpperSpacingMm=250,Beams=new[] {new TransferBeamRow {WidthMm=650,DepthMm=1150},new TransferBeamRow {WidthMm=650,DepthMm=1150}},Bays=new[] {new TransferBayRow {WidthMm=3550,ThicknessMm=300}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3375,WidthMm=650,DepthMm=1150}}};
         var common=new TowerInput {LengthMm=6750,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,Exclude600Standalone=true,DeflectionDenominator=270,AllowCustomH20Lengths=true,IgnoreUplift=true};
         var solved=TransferNetworkOptimizer.Optimize(common,input);var crossing=solved.CrossSupports.Single();
         if(crossing.Towers==null || CrossBeamSupportOptimizer.PrimaryShutterClash(solved,0,crossing.Solids)!=null)throw new Exception("A coordinated matching-soffit junction must return checked dedicated towers with the shutter gap.");
+        if(crossing.HasReducedShutterClearance)throw new Exception("A standard passing junction must retain both 200 mm allowances.");
         foreach(var layout in solved.Beams.Concat(new[] {crossing.Towers}))
         {
             if(layout.MaxLegKn>70+1e-8)throw new Exception("Shutter clearance must retain individual leg checks.");

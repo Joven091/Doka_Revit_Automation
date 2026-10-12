@@ -270,6 +270,13 @@ namespace EngineeringDashboard
                 foreach(var group in timber.Where(g=>g.Key.H20Count==2 || ShowSecondaryH20s))draw(group);
                 if(support.Towers!=null && (AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex))DrawCrossDimensions(dc,support,timber.SelectMany(g=>g).Where(s=>s.Member.H20Count==2).ToArray());
                 foreach(var solid in support.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope && s.Member==null))dc.DrawRectangle(solid.IsSideShutter ? Brushes.LightSteelBlue : Brushes.SandyBrown,new Pen(solid.IsSideShutter ? Brushes.SteelBlue : Brushes.SaddleBrown,1),new Rect(Screen(solid.X0,solid.Y0),Screen(solid.X1,solid.Y1)));
+                if(support.HasReducedShutterClearance)
+                {
+                    // Keep the exception visible even when general dimensions are hidden.
+                    var at=Screen(support.Input.PositionMm+support.Input.WidthMm/2,Model.NetworkResult.BeamCentresMm[support.Input.BayNumber-1]+Model.NetworkResult.Input.Beams[support.Input.BayNumber-1].WidthMm/2);
+                    string text=$"X{support.CrossingIndex+1} shutter allowance: {support.NearShutterClearanceMm:0}/{support.FarShutterClearanceMm:0} mm (exception)";
+                    for(int row=0;row<12;row++)if(Label(dc,text,at+new Vector(8,row*20),Brushes.DarkRed))break;
+                }
                 foreach(var bearing in support.Bearings)
                 {
                     var point=Screen(bearing.Xmm,bearing.Ymm);
@@ -280,7 +287,9 @@ namespace EngineeringDashboard
                     {
                         var zone=new Rect(Screen(bearing.FootprintStartMm,bearing.EndZoneStartMm),Screen(bearing.FootprintEndMm,bearing.EndZoneEndMm));
                         dc.DrawRectangle(null,new Pen(Brushes.DarkRed,1) {DashStyle=DashStyles.Dash},zone);
-                        if(AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex)Label(dc,$"End zone on B{bearing.Beam+1}"+(bearing.IsShutterEndZone ? " · side shutter" : ""),new Point(zone.Right+5,zone.Top+5),Brushes.DarkRed);
+                        double width=bearing.EndZoneEndMm-bearing.EndZoneStartMm;
+                        bool reduced=bearing.IsShutterEndZone && width<200;
+                        if(AllDimensions || reduced || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex)Label(dc,$"End zone on B{bearing.Beam+1}: {width:0.###} mm"+(bearing.IsShutterEndZone ? " · side shutter" : "")+(reduced ? " (exception)" : ""),new Point(zone.Right+5,zone.Top+5),Brushes.DarkRed);
                     }
                     else if(!bearing.IsConcreteEndZone && bearing.FillerHeightMm>1e-7 && (AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex))Label(dc,$"Filler {bearing.FillerHeightMm:0.###} mm",point+new Vector(5,5),Brushes.SaddleBrown);
                 }
