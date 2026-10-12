@@ -10,6 +10,7 @@ namespace EngineeringDashboard
     public sealed class TransferredSlabInput
     {
         public double BeamWidthMm, BeamLineLoadKnM, UpperSpacingMm;
+        public double PlywoodSheetLengthMm;
         public double LeftBayMm, RightBayMm, LeftAreaLoadKnM2, RightAreaLoadKnM2;
         public UpperTransferPlan LeftPlan, RightPlan;
         internal double[] LeftEffectiveWidthsMm, RightEffectiveWidthsMm;
@@ -38,6 +39,8 @@ namespace EngineeringDashboard
                 || !TowerBeamAnalysis.Finite(BeamCentreOffsetMm) || Math.Abs(BeamCentreOffsetMm)>10000
                 || input.LengthMm > 30000 || UpperSpacingMm < 100 || UpperSpacingMm > 5000 || BeamWidthMm > 10000)
                 throw new ArgumentException("Transfer mode: positive geometry and loads are required; beam length ≤30,000 mm and upper spacing 100–5,000 mm.");
+            if (!TowerBeamAnalysis.Finite(PlywoodSheetLengthMm) || PlywoodSheetLengthMm<0 || PlywoodSheetLengthMm>0 && PlywoodSheetLengthMm!=PlywoodSpacing.SheetLengthMm) throw new ArgumentException("Use the supported 2440 mm sheet length.");
+            if (PlywoodSheetLengthMm>0 && !PlywoodSpacing.StandardSpacingsMm.Contains(UpperSpacingMm)) throw new ArgumentException("Select a permitted sheet spacing: 488, 407, 350, 305, 275 or 250 mm.");
             if (!new[] { 500, 350, 270 }.Contains(input.DeflectionDenominator)) throw new ArgumentException("Transfer mode requires L/500, L/350 or L/270.");
             if (!TowerBeamAnalysis.Finite(input.MaximumConcreteEndOverhangMm) || input.MaximumConcreteEndOverhangMm < 0 || input.MaximumConcreteEndOverhangMm > 500)
                 throw new ArgumentException("Concrete end allowance must be between 0 and 500 mm.");
@@ -163,7 +166,10 @@ namespace EngineeringDashboard
         private static RowGrid BuildRowGrid(TowerInput input,double covered,double rowCoverage,double first,int count,double phase,double edge)
         {
             var t=input.TransferredSlab;
-            var shared=Enumerable.Range(0,count).Select(i=>first+phase+i*t.UpperSpacingMm).ToArray();
+            var shared=t.PlywoodSheetLengthMm>0
+                ? PlywoodSpacing.SheetSupportRows((input.LengthMm-rowCoverage)/2,(input.LengthMm+rowCoverage)/2,t.UpperSpacingMm,t.PlywoodSheetLengthMm).Select(x=>x-edge).ToArray()
+                : Enumerable.Range(0,count).Select(i=>first+phase+i*t.UpperSpacingMm).ToArray();
+            count=shared.Length;
             var slabWidths=Enumerable.Range(0,count).Select(i=>(i==count-1 ? covered : (shared[i]+shared[i+1])/2)-(i==0 ? 0 : (shared[i-1]+shared[i])/2)).ToArray();
             slabWidths[0]-=(covered-rowCoverage)/2;slabWidths[count-1]-=(covered-rowCoverage)/2;
             var rows=shared.ToList();
@@ -360,7 +366,7 @@ namespace EngineeringDashboard
                         if (geometry.Positions.Length*2>input.NetworkLegCeiling) continue;
                         // Try centred rows and phase shifts. Independent primary coverage adds beam load
                         // at the end rows without increasing the shared slab tributaries.
-                        foreach (double phase in t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })
+                        foreach (double phase in t.PlywoodSheetLengthMm>0 ? new[] {0.0} : t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })
                         {
                             var rowKey = Tuple.Create(covered,phase);
                             if (!rowCache.TryGetValue(rowKey,out var grid))
@@ -458,7 +464,7 @@ namespace EngineeringDashboard
                         if(geometry.Positions.Length*2>input.NetworkLegCeiling)continue;
                         // Try centred rows and phase shifts. Independent primary coverage adds beam load
                         // at the end rows without increasing the shared slab tributaries.
-                        foreach (double phase in t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })
+                        foreach (double phase in t.PlywoodSheetLengthMm>0 ? new[] {0.0} : t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })
                         {
                             var rowKey = Tuple.Create(covered,phase);
                             if (!rowCache.TryGetValue(rowKey,out var grid))

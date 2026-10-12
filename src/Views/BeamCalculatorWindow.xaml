@@ -93,9 +93,9 @@
                   </StackPanel>
                 </ContentControl>
               </Grid>
-              <StackPanel Margin="0,8,0,12">
+              <StackPanel Margin="0,8,0,12" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="Plywood"/>
-                <ComboBox x:Name="PlywoodSelector" AutomationProperties.Name="Plywood product and thickness" ItemsSource="{Binding PlywoodOptions}" SelectedItem="{Binding SelectedPlywood, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" DisplayMemberPath="Label"/>
+                <ComboBox x:Name="TowerPlywoodSelector" AutomationProperties.Name="Plywood product and thickness" ItemsSource="{Binding PlywoodOptions}" SelectedItem="{Binding SelectedPlywood, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" DisplayMemberPath="Label"/>
                 <TextBlock Text="{Binding PlywoodSelectionNote}" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,4,0,0"/>
               </StackPanel>
               <CheckBox x:Name="TransferredSlabCheckBox" Content="Transfer slab loads through beam supports" IsChecked="{Binding TransferSlabLoads}" IsEnabled="{Binding CanSelectTransfer}" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
@@ -155,6 +155,11 @@
                 <TextBlock Text="Adjacent slab strip width — each checked side (mm)"/>
                 <TextBox x:Name="SlabStripWidthInput" IsEnabled="{Binding ShowSlabStrip}" Text="{Binding SlabStripWidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
               </StackPanel>
+              <StackPanel Margin="0,8,0,12" Visibility="{Binding UseProps, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Plywood"/>
+                <ComboBox x:Name="PlywoodSelector" AutomationProperties.Name="Plywood product and thickness" ItemsSource="{Binding PlywoodOptions}" SelectedItem="{Binding SelectedPlywood, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" DisplayMemberPath="Label"/>
+                <TextBlock Text="{Binding PlywoodSelectionNote}" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+              </StackPanel>
               <Expander x:Name="LoadInputsExpander" Margin="0,2,0,0">
                   <Expander.Header><TextBlock><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="Load inputs · default"/><Style.Triggers><DataTrigger Binding="{Binding UseCustomLoads}" Value="True"><Setter Property="Text" Value="Load inputs · custom"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></Expander.Header>
                 <StackPanel Margin="0,10,0,0">
@@ -464,7 +469,7 @@
       <DockPanel LastChildFill="True">
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
           <Button Content="Close" MinWidth="80" Click="BtnClose_Click" Margin="0,0,10,0"/>
-          <Border IsEnabled="{Binding HasSelectedSupportSystem}"><Button x:Name="ImportButton" IsEnabled="{Binding CanImport}" Style="{StaticResource PrimaryAction}" Content="Import to Revit" Click="BtnApplyToBeams_Click" ToolTip="Tower layouts can be saved/exported; the existing Revit import is for prop spacing."/></Border>
+          <Border IsEnabled="{Binding HasSelectedSupportSystem}"><Button x:Name="ImportButton" IsEnabled="{Binding CanImport}" Style="{StaticResource PrimaryAction}" Content="Select helper lines" Click="BtnApplyToBeams_Click" ToolTip="Drag a selection window in Revit to select beam helper lines matching this beam width and depth. Press Esc to cancel."/></Border>
         </StackPanel>
         <WrapPanel VerticalAlignment="Center">
           <Button IsEnabled="{Binding HasSelectedSupportSystem}" Content="Save calculation" Click="SaveCalculation_Click" Margin="0,0,6,0"/>

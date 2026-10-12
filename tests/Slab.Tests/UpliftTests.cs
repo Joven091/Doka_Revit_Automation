@@ -28,7 +28,6 @@ internal static class UpliftTests
         equal(0, v.SuggestedPrimaryBeamSpacing, "primary uplift clears spacing");
         equal(2300, v.PropLookupExtensionMm, "uplift retains valid extension lookup");
         check(v.PrimaryDiagramViewModel == null && !v.ViewPrimaryBeamDiagramCommand.CanExecute(null), "primary uplift clears stale diagram");
-        v.SecondaryBeamSpacing = 100;
         check(!v.IsCalculationValid && v.WarningMessage.Contains("Uplift"), "load reduction does not fix primary geometry");
         v.PrimaryBeamCantilever = 500;
         check(v.IsCalculationValid, "geometry repair restores calculation");
@@ -36,10 +35,9 @@ internal static class UpliftTests
         check(!v.IsCalculationValid && v.WarningMessage.Contains("case of 5+"), "5+ uplift identifies modeled count");
 
         // Deliberately extreme overhang: every candidate in the 100–4000 mm search loses contact.
-        // Small secondary tributary width isolates contact from the cantilever strength precheck.
-        v = new FlexCalculatorViewModel { SlabThickness = 100, FloorHeight = 2518,
-            PropCount = "2", PropSpacing = 500, PrimaryBeamCantilever = 0,
-            SecondaryBeamSpacing = 10, SecondaryBeamCantilever = 3700, PrimaryBeamCount = "3" };
+        // A small custom load isolates contact from the cantilever strength precheck.
+        v = new FlexCalculatorViewModel { SlabThickness = 1, FloorHeight = 2419, UseCustomLoads=true, CustomLiveLoad=0, CustomFormworkLoad=0,
+            PropCount = "2", PropSpacing = 500, PrimaryBeamCantilever = 0, SecondaryBeamCantilever = 3700, PrimaryBeamCount = "3" };
         check(!v.IsCalculationValid && v.WarningMessage.Contains("Secondary H20") && v.WarningMessage.Contains("support 2"), "secondary no-contact solution identifies support");
         check(v.WarningMessage.Contains("4000 mm") && v.WarningMessage.Contains("strength and span-deflection checks pass"), "secondary conflict explains candidate rejection");
         equal(0, v.SuggestedPrimaryBeamSpacing, "secondary uplift clears spacing");
@@ -50,11 +48,11 @@ internal static class UpliftTests
         // Search varied secondary geometries and assert every returned spacing keeps contact.
         foreach (int a in new[] { 250, 500, 750, 1000 })
         foreach (int h in new[] { 100, 300, 600 })
-        foreach (int secondarySpacing in new[] { 100, 250, 488 })
+        foreach (var plywood in PlywoodCatalog.All)
         foreach (string count in new[] { "2", "3", "4", "5+" })
         {
             v = new FlexCalculatorViewModel { SlabThickness = h, FloorHeight = h + 2418,
-                SecondaryBeamCantilever = a, SecondaryBeamSpacing = secondarySpacing, PrimaryBeamCount = count };
+                SecondaryBeamCantilever = a, SelectedPlywood = plywood, PrimaryBeamCount = count };
             if (!v.IsCalculationValid) continue;
             int n = count == "5+" ? 5 : int.Parse(count);
             foreach (int actualCount in count == "5+" ? new[] { 5, 6, 10, 30 } : new[] { n })

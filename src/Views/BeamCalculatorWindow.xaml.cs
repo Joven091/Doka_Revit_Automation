@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.UI.Selection;
 
 namespace EngineeringDashboard
 {
@@ -19,27 +20,36 @@ namespace EngineeringDashboard
             }
             var app = EngineeringDashboard.Command.App;
             if (app?.ActiveUIDocument == null) return;
-            var doc = app.ActiveUIDocument.Document;
-            var matchingBeams = new List<FamilyInstance>();
-            // Preserve existing targeting: same family, dimensions and element type in active view.
-            foreach (FamilyInstance instance in new FilteredElementCollector(doc, doc.ActiveView.Id).OfClass(typeof(FamilyInstance)))
+            var uiDocument = app.ActiveUIDocument;
+            var doc = uiDocument.Document;
+            List<FamilyInstance> matchingBeams;
+            Hide();
+            try
             {
-                if (instance.Symbol == null || instance.Symbol.FamilyName != "PrimaryBeam") continue;
-                Parameter h = instance.LookupParameter("H") ?? instance.Symbol.LookupParameter("H");
-                Parameter b = instance.LookupParameter("B") ?? instance.Symbol.LookupParameter("B");
-                if (!IsLength(h) || !IsLength(b)) continue;
-                Parameter kind = instance.LookupParameter("Structural Element Type");
-                if (Math.Abs(h.AsDouble()*304.8-vm.Depth) <= 0.1 && Math.Abs(b.AsDouble()*304.8-vm.Width) <= 0.1
-                    && kind?.StorageType == StorageType.String && kind.AsString() == "Beam") matchingBeams.Add(instance);
+                matchingBeams = uiDocument.Selection.PickElementsByRectangle(
+                    new BeamHelperSelectionFilter(vm.Width, vm.Depth),
+                    "Drag a window around matching beam helper lines. Esc cancels.")
+                    .OfType<FamilyInstance>().GroupBy(instance => instance.Id).Select(group => group.First()).ToList();
             }
+            catch (Autodesk.Revit.Exceptions.OperationCanceledException) { return; }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Helper-line selection did not complete. No values were changed.\n" + ex.Message,
+                    "Selection failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            finally { Show(); Activate(); }
             if (matchingBeams.Count == 0)
             {
-                MessageBox.Show("No matching primary beams found in the active view.", "Info", MessageBoxButton.OK, MessageBoxImage.Information); return;
+                MessageBox.Show("No beam helper lines matching this beam width and depth were selected. No values were changed.",
+                    "Selection empty", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
             }
             int updated = 0, skipped = 0, failed = 0;
             var reasons = new List<string>();
             try
             {
+                uiDocument.Selection.SetElementIds(matchingBeams.Select(instance => instance.Id).ToList());
                 using (var transaction = new Transaction(doc, "Apply Beam Calculator Values"))
                 {
                     transaction.Start();
@@ -88,6 +98,24 @@ namespace EngineeringDashboard
             {
                 MessageBox.Show("Import did not complete. No successful updates are reported.\n" + ex.Message, "Import failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+        private sealed class BeamHelperSelectionFilter : ISelectionFilter
+        {
+            private readonly double widthMm, depthMm;
+            public BeamHelperSelectionFilter(double widthMm, double depthMm) { this.widthMm=widthMm; this.depthMm=depthMm; }
+            public bool AllowElement(Element element)
+            {
+                var instance=element as FamilyInstance;
+                if (instance?.Symbol == null || instance.Symbol.FamilyName != "PrimaryBeam") return false;
+                var kind=instance.LookupParameter("Structural Element Type");
+                var depth=instance.LookupParameter("H") ?? instance.Symbol.LookupParameter("H");
+                var width=instance.LookupParameter("B") ?? instance.Symbol.LookupParameter("B");
+                return kind?.StorageType == StorageType.String && kind.AsString() == "Beam"
+                    && IsLength(depth) && IsLength(width)
+                    && Math.Abs(depth.AsDouble()*304.8-depthMm) <= 0.1
+                    && Math.Abs(width.AsDouble()*304.8-widthMm) <= 0.1;
+            }
+            public bool AllowReference(Reference reference, XYZ position) => false;
         }
         private static bool IsLength(Parameter p) => p != null && p.StorageType == StorageType.Double && p.Definition.GetDataType() == SpecTypeId.Length;
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();

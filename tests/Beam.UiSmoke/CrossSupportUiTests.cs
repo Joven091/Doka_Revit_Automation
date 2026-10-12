@@ -45,6 +45,7 @@ internal static class CrossSupportUiTests
         // production-runtime search to complete before checking the rendered values.
         while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>600)throw new Exception("Coordinated report UI timeout");}task.GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
+        Check(vm.NetworkResult.CrossSupports.Where(c=>c.Towers?.Transfer!=null).All(c=>PlywoodSpacing.StandardSpacingsMm.Contains(c.Towers.Transfer.EnteredUpperSpacingMm)),"crossing formwork uses only permitted sheet spacings");
         Check(vm.UpperSupportSpacingMm==vm.MaximumSecondarySpacingMm && vm.NetworkResult.Input.UpperSpacingMm<=vm.MaximumSecondarySpacingMm && vm.BuildDiagnosticReport().Contains("UpperSupportSpacingMm"),"coordinated search preserves the entered maximum and reports its actual spacing");
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Show();Pump();workspace.Drawing.Formwork=true;
         Capture(workspace.Drawing,2000,1100);workspace.Drawing.Fit();Capture(workspace.Drawing,2000,1100,Preview(previewPath,"coordinated-report-plan"));
@@ -117,7 +118,7 @@ internal static class CrossSupportUiTests
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=10450,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,MaximumConcreteEndOverhangMm=75,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         vm.AddNetworkBay();for(int i=0;i<3;i++) {vm.NetworkBeams[i].WidthMm=i==2 ? 800 : 650;vm.NetworkBeams[i].DepthMm=i==2 ? 1750 : 1150;vm.NetworkBeams[i].BottomElevationMm=i==2 ? -1750 : -1150;}
         vm.NetworkBays[0].WidthMm=3550;vm.NetworkBays[1].WidthMm=2575;foreach(var bay in vm.NetworkBays)bay.ThicknessMm=300;
-        vm.AddCrossingBeam();var crossing=vm.CrossingBeams[0];crossing.BayNumber=1;crossing.PositionMm=2500;crossing.WidthMm=300;crossing.DepthMm=600;crossing.BottomElevationMm=-600;
+        vm.AddCrossingBeam();var crossing=vm.CrossingBeams[0];crossing.BayNumber=1;crossing.PositionMm=2500;crossing.WidthMm=600;crossing.DepthMm=600;crossing.BottomElevationMm=-600;
         var task=vm.OptimizeTowersAsync();var timer=System.Diagnostics.Stopwatch.StartNew();while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>90)throw new Exception("Current report UI timeout");}task.GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,"current three-beam drawing report solves");
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Show();Pump();
@@ -181,12 +182,13 @@ internal static class CrossSupportUiTests
             var cyan=Primitives(visual.Drawing).OfType<GeometryDrawing>().Where(g=>g.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.DarkCyan).Select(g=>g.Geometry).OfType<LineGeometry>().ToArray();
             Check(cyan.Length>0 && cyan.All(l=>rotated ? Math.Abs(l.StartPoint.Y-l.EndPoint.Y)<.01 : Math.Abs(l.StartPoint.X-l.EndPoint.X)<.01),"cyan frame planes follow actual tower rotation");
         }
-        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70,SelectedPlywood=PlywoodCatalog.FromId("dokaplex-9mm-9732-121"),DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,HasRightSlab=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=2450,MaximumConcreteEndOverhangMm=0,TowerLegCapacityKn=70,SelectedPlywood=PlywoodCatalog.Default,UseCustomLoads=true,CustomLiveLoad=0,CustomFormworkLoad=0,DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         foreach(var b in vm.NetworkBeams) {b.WidthMm=300;b.DepthMm=600;}
         vm.NetworkBays[0].WidthMm=3900;vm.NetworkBays[0].ThicknessMm=100;
-        vm.AddCrossingBeam();var cross=vm.CrossingBeams[0];cross.PositionMm=1225;cross.WidthMm=400;cross.DepthMm=150;cross.BottomElevationMm=-250;cross.SupportMode=CrossBeamSupportMode.ExistingSupportsOnly;
+        vm.AddCrossingBeam();var cross=vm.CrossingBeams[0];cross.PositionMm=1225;cross.WidthMm=400;cross.DepthMm=50;cross.BottomElevationMm=-250;cross.SupportMode=CrossBeamSupportMode.ExistingSupportsOnly;
         var task=vm.OptimizeTowersAsync();var timer=System.Diagnostics.Stopwatch.StartNew();while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>90)throw new Exception("Cross UI search timeout");}task.GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
+        Check(vm.NetworkResult.CrossSupports.Where(c=>c.Towers?.Transfer!=null).All(c=>PlywoodSpacing.StandardSpacingsMm.Contains(c.Towers.Transfer.EnteredUpperSpacingMm)),"crossing formwork uses only permitted sheet spacings");
         var section=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true};section.SetResult(vm.NetworkResult);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,420));section.UpdateLayout();
         var bitmap=new RenderTargetBitmap(1200,420,96,96,System.Windows.Media.PixelFormats.Pbgra32);bitmap.Render(section);
         Check(section.DrawnH20ProfileCount>=vm.NetworkResult.Beams.Length*5 && section.DrawnPrimarySectionCount==vm.NetworkResult.Beams.Length*4,"section shows real flange/web profiles and both paired primary members");

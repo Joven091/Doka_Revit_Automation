@@ -87,6 +87,55 @@ namespace EngineeringDashboard
     {
         public static string Basis => PlywoodCatalog.Default.Basis;
 
+        public const double SheetLengthMm = 2440;
+        public const double SheetWidthMm = 1220;
+        public static IReadOnlyList<double> StandardSpacingsMm { get; } = Array.AsReadOnly(new[] {488.0,407,350,305,275,250});
+        public static string SheetBasis => "2440 × 1220 mm sheets. Maximum spacings: 488, 407, 350, 305, 275 or 250 mm; the largest passing value is used. "
+            + "The 2440 mm direction follows the secondary-row setting out. Each sheet joint has a support row; the final span in a sheet can be shorter.";
+
+        public static PlywoodSpacingResult CalculateForSheet(PlywoodProfile profile, double pressureKnM2, int denominator)
+        {
+            var chart=Calculate(profile,pressureKnM2,denominator);
+            double spacing=StandardSpacingsMm.FirstOrDefault(x=>x<=chart.MaximumSpacingMm && x>=chart.Chart.MinimumSpanMm);
+            if (spacing==0) throw new ArgumentException($"{profile.Label}: plywood permits at most {chart.MaximumSpacingMm:0} mm; none of the listed sheet spacings (minimum 250 mm) passes. Select a stronger plywood or revise the load.");
+            double l=spacing/1000;
+            return new PlywoodSpacingResult(profile,chart.Chart,pressureKnM2,chart.ChartPressureKnM2,denominator,spacing,
+                "Sheet spacing · " + chart.Governing,chart.MomentSpacingMm,chart.ShearSpacingMm,chart.DeflectionSpacingMm,
+                profile.DeflectionCoefficient*chart.ChartPressureKnM2*Math.Pow(l,4),
+                chart.ChartPressureKnM2*l*l/profile.MomentEnvelope,chart.ChartPressureKnM2*l/profile.ShearEnvelope)
+                { ChartMaximumSpacingMm=chart.MaximumSpacingMm };
+        }
+
+        // Absolute stations retain sheet joints even when primary coverage is centred or longer.
+        // End supports normally sit 40 mm inside covered stock; nearby sheet joints take priority. A partial span is shared between
+        // the final two intervals so adjacent 80 mm H20 flanges cannot overlap.
+        public static double[] SheetSupportRows(double startMm, double endMm, double maximumSpacingMm, double sheetLengthMm=SheetLengthMm)
+        {
+            if (new[] {startMm,endMm,maximumSpacingMm,sheetLengthMm}.Any(x=>double.IsNaN(x)||double.IsInfinity(x))
+                || endMm-startMm<=80 || endMm-startMm>50000 || maximumSpacingMm<100 || sheetLengthMm<=0)
+                throw new ArgumentException("Invalid sheet support geometry.");
+            double start=startMm+40,end=endMm-40;
+            var joints=new List<double>();
+            for (double joint=(Math.Floor(startMm/sheetLengthMm)+1)*sheetLengthMm;joint<endMm;joint+=sheetLengthMm) joints.Add(joint);
+            var anchors=new List<double>();
+            if (joints.Count==0 || joints[0]-start>=80) anchors.Add(start);
+            anchors.AddRange(joints);
+            if (anchors.Count==0 || end-anchors.Last()>=80) anchors.Add(end);
+            var rows=new List<double> {anchors[0]};
+            for (int i=1;i<anchors.Count;i++)
+            {
+                double a=anchors[i-1],b=anchors[i];
+                int full=(int)Math.Floor((b-a)/maximumSpacingMm);
+                double tail=b-a-full*maximumSpacingMm;
+                int nominal=tail>1e-7 && tail<80 ? Math.Max(0,full-1) : full;
+                for (int n=1;n<=nominal;n++) rows.Add(a+n*maximumSpacingMm);
+                double remaining=b-rows.Last();
+                if (remaining>maximumSpacingMm+1e-7) rows.Add(rows.Last()+remaining/2);
+                if (b-rows.Last()>1e-7) rows.Add(b);
+            }
+            return rows.ToArray();
+        }
+
         public static PlywoodSpacingResult Calculate(double pressureKnM2, int denominator)
             => Calculate(PlywoodCatalog.Default, pressureKnM2, denominator);
 
@@ -127,6 +176,7 @@ namespace EngineeringDashboard
     {
         public PlywoodProfile Profile { get; }
         public PlywoodChartDomain Chart { get; }
+        public double ChartMaximumSpacingMm { get; internal set; }
         public double PressureKnM2 { get; }
         public double ChartPressureKnM2 { get; }
         public int Denominator { get; }
@@ -144,7 +194,7 @@ namespace EngineeringDashboard
             double deflection, double momentUse, double shearUse)
         {
             Profile = profile; Chart=chart; PressureKnM2 = pressure; ChartPressureKnM2 = chartPressure; Denominator = denominator;
-            MaximumSpacingMm = spacing; Governing = governing; MomentSpacingMm = momentSpacing;
+            MaximumSpacingMm = spacing; ChartMaximumSpacingMm=spacing; Governing = governing; MomentSpacingMm = momentSpacing;
             ShearSpacingMm = shearSpacing; DeflectionSpacingMm = deflectionSpacing; DeflectionMm = deflection;
             MomentUtilization = momentUse; ShearUtilization = shearUse;
         }

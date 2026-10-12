@@ -81,7 +81,9 @@ internal static class Program
    var plywoodSelector=(ComboBox)window.FindName("PlywoodSelector");
    Check(plywoodSelector.Items.Count==3 && plywoodSelector.SelectedItem==PlywoodCatalog.Default,"plywood selector exposes supplied products with 18 mm default");
    plywoodSelector.SelectedItem=vm.PlywoodOptions.Single(p=>p.ThicknessMm==9);Pump();
-   Check(vm.MaximumSecondarySpacingMm==210 && vm.FormworkDepthMm==409,"plywood selection updates spacing and buildup");
+   Check(!vm.IsCalculationValid && vm.MaximumSecondarySpacingMm==0,"9 mm cannot round an unsafe beam spacing up to 250 mm");
+   vm.Depth=150;Pump();
+   Check(vm.MaximumSecondarySpacingMm==275 && vm.FormworkDepthMm==409,"plywood selection updates spacing and buildup");
    var plywoodRecord=window.CaptureCalculation();plywoodSelector.SelectedItem=vm.PlywoodOptions.Single(p=>p.ThicknessMm==21);Pump();window.RestoreCalculation(plywoodRecord);Pump();
    Check(vm.SelectedPlywood.ThicknessMm==9,"plywood selection survives save/load");
    var unknownPlywood=window.CaptureCalculation();unknownPlywood.Inputs.Single(f=>f.Name=="PlywoodProfileId").Value="unknown";
@@ -89,6 +91,11 @@ internal static class Program
    Check(plywoodRejected && vm.SelectedPlywood.ThicknessMm==9,"unknown saved plywood does not alter retained calculation");
    plywoodRecord.Inputs.RemoveAll(f=>f.Name=="PlywoodProfileId");window.RestoreCalculation(plywoodRecord);Pump();
    Check(vm.SelectedPlywood==PlywoodCatalog.Default,"old calculations without plywood choice retain 18 mm");
+   vm.Depth=500;Pump();
+   vm.HasLeftSlab=true;Render();
+   Check(plywoodSelector.TranslatePoint(new Point(0,0),(FrameworkElement)window.Content).Y>((TextBox)window.FindName("SlabStripWidthInput")).TranslatePoint(new Point(0,0),(FrameworkElement)window.Content).Y,"Dokaflex plywood follows adjacent slab strip width");
+   vm.HasLeftSlab=false;Pump();
+   Check(Equals(import.Content,"Select helper lines"),"Dokaflex beam action uses helper-line selection");
    Enter("Depth","abc");Check(!vm.IsCalculationValid,"invalid text invalidates VM");Check(!import.IsEnabled,"invalid import disabled");Check(results.Visibility==Visibility.Collapsed,"stale results hidden");Check(Input("Depth").Text=="abc","invalid text preserved");
    Check(!window.TryGetValidCalculation(out var ignored),"import guard rejects conversion error");
    Enter("Depth","500");Check(vm.IsCalculationValid&&import.IsEnabled,"valid text recovers");
@@ -252,8 +259,8 @@ internal static class Program
    vm.TransferSlabLoads=false;window.RestoreCalculation(transferRecord);Pump();Check(vm.IsTransferMode && vm.UpperSupportSpacingMm==vm.MaximumSecondarySpacingMm && !vm.IsCalculationValid,"transfer input round trip invalidates stale results");
    var spacingInput=Input("UpperSupportSpacingMm");Check(spacingInput.IsReadOnly && !spacingInput.IsEnabled && spacingInput.GetBindingExpression(TextBox.TextProperty).ParentBinding.Mode==System.Windows.Data.BindingMode.OneWay,"automatic secondary spacing is locked and greyed out");
    vm.Depth=vm.Depth+25;Pump();Check(spacingInput.Text==vm.UpperSupportSpacingMm.ToString(CultureInfo.CurrentCulture),"locked field refreshes when geometry changes");vm.Depth=vm.Depth-25;Pump();
-   // This layout needs closer lower H20 rows; use the supplied 9 mm chart instead of a manual spacing override.
-   vm.SelectedPlywood=vm.PlywoodOptions.Single(p=>p.ThicknessMm==9);vm.LeftSlabBayMm=3900;vm.Depth=1500;
+   // The designer may choose a closer listed spacing within the plywood maximum.
+   vm.SelectedPlywood=PlywoodCatalog.Default;vm.LeftSlabBayMm=3900;vm.Depth=1500;vm.Width=400;
    ((Button)window.FindName("AddBeamBayButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render();
    Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBays.Count==2,"add button extends to three beams and two slab bays");
    Check(!Input("Depth").IsEnabled && !Input("LeftSlabBayMm").IsEnabled,"network uses individual beam and bay inputs");
