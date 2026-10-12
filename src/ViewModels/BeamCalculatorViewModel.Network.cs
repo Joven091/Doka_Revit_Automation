@@ -26,7 +26,7 @@ namespace EngineeringDashboard
         public bool IsNetworkMode=>IsTransferMode && UseBeamNetwork;
         public bool ShowSingleTransfer=>IsTransferMode && !UseBeamNetwork;
         public bool ShowSingleGeometry=>!IsNetworkMode;
-        public bool CanAddNetworkBay=>NetworkBeams.Count<8;
+        public bool CanAddNetworkBay=>NetworkBeams.Count<TransferNetworkInput.MaximumBeamCount;
         public bool CanRemoveNetworkBay=>NetworkBeams.Count>2;
         public TransferNetworkResult NetworkResult {get;private set;}
         public int SelectedNetworkBeam {get;private set;}
@@ -41,7 +41,7 @@ namespace EngineeringDashboard
                 TransferNetworkConfiguration config;
                 using(var text=new StringReader(value??""))using(var reader=XmlReader.Create(text,new XmlReaderSettings {DtdProcessing=DtdProcessing.Prohibit,XmlResolver=null,MaxCharactersInDocument=50000}))
                     config=(TransferNetworkConfiguration)new XmlSerializer(typeof(TransferNetworkConfiguration)).Deserialize(reader);
-                if(config?.Beams==null || config.Bays==null || config.Beams.Length<2 || config.Beams.Length>8 || config.Bays.Length!=config.Beams.Length-1 || config.Beams.Any(b=>b==null) || config.Bays.Any(b=>b==null))throw new ArgumentException("Invalid saved beam/slab network.");
+                if(config?.Beams==null || config.Bays==null || config.Beams.Length<2 || config.Beams.Length>TransferNetworkInput.MaximumBeamCount || config.Bays.Length!=config.Beams.Length-1 || config.Beams.Any(b=>b==null) || config.Bays.Any(b=>b==null))throw new ArgumentException("Invalid saved beam/slab network.");
                 if(config.CrossingBeams!=null && (config.CrossingBeams.Length>30 || config.CrossingBeams.Any(c=>c==null)))throw new ArgumentException("Invalid saved crossing beams.");
                 if(config.SupportFormatVersion<0 || config.SupportFormatVersion>2)throw new ArgumentException("Unsupported cross-beam support format.");
                 if(config.SupportFormatVersion<2)foreach(var c in config.CrossingBeams??new TransferCrossingBeamRow[0])c.SupportMode=CrossBeamSupportMode.LegacySlabRows;
@@ -59,7 +59,7 @@ namespace EngineeringDashboard
             numberOfProps=fresh.numberOfProps;deflection=fresh.deflection;slabStripWidthMm=fresh.slabStripWidthMm;
             beamLengthMm=fresh.beamLengthMm;towerLegCapacityKn=fresh.towerLegCapacityKn;stockLengthsText=fresh.stockLengthsText;
             stockEndSetbackMm=fresh.stockEndSetbackMm;maximumConcreteEndOverhangMm=fresh.maximumConcreteEndOverhangMm;
-            exclude600Standalone=fresh.exclude600Standalone;allowCustomH20Lengths=fresh.allowCustomH20Lengths;customH20Scope=fresh.customH20Scope;ignoreUplift=fresh.ignoreUplift;
+            primaryMaterial=fresh.primaryMaterial;exclude600Standalone=fresh.exclude600Standalone;allowCustomH20Lengths=fresh.allowCustomH20Lengths;customH20Scope=fresh.customH20Scope;ignoreUplift=fresh.ignoreUplift;
             upperSupportSpacingMm=fresh.upperSupportSpacingMm;leftSlabBayMm=fresh.leftSlabBayMm;rightSlabBayMm=fresh.rightSlabBayMm;
             calculatorTextErrors=false;additionalTextErrors.Clear();textErrors=false;
             beamSearchTrace=null;SelectedNetworkBeam=0;

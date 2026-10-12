@@ -16,7 +16,7 @@ namespace EngineeringDashboard
         public string TransferSummary => TowerResult?.Transfer?.Summary ?? "";
         public string TransferSchedule => TowerResult?.Transfer?.Schedule ?? "";
         public string TowerCalculationBasis => (IgnoreUplift ? TowerBaseCalculationBasis.Replace("negative bearing reactions invalidate a candidate.", "uplift is excluded under the user-selected connected formwork assumption.") : TowerBaseCalculationBasis) + "\n" + (IgnoreUplift ? TowerLayout.ConnectedFormworkAssumption : "Bearing-only supports: uplift is rejected.");
-        private string TowerBaseCalculationBasis => IsTransferMode ? (IsNetworkMode && NetworkResult?.CrossSupports.Length>0 ? CrossBeamSupportResult.Limitations+"\n"+TransferredSlabResult.Assumptions : TransferredSlabResult.Assumptions) : TowerAssumptions;
+        private string TowerBaseCalculationBasis => PrimaryMaterialAssumptions+"\n"+(IsTransferMode ? (IsNetworkMode && NetworkResult?.CrossSupports.Length>0 ? CrossBeamSupportResult.Limitations+"\n"+TransferredSlabResult.Assumptions : TransferredSlabResult.Assumptions) : TowerAssumptions);
         private void NotifyTransfer()
         {
             NotifyNetwork();

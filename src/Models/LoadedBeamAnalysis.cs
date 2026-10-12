@@ -31,6 +31,7 @@ namespace EngineeringDashboard
             if (!rightSide && mm <= 1e-7 || rightSide && Math.Abs(mm-(elements.Last().X+elements.Last().L)*1000)<=1e-7) response[0]=response[1]=0;
             return response;
         }
+        internal double WS10StrengthUtilization()=>PrimaryBeamProfile.WS10Strength((elements.Last().X+elements.Last().L)*1000,elements.SelectMany(e=>new[] {e.X*1000,(e.X+e.L)*1000}),Response);
         public LoadedBeamAnalysis Scale(double factor)
         {
             if (!Finite(factor) || factor < 0) throw new ArgumentException("Load scale must be nonnegative.");

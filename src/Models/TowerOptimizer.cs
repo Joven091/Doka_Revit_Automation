@@ -66,10 +66,11 @@ namespace EngineeringDashboard
         }
         public void Primary(TowerBeamAnalysis a,TowerInput input,string location)
         {
-            string scope="Primary pair";var region=a.GoverningDeflection(input.DeflectionLimitMm,input.DeflectionDenominator);
-            Limit(scope,"moment",3,a.Moment,TowerOptimizer.PairMoment,"kNm",location,"Review primary support spacing and stock layout.",1e-10*TowerOptimizer.PairMoment);
-            Limit(scope,"shear",3,a.Shear,TowerOptimizer.PairShear,"kN",location,"Review primary support spacing and stock layout.",1e-10*TowerOptimizer.PairShear);
+            string scope=input.Primary.Description;var region=a.GoverningDeflection(input.DeflectionLimitMm,input.DeflectionDenominator);
+            Limit(scope,"moment",3,a.Moment,input.Primary.MomentLimitKnM,"kNm",location,"Review primary support spacing and stock layout.",1e-10*TowerOptimizer.PairMoment);
+            Limit(scope,"shear",3,a.Shear,input.Primary.ShearLimitKn,"kN",location,"Review primary support spacing and stock layout.",1e-10*TowerOptimizer.PairShear);
             Limit(scope,"deflection",3,region.PeakMm,region.AllowableMm(fixedLimit,denominator),"mm",location+$" · {(region.IsOverhang ? "overhang" : "span")} {region.EndMm-region.StartMm:0.###} mm", "Review the support span/overhang and selected criterion.",1e-10*region.AllowableMm(fixedLimit,denominator));
+            if(input.Primary.IsWS10)Limit(scope,"WS10 M/V interaction (end zones included)",3,input.Primary.Strength(a),1,"utilization",location,"Review primary stock and tower spacing.");
             Legs(a.Reactions,input.LegCapacityKn,scope,location,input.LegCapacityKn*1e-10,a.Reactions.Max()*1e-9);
         }
         public void Legs(double[] reactions,double capacity,string scope,string location,double tolerance=1e-8,double bearingTolerance=1e-7)
@@ -128,6 +129,73 @@ namespace EngineeringDashboard
             }
         }
     }
+    public enum PrimaryBeamMaterial { DoubleH20, WS10 }
+    public sealed class PrimaryBeamMaterialOption
+    {
+        public string Label {get;}
+        public PrimaryBeamMaterial Value {get;}
+        private PrimaryBeamMaterialOption(string label,PrimaryBeamMaterial value) {Label=label;Value=value;}
+        public static readonly PrimaryBeamMaterialOption[] All={new PrimaryBeamMaterialOption("Double H20",PrimaryBeamMaterial.DoubleH20),new PrimaryBeamMaterialOption("WS10 Top50",PrimaryBeamMaterial.WS10)};
+    }
+    /// <summary>One WS10 assembly replaces each double-H20 primary line. Secondary members remain H20.
+    /// WS10: Doka Calculation Guide 999736002, 03/2012, pp. 13 and 135; Top50 catalogue.
+    /// Conservative linear M/V interaction inside the published plastic envelope, zero axial force.
+    /// The first/last 300 mm use the special-application 10 kNm end-zone limit.</summary>
+    public sealed class PrimaryBeamProfile
+    {
+        public PrimaryBeamMaterial Material {get;}
+        private PrimaryBeamProfile(PrimaryBeamMaterial material) {Material=material;}
+        private static readonly PrimaryBeamProfile H20=new PrimaryBeamProfile(PrimaryBeamMaterial.DoubleH20),Steel=new PrimaryBeamProfile(PrimaryBeamMaterial.WS10);
+        public static PrimaryBeamProfile For(PrimaryBeamMaterial material)
+        {if(material==PrimaryBeamMaterial.DoubleH20)return H20;if(material==PrimaryBeamMaterial.WS10)return Steel;throw new ArgumentException("Select a valid primary beam material.");}
+        public bool IsWS10=>Material==PrimaryBeamMaterial.WS10;
+        public string Name=>IsWS10 ? "WS10" : "H20";
+        public string Description=>IsWS10 ? "single WS10 Top50" : "double H20";
+        public double EI=>IsWS10 ? 865.2 : TowerOptimizer.PairEI;
+        public double MomentLimitKnM=>IsWS10 ? 12.3 : TowerOptimizer.PairMoment;
+        public double ShearLimitKn=>IsWS10 ? 82 : TowerOptimizer.PairShear;
+        public double DepthMm=>IsWS10 ? 100 : 200;
+        public double WidthMm=>IsWS10 ? 153 : 160;
+        public int CountPerLine=>IsWS10 ? 1 : 2;
+        private static readonly double[] ws10Lengths={500,750,1000,1250,1500,1750,2000,2250,2500,2750,3000,3500,4000,4500,5000,5500,6000};
+        private static readonly double[] ws10Weights={10.2,14.9,19.6,24.7,29.7,35.0,38.9,44.2,48.7,54.2,60.2,68.4,79.4,89.1,102.0,112.4,118.0};
+        public static double[] WS10LengthsMm=>(double[])ws10Lengths.Clone();
+        public double SelfWeightKnM(double lengthMm)
+        {
+            if(!IsWS10)return 0;
+            int i=Array.IndexOf(ws10Lengths,lengthMm);
+            if(i<0)throw new ArgumentException("WS10 primaries must use an uncut catalogue length.");
+            return ws10Weights[i]*9.80665/lengthMm;
+        }
+        public string Assumptions=>IsWS10 ? "One WS10 Top50 assembly per primary line; 153 × 100 mm, EI 865.2 kNm², middle-zone M 12.3 kNm, first/last 300 mm M 10 kNm, V 82 kN. Conservative linear M/V interaction is checked at exact section extrema; zero axial load is assumed. Catalogue self-weight is added to primary design loads. Uncut catalogue lengths only; custom H20 settings apply to H20 secondaries and slab supports. Waler restraint, local bearing, connectors and tower-head compatibility require separate detailing." : "Double H20 per primary line, equal load sharing: M 10 kNm, V 22 kN, EI 899.7512 kNm².";
+        internal double Strength(LoadedBeamAnalysis analysis)=>IsWS10 ? analysis.WS10StrengthUtilization() : Math.Max(analysis.MomentKnM/MomentLimitKnM,analysis.ShearKn/ShearLimitKn);
+        internal double Strength(TowerBeamAnalysis analysis)=>IsWS10 ? analysis.WS10StrengthUtilization() : Math.Max(analysis.Moment/MomentLimitKnM,analysis.Shear/ShearLimitKn);
+        // On each UDL interval M is quadratic and V is linear. Each signed linear
+        // interaction branch has extrema at endpoints or V=±(dV/dx)*Mlimit/Vlimit.
+        // Splitting at zone boundaries and checking both support faces handles jumps.
+        internal static double WS10Strength(double lengthMm,IEnumerable<double> boundaries,Func<double,bool,double[]> response)
+        {
+            var cuts=boundaries.Concat(new[] {0.0,lengthMm,Math.Min(300,lengthMm),Math.Max(0,lengthMm-300)}).Distinct().OrderBy(x=>x).ToArray();
+            double peak=0;
+            for(int i=1;i<cuts.Length;i++)
+            {
+                double a=cuts[i-1],b=cuts[i],span=(b-a)/1000;if(span<=1e-10)continue;
+                double limit=(a+b)/2<300 || (a+b)/2>lengthMm-300 ? 10 : 12.3;
+                var left=response(a,true);var right=response(b,false);double v=left[0],m=left[1],slope=(right[0]-v)/span;
+                var stations=new List<double> {0,span};
+                if(Math.Abs(slope)>1e-12)
+                {
+                    stations.Add(-v/slope);
+                    foreach(double sign in new[] {-1.0,1})stations.Add((sign*slope*limit/82-v)/slope);
+                    double disc=v*v-2*slope*m;
+                    if(disc>=0) {stations.Add((-v+Math.Sqrt(disc))/slope);stations.Add((-v-Math.Sqrt(disc))/slope);}
+                }
+                else if(Math.Abs(v)>1e-12)stations.Add(-m/v);
+                foreach(double x in stations.Where(x=>x>=0 && x<=span))peak=Math.Max(peak,Math.Abs(m+v*x+slope*x*x/2)/limit+Math.Abs(v+slope*x)/82);
+            }
+            return peak;
+        }
+    }
     public enum CustomH20LengthScope { Both, BeamSupports, SlabSupports }
     public sealed class CustomH20ScopeOption
     {
@@ -178,6 +246,10 @@ namespace EngineeringDashboard
         public double TransverseLoadMoment { get; set; }
         public double DeflectionLimitMm { get; set; }
         public int DeflectionDenominator { get; set; }
+        public PrimaryBeamMaterial PrimaryMaterial {get;set;}
+        public PrimaryBeamProfile Primary=>PrimaryBeamProfile.For(PrimaryMaterial);
+        public double[] PrimaryStockLengthsMm=>Primary.IsWS10 ? PrimaryBeamProfile.WS10LengthsMm : StockLengthsMm;
+        public bool AllowCustomPrimaryLengths=>!Primary.IsWS10 && AllowCustomBeamLengths;
         public double[] StockLengthsMm { get; set; } = TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths);
         public bool AllowCustomH20Lengths { get; set; }
         private CustomH20LengthScope customH20Scope;
@@ -200,6 +272,8 @@ namespace EngineeringDashboard
     }
     public sealed class TowerLayout
     {
+        public PrimaryBeamMaterial PrimaryMaterial {get;internal set;}
+        public PrimaryBeamProfile Primary=>PrimaryBeamProfile.For(PrimaryMaterial);
         public TransferredSlabResult Transfer { get; internal set; }
         public bool IgnoreUplift { get; internal set; }
         public double MinimumReactionKn => Transfer == null
@@ -223,9 +297,11 @@ namespace EngineeringDashboard
         public double MinimumLegReaction(bool left,int index) => (left ? MinimumLeftReactions : MinimumRightReactions)?[index] ?? (left ? LeftReactions : RightReactions)[index];
         public TowerStockPlan StockPlan { get; internal set; }
         public double LegUtilizationPercent => MaxLegKn / LegCapacityKn * 100;
-        public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s";
+        public string PrimaryMaterialSummary=>Primary.Assumptions;
+        public string MaterialQuantities=>$"{StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s"+(StockPlan.WS10Count==0 ? "" : $" · {StockPlan.WS10Count} WS10s");
+        public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {MaterialQuantities}";
         public string LegLoadSummary => $"Peak leg: {MaxLegKn:0.00} / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
-        public string CapacityBasis => Transfer != null ? "Every leg is checked for beam, one-sided and combined slab loading. Search minimizes receiving-beam legs, then total H20 length. Leg values are load-case envelopes." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then braced bays, H20 quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
+        public string CapacityBasis => Transfer != null ? "Every leg is checked for beam, one-sided and combined slab loading. Search minimizes receiving-beam legs, then total member length. Leg values are load-case envelopes." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then braced bays, primary quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
         public string StockSchedule => StockPlan.Schedule + (Transfer == null ? "" : "\n" + Transfer.Schedule);
         public int LegCount => PositionsMm.Length * 2;
         public int GroupCount => 1 + Joined.Count(x => !x);
@@ -248,14 +324,14 @@ namespace EngineeringDashboard
         {
             get
             {
-                if(Transfer==null)return $"Moment {MomentKnM:0.00}/10 kNm · shear {ShearKn:0.00}/22 kN";
+                if(Transfer==null)return $"Moment {MomentKnM:0.00}/{Primary.MomentLimitKnM:0.###} kNm · shear {ShearKn:0.00}/{Primary.ShearLimitKn:0.###} kN";
                 var members=Transfer.PrimaryCases.SelectMany(c=>c).Concat(Transfer.LowerCases.SelectMany(c=>c)).Concat(Transfer.UpperMembers).ToArray();
                 return $"Moment utilization {members.Max(m=>m.Analysis.MomentKnM/m.MomentLimitKnM)*100:0.0}% · shear utilization {members.Max(m=>m.Analysis.ShearKn/m.ShearLimitKn)*100:0.0}%";
             }
         }
         public string Summary => string.Format(CultureInfo.CurrentCulture, "Legs: {0} · tower groups: {1} · bays: {2}\n{3}; primary lines {4:0} mm apart\nMaximum leg {5:0.00}/{10:0.00} kN · governing utilization {6:0.0}%\n{12}\nPeak deflection {9:0.00} mm · criterion {11} (each span/overhang)",
             LegCount, GroupCount, BayCount, Rotated ? "Rotated isolated towers" : "1524 mm frames across beam", WidthMm, MaxLegKn, Utilization * 100, MomentKnM, ShearKn, DeflectionMm, LegCapacityKn, DeflectionDenominator == 0 ? $"{DeflectionLimitMm:0.00} mm" : $"L/{DeflectionDenominator}", MemberDemandSummary)
-            + string.Format(CultureInfo.CurrentCulture, "\nPrimary H20s: {0} pieces · no overlaps\nConcrete beyond H20: {1:0.###} mm per end", StockPlan.TotalH20Count, ConcreteEndOverhangMm) + (IgnoreUplift ? "\n"+UpliftSummary : "");
+            + string.Format(CultureInfo.CurrentCulture, "\nPrimary {2}: {0} pieces · no overlaps\nConcrete beyond primary: {1:0.###} mm per end", StockPlan.TotalPrimaryCount, ConcreteEndOverhangMm, Primary.Name) + (IgnoreUplift ? "\n"+UpliftSummary : "");
         public string Schedule
         {
             get
@@ -285,7 +361,7 @@ namespace EngineeringDashboard
             if(input?.Network!=null)return TransferNetworkOptimizer.Optimize(input,input.Network).Beams[0];
             if (input?.TransferredSlab != null) return TransferredSlabOptimizer.Optimize(input);
             Validate(input);
-            return TowerStockPlanner.SearchWithCustom(input,()=>OptimizeCore(input),(a,b)=>a.LegCount<b.LegCount || a.LegCount==b.LegCount && (a.BayCount<b.BayCount || a.BayCount==b.BayCount && (a.StockPlan.TotalH20Count<b.StockPlan.TotalH20Count || a.StockPlan.TotalH20Count==b.StockPlan.TotalH20Count && a.Utilization<b.Utilization)));
+            return TowerStockPlanner.SearchWithCustom(input,()=>OptimizeCore(input),(a,b)=>a.LegCount<b.LegCount || a.LegCount==b.LegCount && (a.BayCount<b.BayCount || a.BayCount==b.BayCount && (a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount || a.StockPlan.TotalPrimaryCount==b.StockPlan.TotalPrimaryCount && a.Utilization<b.Utilization)));
         }
         private static TowerLayout OptimizeCore(TowerInput input)
         {
@@ -305,7 +381,7 @@ namespace EngineeringDashboard
                 input.Trace?.Increment(BeamSearchCounter.CoverageVariants);input.Trace?.Context("Covered length "+covered+" mm");
                 if (best != null && counts[covered] * 4 > best.LegCount) continue;
                 double overhang = (input.LengthMm - covered) / 2;
-                var candidateInput = new TowerInput { LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
+                var candidateInput = new TowerInput { PrimaryMaterial = input.PrimaryMaterial, LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
                     TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator,
                     Trace = input.Trace, IgnoreUplift = input.IgnoreUplift, AllowCustomH20Lengths = input.AllowCustomH20Lengths, CustomH20Scope = input.CustomH20Scope, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
                 TowerLayout candidate;
@@ -317,8 +393,8 @@ namespace EngineeringDashboard
                 foreach (var piece in candidate.StockPlan.Pieces) piece.StartMm += overhang;
                 candidate.LengthMm = input.LengthMm; candidate.ConcreteEndOverhangMm = overhang;
                 if (best == null || candidate.LegCount < best.LegCount || candidate.LegCount == best.LegCount && (candidate.BayCount < best.BayCount
-                    || candidate.BayCount == best.BayCount && (candidate.StockPlan.TotalH20Count < best.StockPlan.TotalH20Count
-                    || candidate.StockPlan.TotalH20Count == best.StockPlan.TotalH20Count && candidate.Utilization < best.Utilization))) best = candidate;
+                    || candidate.BayCount == best.BayCount && (candidate.StockPlan.TotalPrimaryCount < best.StockPlan.TotalPrimaryCount
+                    || candidate.StockPlan.TotalPrimaryCount == best.StockPlan.TotalPrimaryCount && candidate.Utilization < best.Utilization))) best = candidate;
             }
             if(covers.Length==0)input.Diagnostics.Geometry("primary coverage",$"Primary stock coverage: no stock combination totals {input.LengthMm-2*input.MaximumConcreteEndOverhangMm:0.###}–{input.LengthMm:0.###} mm.","Review available stock lengths and the maximum concrete end allowance.");
             if (best == null) throw input.Diagnostics.Exception("No valid layout found within the end-overhang allowance and bounded search.");
@@ -340,8 +416,8 @@ namespace EngineeringDashboard
             int lower = Math.Max(2, (int)Math.Ceiling(w * length / 1000 / input.LegCapacityKn - 1e-10));
             lower = Math.Max(lower, minimumPieces * 2);
             // A per-span moment range of 2*M and shear range of 2*V gives necessary span bounds.
-            double longest = 1000 * Math.Min(Math.Sqrt(16 * PairMoment / w), 2 * PairShear / w);
-            double tail = 1000 * Math.Min(Math.Sqrt(2 * PairMoment / w), PairShear / w);
+            double longest = 1000 * Math.Min(Math.Sqrt(16 * input.Primary.MomentLimitKnM / w), 2 * input.Primary.ShearLimitKn / w);
+            double tail = 1000 * Math.Min(Math.Sqrt(2 * input.Primary.MomentLimitKnM / w), input.Primary.ShearLimitKn / w);
             lower = Math.Max(lower, 1 + (int)Math.Ceiling(Math.Max(0, length - 2 * tail) / longest - 1e-10));
             input.Trace?.Work("Beam-only tower layout enumeration");
             TowerLayout best = null;
@@ -412,7 +488,7 @@ namespace EngineeringDashboard
                             tested++;
                             var candidate = Evaluate(input, positions, joined, width, rotation == 1);
                             if (candidate != null && (best == null || candidate.LegCount < best.LegCount || candidate.LegCount == best.LegCount && (candidate.BayCount < best.BayCount || candidate.BayCount == best.BayCount
-                                && (candidate.StockPlan.TotalH20Count < best.StockPlan.TotalH20Count || candidate.StockPlan.TotalH20Count == best.StockPlan.TotalH20Count && candidate.Utilization < best.Utilization)))) best = candidate;
+                                && (candidate.StockPlan.TotalPrimaryCount < best.StockPlan.TotalPrimaryCount || candidate.StockPlan.TotalPrimaryCount == best.StockPlan.TotalPrimaryCount && candidate.Utilization < best.Utilization)))) best = candidate;
                         }
                     }
                 }
@@ -446,12 +522,12 @@ namespace EngineeringDashboard
             if (response == null) return null;
             double maxLeg = response.Reactions.Max();
             if (!input.IgnoreUplift && response.Reactions.Min() < -1e-9 * maxLeg) return null;
-            var utilization = new[] { maxLeg / input.LegCapacityKn, response.MomentKnM / PairMoment, response.ShearKn / PairShear, response.DeflectionUtilization };
+            var utilization = new[] { maxLeg / input.LegCapacityKn, response.MomentKnM / input.Primary.MomentLimitKnM, response.ShearKn / input.Primary.ShearLimitKn, response.DeflectionUtilization, response.StrengthUtilization };
             if (utilization.Any(x => !TowerBeamAnalysis.Finite(x)) || utilization.Max() > 1 + 1e-10) return null;
-            return new TowerLayout { IgnoreUplift = input.IgnoreUplift, PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
-                LeftLineLoad = left, RightLineLoad = right, LeftReactions = response.Reactions.Select(x => x * left / Math.Max(left, right)).ToArray(), RightReactions = response.Reactions.Select(x => x * right / Math.Max(left, right)).ToArray(),
+            return new TowerLayout { PrimaryMaterial=input.PrimaryMaterial, IgnoreUplift = input.IgnoreUplift, PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
+                LeftLineLoad = left, RightLineLoad = right, LeftReactions = response.Reactions.Select((x,i) => x * (left+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm)) / (Math.Max(left,right)+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm))).ToArray(), RightReactions = response.Reactions.Select((x,i) => x * (right+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm)) / (Math.Max(left,right)+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm))).ToArray(),
                 MaxLegKn = maxLeg, LegCapacityKn = input.LegCapacityKn, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator, MomentKnM = response.MomentKnM, ShearKn = response.ShearKn, DeflectionMm = response.DeflectionMm,
-                Utilization = utilization.Max(), Governing = new[] { "Leg capacity", "Primary moment", "Primary shear", "Primary deflection" }[Array.IndexOf(utilization, utilization.Max())] };
+                Utilization = utilization.Max(), Governing = new[] { "Leg capacity", "Primary moment", "Primary shear", "Primary deflection", "Primary strength / M–V interaction" }[Array.IndexOf(utilization, utilization.Max())] };
         }
         // Maximize independent groups while retaining at least two frames per group.
         // When excluded, a 600 mm pair must remain joined to more frames or be rejected.
@@ -480,6 +556,7 @@ namespace EngineeringDashboard
         {
             if (input == null || new[] { input.LengthMm, input.LegCapacityKn, input.TotalLineLoad }.Any(x => !TowerBeamAnalysis.Finite(x) || x <= 0)
                 || !TowerBeamAnalysis.Finite(input.TransverseLoadMoment)) throw new ArgumentException("Tower length, leg capacity, load and deflection limit must be finite and positive.");
+            PrimaryBeamProfile.For(input.PrimaryMaterial);
             if (input.DeflectionDenominator == 0 ? !TowerBeamAnalysis.Finite(input.DeflectionLimitMm) || input.DeflectionLimitMm <= 0
                 : !new[] { 500, 350, 270 }.Contains(input.DeflectionDenominator)) throw new ArgumentException("Select L/500, L/350, L/270 or a positive legacy fixed limit.");
             if (!TowerBeamAnalysis.Finite(input.MaximumConcreteEndOverhangMm) || input.MaximumConcreteEndOverhangMm < 0 || input.MaximumConcreteEndOverhangMm > 500) throw new ArgumentException("Concrete end allowance must be between 0 and 500 mm per end.");
@@ -488,7 +565,7 @@ namespace EngineeringDashboard
                 || input.StockLengthsMm.Any(x => !TowerBeamAnalysis.Finite(x) || x <= 0 || x > 50000 || x != Math.Round(x)))
                 throw new ArgumentException("Provide 1–30 positive whole-millimetre H20 stock lengths up to 50,000 mm.");
             if (!TowerBeamAnalysis.Finite(input.StockEndSetbackMm) || input.StockEndSetbackMm <= 0)
-                throw new ArgumentException("H20 support-centre setback from each member end must be finite and greater than zero.");
+                throw new ArgumentException("Primary support-centre setback from each member end must be finite and greater than zero.");
         }
     }
 }

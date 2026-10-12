@@ -76,6 +76,7 @@ internal static class UpliftAssumptionTests
         foreach(var mode in new[] {CrossBeamSupportMode.ExistingSupportsOnly,CrossBeamSupportMode.DedicatedTowers})
         {
             var common=new TowerInput {IgnoreUplift=true,LengthMm=2450,LegCapacityKn=70,DeflectionDenominator=350,MaximumConcreteEndOverhangMm=0,AllowSeparateSlabFallback=false,NetworkSearchWorkers=1};
+            if(mode==CrossBeamSupportMode.DedicatedTowers)common.MaximumConcreteEndOverhangMm=300; // Independent below-main crossing must clear the side shutters at both ends.
             var network=new TransferNetworkInput {UpperSpacingMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=mode==CrossBeamSupportMode.DedicatedTowers ? -1400 : -400,SupportMode=mode}}};
             var result=TransferNetworkOptimizer.Optimize(common,network);
             var cross=result.CrossSupports.Single();
