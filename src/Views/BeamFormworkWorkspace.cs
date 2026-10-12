@@ -82,7 +82,8 @@ namespace EngineeringDashboard
             Title="Beam calculator · D3 shoring";Width=1280;Height=860;MinWidth=980;MinHeight=620;WindowState=WindowState.Maximized;WindowStartupLocation=WindowStartupLocation.CenterOwner;
             FontFamily=new FontFamily("Segoe UI");FontSize=13;Background=Brushes.WhiteSmoke;
             var root=new Grid {Background=Brushes.WhiteSmoke};root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
-            Surface=root;root.Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("CalculatorStyles.xaml",UriKind.Relative)});
+            // Revit has no managed entry assembly; never resolve this against the host.
+            Surface=root;root.Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("pack://application:,,,/MyRevitAddin;component/Views/CalculatorStyles.xaml",UriKind.Absolute)});
             var toolbar=new WrapPanel {Margin=new Thickness(8)};
             toolbar.Children.Add(new TextBlock {Text="D3 shoring",FontSize=20,FontWeight=FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,14,0)});
             if(changeSystem!=null)toolbar.Children.Add(Button("ChangeSystem","Change system",changeSystem));

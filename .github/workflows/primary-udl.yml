@@ -14,8 +14,8 @@ jobs:
       - run: dotnet build tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release --warnaserror
       - run: |
           New-Item -ItemType Directory -Force tests/d3-ui-preview | Out-Null
-          tests/Beam.UiSmoke/bin/Release/net48/Beam.UiSmoke.exe --ws10-ui tests/d3-ui-preview/beam.png
-          tests/Beam.UiSmoke/bin/Release/net48/Beam.UiSmoke.exe --drawing-ui tests/d3-ui-preview/beam.png
+          tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe --ws10-ui tests/d3-ui-preview/beam.png
+          tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe --drawing-ui tests/d3-ui-preview/beam.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -55,7 +55,7 @@ jobs:
       - run: dotnet build tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release --warnaserror
       - run: |
           New-Item -ItemType Directory -Force tests/beam-ui-preview
-          tests/Beam.UiSmoke/bin/Release/net48/Beam.UiSmoke.exe tests/beam-ui-preview/beam.png
+          tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe tests/beam-ui-preview/beam.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:

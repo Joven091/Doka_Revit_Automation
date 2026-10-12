@@ -64,6 +64,7 @@ static class Program
   D3SlabCalculatorWindow window=null;
   try
   {
+   NativeHostResourceChecks.Run();
    RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;
    new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};
    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));

@@ -39,7 +39,7 @@ dotnet build tests/Beam.Net48/Beam.Net48.csproj -c Release --warnaserror
 dotnet build tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release --warnaserror
 ```
 
-On Windows, run `tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --cross-supports`, `tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --symmetric-slab-supports` and `tests/Beam.UiSmoke/bin/Release/net48/Beam.UiSmoke.exe`. These are also included in the repository's regression/smoke workflows.
+On Windows, run `tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --cross-supports`, `tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --symmetric-slab-supports` and `tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe`. These are also included in the repository's regression/smoke workflows.
 
 ## Regression coverage
 
