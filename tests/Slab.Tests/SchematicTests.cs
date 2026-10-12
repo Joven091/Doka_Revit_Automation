@@ -43,7 +43,7 @@ internal static class SchematicTests
         valid.SlabThickness=150; valid.SelectedPlywood=PlywoodCatalog.All[0]; Draw(diagram,valid); check(diagram.DrawnSecondaryCount>before,"secondary pattern responds to spacing");
         valid.PropCount="5+"; Draw(diagram,valid); check(valid.IsCalculationValid && diagram.DrawnSecondaryCount==18,"sheet rows have finite bounded schematic");
         valid.FloorHeight=10000; diagram.SetModel(valid); check(diagram.DrawnPropCount==0 && diagram.DrawnPrimaryCount==0,"invalid state clears schematic immediately");
-        valid.FloorHeight=3000; Draw(diagram,valid); check(diagram.DrawnPropCount==9,"valid input restores schematic");
+        valid.FloorHeight=3000; Draw(diagram,valid); check(diagram.DrawnPropCount==15,"valid input restores schematic with the selected five-prop layout");
         var old=Thread.CurrentThread.CurrentCulture;
         try { Thread.CurrentThread.CurrentCulture=CultureInfo.GetCultureInfo("de-DE"); Draw(diagram,new FlexCalculatorViewModel()); check(diagram.DrawnPropCount==9,"schematic culture independent"); }
         finally { Thread.CurrentThread.CurrentCulture=old; }
