@@ -201,6 +201,7 @@ namespace EngineeringDashboard
             record.Inputs.Add(CalculationFiles.Field("CustomH20Scope", vm.CustomH20Scope));
             record.Inputs.Add(CalculationFiles.Field("IgnoreUplift", vm.IgnoreUplift));
             record.Inputs.Add(CalculationFiles.Field("PropConfiguration", vm.SelectedProp?.CapacityKey ?? BeamPropOption.All[0].CapacityKey));
+            record.Inputs.Add(CalculationFiles.Field("PlywoodProfileId", vm.PlywoodProfileId));
             record.Inputs.Add(CalculationFiles.Field("DeflectionCriterion", vm.DeflectionLimit.Label));
             if (vm.DeflectionLimit.Denominator == 0) record.Inputs.Add(CalculationFiles.Field("DeflectionLimitMm", vm.DeflectionLimit.Millimetres));
             return record;
@@ -209,6 +210,7 @@ namespace EngineeringDashboard
         {
             var candidate = new BeamCalculatorViewModel();
             CalculationFiles.Apply(record,"Beam",candidate,FileInputs);
+            candidate.PlywoodProfileId=record.Inputs.SingleOrDefault(f=>f.Name=="PlywoodProfileId")?.Value ?? PlywoodCatalog.Default.Id;
             candidate.SelectedProp = BeamPropOption.All.SingleOrDefault(p=>p.CapacityKey==record.Inputs.SingleOrDefault(f=>f.Name=="PropConfiguration")?.Value);
             string limit = record.Inputs.SingleOrDefault(f=>f.Name=="DeflectionLimitMm")?.Value;
             candidate.DeflectionLimit = BeamCalculatorViewModel.RestoreDeflectionOption(record.Inputs.SingleOrDefault(f=>f.Name=="DeflectionCriterion")?.Value, limit);
@@ -218,8 +220,8 @@ namespace EngineeringDashboard
             // Validate a separate model first. Preserve the launcher's retained model instance.
             var target=(BeamCalculatorViewModel)DataContext;
             CalculationFiles.Apply(record,"Beam",target,FileInputs);
-            target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
-            target.TransferSlabLoads=candidate.TransferSlabLoads; target.UpperSupportSpacingMm=candidate.UpperSupportSpacingMm; target.LeftSlabBayMm=candidate.LeftSlabBayMm; target.RightSlabBayMm=candidate.RightSlabBayMm;
+            target.SelectedPlywood=candidate.SelectedPlywood; target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
+            target.TransferSlabLoads=candidate.TransferSlabLoads; target.LeftSlabBayMm=candidate.LeftSlabBayMm; target.RightSlabBayMm=candidate.RightSlabBayMm;
             target.UseBeamNetwork=candidate.UseBeamNetwork;if(candidate.NetworkBeams.Count>=2)target.NetworkConfigurationXml=candidate.NetworkConfigurationXml;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
             target.PrimaryMaterial=candidate.PrimaryMaterial;
@@ -233,7 +235,8 @@ namespace EngineeringDashboard
         }
         private static void RestoreTowerFields(CalculationRecord record, BeamCalculatorViewModel vm)
         {
-            foreach (string field in new[] { "TransferSlabLoads", "UpperSupportSpacingMm", "LeftSlabBayMm", "RightSlabBayMm" })
+            // Ignore legacy manual UpperSupportSpacingMm; the restored inputs determine the maximum.
+            foreach (string field in new[] { "TransferSlabLoads", "LeftSlabBayMm", "RightSlabBayMm" })
                 if (record.Inputs.Any(f=>f.Name==field)) CalculationFiles.Apply(record,"Beam",vm,field);
             foreach(string field in new[] {"UseBeamNetwork","NetworkConfigurationXml"})if(record.Inputs.Any(f=>f.Name==field))CalculationFiles.Apply(record,"Beam",vm,field);
             vm.IgnoreUplift = false;
@@ -273,7 +276,7 @@ namespace EngineeringDashboard
             if (vm.UseTowers)
             {
                 var tower = vm.TowerResult;
-                var fields = new List<CalculationField> { CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("ConcreteEndOverhangMm", tower.ConcreteEndOverhangMm), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis), CalculationFiles.Field("UpliftAcceptance", tower.UpliftSummary),
+                var fields = new List<CalculationField> { CalculationFiles.Field("PlywoodLabel", vm.PlywoodLabel), CalculationFiles.Field("PlywoodChartReference", vm.SelectedPlywood.ChartReference), CalculationFiles.Field("MaximumSecondarySpacingMm", vm.MaximumSecondarySpacingMm), CalculationFiles.Field("PlywoodPressureKnM2", vm.PlywoodPressureKnM2), CalculationFiles.Field("PlywoodCriterion", vm.PlywoodCriterion), CalculationFiles.Field("SecondarySpacingGoverning", vm.SecondarySpacingGoverning), CalculationFiles.Field("SecondarySpacingSummary", vm.SecondarySpacingSummary), CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("ConcreteEndOverhangMm", tower.ConcreteEndOverhangMm), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis), CalculationFiles.Field("UpliftAcceptance", tower.UpliftSummary),
                     CalculationFiles.Field("LegUtilizationPercent", tower.MaxLegKn / vm.TowerLegCapacityKn * 100), CalculationFiles.Field("SupportSchedule", tower.Schedule),
                     CalculationFiles.Field("PrimaryStockSchedule", tower.StockSchedule), CalculationFiles.Field("TotalPrimaryH20Count", tower.StockPlan.TotalH20Count),CalculationFiles.Field("TotalWS10Count",vm.NetworkResult?.WS10Count??tower.StockPlan.WS10Count),CalculationFiles.Field("PrimaryMaterialBasis",tower.PrimaryMaterialSummary),
                     CalculationFiles.Field("SearchStatus", vm.TowerSearchNote), CalculationFiles.Field("TotalLineLoadKnPerM", vm.TotalLineLoad),
@@ -282,13 +285,13 @@ namespace EngineeringDashboard
                 if(vm.NetworkResult!=null) {fields.Add(CalculationFiles.Field("NetworkSummary",vm.NetworkResult.Summary));fields.Add(CalculationFiles.Field("NetworkSignedReactions",string.Join("\n",vm.NetworkResult.Beams.Select((b,i)=>$"B{i+1}: {b.UpliftSummary}"))));fields.Add(CalculationFiles.Field("AllBeamSchedules",vm.NetworkResult.Schedule));fields.Add(CalculationFiles.Field("TotalNetworkH20LengthMm",vm.NetworkResult.TimberMm));fields.Add(CalculationFiles.Field("TotalNetworkWS10LengthMm",vm.NetworkResult.WS10LengthMm));fields.Add(CalculationFiles.Field("TotalNetworkSlabLoadKn",vm.NetworkResult.SlabLoadKn));if(vm.NetworkResult.RequiresSeparateSlabFormwork)fields.Add(CalculationFiles.Field("FullTransferFailureDetails",vm.NetworkResult.FullTransferFailureDetails));}
                 return CalculationFiles.Report("Beam — shoring towers", record.Inputs, fields, vm.TowerCalculationBasis);
             }
-            var results=CalculationFiles.Capture("Beam",vm,"MaximumPropSpacing,PrimaryBeamCantilever,MaximumPropLoad,PropCapacityKn,PrimaryDeflectionMm,PrimaryDeflectionUtilization,PropUtilizationPercent,PropExtensionMm,PropLookupExtensionMm,PrimaryLineSpacingMm,LeftLineLoad,RightLineLoad,TotalLineLoad,LimitingFactor,IsCalculationValid");
+            var results=CalculationFiles.Capture("Beam",vm,"PlywoodLabel,FormworkDepthMm,MaximumSecondarySpacingMm,PlywoodPressureKnM2,PlywoodCriterion,SecondarySpacingGoverning,SecondarySpacingSummary,MaximumPropSpacing,PrimaryBeamCantilever,MaximumPropLoad,PropCapacityKn,PrimaryDeflectionMm,PrimaryDeflectionUtilization,PropUtilizationPercent,PropExtensionMm,PropLookupExtensionMm,PrimaryLineSpacingMm,LeftLineLoad,RightLineLoad,TotalLineLoad,LimitingFactor,IsCalculationValid");
             return CalculationFiles.Report("Beam",record.Inputs,results.Inputs,
                 "Geometry and spacing: mm. Area loads: kN/m². Line loads: kN/m. Prop loads/capacity: kN. Utilization: %. Deflection criterion: each H20 support span or overhang length divided by the selected denominator; legacy limits use mm.\n"+
                 "Each checked side uses the entered slab strip width. Primary lines = (beam width + 1400)/2. Line reactions use force and moment equilibrium; the heavier line governs.\n"+
                 "Concrete 25 kN/mÂ³; default heaping min(1.75,max(0.75,10% of concrete weight)), working 0.75 and formwork 0.40 kN/m². Custom live replaces placing + working load.\n"+
-                "Equal spans and full uniform loading. Deflection includes support rotation at overhangs. The 4+ prop selection checks four through twelve supports for deflection.  H20 moment 5 kNm, shear 11 kN, EI 449.8756 kNm². Spacing rounds down to 25 mm and checks selected prop capacity; extension = floor height - beam depth - 418 mm.\n"+
-                "2/3/4+ support coefficient model; primary span limits 2000/3000 mm. Sheeting, secondary beams, joints, restraint and local bearing require separate checks. Results recalculated from inputs; this is not a complete formwork verification.");
+                "Equal spans and full uniform loading. Deflection includes support rotation at overhangs. The 4+ prop selection checks four through twelve supports for deflection.  H20 moment 5 kNm, shear 11 kN, EI 449.8756 kNm². Spacing rounds down to 25 mm and checks selected prop capacity; extension = floor height - beam depth - (400 mm H20 layers + selected plywood thickness).\n"+
+                "2/3/4+ support coefficient model; primary span limits 2000/3000 mm. Secondary H20 member strength, sheet joints/orientation/end details, restraint and local bearing require separate checks. Results recalculated from inputs; this is not a complete formwork verification.\n" + vm.PlywoodCalculationBasis);
         }
     }
 }

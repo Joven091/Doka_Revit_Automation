@@ -29,7 +29,7 @@ internal static class D3WorkspaceUiTests
             Check(view.Surface.TryFindResource("PrimaryAction") is Style,"drawing uses the shared calculator theme");
             model.TransferSlabLoads=true;model.UseBeamNetwork=true;
             foreach(var beam in model.NetworkBeams){beam.WidthMm=650;beam.SetDepthKeepingTopMm(1150);}
-            model.NetworkBays[0].WidthMm=3550;model.NetworkBays[0].ThicknessMm=300;model.UpperSupportSpacingMm=250;Pump();
+            model.NetworkBays[0].WidthMm=3550;model.NetworkBays[0].ThicknessMm=300;Pump();
             var task=view.CalculateAsync();var clock=System.Diagnostics.Stopwatch.StartNew();
             while(!task.IsCompleted){Pump();Thread.Sleep(1);if(clock.Elapsed.TotalSeconds>90)throw new Exception("D3 calculation timeout");}task.GetAwaiter().GetResult();Pump();
             Check(model.IsCalculationValid,"drawing calculates a checked D3 network");

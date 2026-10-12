@@ -25,6 +25,11 @@ jobs:
           $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
           & $compiler installer.iss
           if ($LASTEXITCODE -ne 0) { throw 'Calculator installer compilation failed' }
+      # Check interactive controls before the slower calculation/search regressions.
+      - name: Beam UI checks and previews
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          dotnet run --project tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release -- artifacts/beam.png
       - run: dotnet run --project tests/Dome.Tests/Dome.Tests.csproj -c Release
       - run: dotnet run --project tests/D3Slab.Tests/D3Slab.Tests.csproj -c Release
       - run: dotnet run --project tests/D3Slab.UiSmoke/D3Slab.UiSmoke.csproj -c Release
@@ -40,10 +45,6 @@ jobs:
         run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --search-reuse
       - name: Beam network economy regression (.NET Framework 4.8)
         run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --network-economy
-      - name: Beam UI checks and previews
-        run: |
-          New-Item -ItemType Directory -Force artifacts | Out-Null
-          dotnet run --project tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release -- artifacts/beam.png
       - run: dotnet run --project tests/Backpropping.Tests/Backpropping.Tests.csproj -c Release
       - uses: actions/upload-artifact@v4
         if: always()

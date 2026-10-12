@@ -49,6 +49,8 @@ internal static class Program
    if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    if(args.Contains("--drawing-ui")){D3WorkspaceUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));PresentationUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    window=new BeamCalculatorWindow();vm=new BeamCalculatorViewModel();window.DataContext=vm;Render();
+   var secondaryText=(TextBlock)window.FindName("SecondarySpacingText");
+   Check(secondaryText.Text==vm.SecondarySpacingSummary && secondaryText.Text.Contains("435 mm"),"secondary result is bound to shared plywood model");
    var import=(Button)window.FindName("ImportButton");var results=(Border)window.FindName("ResultsBorder");var diagram=(BeamSupportDiagram)window.FindName("SupportDiagram");
    var picker=(Grid)window.FindName("SupportSystemPicker");var workspace=(Grid)window.FindName("CalculatorWorkspace");
    Check(picker.Visibility==Visibility.Visible && workspace.Visibility==Visibility.Collapsed,"fresh beam calculator starts with visual system choice");
@@ -75,6 +77,17 @@ internal static class Program
     Check(Math.Abs(analysis.Moment-expected.Moment)<1e-9 && window.TowerDiagrams.LoadingDiagram!=null,"Dokaflex diagram uses actual line response and includes loading plot");
    }
    vm.Width+=25;Pump();Check(window.TowerDiagrams==null && diagram.IsSelectionEnabled,"valid input edit closes stale response and leaves primaries clickable");
+   var plywoodSelector=(ComboBox)window.FindName("PlywoodSelector");
+   Check(plywoodSelector.Items.Count==3 && plywoodSelector.SelectedItem==PlywoodCatalog.Default,"plywood selector exposes supplied products with 18 mm default");
+   plywoodSelector.SelectedItem=vm.PlywoodOptions.Single(p=>p.ThicknessMm==9);Pump();
+   Check(vm.MaximumSecondarySpacingMm==210 && vm.FormworkDepthMm==409,"plywood selection updates spacing and buildup");
+   var plywoodRecord=window.CaptureCalculation();plywoodSelector.SelectedItem=vm.PlywoodOptions.Single(p=>p.ThicknessMm==21);Pump();window.RestoreCalculation(plywoodRecord);Pump();
+   Check(vm.SelectedPlywood.ThicknessMm==9,"plywood selection survives save/load");
+   var unknownPlywood=window.CaptureCalculation();unknownPlywood.Inputs.Single(f=>f.Name=="PlywoodProfileId").Value="unknown";
+   bool plywoodRejected=false;try {window.RestoreCalculation(unknownPlywood);}catch(ArgumentException){plywoodRejected=true;}
+   Check(plywoodRejected && vm.SelectedPlywood.ThicknessMm==9,"unknown saved plywood does not alter retained calculation");
+   plywoodRecord.Inputs.RemoveAll(f=>f.Name=="PlywoodProfileId");window.RestoreCalculation(plywoodRecord);Pump();
+   Check(vm.SelectedPlywood==PlywoodCatalog.Default,"old calculations without plywood choice retain 18 mm");
    Enter("Depth","abc");Check(!vm.IsCalculationValid,"invalid text invalidates VM");Check(!import.IsEnabled,"invalid import disabled");Check(results.Visibility==Visibility.Collapsed,"stale results hidden");Check(Input("Depth").Text=="abc","invalid text preserved");
    Check(!window.TryGetValidCalculation(out var ignored),"import guard rejects conversion error");
    Enter("Depth","500");Check(vm.IsCalculationValid&&import.IsEnabled,"valid text recovers");
@@ -214,13 +227,15 @@ internal static class Program
    bool criterionRejected=false;try {window.RestoreCalculation(invalidCriterion);}catch(ArgumentException){criterionRejected=true;}
    Check(criterionRejected&&vm.DeflectionLimit.Label=="L/350","invalid saved criterion leaves current calculation intact");
    vm.UseTowers=true;Pump();Check(vm.TowerResult==null && !vm.IsCalculationValid,"switching support modes invalidates old results");
-   vm.AllowCustomH20Lengths=true;vm.Depth=1750;vm.Width=1100;vm.BeamLengthMm=6750;vm.MaximumConcreteEndOverhangMm=75;vm.TowerLegCapacityKn=70;vm.LeftSlabThickness=300;vm.HasLeftSlab=true;vm.HasRightSlab=false;vm.TransferSlabLoads=true;vm.UpperSupportSpacingMm=200;Pump();
+   Check(secondaryText.Text==vm.SecondarySpacingSummary,"D3 displays shared plywood result before optimization");
+   vm.Depth=900;vm.Width=800;vm.BeamLengthMm=10600;vm.MaximumConcreteEndOverhangMm=75;vm.TowerLegCapacityKn=70;vm.AllowCustomH20Lengths=true;vm.LeftSlabBayMm=2575;vm.LeftSlabThickness=300;vm.HasLeftSlab=true;vm.HasRightSlab=false;vm.TransferSlabLoads=true;Pump();
    Check(!Input("SlabStripWidthMm").IsEnabled && Input("LeftSlabBayMm").IsEnabled && !Input("RightSlabBayMm").IsEnabled,"transfer mode enables only applicable bay inputs");
    Optimize();Check(vm.IsCalculationValid && vm.TowerResult.Transfer!=null,"transferred load optimization through WPF: "+vm.WarningMessage+" · spacing "+vm.UpperSupportSpacingMm+" · end "+vm.MaximumConcreteEndOverhangMm);
    Render();var transferred=vm.TowerResult.Transfer;
    Check(diagram.DrawnTransferRowCount==0 && diagram.DrawnFootCount==0,"plan omits transverse H20s and upper feet for a cleaner tower view");
-   Check(diagram.MinWidth>1000,"transfer plan can scroll with readable row spacing");
+   Check(diagram.MinWidth>=1000,"transfer plan retains its minimum readable width for scrolling");
    var transferRecord=window.CaptureCalculation();Check(window.BuildReport().Contains("UpperSupportSpacingMm") || window.BuildReport().Contains("Upper Support Spacing Mm"),"report contains transfer inputs");
+   Check(window.BuildReport().Contains("MaximumSecondarySpacingMm") || window.BuildReport().Contains("Maximum Secondary Spacing Mm"),"tower report includes plywood spacing");
    Check(window.BuildReport().Contains("Beam + left slab") && window.BuildReport().Contains("receiving beam slab load"),"report contains discrete transfer cases and load coverage");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
    var lowerHit=diagram.MemberTargets.First(h=>h.Item2>=vm.TowerResult.StockPlan.Pieces.Length && h.Item2<vm.TowerResult.StockPlan.Pieces.Length+transferred.RowsMm.Length);
@@ -233,9 +248,11 @@ internal static class Program
    Check(diagram.SelectAt(new Point(upperHit.Item1.X+upperHit.Item1.Width/2,upperHit.Item1.Y+upperHit.Item1.Height/2)),"select upper pair from main section");Pump();Check(window.TowerDiagrams.Title.Contains("Upper left"),"upper pair diagram selection");
    if(args.Length>0){SavePreview(Path.ChangeExtension(args[0],"transferred.png"),1040,860);File.WriteAllText(Path.ChangeExtension(args[0],"transferred-report.html"),window.BuildReport());
     var bitmap=new RenderTargetBitmap((int)Math.Ceiling(diagram.ActualWidth),(int)Math.Ceiling(diagram.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(diagram);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"transfer-plan.png")))encoder.Save(file);}
-   vm.TransferSlabLoads=false;window.RestoreCalculation(transferRecord);Pump();Check(vm.IsTransferMode && vm.UpperSupportSpacingMm==200 && !vm.IsCalculationValid,"transfer input round trip invalidates stale results");
-   Enter("UpperSupportSpacingMm","oops");Check(!vm.CanOptimizeTowers,"invalid active transfer text blocks optimization");vm.TransferSlabLoads=false;Pump();Check(vm.CanOptimizeTowers,"inactive transfer text ignored in strip mode");
-   Enter("UpperSupportSpacingMm","200");vm.TransferSlabLoads=true;Pump();
+   vm.TransferSlabLoads=false;window.RestoreCalculation(transferRecord);Pump();Check(vm.IsTransferMode && vm.UpperSupportSpacingMm==vm.MaximumSecondarySpacingMm && !vm.IsCalculationValid,"transfer input round trip invalidates stale results");
+   var spacingInput=Input("UpperSupportSpacingMm");Check(spacingInput.IsReadOnly && !spacingInput.IsEnabled && spacingInput.GetBindingExpression(TextBox.TextProperty).ParentBinding.Mode==System.Windows.Data.BindingMode.OneWay,"automatic secondary spacing is locked and greyed out");
+   vm.Depth=vm.Depth+25;Pump();Check(spacingInput.Text==vm.UpperSupportSpacingMm.ToString(CultureInfo.CurrentCulture),"locked field refreshes when geometry changes");vm.Depth=vm.Depth-25;Pump();
+   // This layout needs closer lower H20 rows; use the supplied 9 mm chart instead of a manual spacing override.
+   vm.SelectedPlywood=vm.PlywoodOptions.Single(p=>p.ThicknessMm==9);vm.LeftSlabBayMm=3900;vm.Depth=1500;
    ((Button)window.FindName("AddBeamBayButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render();
    Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBays.Count==2,"add button extends to three beams and two slab bays");
    Check(!Input("Depth").IsEnabled && !Input("LeftSlabBayMm").IsEnabled,"network uses individual beam and bay inputs");
@@ -247,7 +264,7 @@ internal static class Program
    widthInput.Text="oops";widthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(!vm.CanOptimizeTowers,"invalid individual beam width blocks optimization");
    widthInput.Text="900";widthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();
    depthInput.Text="oops";depthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(!vm.CanOptimizeTowers,"invalid templated beam depth blocks optimization");
-   depthInput.Text="1200";depthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Optimize();Check(vm.IsCalculationValid && vm.NetworkResult!=null,"network optimization from WPF");
+   depthInput.Text="1200";depthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Optimize();Check(vm.IsCalculationValid && vm.NetworkResult!=null,"network optimization from WPF: "+vm.WarningMessage);
    Render();var networkPlan=(TransferNetworkPlan)window.FindName("NetworkPlan");
    Check(networkPlan.DrawnTowerLegCount==vm.NetworkResult.LegCount && networkPlan.DrawnTransversePlanCount==0,"full network plan shows all towers and no transverse pairs");
    Check(networkPlan.DrawnPrimaryLengthCount==vm.NetworkResult.Beams.Sum(b=>b.StockPlan.Pieces.Length),"each paired primary stock length labelled once in plan");
@@ -308,14 +325,14 @@ internal static class Program
    window.RestoreCalculation(networkSaved);Pump();Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBeams[1].DepthMm==1200 && vm.NetworkBeams[2].WidthMm==900,"network save/load round trip retains per-beam width/depth and all bays");
    ((Button)window.FindName("RemoveBeamBayButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Check(vm.NetworkBeams.Count==2 && vm.NetworkBays.Count==1,"remove last bay button");
    vm.NetworkBeams[0].WidthMm=800;vm.NetworkBeams[0].DepthMm=1750;vm.NetworkBeams[1].WidthMm=650;vm.NetworkBeams[1].DepthMm=1150;vm.NetworkBays[0].WidthMm=2575;vm.NetworkBays[0].ThicknessMm=300;
-   vm.AllowCustomH20Lengths=true;vm.BeamLengthMm=10600;vm.TowerLegCapacityKn=70;vm.Exclude600Standalone=true;vm.UpperSupportSpacingMm=750;Optimize();Render();
+   vm.AllowCustomH20Lengths=true;vm.BeamLengthMm=10600;vm.TowerLegCapacityKn=1;vm.Exclude600Standalone=true;Optimize();Render();
    var failureExpander=(Expander)window.FindName("FailureDetailsExpander");var failureText=(TextBox)window.FindName("FailureDetailsText");
    Check(!vm.IsCalculationValid && vm.HasTowerFailure && failureExpander.Visibility==Visibility.Visible && networkPlan.DrawnTowerLegCount==0,"failed network shows diagnostic control and clears stale plan");
    failureExpander.IsExpanded=true;Render();
-   Check(failureText.IsReadOnly && failureText.Text.Contains("Lower secondary · shear") && failureText.Text.Contains("Lower secondary · moment"),"copyable failure detail shows remaining member failures after custom slab length");
+   Check(failureText.IsReadOnly && failureText.Text.Contains("leg"),"copyable failure detail shows leg capacity failure with automatic spacing");
    if(args.Length>0){SavePreview(Path.ChangeExtension(args[0],"failure.png"),1040,860);File.WriteAllText(Path.ChangeExtension(args[0],"failure.txt"),failureText.Text);}
-   vm.UpperSupportSpacingMm=200;Optimize();Render();
-   Check(vm.IsCalculationValid && !vm.HasTowerFailure && failureExpander.Visibility==Visibility.Collapsed && networkPlan.DrawnTowerLegCount==vm.NetworkResult.LegCount,"custom slab length produces a valid tower plan at 200 mm rows");
+   vm.TowerLegCapacityKn=70;vm.NetworkBeams[0].DepthMm=900;vm.NetworkBeams[1].DepthMm=900;Optimize();Render();
+   Check(vm.IsCalculationValid && !vm.HasTowerFailure && failureExpander.Visibility==Visibility.Collapsed && networkPlan.DrawnTowerLegCount==vm.NetworkResult.LegCount,"custom slab length produces a valid tower plan at the calculated maximum");
    Check(vm.NetworkResult.Bays[0].StockLengthMm%25==0 && vm.NetworkResult.Bays[0].IsCustomLength && window.BuildReport().Contains(vm.NetworkResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"custom length is labelled in calculation report");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
    var customTransfer=vm.NetworkResult.Beams[0].Transfer;int customRow=Array.IndexOf(customTransfer.RightUpperScales,customTransfer.RightUpperScales.Max());

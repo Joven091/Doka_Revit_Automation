@@ -89,20 +89,19 @@ internal static class NetworkTests
         crossingInput.CrossingBeams[0].DepthMm=350;crossingInput.CrossingBeams=new[] {crossingInput.CrossingBeams[0],new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,PositionMm=3100,WidthMm=300,DepthMm=400}};rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"overlapping crossing beams rejected to avoid duplicate volume");
         var failureVm=new BeamCalculatorViewModel {AllowCustomH20Lengths=true,UseTowers=true,Depth=1750,Width=800,BeamLengthMm=10600,TowerLegCapacityKn=70,HasRightSlab=true,RightSlabThickness=300,RightSlabBayMm=2575,TransferSlabLoads=true,Exclude600Standalone=true,UseBeamNetwork=true};
         failureVm.NetworkBeams[1].WidthMm=650;failureVm.NetworkBeams[1].DepthMm=1150;
-        failureVm.OptimizeTowersAsync().GetAwaiter().GetResult();
-        Check(!failureVm.IsCalculationValid && failureVm.NetworkResult==null && failureVm.HasTowerFailure,"failed user setup retains diagnostics without a solution");
-        Check(failureVm.TowerFailureDetails.Contains("Lower secondary · moment") && failureVm.TowerFailureDetails.Contains("Lower secondary · shear") && failureVm.TowerFailureDetails.Contains("Lower secondary · deflection"),"custom length removes stock blocker and exposes lower secondary failures at 750 mm rows");
-        Check(!failureVm.TowerFailureDetails.Contains("Numerical checks recorded: 0") && !failureVm.TowerFailureDetails.Contains("no available stock fits"),"custom slab H20 reaches numerical checks");
-        failureVm.UpperSupportSpacingMm=200;Check(!failureVm.HasTowerFailure && failureVm.TowerFailureDetails=="","editing spacing clears stale failure report");
+        Check(failureVm.MaximumSecondarySpacingMm==295 && failureVm.UpperSupportSpacingMm==295,"deep beam automatically sets common network spacing before search");
+        failureVm.NetworkBeams[0].DepthMm=900;failureVm.NetworkBeams[1].DepthMm=900;
+        Check(failureVm.UpperSupportSpacingMm==365 && !failureVm.HasTowerFailure,"changing depth updates spacing and clears stale results");
         failureVm.OptimizeTowersAsync().GetAwaiter().GetResult();
         var customResult=failureVm.NetworkResult;
-        Check(failureVm.IsCalculationValid && customResult!=null && !failureVm.HasTowerFailure,"same user setup passes at 200 mm rows with custom slab length");
+        Check(failureVm.IsCalculationValid && customResult!=null && !failureVm.HasTowerFailure,"custom slab length passes using the calculated row spacing");
         Check(customResult.Bays[0].StockLengthMm%25==0 && customResult.Bays[0].EdgeMm>=200 && customResult.Bays[0].EdgeMm<=350,"enabled custom lengths retain permitted increments and edge strips");
         Check(customResult.Bays[0].IsCustomLength && customResult.Beams[0].Transfer.RightUpperCustom && customResult.Beams[1].Transfer.LeftUpperCustom && customResult.Schedule.Contains(customResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"custom identity survives reversal and is visible in report");
         Near(customResult.SlabLoadKn,9.4*2.575*customResult.SlabCoveredLengthMm/1000,"custom-covered slab plus shutter strips conserve full bay load");
         Check(failureVm.BuildDiagnosticReport().Contains("SELECTED NETWORK LAYOUT") && customResult.LayoutDiagnostics.Contains("B1: legs=") && customResult.LayoutDiagnostics.Contains("primary runs=") && customResult.LayoutDiagnostics.Contains("S1: H20="),"diagnosis includes selected grid, per-beam legs and actual stocks and shared feet");
         foreach(var beam in customResult.Beams)
         {
+            Near(beam.Transfer.EnteredUpperSpacingMm,failureVm.MaximumSecondarySpacingMm,"optimizer uses the displayed automatic spacing for every beam");
             Check(beam.MaxLegKn<=70 && beam.StockPlan.Pieces.All(piece=>common.StockLengthsMm.Contains(piece.StockLengthMm) || piece.StockLengthMm%25==0),"enabled custom lengths do not change capacity and retain permitted stock/cut lengths");
             foreach(var member in beam.Transfer.PrimaryCases.SelectMany(c=>c).Concat(beam.Transfer.LowerCases.SelectMany(c=>c)).Concat(beam.Transfer.UpperMembers))
             {
