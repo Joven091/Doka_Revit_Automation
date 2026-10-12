@@ -26,6 +26,8 @@ namespace EngineeringDashboard
         internal DataGrid CheckedCasesTable {get;private set;}
         private readonly TowerLayout layout;
         private readonly CrossBeamSupportResult crossSupport;
+        private readonly BeamCalculatorViewModel propModel;
+        private readonly ComboBox propCount = new ComboBox { Width = 100, Margin = new Thickness(8,0,0,0) };
         private readonly string beamLabel;
         private readonly int networkBeam;
         private readonly StackPanel charts = new StackPanel();
@@ -33,10 +35,27 @@ namespace EngineeringDashboard
         {
             networkBeam=model.IsNetworkMode ? model.SelectedNetworkBeam+1 : 0;
             beamLabel=networkBeam>0 ? $"B{networkBeam} · " : "";
-            layout = model.TowerResult ?? throw new ArgumentException("Optimize the tower layout first.");
+            if (!model.UseTowers)
+            {
+                if (!model.IsCalculationValid) throw new ArgumentException("Calculate a valid Dokaflex layout first.");
+                propModel = model;
+            }
+            else layout = model.TowerResult ?? throw new ArgumentException("Optimize the tower layout first.");
             Title = "Select member — shear, moment and deflection"; Width = 960; Height = 850; MinWidth=760;MinHeight=550;WindowStartupLocation=WindowStartupLocation.CenterOwner;FontFamily=new FontFamily("Segoe UI");FontSize=13;
             var panel = new StackPanel { Margin = new Thickness(16), Background=Brushes.WhiteSmoke };
-            panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = layout.Primary.Assumptions+"\n"+(layout.Transfer != null ? "Primary members use the selected material. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. The load case selector defaults to the highest shear, moment or deflection utilization for the selected member. Checked cases are loading patterns; a pouring sequence has not been specified. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents one primary line. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; the loading diagram shows applied loads and supports. Overlapping distributed loads are combined, and distributed-load arrow heights share one intensity scale. Individual load components remain available in the collapsed details. Primaries use UDL design loads derived from beam and slab reactions per metre, without assumed secondary row point loads. Crossing-beam increments remain distributed over their physical footprints. The optimizer, diagrams and reported utilization use the same distributed loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
+            if (propModel == null) panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = layout.Primary.Assumptions+"\n"+(layout.Transfer != null ? "Primary members use the selected material. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. The load case selector defaults to the highest shear, moment or deflection utilization for the selected member. Checked cases are loading patterns; a pouring sequence has not been specified. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents one primary line. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; the loading diagram shows applied loads and supports. Overlapping distributed loads are combined, and distributed-load arrow heights share one intensity scale. Individual load components remain available in the collapsed details. Primaries use UDL design loads derived from beam and slab reactions per metre, without assumed secondary row point loads. Crossing-beam increments remain distributed over their physical footprints. The optimizer, diagrams and reported utilization use the same distributed loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
+            if (propModel != null)
+            {
+                panel.Children.Add(new TextBlock { Text = "Single primary H20 · positive moment = sagging; negative deflection = downward. Curves use the calculated uniform line load and equal prop spans. Support reactions are exact for this displayed layout; the spacing calculation retains its conservative reaction coefficients.", TextWrapping = TextWrapping.Wrap });
+                if (propModel.NumberOfProps == "4+")
+                {
+                    var countPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0,8,0,0) };
+                    countPanel.Children.Add(new TextBlock { Text = "Props in displayed layout", VerticalAlignment = VerticalAlignment.Center });
+                    propCount.ItemsSource = Enumerable.Range(4,9).ToArray(); propCount.SelectedItem = 4;
+                    propCount.SelectionChanged += (s,e) => Refresh();
+                    countPanel.Children.Add(propCount); panel.Children.Add(countPanel);
+                }
+            }
             panel.Children.Add(charts);
             Background=Brushes.WhiteSmoke;
             Content = new ScrollViewer { Content = panel, Background = Brushes.WhiteSmoke, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -62,6 +81,7 @@ namespace EngineeringDashboard
         {
             if (SelectedRun < 0) return;
             if(crossSupport!=null) {RefreshCross();return;}
+            if (propModel != null) { RefreshProps(); return; }
             if (layout.Transfer != null) { RefreshTransfer(); return; }
             var piece = layout.StockPlan.Pieces[SelectedRun];
             var supports = layout.PositionsMm.Skip(piece.FirstSupport).Take(piece.LastSupport - piece.FirstSupport + 1).Select(x => (x - piece.StartMm) / 1000).ToArray();
@@ -82,6 +102,32 @@ namespace EngineeringDashboard
                     ? $"{names[i]} · peak {peaks[i]:0.000} · L/{layout.DeflectionDenominator} · utilization {Analysis.DeflectionUtilization(layout.DeflectionLimitMm, layout.DeflectionDenominator)*100:0.0}%"
                     : $"{names[i]} · peak {peaks[i]:0.000} / permissible {limits[i]:0.000}";
                 AddChart(caption,new ResponsePlot(Analysis,supports,piece.StockLengthMm/1000,i,peaks[i],limits[i],layout.DeflectionDenominator,layout.Primary.IsWS10));
+            }
+        }
+        private void RefreshProps()
+        {
+            int count = propModel.NumberOfProps == "4+" ? (int)propCount.SelectedItem : int.Parse(propModel.NumberOfProps);
+            Analysis = propModel.AnalyzePropPrimary(SelectedLine,count);
+            double span = propModel.MaximumPropSpacing / 1000, end = propModel.PrimaryBeamCantilever / 1000;
+            double length = (count - 1) * span + 2 * end;
+            var supports = Enumerable.Range(0,count).Select(i => end + i * span).ToArray();
+            double q = SelectedLine == 0 ? propModel.LeftLineLoad : propModel.RightLineLoad;
+            Title = $"Dokaflex · {(SelectedLine == 0 ? "Left" : "Right")} primary · single H20 — response diagrams";
+            charts.Children.Clear();
+            charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · {count} props · span: {span*1000:0} mm · overhang at each end: {end*1000:0} mm · modeled length: {length*1000:0} mm", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,8,0,4) });
+            AddLoadDetails(string.Join("   ",Analysis.Reactions.Select((v,i) => $"Prop {i+1}: {v:0.00} kN")));
+            LoadingDiagram = new MemberLoadingPlot(length*1000,supports.Select(x=>x*1000).ToArray(),Analysis.Reactions,
+                new[] {new BeamDistributedLoad {StartMm=0,EndMm=length*1000,KnPerM=q}},new BeamPointLoad[0]);
+            AddChart("Loading diagram",LoadingDiagram,true);
+            double[] peaks = {Analysis.Shear,Analysis.Moment,Analysis.DeflectionMm};
+            double[] limits = {11,5,Analysis.DeflectionRegions.Max(x=>x.AllowableMm(propModel.DeflectionLimit.Millimetres,propModel.DeflectionLimit.Denominator))};
+            string[] names = {"Shear (kN)","Moment (kNm)","Deflection (mm)"};
+            for (int i=0;i<3;i++)
+            {
+                string caption = i==2 && propModel.DeflectionLimit.Denominator>0
+                    ? $"{names[i]} · peak {peaks[i]:0.000} · {propModel.DeflectionLimit.Label} · utilization {Analysis.DeflectionUtilization(propModel.DeflectionLimit.Millimetres,propModel.DeflectionLimit.Denominator)*100:0.0}%"
+                    : $"{names[i]} · peak {peaks[i]:0.000} / permissible {limits[i]:0.000}";
+                AddChart(caption,new ResponsePlot(Analysis,supports,length,i,peaks[i],limits[i],propModel.DeflectionLimit.Denominator));
             }
         }
         private void RefreshTransfer()

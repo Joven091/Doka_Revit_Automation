@@ -12,6 +12,7 @@ namespace EngineeringDashboard
         private BeamCalculatorViewModel model;
         internal readonly List<Tuple<Rect, int, int, int>> MemberTargets = new List<Tuple<Rect, int, int, int>>();
         public event Action<int, int, int> MemberSelected;
+        private readonly List<Tuple<Geometry,int>> propFaces = new List<Tuple<Geometry,int>>();
         private int selectedRun = -1, selectedLine, selectedMember;
         private bool isSelectionEnabled;
         public bool IsSelectionEnabled
@@ -29,6 +30,17 @@ namespace EngineeringDashboard
         internal bool SelectAt(Point point)
         {
             if (!IsSelectionEnabled) return false;
+            if (model?.UseTowers == false)
+            {
+                for (int i=propFaces.Count-1;i>=0;i--)
+                    if (propFaces[i].Item1.FillContains(point))
+                    {
+                        int line=propFaces[i].Item2;
+                        if (line<0) return false; // Opaque secondary/concrete faces occlude the primaries.
+                        SelectMember(0,line,0); MemberSelected?.Invoke(0,line,0); return true;
+                    }
+                return false;
+            }
             foreach (var hit in MemberTargets) if (hit.Item1.Contains(point))
             { SelectMember(hit.Item2, hit.Item3, hit.Item4); MemberSelected?.Invoke(hit.Item2, hit.Item3, hit.Item4); return true; }
             return false;
@@ -77,17 +89,39 @@ namespace EngineeringDashboard
             Face(dc, front, Project(x,y,z), Project(x+w,y,z), Project(x+w,y,z+h), Project(x,y,z+h));
             Face(dc, top, Project(x,y,z+h), Project(x+w,y,z+h), Project(x+w,y+l,z+h), Project(x,y+l,z+h));
         }
-        private static void H20(DrawingContext dc, double x, double y, double z, double w, double l, bool alongBeam)
+        private static void H20(DrawingContext dc, double x, double y, double z, double w, double l, bool alongBeam, bool selected = false)
         {
-            Box(dc,x,y,z,w,l,4,Gold,GoldTop,GoldSide);
-            if (alongBeam) Box(dc,x+w*.36,y,z+4,w*.28,l,12,Gold,GoldTop,GoldSide);
-            else Box(dc,x,y+l*.36,z+4,w,l*.28,12,Gold,GoldTop,GoldSide);
-            Box(dc,x,y,z+16,w,l,4,Gold,GoldTop,GoldSide);
+            Brush front = selected ? Brushes.SteelBlue : Gold, top = selected ? Brushes.LightSkyBlue : GoldTop, side = selected ? Brushes.DarkSlateBlue : GoldSide;
+            Box(dc,x,y,z,w,l,4,front,top,side);
+            if (alongBeam) Box(dc,x+w*.36,y,z+4,w*.28,l,12,front,top,side);
+            else Box(dc,x,y+l*.36,z+4,w,l*.28,12,front,top,side);
+            Box(dc,x,y,z+16,w,l,4,front,top,side);
+        }
+        private void PropTarget(double x,double y,double z,double w,double l,double h,int line,double scale)
+        {
+            var shape = new GeometryGroup { FillRule = FillRule.Nonzero };
+            Point[][] faces = {
+                new[] { Project(x+w,y,z),Project(x+w,y+l,z),Project(x+w,y+l,z+h),Project(x+w,y,z+h) },
+                new[] { Project(x,y,z),Project(x+w,y,z),Project(x+w,y,z+h),Project(x,y,z+h) },
+                new[] { Project(x,y,z+h),Project(x+w,y,z+h),Project(x+w,y+l,z+h),Project(x,y+l,z+h) }
+            };
+            foreach (var face in faces)
+            {
+                var geometry = new StreamGeometry();
+                using (var path = geometry.Open())
+                {
+                    path.BeginFigure(face[0],true,true); for(int i=1;i<face.Length;i++) path.LineTo(face[i],true,false);
+                }
+                shape.Children.Add(geometry);
+            }
+            shape.Transform = new MatrixTransform(scale,0,0,scale,(ActualWidth-470*scale)/2,(ActualHeight-440*scale)/2);
+            propFaces.Add(Tuple.Create((Geometry)shape,line));
+            if (line>=0) MemberTargets.Add(Tuple.Create(shape.Bounds,0,line,0));
         }
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc); DrawnPropCount = DrawnSlabCount = DrawnTowerLegCount = DrawnStockPieceCount = 0;
-            DrawnBayDimensionCount = DrawnGapDimensionCount = DrawnEndDimensionCount = 0; MemberTargets.Clear();
+            DrawnBayDimensionCount = DrawnGapDimensionCount = DrawnEndDimensionCount = 0; MemberTargets.Clear(); propFaces.Clear();
             DrawnTransferRowCount = DrawnFootCount = DrawnH20ProfileCount = 0;
             if(model?.TowerResult?.Transfer != null) dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if (model == null || !model.IsCalculationValid) return;
@@ -114,17 +148,28 @@ namespace EngineeringDashboard
                 Box(dc,x-8,y-7,147,16,14,3,Steel,SteelTop,SteelSide);
                 DrawnPropCount++;
             }
-            foreach(double x in new[]{-lineX,lineX}) H20(dc,x-7,0,150,14,length,true);
+            for (int line=0;line<2;line++)
+            {
+                double x=line==0 ? -lineX : lineX;
+                H20(dc,x-7,0,150,14,length,true,selectedRun==0 && selectedLine==line);
+                PropTarget(x-7,0,150,14,length,20,line,scale);
+            }
             // Secondary H20s run across the primary lines, perpendicular in plan.
-            for(int i=4;i>=0;i--) H20(dc,-(model.Width+1400)*transverseScale/2,8+i*57,170,(model.Width+1400)*transverseScale,12,false);
+            for(int i=4;i>=0;i--)
+            {
+                H20(dc,-(model.Width+1400)*transverseScale/2,8+i*57,170,(model.Width+1400)*transverseScale,12,false);
+                PropTarget(-(model.Width+1400)*transverseScale/2,8+i*57,170,(model.Width+1400)*transverseScale,12,20,-1,scale);
+            }
             // A thin soffit sheet transfers the concrete beam load to the secondaries.
             Box(dc,-bw/2-3,0,190,bw+6,length,3,Brush("#8D6D45"),Brush("#C5A776"),Brush("#6D5131"));
+            PropTarget(-bw/2-3,0,190,bw+6,length,3,-1,scale);
             double depth = Math.Max(35, Math.Min(100, model.Depth * .11));
             double topZ = 193 + depth;
             // Optional monolithic slab wings are connected to the concrete beam.
-            if(model.HasLeftSlab) { double h=depth*model.LeftSlabThickness/model.Depth; Box(dc,-bw/2-strip,0,topZ-h,strip,length,h,Concrete,ConcreteTop,ConcreteSide); DrawnSlabCount++; }
+            if(model.HasLeftSlab) { double h=depth*model.LeftSlabThickness/model.Depth; Box(dc,-bw/2-strip,0,topZ-h,strip,length,h,Concrete,ConcreteTop,ConcreteSide); DrawnSlabCount++; PropTarget(-bw/2-strip,0,topZ-h,strip,length,h,-1,scale); }
             Box(dc,-bw/2,0,193,bw,length,depth,Concrete,ConcreteTop,ConcreteSide);
-            if(model.HasRightSlab) { double h=depth*model.RightSlabThickness/model.Depth; Box(dc,bw/2,0,topZ-h,strip,length,h,Concrete,ConcreteTop,ConcreteSide); DrawnSlabCount++; }
+            PropTarget(-bw/2,0,193,bw,length,depth,-1,scale);
+            if(model.HasRightSlab) { double h=depth*model.RightSlabThickness/model.Depth; Box(dc,bw/2,0,topZ-h,strip,length,h,Concrete,ConcreteTop,ConcreteSide); DrawnSlabCount++; PropTarget(bw/2,0,topZ-h,strip,length,h,-1,scale); }
             dc.Pop(); dc.Pop();
         }
         private void DrawTowerPlan(DrawingContext dc)
