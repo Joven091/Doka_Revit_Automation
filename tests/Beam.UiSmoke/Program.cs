@@ -251,7 +251,8 @@ internal static class Program
    vm.TransferSlabLoads=false;window.RestoreCalculation(transferRecord);Pump();Check(vm.IsTransferMode && vm.UpperSupportSpacingMm==vm.MaximumSecondarySpacingMm && !vm.IsCalculationValid,"transfer input round trip invalidates stale results");
    var spacingInput=Input("UpperSupportSpacingMm");Check(spacingInput.IsReadOnly && !spacingInput.IsEnabled && spacingInput.GetBindingExpression(TextBox.TextProperty).ParentBinding.Mode==System.Windows.Data.BindingMode.OneWay,"automatic secondary spacing is locked and greyed out");
    vm.Depth=vm.Depth+25;Pump();Check(spacingInput.Text==vm.UpperSupportSpacingMm.ToString(CultureInfo.CurrentCulture),"locked field refreshes when geometry changes");vm.Depth=vm.Depth-25;Pump();
-   vm.LeftSlabBayMm=3900;vm.Depth=1500;
+   // This layout needs closer lower H20 rows; use the supplied 9 mm chart instead of a manual spacing override.
+   vm.SelectedPlywood=vm.PlywoodOptions.Single(p=>p.ThicknessMm==9);vm.LeftSlabBayMm=3900;vm.Depth=1500;
    ((Button)window.FindName("AddBeamBayButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render();
    Check(vm.IsNetworkMode && vm.NetworkBeams.Count==3 && vm.NetworkBays.Count==2,"add button extends to three beams and two slab bays");
    Check(!Input("Depth").IsEnabled && !Input("LeftSlabBayMm").IsEnabled,"network uses individual beam and bay inputs");
@@ -263,7 +264,7 @@ internal static class Program
    widthInput.Text="oops";widthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(!vm.CanOptimizeTowers,"invalid individual beam width blocks optimization");
    widthInput.Text="900";widthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();
    depthInput.Text="oops";depthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(!vm.CanOptimizeTowers,"invalid templated beam depth blocks optimization");
-   depthInput.Text="1200";depthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Optimize();Check(vm.IsCalculationValid && vm.NetworkResult!=null,"network optimization from WPF");
+   depthInput.Text="1200";depthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Optimize();Check(vm.IsCalculationValid && vm.NetworkResult!=null,"network optimization from WPF: "+vm.WarningMessage);
    Render();var networkPlan=(TransferNetworkPlan)window.FindName("NetworkPlan");
    Check(networkPlan.DrawnTowerLegCount==vm.NetworkResult.LegCount && networkPlan.DrawnTransversePlanCount==0,"full network plan shows all towers and no transverse pairs");
    Check(networkPlan.DrawnPrimaryLengthCount==vm.NetworkResult.Beams.Sum(b=>b.StockPlan.Pieces.Length),"each paired primary stock length labelled once in plan");
