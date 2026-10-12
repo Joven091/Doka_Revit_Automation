@@ -128,7 +128,7 @@ namespace EngineeringDashboard
                 Dispatcher.BeginInvoke(new Action(()=> {if(observedModel?.UseTowers==true && observedModel.HasSelectedSupportSystem)DrawingWorkspace_Click(null,null);}),DispatcherPriority.DataBind);
             if(e.PropertyName==nameof(BeamCalculatorViewModel.HasTowerFailure) && observedModel?.HasTowerFailure==true)
                 Dispatcher.BeginInvoke(new Action(()=> {if(observedModel?.HasTowerFailure==true)ReviewScroll.ScrollToTop();}),DispatcherPriority.Loaded);
-            if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) { CloseTowerDiagrams(); UpdateDiagram(); }
+            if(e.PropertyName == nameof(BeamCalculatorViewModel.IsCalculationValid)) { if (!observedModel.IsCalculationValid || !observedModel.UseTowers) CloseTowerDiagrams(); UpdateDiagram(); }
             if(e.PropertyName == nameof(BeamCalculatorViewModel.HasLeftSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.HasRightSlab) || e.PropertyName == nameof(BeamCalculatorViewModel.UseCustomLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseTowers) || e.PropertyName == nameof(BeamCalculatorViewModel.TransferSlabLoads) || e.PropertyName == nameof(BeamCalculatorViewModel.UseBeamNetwork))
                 Dispatcher.BeginInvoke(new Action(RefreshInputValidity), DispatcherPriority.DataBind);
         }
@@ -163,7 +163,7 @@ namespace EngineeringDashboard
         private void UpdateDiagram()
         {
             SeparateSlabNotice.SetResult(observedModel?.IsCalculationValid==true ? observedModel.NetworkResult : null);
-            SupportDiagram.IsSelectionEnabled = observedModel?.IsCalculationValid == true && !observedModel.UseTowers;
+            if (observedModel?.UseTowers != true) SupportDiagram.IsSelectionEnabled = observedModel?.IsCalculationValid == true;
             SupportDiagram.SetModel(observedModel);
             NetworkPlan.SetResult(observedModel?.NetworkResult);
             TowerPlanScroll.ScrollToLeftEnd();
