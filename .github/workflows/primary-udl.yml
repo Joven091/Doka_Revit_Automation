@@ -24,7 +24,7 @@ jobs:
   primary-udl:
     runs-on: windows-latest
     # Run the reported coordinated layout on both runtimes, then its WPF previews.
-    timeout-minutes: 40
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

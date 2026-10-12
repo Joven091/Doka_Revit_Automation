@@ -40,6 +40,15 @@ internal static class SlabEndLoadTests
         }
         Check(TransferNetworkOptimizer.EffectiveWidthsMm(new TowerInput {LengthMm=6900},Network(),0,6650,150)==null,
             "short support coverage cannot hide an excessive concrete-end distance");
+        var sheetNetwork=Network();sheetNetwork.UpperSpacingMm=275;sheetNetwork.PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm;
+        var sheetRows=PlywoodSpacing.SheetSupportRows(125,6775,275);
+        var sheetWidths=TransferNetworkOptimizer.EffectiveWidthsMm(new TowerInput {LengthMm=6900},sheetNetwork,0,6650,0);
+        Check(sheetWidths!=null,"sheet-joint rows support the full concrete ends");
+        var sheetBaseline=Enumerable.Range(0,sheetRows.Length).Select(i=>(i==sheetRows.Length-1 ? 6775 : (sheetRows[i]+sheetRows[i+1])/2)-(i==0 ? 125 : (sheetRows[i-1]+sheetRows[i])/2)).ToArray();
+        var sheetAdded=sheetWidths.Zip(sheetBaseline,(a,b)=>a-b).ToArray();
+        Near(sheetWidths.Sum(),6900,"sheet layout does not shorten physical slab loading");
+        Near(sheetAdded.Sum(),250,"sheet layout retains both concrete end strips");
+        Near(sheetAdded.Zip(sheetRows,(w,x)=>w*x).Sum(),250*3450,"nonuniform sheet-joint rows retain the end-strip resultant");
         // The last 75 mm of the photographed primary must retain the slab baseline.
         var loads=TransferredSlabOptimizer.PrimaryUniformLoads(2950,3900,9.916,14.110,0,new BeamDistributedLoad[0],new BeamDistributedLoad[0],slabBaselineFactor:6900.0/6800);
         Check(loads.Length==1 && loads[0].StartMm==0 && loads[0].EndMm==3900,"slab load extends through the final 75 mm");
@@ -49,17 +58,23 @@ internal static class SlabEndLoadTests
         Near(exclusion.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000),14.110*(6900-650)/1000,"crossing exclusion removes physical slab load exactly once");
         Near(exclusion.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000*(50+(q.StartMm+q.EndMm)/2)/1000),14.110*(6900.0*6900/2-650*2500)/1e6,"offset crossing exclusion preserves the full physical resultant");
         // Deliberately different shared and primary coverage, on both evaluation paths.
+        foreach(bool sheet in new[] {false,true})
         foreach(bool deferred in new[] {false,true})
         {
+            double spacing=sheet ? 275 : 200;
             var common=new TowerInput {LengthMm=2100,LegCapacityKn=70,DeflectionDenominator=270,MaximumConcreteEndOverhangMm=150,
                 StockLengthsMm=new[] {1250.0,1800,2000,2450},DeferTransferLayout=deferred,ReuseSearchWork=deferred};
-            var n=new TransferNetworkInput {UpperSpacingMm=200,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100}}};
+            var n=new TransferNetworkInput {UpperSpacingMm=spacing,PlywoodSheetLengthMm=sheet ? PlywoodSpacing.SheetLengthMm : 0,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100}}};
             var widths=TransferNetworkOptimizer.EffectiveWidthsMm(common,n,0,1900,0);
             common.TransferredSlab=new TransferredSlabInput {IsNetwork=true,IncludeMainBeamEndLoads=true,AllowLongerPrimaryCoverage=true,FixedCoveredLengthMm=1900,FixedRowPhaseMm=0,
-                BeamWidthMm=300,BeamLineLoadKnM=n.AreaLoad(200)*.3,UpperSpacingMm=200,RightBayMm=1800,RightAreaLoadKnM2=n.AreaLoad(100),RightEffectiveWidthsMm=widths};
+                PlywoodSheetLengthMm=n.PlywoodSheetLengthMm,BeamWidthMm=300,BeamLineLoadKnM=n.AreaLoad(200)*.3,UpperSpacingMm=spacing,RightBayMm=1800,RightAreaLoadKnM2=n.AreaLoad(100),RightEffectiveWidthsMm=widths};
             var beam=TransferredSlabOptimizer.Optimize(common);var t=beam.Transfer;
-            Near(t.UpperScale(false,t.SlabRowIndices[0]),.35,"first slab row checks the full end-strip influence");
-            Near(t.UpperScale(false,t.SlabRowIndices.Last()),.35,"last slab row checks the full end-strip influence");
+            var actualRows=t.SlabRowIndices.Select(i=>t.RowsMm[i]).ToArray();
+            double firstEnd=100*(actualRows[1]-50)/(actualRows[1]-actualRows[0]);
+            int last=actualRows.Length-1;
+            double lastEnd=100*(2050-actualRows[last-1])/(actualRows[last]-actualRows[last-1]);
+            Near(t.UpperScale(false,t.SlabRowIndices[0]),(spacing+firstEnd)/1000,"first slab row checks the full end-strip influence");
+            Near(t.UpperScale(false,t.SlabRowIndices.Last()),(spacing+lastEnd)/1000,"last slab row checks the full end-strip influence");
             Near(beam.StockPlan.Pieces.Sum(p=>p.StockLengthMm),2000,"primary extends beyond the shorter shared grid on both lines");
             Near(t.SlabLoadKn,n.AreaLoad(100)*1.8*2.1/2,"receiver takes half the complete slab and shutter load");
             Near(t.CoveredSlabAreaM2,2.1*t.RightUpperStockMm/1000,"reported load area includes longitudinal concrete ends");

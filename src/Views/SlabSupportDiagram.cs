@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
@@ -105,18 +106,16 @@ namespace EngineeringDashboard
                 double x = -120 + (model.SecondaryBeamCantilever + i * model.SuggestedPrimaryBeamSpacing) * xScale;
                 H20(dc,x-7,0,propHeight,14,250,true); DrawnPrimaryCount++;
             }
-            // Symmetrically centre the secondary pattern; cap visual density, never infer procurement quantities.
-            double intervals = Math.Floor(along / model.SecondaryBeamSpacing);
-            bool dense = intervals >= 18; // Includes overflow of along/spacing for tiny positive spacing.
-            int secondaryCount = dense ? 18 : (int)intervals + 1;
-            double occupied = dense ? along : intervals * model.SecondaryBeamSpacing;
-            double start = (along - occupied) / 2;
+            // Show sheet joints and the shorter closing spans; cap schematic density.
+            var stations=PlywoodSpacing.SheetSupportRows(-40,along+40,model.SecondaryBeamSpacing);
+            if(stations.Length>18) stations=Enumerable.Range(0,18).Select(i=>stations[(int)Math.Round(i*(stations.Length-1)/17.0)]).ToArray();
+            int secondaryCount=stations.Length;
             bool joined = primaryCount > 3;
             double secondaryWidth = joined ? Math.Min(10,250.0/(secondaryCount+1)/2.4) : 10;
             double edgeInset = joined ? 1.1 * secondaryWidth : 0;
             for (int i = secondaryCount - 1; i >= 0; i--)
             {
-                double y = (secondaryCount == 1 ? along / 2 : start + occupied * i / (secondaryCount - 1)) * yScale;
+                double y = stations[i] * yScale;
                 y = edgeInset + y * (250 - 2 * edgeInset) / 250;
                 var plans = SecondaryMemberPlans(primaryCount,model.SuggestedPrimaryBeamSpacing,model.SecondaryBeamCantilever,y,secondaryWidth);
                 // Draw the far member first. Overlapping lengths occupy adjacent lanes at the same elevation.

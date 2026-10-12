@@ -53,7 +53,7 @@ internal static class CantileverTests
             double denominator = double.Parse(limit.Substring(2)), q = SlabLoadHelper.CalculateTotalLoad(v.SlabThickness);
             var sec = SlabSupportEnvelope.ForSelection(count, v.SuggestedPrimaryBeamSpacing / 1000, a / 1000.0, 1, ei);
             var prim = SlabSupportEnvelope.ForSelection(count, .75, a / 1000.0, 1, ei);
-            check(sec.CantileverDeflection * q * .488 <= a / 1000.0 / denominator + 1e-10, "returned secondary tip passes");
+            check(sec.CantileverDeflection * q * v.SecondaryBeamSpacing/1000 <= a / 1000.0 / denominator + 1e-10, "returned secondary tip passes");
             check(prim.CantileverDeflection * q * sec.Reaction <= a / 1000.0 / denominator + 1e-10, "returned primary tip passes");
         }
     }

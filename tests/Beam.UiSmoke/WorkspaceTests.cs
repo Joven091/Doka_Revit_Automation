@@ -181,11 +181,13 @@ internal static class WorkspaceTests
             if(lighterOptions)
             {
                 foreach(var b in model.NetworkBeams)b.SetDepthKeepingTopMm(500);
+                foreach(var b in model.NetworkBays)b.ThicknessMm=100;
                 Calculate();
                 optionTask=model.GetNetworkBeamOptionsAsync(1);optionDeadline=DateTime.UtcNow.AddMinutes(2);
                 while(!optionTask.IsCompleted && DateTime.UtcNow<optionDeadline){Pump();Thread.Sleep(10);}
             }
             var optionSource=model.NetworkResult;
+            if(!optionTask.IsCompleted || optionTask.Result.Count(o=>o.IsAvailable)<=1)Console.WriteLine(model.BuildDiagnosticReport());
             Check(optionTask.IsCompleted && optionTask.Result.Count(o=>o.IsAvailable)>1,"beam alternatives are generated without blocking the drawing dispatcher");
             var beamTarget=drawing.ObjectTargets.First(t=>t.Item2==FormworkObject.Beam && t.Item3==1);
             Check(drawing.OpenBeamOptionsAt(Centre(beamTarget.Item1)),"right click targets B2's beam geometry");Pump();

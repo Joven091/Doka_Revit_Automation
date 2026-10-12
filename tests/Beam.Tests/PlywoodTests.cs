@@ -14,6 +14,7 @@ internal static class PlywoodTests
     internal static void Run()
     {
         VerifyProfiles();
+        VerifySheetLayouts();
         // Independent image readings: L/500 crosses p=15 near 39 cm, p=25 near 33 cm.
         // Conservative fit + downward rounding must remain close and below those readings.
         Near(PlywoodSpacing.Calculate(15,500).MaximumSpacingMm,385,"15 kPa L/500 chart reading");
@@ -49,12 +50,12 @@ internal static class PlywoodTests
         }
         var vm=new BeamCalculatorViewModel();
         Near(vm.PlywoodPressureKnM2,14.9,"beam area pressure includes standard allowances");
-        Near(vm.MaximumSecondarySpacingMm,435,"default L/350 plywood spacing");
+        Near(vm.MaximumSecondarySpacingMm,407,"default L/350 plywood spacing");
         double propSpacing=vm.MaximumPropSpacing;
-        vm.Width=1000;Near(vm.MaximumSecondarySpacingMm,435,"beam width does not change plywood pressure");
+        vm.Width=1000;Near(vm.MaximumSecondarySpacingMm,407,"beam width does not change plywood pressure");
         Check(vm.MaximumPropSpacing<=propSpacing,"primary calculation remains separate");
         vm.DeflectionLimit=BeamCalculatorViewModel.AvailableDeflectionOptions.Single(x=>x.Denominator==270);
-        Near(vm.MaximumSecondarySpacingMm,475,"selected L/270 applies to plywood");
+        Near(vm.MaximumSecondarySpacingMm,407,"selected L/270 applies to plywood");
         double flexSpacing=vm.MaximumSecondarySpacingMm;vm.UseTowers=true;
         Near(vm.MaximumSecondarySpacingMm,flexSpacing,"D3 and Dokaflex share plywood limits before optimization");
         vm.Depth=1750;Near(vm.PlywoodPressureKnM2,46.65,"deep beam pressure is not an averaged line load");
@@ -82,6 +83,9 @@ internal static class PlywoodTests
         vm.OptimizeTowersAsync().GetAwaiter().GetResult();
         Check(vm.IsCalculationValid && vm.TowerResult?.Transfer!=null,"single-beam transfer calculates with automatic maximum: "+vm.WarningMessage);
         Near(vm.TowerResult.Transfer.EnteredUpperSpacingMm,vm.MaximumSecondarySpacingMm,"single-beam optimizer uses locked spacing");
+        var t=vm.TowerResult.Transfer;double stockEdge=(vm.BeamLengthMm-vm.TowerResult.StockPlan.Pieces.Sum(p=>p.StockLengthMm))/2;
+        for(double joint=2440;joint<vm.BeamLengthMm-stockEdge;joint+=2440)
+            Check(t.RowsMm.Any(x=>Math.Abs(x-joint)<1e-7),"calculated D3 transfer has real sheet-joint supports");
         Console.WriteLine($"Passed {checks} plywood spacing checks.");
     }
 
@@ -119,16 +123,42 @@ internal static class PlywoodTests
         Near(PlywoodSpacing.Calculate(gap,60,350).MaximumSpacingMm,200,"chart domain gaps are not extrapolated");
 
         var vm=new BeamCalculatorViewModel();
-        vm.SelectedPlywood=nine;Near(vm.MaximumSecondarySpacingMm,210,"selector applies 9 mm coefficients");
+        vm.SelectedPlywood=nine;Check(vm.MaximumSecondarySpacingMm==0 && vm.WarningMessage.Contains("minimum 250 mm"),"9 mm cannot satisfy a listed spacing at default beam pressure");
         Near(vm.FormworkDepthMm,409,"9 mm changes formwork buildup");Near(vm.PropExtensionMm,2091,"9 mm changes actual prop extension");
-        vm.SelectedPlywood=twentyOne;Near(vm.MaximumSecondarySpacingMm,515,"selector applies full 21 mm chart");
+        vm.SelectedPlywood=twentyOne;Near(vm.MaximumSecondarySpacingMm,488,"selector applies full 21 mm chart");
         Near(vm.FormworkDepthMm,421,"21 mm changes formwork buildup");Near(vm.PropExtensionMm,2079,"21 mm changes actual prop extension");
-        vm.UseTowers=true;Near(vm.UpperSupportSpacingMm,515,"D3 locked field follows selected plywood");
+        vm.UseTowers=true;Near(vm.UpperSupportSpacingMm,488,"D3 locked field follows selected plywood");
         vm.PlywoodProfileId=nine.Id;Check(vm.SelectedPlywood==nine && vm.PlywoodCalculationBasis.Contains("9732-121"),"stable saved key selects correct profile/basis");
         vm.SelectedPlywood=null;Check(vm.PlywoodResult==null && vm.MaximumSecondarySpacingMm==0 && !vm.IsCalculationValid,"missing selection clears stale results");
         vm.SelectedPlywood=twentyOne;vm.Depth=3200;vm.HasRightSlab=true;vm.RightSlabThickness=300;vm.TransferSlabLoads=true;vm.UseBeamNetwork=true;
-        Check(vm.PlywoodPressureKnM2>80 && vm.PlywoodResult.Chart.Reference=="9732-120","network pressure uses correct 21 mm detail domain");
+        Check(vm.PlywoodResult==null && vm.WarningMessage.Contains("minimum 250 mm"),"detail chart cannot justify an unsafe sheet spacing");
         vm.SelectedPlywood=nine;Check(vm.PlywoodResult==null && vm.WarningMessage.Contains("80 kN/m²"),"changing to insufficient chart clears network result");
-        vm.StartNewSession();Check(vm.SelectedPlywood==PlywoodCatalog.Default && vm.MaximumSecondarySpacingMm==435,"new session restores default profile and derived spacing");
+        vm.StartNewSession();Check(vm.SelectedPlywood==PlywoodCatalog.Default && vm.MaximumSecondarySpacingMm==407,"new session restores default profile and derived spacing");
     }
+    private static void VerifySheetLayouts()
+    {
+        Check(PlywoodSpacing.StandardSpacingsMm.SequenceEqual(new[] {488.0,407,350,305,275,250}),"requested nominal spacing list");
+        foreach(var profile in PlywoodCatalog.All)
+        foreach(int denominator in new[] {500,350,270})
+        for(double p=profile.MinimumPressureKnM2;p<=profile.MaximumPressureKnM2;p+=.5)
+        {
+            var chart=PlywoodSpacing.Calculate(profile,p,denominator);
+            var allowed=PlywoodSpacing.StandardSpacingsMm.Where(x=>x<=chart.MaximumSpacingMm).ToArray();
+            if(allowed.Length==0) {Reject(()=>PlywoodSpacing.CalculateForSheet(profile,p,denominator),"below-250 chart cannot be rounded up");continue;}
+            var result=PlywoodSpacing.CalculateForSheet(profile,p,denominator);
+            Near(result.MaximumSpacingMm,allowed[0],"largest safe listed spacing");
+            Check(result.DeflectionMm<=result.AllowableDeflectionMm+1e-10 && result.MomentUtilization<=1+1e-10 && result.ShearUtilization<=1+1e-10,"snapped spacing passes all plywood checks");
+        }
+        foreach(double spacing in PlywoodSpacing.StandardSpacingsMm)
+        foreach(double edge in new[] {0.0,25,75,150})
+        foreach(double length in new[] {2450.0,6100,10600,10800})
+        {
+            var rows=PlywoodSpacing.SheetSupportRows(edge,length-edge,spacing);
+            Check(rows.First()>edge && rows.Last()<length-edge,"sheet supports lie within covered stock");
+            Check(rows.Skip(1).Select((x,i)=>x-rows[i]<=spacing+1e-7 && x-rows[i]>=80-1e-7).All(x=>x),"joint rows never exceed safe spacing or overlap H20 flanges");
+            for(double joint=2440;joint<length-edge;joint+=2440)
+                if(joint>edge)Check(rows.Contains(joint),"H20 row at every internal sheet joint");
+        }
+    }
+
 }

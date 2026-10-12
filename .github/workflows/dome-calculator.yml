@@ -25,6 +25,9 @@ jobs:
           $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
           & $compiler installer.iss
           if ($LASTEXITCODE -ne 0) { throw 'Calculator installer compilation failed' }
+      # Check slab controls and spacing before the slower beam layout previews.
+      - run: dotnet run --project tests/Slab.CoreTests/Slab.CoreTests.csproj -c Release
+      - run: dotnet run --project tests/Slab.Tests/Slab.Tests.csproj -c Release
       # Check interactive controls before the slower calculation/search regressions.
       - name: Beam UI checks and previews
         run: |
@@ -33,7 +36,6 @@ jobs:
       - run: dotnet run --project tests/Dome.Tests/Dome.Tests.csproj -c Release
       - run: dotnet run --project tests/D3Slab.Tests/D3Slab.Tests.csproj -c Release
       - run: dotnet run --project tests/D3Slab.UiSmoke/D3Slab.UiSmoke.csproj -c Release
-      - run: dotnet run --project tests/Slab.Tests/Slab.Tests.csproj -c Release
       # The default Beam.Tests run already includes SearchReuseTests.
       - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release
       - name: Beam network economy regression (.NET 10)
