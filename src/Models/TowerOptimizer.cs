@@ -578,12 +578,14 @@ namespace EngineeringDashboard
                     }
                 if (groups[0] < 0) return null;
                 for (int i = 0; i + sizes[i] < n; i += sizes[i]) result[first + i + sizes[i] - 1] = false;
+                // A geometry-constrained narrow tower must not force unrelated
+                // linked groups to split into additional standalone 600 mm towers.
+                if(!exclude600)
+                {
+                    var preferred=RemoveRedundantJoins(Enumerable.Repeat(true,n-1).ToArray(),positions.Skip(first).Take(n).ToArray(),true);
+                    if(preferred!=null)for(int i=0;i<preferred.Length;i++)result[first+i]=preferred[i];
+                }
                 first = last + 1;
-            }
-            if(!exclude600)
-            {
-                var preferred=RemoveRedundantJoins(joined,positions,true);
-                if(preferred!=null)return preferred;
             }
             return result;
         }
