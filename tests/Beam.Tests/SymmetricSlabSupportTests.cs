@@ -65,7 +65,7 @@ internal static class SymmetricSlabSupportTests
         }
         foreach(var beam in result.Beams)CheckLayout(beam);
         Check(result.Beams[1].Transfer.CaseNames.Length==4,"interior receiving beam retains beam-only, each one-sided and combined slab stages");
-        Near(result.SlabLoadKn,network.Bays.Sum(b=>network.AreaLoad(b.ThicknessMm)*b.WidthMm/1000)*result.SlabCoveredLengthMm/1000,"full slab and shutter load conserved");
+        Near(result.SlabLoadKn,network.Bays.Sum(b=>network.AreaLoad(b.ThicknessMm)*b.WidthMm/1000)*common.LengthMm/1000,"full slab and shutter load conserved");
         Near(result.UpperFootCount,result.Bays.Length*result.SlabRowsMm.Length*2,"symmetry does not add or remove physical slab feet");
         // Symmetric bearings alone cannot justify averaged reactions under uneven loading.
         var uneven=LoadedBeamAnalysis.Analyze(3300,new[] {250.0,3050},new[] {new BeamDistributedLoad {StartMm=0,EndMm=1650,KnPerM=2}},null,TowerOptimizer.PairEI/2,350);

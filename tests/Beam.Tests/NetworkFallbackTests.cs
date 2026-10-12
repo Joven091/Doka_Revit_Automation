@@ -24,7 +24,7 @@ internal static class NetworkFallbackTests
                 Near(member.Analysis.Reactions.Sum(),member.Analysis.TotalLoadKn,"member equilibrium");
             }
         }
-        Near(result.SlabLoadKn,input.AreaLoad(300)*input.Bays[1].WidthMm/1000*result.SlabCoveredLengthMm/1000,"only the retained bay load transfers");
+        Near(result.SlabLoadKn,input.AreaLoad(300)*input.Bays[1].WidthMm/1000*result.Beams[0].LengthMm/1000,"only the retained bay load transfers");
         Near(result.TimberMm,result.Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*b.Transfer.LowerStockLengthMm)+result.Bays[1].StockLengthMm*result.SlabRowsMm.Length,"separate slab timber is excluded");
         Check(result.UpperFootCount==2*result.SlabRowsMm.Length,"separate slab feet are excluded");
     }

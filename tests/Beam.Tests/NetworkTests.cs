@@ -13,7 +13,7 @@ internal static class NetworkTests
         var timer=System.Diagnostics.Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,input);
         Check(result.Beams.All(b=>b.Transfer.LowerCases.SelectMany(c=>c).All(m=>m.H20Count==1 && m.Utilization<=1+1e-8)),"single lower secondaries checked in every beam and stage");
         Check(result.Beams.Length==3 && result.Bays.Length==2,"extended slab/beam chain");
-        double loadedLength=result.SlabCoveredLengthMm;
+        double loadedLength=common.LengthMm;
         Near(result.SlabLoadKn,input.Bays.Sum(b=>input.AreaLoad(b.ThicknessMm)*b.WidthMm/1000)*loadedLength/1000,"full slab area conserved including both shutter edges");
         for(int b=0;b<result.Beams.Length;b++)
         {
@@ -61,10 +61,10 @@ internal static class NetworkTests
         var custom=new TransferNetworkInput {CustomLoads=true,LiveKnM2=2,FormworkKnM2=.5};
         Near(custom.AreaLoad(300),10,"custom allowances replace the defaults");
         var widths=TransferNetworkOptimizer.EffectiveWidthsMm(common,crossingInput,0,6700,0);
-        Near(widths.Sum(),6700+400*(crossingInput.AreaLoad(350)-9.4)/9.4,"crossing footprint replaces the slab once, with force conservation");
+        Near(widths.Sum(),common.LengthMm+400*(crossingInput.AreaLoad(350)-9.4)/9.4,"crossing footprint replaces the slab once, with force conservation");
         Check(widths.Count(w=>w>200+1e-8)<=2,"crossing weight is local to rows beneath its footprint");
         var crossed=TransferNetworkOptimizer.Optimize(common,crossingInput);
-        double crossingLength=crossed.SlabCoveredLengthMm;
+        double crossingLength=common.LengthMm;
         double expectedCrossing=9.4*crossingInput.Bays[0].WidthMm/1000*crossingLength/1000+(crossingInput.AreaLoad(350)-9.4)*.4*crossingInput.Bays[0].WidthMm/1000;
         Near(crossed.SlabLoadKn,expectedCrossing,"crossing and slab load reaches both main beams including shutter edges");
         Check(crossed.Beams.All(b=>b.Transfer.UpperMembers.All(m=>m.Utilization<=1+1e-8) && b.Transfer.LowerCases.Concat(b.Transfer.PrimaryCases).SelectMany(c=>c).All(m=>m.Utilization<=1+1e-8 && m.Analysis.Reactions.All(r=>r>=-1e-7)) && b.MaxLegKn<=70+1e-8),"crossing layout checks upper singles, lower singles, primaries and individual legs");
@@ -73,13 +73,13 @@ internal static class NetworkTests
             Near(crossed.Beams[0].Transfer.UpperScale(false,crossed.SlabBeamRow(0,r)),crossed.Beams[1].Transfer.UpperScale(true,crossed.SlabBeamRow(1,r)),"both main beams use the same physical crossing row loads");
             foreach(var beam in crossed.Beams)Near(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.Reactions.Sum()),beam.Transfer.PrimaryCases.Last().Sum(m=>m.Uniform.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000)),"crossing UDL forces conserved through primaries to legs");
         }
-        foreach(var beam in crossed.Beams)Near(beam.Transfer.CoveredSlabAreaM2,crossed.SlabCoveredLengthMm*(beam.Transfer.LeftUpperStockMm+beam.Transfer.RightUpperStockMm)/1e6,"reported slab stock area uses physical coverage, without weighting the crossing load");
+        foreach(var beam in crossed.Beams)Near(beam.Transfer.CoveredSlabAreaM2,common.LengthMm*(beam.Transfer.LeftUpperStockMm+beam.Transfer.RightUpperStockMm)/1e6,"reported slab stock area uses physical coverage, without weighting the crossing load");
         Check(crossed.Schedule.Contains("X1: S1") && crossed.Schedule.Contains("extra bay load"),"crossing geometry and added load retained in schedule");
         vm.UseBeamNetwork=true;vm.AddCrossingBeam();vm.CrossingBeams[0].DepthMm=800;
         other.NetworkConfigurationXml=vm.NetworkConfigurationXml;Near(other.CrossingBeams[0].DepthMm,800,"crossing beam XML round trip");
         vm.CrossingBeams[0].BayNumber=2;vm.AddNetworkBay();vm.RemoveNetworkBay();Check(vm.CrossingBeams.Count==0,"removing a bay removes its crossing beams");
         crossingInput.CrossingBeams[0].DepthMm=300;
-        Near(TransferNetworkOptimizer.EffectiveWidthsMm(common,crossingInput,0,6700,0).Sum(),6700,"equal slab and crossing depths add no duplicate area load");
+        Near(TransferNetworkOptimizer.EffectiveWidthsMm(common,crossingInput,0,6700,0).Sum(),common.LengthMm,"equal slab and crossing depths add no duplicate area load");
         crossingInput.CrossingBeams[0].DepthMm=10000;bool overloaded=false;try {TransferNetworkOptimizer.Optimize(common,crossingInput);}catch(ArgumentException){overloaded=true;}Check(overloaded,"severe local crossing overload cannot produce a passing layout");
         crossingInput.CrossingBeams[0].DepthMm=350;crossingInput.CrossingBeams[0].WidthMm=10;crossingInput.CrossingBeams[0].PositionMm=3175;
         Check(TransferNetworkOptimizer.EffectiveWidthsMm(common,crossingInput,0,6700,0)==null,"crossing footprint between H20 rows cannot send weight to neighbouring rows");
@@ -97,7 +97,7 @@ internal static class NetworkTests
         Check(failureVm.IsCalculationValid && customResult!=null && !failureVm.HasTowerFailure,"custom slab length passes using the calculated row spacing");
         Check(customResult.Bays[0].StockLengthMm%25==0 && customResult.Bays[0].EdgeMm>=200 && customResult.Bays[0].EdgeMm<=350,"enabled custom lengths retain permitted increments and edge strips");
         Check(customResult.Bays[0].IsCustomLength && customResult.Beams[0].Transfer.RightUpperCustom && customResult.Beams[1].Transfer.LeftUpperCustom && customResult.Schedule.Contains(customResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"custom identity survives reversal and is visible in report");
-        Near(customResult.SlabLoadKn,9.4*2.575*customResult.SlabCoveredLengthMm/1000,"custom-covered slab plus shutter strips conserve full bay load");
+        Near(customResult.SlabLoadKn,9.4*2.575*failureVm.BeamLengthMm/1000,"custom-covered slab plus shutter strips conserve full bay load");
         Check(failureVm.BuildDiagnosticReport().Contains("SELECTED NETWORK LAYOUT") && customResult.LayoutDiagnostics.Contains("B1: legs=") && customResult.LayoutDiagnostics.Contains("primary runs=") && customResult.LayoutDiagnostics.Contains("S1: H20="),"diagnosis includes selected grid, per-beam legs and actual stocks and shared feet");
         foreach(var beam in customResult.Beams)
         {
