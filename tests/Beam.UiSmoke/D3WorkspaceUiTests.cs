@@ -48,6 +48,22 @@ internal static class D3WorkspaceUiTests
                 var image=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);image.Render(surface);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(image));
                 using(var file=File.Create(Path.ChangeExtension(output,"d3-main-workspace.png")))png.Save(file);
             }
+            model.DeflectionLimit=BeamCalculatorViewModel.AvailableDeflectionOptions.Single(d=>d.Denominator==270);
+            model.BeamLengthMm=4500;model.CustomH20Scope=CustomH20LengthScope.SlabSupports;model.Exclude600Standalone=true;
+            foreach(var beam in model.NetworkBeams){beam.WidthMm=800;beam.SetDepthKeepingTopMm(1750);}
+            model.NetworkBays[0].WidthMm=2175;
+            model.CrossingBeams.Add(new TransferCrossingBeamRow {BayNumber=1,PositionMm=2250,WidthMm=650,DepthMm=1150,SupportMode=CrossBeamSupportMode.DedicatedTowers});Pump();
+            task=view.CalculateAsync();clock.Restart();
+            while(!task.IsCompleted){Pump();Thread.Sleep(1);if(clock.Elapsed.TotalSeconds>90)throw new Exception("Local shutter calculation timeout");}task.GetAwaiter().GetResult();Pump();
+            view.Drawing.Fit();view.Drawing.InvalidateVisual();view.Drawing.UpdateLayout();Pump();
+            Check(model.IsCalculationValid && model.NetworkResult.CrossSupports.Single().HasReducedShutterClearance,"drawing calculates the local exception through the normal model flow");
+            Check(view.Drawing.AnnotationLabels.Any(t=>t.Contains("shutter allowance") && t.Contains("175") && t.Contains("exception")),"175 mm exception is visible on the plan with ordinary dimensions hidden");
+            Check(model.NetworkSchedule.Contains("175 mm") && model.NetworkSchedule.Contains("local side-shutter exception"),"schedule reports the exact local allowance");
+            if(output!=null)
+            {
+                var surface=view.Surface;surface.UpdateLayout();var image=new RenderTargetBitmap((int)surface.ActualWidth,(int)surface.ActualHeight,96,96,PixelFormats.Pbgra32);image.Render(surface);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(image));
+                using(var file=File.Create(Path.ChangeExtension(output,"local-shutter-exception.png")))png.Save(file);
+            }
             model.CustomH20Scope=CustomH20LengthScope.BeamSupports;Pump();
             Check(Equals(((ComboBox)host.FindName("CustomH20ScopeSelector")).SelectedValue,CustomH20LengthScope.BeamSupports),"calculator bindings remain synchronized while its drawing surface is displayed");
             Click(view,"ChangeSystem");

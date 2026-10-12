@@ -177,7 +177,7 @@ namespace EngineeringDashboard
         public static NetworkBeamOption[] BeamOptions(TowerInput common,TransferNetworkResult current,int beam)
         {
             if(current==null || beam<0 || beam>=current.Beams.Length)throw new ArgumentException("Select a calculated main beam.");
-            var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=false;worker.NetworkNumerics=null;
+            var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=false;worker.NetworkNumerics=null;worker.AllowLocalShutterExceptions=true;
             worker.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift);
             worker.DedicatedCrossCache=new Dictionary<string,DedicatedCrossSearch>();
             var results=new List<NetworkBeamOption> {new NetworkBeamOption(current,beam,"Option 1 · Original layout")};
@@ -229,7 +229,7 @@ namespace EngineeringDashboard
         public static TransferNetworkResult Optimize(TowerInput common,TransferNetworkInput input)
         {
             input.Validate(common);
-            try {return TowerStockPlanner.SearchWithCustom(common,()=>FullTransfer(common,input),Better);}
+            try {return PreferredShutterDetail(common,input);}
             catch(TowerOptimizationException fullFailure) when (!common.AllowCustomH20Lengths && common.AllowSeparateSlabFallback)
             {
                 var fullDiagnostics=common.Diagnostics;
@@ -243,6 +243,24 @@ namespace EngineeringDashboard
                 }
                 catch(TowerOptimizationException partialFailure)
                 {throw new TowerOptimizationException(partialFailure.Message,fullFailure.Details+"\n\nSeparate slab formwork fallback also failed:\n"+partialFailure.Details);}
+            }
+        }
+        private static TransferNetworkResult PreferredShutterDetail(TowerInput common,TransferNetworkInput input)
+        {
+            try {return TowerStockPlanner.SearchWithCustom(common,()=>FullTransfer(common,input),Better);}
+            catch(TowerOptimizationException standardFailure) when (CrossBeamSupportOptimizer.Modern(input) && !common.AllowLocalShutterExceptions)
+            {
+                // Exhaust normal stock/custom, spacing and coordination searches first.
+                // A locally relaxed early candidate must not hide a better standard plan.
+                var worker=common.CopyForSearch();worker.AllowLocalShutterExceptions=true;
+                common.Trace?.Work("Local 175 mm side-shutter fallback");
+                try
+                {
+                    var result=TowerStockPlanner.SearchWithCustom(worker,()=>FullTransfer(worker,input),Better);
+                    common.Diagnostics=worker.Diagnostics;return result;
+                }
+                catch(TowerOptimizationException reducedFailure)
+                {throw new TowerOptimizationException(standardFailure.Message,standardFailure.Details+"\n\nLocal 175 mm side-shutter fallback also failed:\n"+reducedFailure.Details);}
             }
         }
         private static TransferNetworkResult FullTransfer(TowerInput common,TransferNetworkInput input)
@@ -516,7 +534,7 @@ namespace EngineeringDashboard
                 LeftBayMm=left==null ? 0 : network.Bays[beam-1].WidthMm,RightBayMm=right==null ? 0 : network.Bays[beam].WidthMm,LeftAreaLoadKnM2=left==null ? 0 : network.AreaLoad(network.Bays[beam-1].ThicknessMm),RightAreaLoadKnM2=right==null ? 0 : network.AreaLoad(network.Bays[beam].ThicknessMm),LeftPlan=left?.Reverse(),RightPlan=right,
                 LeftCrossingBands=left==null ? new BeamDistributedLoad[0] : CrossingBands(network,beam-1),RightCrossingBands=right==null ? new BeamDistributedLoad[0] : CrossingBands(network,beam),
                 LeftEffectiveWidthsMm=left==null ? null : EffectiveWidthsMm(common,network,beam-1,cover,phase),RightEffectiveWidthsMm=right==null ? null : EffectiveWidthsMm(common,network,beam,cover,phase)};
-            var input=new TowerInput {PrimaryMaterial=common.PrimaryMaterial,ReceiverTransverseOffsetMm=transverseOffset,IgnoreUplift=common.IgnoreUplift,Trace=common.Trace,ReuseSearchWork=common.ReuseSearchWork,PruneUneconomicCandidates=common.PruneUneconomicCandidates,StagePrimaryChecks=common.StagePrimaryChecks,ReuseNetworkNumerics=common.ReuseNetworkNumerics,ReuseTransverseNumerics=common.ReuseTransverseNumerics,LazySearchDiagnostics=common.LazySearchDiagnostics,DeferTransferLayout=common.DeferTransferLayout,SearchByLegTier=common.SearchByLegTier,NetworkLegCeiling=ceiling,AllowCustomH20Lengths=common.AllowCustomH20Lengths,CustomH20Scope=common.CustomH20Scope,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
+            var input=new TowerInput {PrimaryMaterial=common.PrimaryMaterial,AllowLocalShutterExceptions=common.AllowLocalShutterExceptions,ReceiverTransverseOffsetMm=transverseOffset,IgnoreUplift=common.IgnoreUplift,Trace=common.Trace,ReuseSearchWork=common.ReuseSearchWork,PruneUneconomicCandidates=common.PruneUneconomicCandidates,StagePrimaryChecks=common.StagePrimaryChecks,ReuseNetworkNumerics=common.ReuseNetworkNumerics,ReuseTransverseNumerics=common.ReuseTransverseNumerics,LazySearchDiagnostics=common.LazySearchDiagnostics,DeferTransferLayout=common.DeferTransferLayout,SearchByLegTier=common.SearchByLegTier,NetworkLegCeiling=ceiling,AllowCustomH20Lengths=common.AllowCustomH20Lengths,CustomH20Scope=common.CustomH20Scope,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
             if(common.CoordinateCrossingLayouts)input.TransferLayoutAcceptance=layout=>CrossBeamSupportOptimizer.CheckJunctionReceiver(input,network,beam,layout);
             try {return TransferredSlabOptimizer.Optimize(input,true);}
             catch(TowerOptimizationException){return null;}

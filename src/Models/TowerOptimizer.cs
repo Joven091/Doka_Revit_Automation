@@ -212,6 +212,7 @@ namespace EngineeringDashboard
     {
         internal TowerSearchDiagnostics Diagnostics;
         internal Dictionary<string,DedicatedCrossSearch> DedicatedCrossCache;
+        internal bool AllowLocalShutterExceptions;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance;
         internal double ReceiverTransverseOffsetMm;
         internal BeamSearchTrace Trace;

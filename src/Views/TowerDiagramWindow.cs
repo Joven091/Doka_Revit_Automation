@@ -247,11 +247,13 @@ namespace EngineeringDashboard
             internal BeamDistributedLoad[] SourceUniform {get;}
             internal BeamDistributedLoad[] CombinedUniform=>uniform;
             internal int DrawnSupportCount {get;private set;}
+            internal int DrawnReactionLabelCount {get;private set;}
+            internal readonly System.Collections.Generic.List<Rect> ReactionLabelBounds=new System.Collections.Generic.List<Rect>();
             internal int DrawnPointCount {get;private set;}
             internal int DrawnUniformCount {get;private set;}
             internal readonly System.Collections.Generic.List<Rect> LabelBounds=new System.Collections.Generic.List<Rect>();
             internal MemberLoadingPlot(double l,double[] s,double[] r,BeamDistributedLoad[] u,BeamPointLoad[] p)
-            {length=l;supports=s;reactions=r;SourceUniform=u??new BeamDistributedLoad[0];uniform=Combine(SourceUniform);points=p??new BeamPointLoad[0];Height=270;}
+            {length=l;supports=s;reactions=r;SourceUniform=u??new BeamDistributedLoad[0];uniform=Combine(SourceUniform);points=p??new BeamPointLoad[0];MinHeight=270;}
             internal static BeamDistributedLoad[] Combine(BeamDistributedLoad[] loads)
             {
                 var cuts=loads.SelectMany(q=>new[] {q.StartMm,q.EndMm}).Distinct().OrderBy(x=>x).ToArray();
@@ -266,9 +268,31 @@ namespace EngineeringDashboard
                 }
                 return bands.ToArray();
             }
+            private FormattedText ReactionText(int index)=>new FormattedText($"R{index+1}: {reactions[index]:0.##} kN",CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,Brushes.DarkSlateGray,VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            private Rect[] PlaceReactionLabels(double width)
+            {
+                double left=65,right=Math.Max(left+20,width-20);var boxes=new Rect[supports.Length];
+                for(int i=0;i<supports.Length;i++)
+                {
+                    var text=ReactionText(i);double x=left+supports[i]/length*(right-left);
+                    x=Math.Max(2,Math.Min(width-text.Width-2,x-text.Width/2));
+                    var box=new Rect(x-2,189,text.Width+4,text.Height+2);
+                    // Preserve every value. Nearby supports use additional rows rather
+                    // than silently losing a reaction to the general annotation filter.
+                    while(boxes.Take(i).Any(b=>b.IntersectsWith(box)))box.Offset(0,text.Height+8);
+                    boxes[i]=box;
+                }
+                return boxes;
+            }
+            protected override Size MeasureOverride(Size availableSize)
+            {
+                double width=double.IsInfinity(availableSize.Width) ? 900 : availableSize.Width;
+                var boxes=PlaceReactionLabels(width);double bottom=boxes.Select(b=>b.Bottom).DefaultIfEmpty(210).Max();
+                return new Size(width,Math.Max(270,bottom+60));
+            }
             protected override void OnRender(DrawingContext dc)
             {
-                base.OnRender(dc);LabelBounds.Clear();DrawnSupportCount=DrawnPointCount=DrawnUniformCount=0;
+                base.OnRender(dc);LabelBounds.Clear();ReactionLabelBounds.Clear();DrawnSupportCount=DrawnReactionLabelCount=DrawnPointCount=DrawnUniformCount=0;
                 double left=65,right=Math.Max(left+20,ActualWidth-20),beamY=95;
                 double maximum=uniform.Select(q=>Math.Abs(q.KnPerM)).DefaultIfEmpty(1).Max();
                 Func<double,double> xx=x=>left+x/length*(right-left);
@@ -284,7 +308,7 @@ namespace EngineeringDashboard
                     double sign=Math.Sign(to-from);var pen=new Pen(colour,1.5);dc.DrawLine(pen,new Point(x,from),new Point(x,to));
                     dc.DrawLine(pen,new Point(x,to),new Point(x-4,to-sign*7));dc.DrawLine(pen,new Point(x,to),new Point(x+4,to-sign*7));
                 };
-                dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));
+                dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
                 dc.DrawLine(new Pen(Brushes.DarkSlateGray,4),new Point(left,beamY),new Point(right,beamY));
                 for(int i=0;i<uniform.Length;i++)
                 {
@@ -299,20 +323,24 @@ namespace EngineeringDashboard
                     double x=xx(p.PositionMm),sign=Math.Sign(p.Kn),tip=beamY-sign*5,from=tip-sign*52;
                     arrow(x,from,tip,Brushes.Firebrick);label($"{p.Kn:0.##} kN",x,from+(sign>=0 ? -19 : 5));DrawnPointCount++;
                 }
+                var reactionBoxes=PlaceReactionLabels(ActualWidth);
                 for(int i=0;i<supports.Length;i++)
                 {
                     double x=xx(supports[i]);var triangle=new StreamGeometry();using(var c=triangle.Open()){c.BeginFigure(new Point(x,beamY+3),true,true);c.LineTo(new Point(x-7,beamY+15),true,false);c.LineTo(new Point(x+7,beamY+15),true,false);}
                     dc.DrawGeometry(Brushes.SlateGray,null,triangle);dc.DrawLine(new Pen(Brushes.SlateGray,1),new Point(x-10,beamY+19),new Point(x+10,beamY+19));
-                    arrow(x,reactions[i]>=0 ? 185 : 155,reactions[i]>=0 ? 155 : 185,Brushes.SeaGreen);label($"R{i+1}: {reactions[i]:0.##} kN",x,190);DrawnSupportCount++;
+                    arrow(x,reactions[i]>=0 ? 185 : 155,reactions[i]>=0 ? 155 : 185,Brushes.SeaGreen);
+                    var box=reactionBoxes[i];dc.DrawText(ReactionText(i),new Point(box.Left+2,box.Top+1));
+                    ReactionLabelBounds.Add(box);LabelBounds.Add(box);DrawnReactionLabelCount++;DrawnSupportCount++;
                 }
+                double dimensionY=Math.Max(225,reactionBoxes.Select(b=>b.Bottom).DefaultIfEmpty(210).Max()+15);
                 var stations=new[] {0.0}.Concat(supports).Concat(new[] {length}).Distinct().OrderBy(x=>x).ToArray();
                 for(int i=1;i<stations.Length;i++)
                 {
-                    double a=xx(stations[i-1]),b=xx(stations[i]),y=225;dc.DrawLine(new Pen(Brushes.Gray,1),new Point(a,y),new Point(b,y));
+                    double a=xx(stations[i-1]),b=xx(stations[i]),y=dimensionY;dc.DrawLine(new Pen(Brushes.Gray,1),new Point(a,y),new Point(b,y));
                     foreach(double x in new[] {a,b})dc.DrawLine(new Pen(Brushes.Gray,1),new Point(x,y-4),new Point(x,y+4));
                     string value=$"{stations[i]-stations[i-1]:0.###}";if(b-a>value.Length*7+8)label(value,(a+b)/2,y+5);
                 }
-                label("0",left,250);label($"{length:0.###} mm",right,250);
+                label("0",left,dimensionY+25);label($"{length:0.###} mm",right,dimensionY+25);
             }
         }
         private sealed class LoadedResponsePlot : FrameworkElement
