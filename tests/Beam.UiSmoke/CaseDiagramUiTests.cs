@@ -22,7 +22,7 @@ internal static class CaseDiagramUiTests
         else yield return drawing;
     }
     static void Render(FrameworkElement element)
-    {element.Measure(new Size(900,element.Height));element.Arrange(new Rect(0,0,900,element.Height));element.UpdateLayout();new System.Windows.Media.Imaging.RenderTargetBitmap(900,(int)element.Height,96,96,PixelFormats.Pbgra32).Render(element);}
+    {element.Measure(new Size(900,double.PositiveInfinity));element.Arrange(new Rect(0,0,900,element.DesiredSize.Height));element.UpdateLayout();new System.Windows.Media.Imaging.RenderTargetBitmap(900,(int)Math.Ceiling(element.ActualHeight),96,96,PixelFormats.Pbgra32).Render(element);}
     public static int Run()
     {
         var primary=new[] {new[] {Member(8,"P1 L"),Member(2,"P1 R")},new[] {Member(2,"P1 L"),Member(9,"P1 R")},new[] {Member(3,"P1 L"),Member(3,"P1 R")}};

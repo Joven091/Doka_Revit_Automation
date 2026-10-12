@@ -48,6 +48,7 @@ internal static class D3WorkspaceUiTests
                 var image=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);image.Render(surface);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(image));
                 using(var file=File.Create(Path.ChangeExtension(output,"d3-main-workspace.png")))png.Save(file);
             }
+            model.DeflectionLimit=BeamCalculatorViewModel.AvailableDeflectionOptions.Single(d=>d.Denominator==270);
             model.BeamLengthMm=4500;model.CustomH20Scope=CustomH20LengthScope.SlabSupports;model.Exclude600Standalone=true;
             foreach(var beam in model.NetworkBeams){beam.WidthMm=800;beam.SetDepthKeepingTopMm(1750);}
             model.NetworkBays[0].WidthMm=2175;
