@@ -72,6 +72,7 @@ namespace EngineeringDashboard
         internal readonly double Near,Far;
         internal CrossShutterAllowance(double near,double far){Near=near;Far=far;}
         internal static readonly CrossShutterAllowance Standard=new CrossShutterAllowance(200,200);
+        internal static readonly CrossShutterAllowance[] StandardOnly={Standard};
         internal static readonly CrossShutterAllowance[] Candidates={Standard,new CrossShutterAllowance(175,200),new CrossShutterAllowance(200,175),new CrossShutterAllowance(175,175)};
     }
     internal sealed class DedicatedCrossSearch
@@ -580,7 +581,7 @@ namespace EngineeringDashboard
                     }
                 }
                 if(c.SupportMode!=CrossBeamSupportMode.ExistingSupportsOnly)
-                foreach(var allowance in CrossShutterAllowance.Candidates)
+                foreach(var allowance in common.AllowLocalShutterExceptions ? CrossShutterAllowance.Candidates : CrossShutterAllowance.StandardOnly)
                 {
                     // A reduced allowance repairs a junction that cannot fit locally.
                     // Keep an already fitting standard detail when a later crossing fails;
@@ -683,7 +684,7 @@ namespace EngineeringDashboard
         // stock. Otherwise the cheapest beam-only winner can hide passing alternatives
         // of the same tower width when the end-zone loads are added later.
         internal static bool CheckJunctionReceiver(TowerInput common,TransferNetworkInput network,int beam,TowerLayout layout)
-            =>CheckJunctionReceiver(common,network,beam,layout,200) || CheckJunctionReceiver(common,network,beam,layout,175);
+            =>CheckJunctionReceiver(common,network,beam,layout,200) || common.AllowLocalShutterExceptions && CheckJunctionReceiver(common,network,beam,layout,175);
         private static bool CheckJunctionReceiver(TowerInput common,TransferNetworkInput network,int beam,TowerLayout layout,double shutterWidth)
         {
             var supports=new List<CrossBeamSupportResult>();var input=network.Beams[beam];var t=layout.Transfer;

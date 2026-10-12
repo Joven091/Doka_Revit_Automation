@@ -177,7 +177,7 @@ namespace EngineeringDashboard
         public static NetworkBeamOption[] BeamOptions(TowerInput common,TransferNetworkResult current,int beam)
         {
             if(current==null || beam<0 || beam>=current.Beams.Length)throw new ArgumentException("Select a calculated main beam.");
-            var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=false;worker.NetworkNumerics=null;
+            var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=false;worker.NetworkNumerics=null;worker.AllowLocalShutterExceptions=true;
             worker.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift);
             worker.DedicatedCrossCache=new Dictionary<string,DedicatedCrossSearch>();
             var results=new List<NetworkBeamOption> {new NetworkBeamOption(current,beam,"Option 1 · Original layout")};
@@ -229,7 +229,7 @@ namespace EngineeringDashboard
         public static TransferNetworkResult Optimize(TowerInput common,TransferNetworkInput input)
         {
             input.Validate(common);
-            try {return TowerStockPlanner.SearchWithCustom(common,()=>FullTransfer(common,input),Better);}
+            try {return PreferredShutterDetail(common,input);}
             catch(TowerOptimizationException fullFailure) when (!common.AllowCustomH20Lengths && common.AllowSeparateSlabFallback)
             {
                 var fullDiagnostics=common.Diagnostics;
@@ -243,6 +243,24 @@ namespace EngineeringDashboard
                 }
                 catch(TowerOptimizationException partialFailure)
                 {throw new TowerOptimizationException(partialFailure.Message,fullFailure.Details+"\n\nSeparate slab formwork fallback also failed:\n"+partialFailure.Details);}
+            }
+        }
+        private static TransferNetworkResult PreferredShutterDetail(TowerInput common,TransferNetworkInput input)
+        {
+            try {return TowerStockPlanner.SearchWithCustom(common,()=>FullTransfer(common,input),Better);}
+            catch(TowerOptimizationException standardFailure) when (CrossBeamSupportOptimizer.Modern(input) && !common.AllowLocalShutterExceptions)
+            {
+                // Exhaust normal stock/custom, spacing and coordination searches first.
+                // A locally relaxed early candidate must not hide a better standard plan.
+                var worker=common.CopyForSearch();worker.AllowLocalShutterExceptions=true;
+                common.Trace?.Work("Local 175 mm side-shutter fallback");
+                try
+                {
+                    var result=TowerStockPlanner.SearchWithCustom(worker,()=>FullTransfer(worker,input),Better);
+                    common.Diagnostics=worker.Diagnostics;return result;
+                }
+                catch(TowerOptimizationException reducedFailure)
+                {throw new TowerOptimizationException(standardFailure.Message,standardFailure.Details+"\n\nLocal 175 mm side-shutter fallback also failed:\n"+reducedFailure.Details);}
             }
         }
         private static TransferNetworkResult FullTransfer(TowerInput common,TransferNetworkInput input)
