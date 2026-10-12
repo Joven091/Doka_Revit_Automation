@@ -2,7 +2,7 @@
   <Window.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
-        <ResourceDictionary Source="CalculatorStyles.xaml"/>
+        <ResourceDictionary Source="pack://application:,,,/MyRevitAddin;component/Views/CalculatorStyles.xaml"/>
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Window.Resources>

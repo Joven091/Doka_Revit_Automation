@@ -6,7 +6,7 @@
         WindowStartupLocation="CenterOwner" Background="#F5F5F5" FontFamily="Segoe UI" FontSize="13" Foreground="#202A33">
     <Window.Resources>
       <ResourceDictionary>
-        <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="../Views/CalculatorStyles.xaml"/></ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="pack://application:,,,/MyRevitAddin;component/Views/CalculatorStyles.xaml"/></ResourceDictionary.MergedDictionaries>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <Style x:Key="CardStyle" TargetType="Border">
             <Setter Property="Background" Value="White"/>
