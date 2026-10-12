@@ -17,8 +17,8 @@ internal static class NetworkTests
         Near(result.SlabLoadKn,input.Bays.Sum(b=>input.AreaLoad(b.ThicknessMm)*b.WidthMm/1000)*loadedLength/1000,"full slab area conserved including both shutter edges");
         for(int b=0;b<result.Beams.Length;b++)
         {
-            var beam=result.Beams[b];Check(beam.Transfer.RowsMm.SequenceEqual(result.Beams[0].Transfer.RowsMm),"shared upper rows align across all lower beams");
-            double beamLoad=input.AreaLoad(input.Beams[b].DepthMm)*input.Beams[b].WidthMm/1000*(common.LengthMm-2*beam.ConcreteEndOverhangMm)/1000;
+            var beam=result.Beams[b];Check(beam.Transfer.SlabRowIndices.Select(i=>beam.Transfer.RowsMm[i]).SequenceEqual(result.SlabRowsMm),"shared upper rows align across all lower beams");
+            double beamLoad=input.AreaLoad(input.Beams[b].DepthMm)*input.Beams[b].WidthMm/1000*common.LengthMm/1000;
             Near(beam.Transfer.BeamLoadKn,beamLoad,"each beam depth produces its own physical beam concrete load");
             Check(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad-1e-7,"lower secondary design retains full end tributaries");
             Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r>=-1e-7 && r<=common.LegCapacityKn+1e-8),"each beam's legs checked");
@@ -39,10 +39,10 @@ internal static class NetworkTests
             Near(left.Analysis.Reactions[0],right.Analysis.Reactions[1],"same physical upper-left reaction at both analyses");
             Near(left.Analysis.Reactions[1],right.Analysis.Reactions[0],"same physical upper-right reaction at both analyses");
         }
-        double expectedTimber=result.Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*b.Transfer.LowerStockLengthMm)+result.Bays.Sum(b=>b.StockLengthMm)*result.Beams[0].Transfer.RowsMm.Length;
+        double expectedTimber=result.Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*b.Transfer.LowerStockLengthMm)+result.Bays.Sum(b=>b.StockLengthMm)*result.SlabRowsMm.Length;
         Near(result.TimberMm,expectedTimber,"shared upper timber counted once");
         Check(result.Beams.All(b=>b.Transfer.UpperMembers.All(m=>m.H20Count==1 && m.MomentLimitKnM==5 && m.ShearLimitKn==11 && m.Utilization<=1+1e-8)),"slab H20s use single-member capacities in every network bay");
-        Near(result.H20Count,result.Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.RowsMm.Length)+result.Bays.Length*result.Beams[0].Transfer.RowsMm.Length,"single lower and shared slab H20 quantities counted once per row");
+        Near(result.H20Count,result.Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.RowsMm.Length)+result.Bays.Length*result.SlabRowsMm.Length,"single lower and shared slab H20 quantities counted once per row");
         Check(result.SlabMovementMm>0 && TowerBeamAnalysis.Finite(result.SlabMovementMm),"different lower-beam movements propagated into slab");
         var free=LoadedBeamAnalysis.Analyze(2000,new[] {0.0,2000},null,new BeamPointLoad[0],900,350);
         Near(free.DeflectionWithAffineOffsetMm(-2,-5,0,2000),5,"different prescribed foot movements");
@@ -68,9 +68,9 @@ internal static class NetworkTests
         double expectedCrossing=9.4*crossingInput.Bays[0].WidthMm/1000*crossingLength/1000+(crossingInput.AreaLoad(350)-9.4)*.4*crossingInput.Bays[0].WidthMm/1000;
         Near(crossed.SlabLoadKn,expectedCrossing,"crossing and slab load reaches both main beams including shutter edges");
         Check(crossed.Beams.All(b=>b.Transfer.UpperMembers.All(m=>m.Utilization<=1+1e-8) && b.Transfer.LowerCases.Concat(b.Transfer.PrimaryCases).SelectMany(c=>c).All(m=>m.Utilization<=1+1e-8 && m.Analysis.Reactions.All(r=>r>=-1e-7)) && b.MaxLegKn<=70+1e-8),"crossing layout checks upper singles, lower singles, primaries and individual legs");
-        for(int r=0;r<crossed.Beams[0].Transfer.RowsMm.Length;r++)
+        for(int r=0;r<crossed.SlabRowsMm.Length;r++)
         {
-            Near(crossed.Beams[0].Transfer.UpperScale(false,r),crossed.Beams[1].Transfer.UpperScale(true,r),"both main beams use the same physical crossing row loads");
+            Near(crossed.Beams[0].Transfer.UpperScale(false,crossed.SlabBeamRow(0,r)),crossed.Beams[1].Transfer.UpperScale(true,crossed.SlabBeamRow(1,r)),"both main beams use the same physical crossing row loads");
             foreach(var beam in crossed.Beams)Near(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.Reactions.Sum()),beam.Transfer.PrimaryCases.Last().Sum(m=>m.Uniform.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000)),"crossing UDL forces conserved through primaries to legs");
         }
         foreach(var beam in crossed.Beams)Near(beam.Transfer.CoveredSlabAreaM2,crossed.SlabCoveredLengthMm*(beam.Transfer.LeftUpperStockMm+beam.Transfer.RightUpperStockMm)/1e6,"reported slab stock area uses physical coverage, without weighting the crossing load");

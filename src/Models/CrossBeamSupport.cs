@@ -144,7 +144,7 @@ namespace EngineeringDashboard
                 var p=r.Bays[bay];if(p==null)continue;
                 double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2;
                 double top=Math.Max(r.Input.Beams[bay].BottomElevationMm+r.Input.Beams[bay].DepthMm,r.Input.Beams[bay+1].BottomElevationMm+r.Input.Beams[bay+1].DepthMm)-r.Input.Bays[bay].ThicknessMm;
-                for(int row=0;row<r.Beams[0].Transfer.RowsMm.Length;row++)if(r.SlabRowActive(bay,row))yield return Timber($"S{bay+1} slab H20",r.Beams[0].Transfer.RowsMm[row],face+p.EdgeMm,p.StockLengthMm,false,top);
+                for(int row=0;row<r.SlabRowsMm.Length;row++)if(r.SlabRowActive(bay,row))yield return Timber($"S{bay+1} slab H20",r.SlabRowsMm[row],face+p.EdgeMm,p.StockLengthMm,false,top);
             }
         }
         internal static IEnumerable<FormworkSolid> Concrete(TransferNetworkResult r)
@@ -387,7 +387,7 @@ namespace EngineeringDashboard
             failure=null;var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;
             double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2+near,span=r.Input.Bays[bay].WidthMm-near-far;
             bool rotated=width!=1524;
-            foreach(double towerBay in rotated ? new[] {1524.0} : TowerOptimizer.BaysMm.Where(x=>!common.Exclude600Standalone || x!=600))
+            foreach(double towerBay in rotated ? new[] {1524.0} : TowerOptimizer.BaysMm.Where(x=>!common.Exclude600Standalone || x!=600).OrderByDescending(x=>x).ToArray())
             {
                 common.Trace?.CheckCancellation();
                 double[] positions={span/2+alongSpan-towerBay/2,span/2+alongSpan+towerBay/2};
@@ -734,7 +734,7 @@ namespace EngineeringDashboard
                     }
                     names.Add(name);cases.Add(primary);lowerCases.Add(lower);
                 }
-                l.Transfer=new TransferredSlabResult {RowsMm=t.RowsMm,TributaryWidthsMm=t.TributaryWidthsMm,LeftUpperScales=t.LeftUpperScales,RightUpperScales=t.RightUpperScales,EnteredUpperSpacingMm=t.EnteredUpperSpacingMm,CrossFormwork=t.CrossFormwork,BeamLoadKn=t.BeamLoadKn,LowerStockStartMm=t.LowerStockStartMm,LowerStockLengthMm=t.LowerStockLengthMm,LeftFootMm=t.LeftFootMm,RightFootMm=t.RightFootMm,LeftUpperStockMm=t.LeftUpperStockMm,RightUpperStockMm=t.RightUpperStockMm,LeftUpperEdgeMm=t.LeftUpperEdgeMm,RightUpperEdgeMm=t.RightUpperEdgeMm,LeftUpperCustom=t.LeftUpperCustom,RightUpperCustom=t.RightUpperCustom,LowerCustom=t.LowerCustom,LeftFootReactionKn=t.LeftFootReactionKn,RightFootReactionKn=t.RightFootReactionKn,SlabMovementMm=t.SlabMovementMm,CoveredSlabAreaM2=t.CoveredSlabAreaM2,SlabLoadKn=t.SlabLoadKn,ShutterLoadKn=t.ShutterLoadKn,PrimaryCases=cases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=t.UpperMembers,CaseNames=names.ToArray()};
+                l.Transfer=new TransferredSlabResult {RowsMm=t.RowsMm,SlabRowIndices=t.SlabRowIndices,TributaryWidthsMm=t.TributaryWidthsMm,LeftUpperScales=t.LeftUpperScales,RightUpperScales=t.RightUpperScales,EnteredUpperSpacingMm=t.EnteredUpperSpacingMm,CrossFormwork=t.CrossFormwork,BeamLoadKn=t.BeamLoadKn,LowerStockStartMm=t.LowerStockStartMm,LowerStockLengthMm=t.LowerStockLengthMm,LeftFootMm=t.LeftFootMm,RightFootMm=t.RightFootMm,LeftUpperStockMm=t.LeftUpperStockMm,RightUpperStockMm=t.RightUpperStockMm,LeftUpperEdgeMm=t.LeftUpperEdgeMm,RightUpperEdgeMm=t.RightUpperEdgeMm,LeftUpperCustom=t.LeftUpperCustom,RightUpperCustom=t.RightUpperCustom,LowerCustom=t.LowerCustom,LeftFootReactionKn=t.LeftFootReactionKn,RightFootReactionKn=t.RightFootReactionKn,SlabMovementMm=t.SlabMovementMm,CoveredSlabAreaM2=t.CoveredSlabAreaM2,SlabLoadKn=t.SlabLoadKn,ShutterLoadKn=t.ShutterLoadKn,PrimaryCases=cases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=t.UpperMembers,CaseNames=names.ToArray()};
                 l.LeftReactions=left;l.RightReactions=right;l.MinimumLeftReactions=minLeft;l.MinimumRightReactions=minRight;l.MaxLegKn=Math.Max(left.Max(),right.Max());
                 var all=cases.Concat(lowerCases).SelectMany(c=>c).Concat(t.UpperMembers).ToArray();
                 l.MomentKnM=all.Max(m=>m.Analysis.MomentKnM);l.ShearKn=all.Max(m=>m.Analysis.ShearKn);l.DeflectionMm=all.Max(m=>m.Analysis.DeflectionMm);l.Utilization=Math.Max(l.MaxLegKn/l.LegCapacityKn,all.Max(m=>m.Utilization));l.Governing=l.MaxLegKn/l.LegCapacityKn>=all.Max(m=>m.Utilization) ? "Leg capacity" : all.OrderByDescending(m=>m.Utilization).First().Name;
