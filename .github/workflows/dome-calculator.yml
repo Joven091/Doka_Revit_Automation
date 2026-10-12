@@ -49,6 +49,7 @@ jobs:
         with:
           name: revit2024-addin
           path: |
+            MyRevitAddin.addin
             src/bin/Release/net48/MyRevitAddin.dll
             src/bin/Release/net48/OxyPlot*.dll
           if-no-files-found: error

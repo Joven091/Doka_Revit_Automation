@@ -4,8 +4,11 @@
 #define MyAppPublisher "Joven091"
 #define RevitAddinPath "{userappdata}\Autodesk\Revit\Addins\2024"
 
-; Your exact local build output directory
-#define BuildOutput "C:\Users\jsazon\OneDrive - Umdasch Group\Documents\GitHub\Doka_Revit_Automation\src\bin\Debug\net48"
+; Paths are relative to this script; BuildOutput may be overridden with /D.
+#define RepoRoot AddBackslash(SourcePath)
+#ifndef BuildOutput
+  #define BuildOutput RepoRoot + "src\bin\Release\net48"
+#endif
 
 [Setup]
 ; Basic installer metadata
@@ -18,7 +21,7 @@ DisableDirPage=yes
 DefaultDirName={#RevitAddinPath}
 
 ; Output settings for the final .exe
-OutputDir={#BuildOutput}\InstallerOutput
+OutputDir={#RepoRoot}artifacts\installer
 OutputBaseFilename=Install_DokaRevitAutomation
 Compression=lzma
 SolidCompression=yes
@@ -28,7 +31,7 @@ PrivilegesRequired=lowest
 
 [Files]
 ; 1. Copy the manifest file (.addin)
-Source: "{#BuildOutput}\*.addin"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}MyRevitAddin.addin"; DestDir: "{app}"; Flags: ignoreversion
 
 ; 2. Copy the main DLL and any other dependencies in the build folder
 Source: "{#BuildOutput}\*.dll"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
