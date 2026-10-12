@@ -139,6 +139,11 @@ internal static class WorkspaceTests
             Check(drawing.DrawnSecondaryH20Count==0,"secondary H20s start hidden in plan");
             Click("SecondaryH20s");Render();
             Check(drawing.DrawnSecondaryH20Count>0 && ReferenceEquals(layout,model.NetworkResult),"secondary H20 toggle shows real members without changing the solution");
+            foreach(var target in drawing.MemberTargets.Where(h=>h.Item2<model.NetworkResult.Beams.Length && h.Item3>=model.NetworkResult.Beams[h.Item2].StockPlan.Pieces.Length && h.Item3<model.NetworkResult.Beams[h.Item2].StockPlan.Pieces.Length+model.NetworkResult.Beams[h.Item2].Transfer.RowsMm.Length))
+            {
+                double centreY=drawing.Screen(0,model.NetworkResult.BeamCentresMm[target.Item2]).Y;
+                Check(Math.Abs(target.Item1.Top+target.Item1.Height/2-centreY)<1e-6,"secondary plan midpoint aligns with concrete centreline");
+            }
             var lowerTarget=drawing.MemberTargets.First(h=>h.Item2>=0 && h.Item3>=layout.Beams[h.Item2].StockPlan.Pieces.Length);
             workspace.ShowMember(lowerTarget.Item2,lowerTarget.Item3,lowerTarget.Item4);Pump();
             Check(workspace.Diagrams.SelectedTransferMember.H20Count==1 && workspace.Diagrams.LoadedAnalysis.DeflectionEvaluated,"visible secondary selection opens checked single-H20 diagrams");

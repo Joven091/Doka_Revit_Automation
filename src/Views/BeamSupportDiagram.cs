@@ -219,7 +219,7 @@ namespace EngineeringDashboard
                     dc.DrawRectangle(ConcreteTop,new Pen(ConcreteSide,1),new Rect(xx(centre-model.Width/2),beamTop,model.Width*scale,beamBottom-beamTop));
                     double start=xx(centre+(centre==0 ? t.LowerStockStartMm : -t.LowerStockStartMm-t.LowerStockLengthMm));
                     bool selected=centre==0 && selectedRun==layout.StockPlan.Pieces.Length+Array.IndexOf(t.TributaryWidthsMm,System.Linq.Enumerable.Max(t.TributaryWidthsMm));
-                    H20Drawing.Longitudinal(dc,new Rect(start,beamBottom,t.LowerStockLengthMm*scale,20),selected);DrawnH20ProfileCount++;
+                    H20Drawing.Longitudinal(dc,new Rect(start,beamBottom,t.LowerStockLengthMm*scale,20),selected,true);DrawnH20ProfileCount++;
                     foreach(double support in new[] {-layout.WidthMm/2,layout.WidthMm/2})
                     {
                         if(layout.Primary.IsWS10)PrimaryDrawing.EndSection(dc,new Rect(xx(centre+support-76.5),beamBottom+20,153*scale,10));
@@ -259,7 +259,7 @@ namespace EngineeringDashboard
                 int encoded=layout.StockPlan.Pieces.Length+t.RowsMm.Length+maxRow*2+side;
                 bool selected=encoded==selectedRun;
                 var upperRect=new Rect(Math.Min(xx(a),xx(b)),beamTop,stock*scale,20);
-                H20Drawing.Longitudinal(dc,upperRect,selected);DrawnH20ProfileCount++;
+                H20Drawing.Longitudinal(dc,upperRect,selected,true);DrawnH20ProfileCount++;
                 MemberTargets.Add(Tuple.Create(upperRect,encoded,0,0));
                 dim(face,near,beamBottom+45,$"Face → foot {foot:0}");
                 dim(face+sign*bay,far,beamBottom+45,$"{foot:0}");
