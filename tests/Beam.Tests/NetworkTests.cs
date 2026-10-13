@@ -89,7 +89,7 @@ internal static class NetworkTests
         crossingInput.CrossingBeams[0].DepthMm=350;crossingInput.CrossingBeams=new[] {crossingInput.CrossingBeams[0],new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,PositionMm=3100,WidthMm=300,DepthMm=400}};rejected=false;try {crossingInput.Validate(common);}catch(ArgumentException){rejected=true;}Check(rejected,"overlapping crossing beams rejected to avoid duplicate volume");
         var failureVm=new BeamCalculatorViewModel {AllowCustomH20Lengths=true,UseTowers=true,Depth=1750,Width=800,BeamLengthMm=10600,TowerLegCapacityKn=70,HasRightSlab=true,RightSlabThickness=300,RightSlabBayMm=2575,TransferSlabLoads=true,Exclude600Standalone=true,UseBeamNetwork=true};
         failureVm.NetworkBeams[1].WidthMm=650;failureVm.NetworkBeams[1].DepthMm=1150;
-        Check(failureVm.MaximumSecondarySpacingMm==275 && failureVm.UpperSupportSpacingMm==275,"deep beam automatically sets common network spacing before search");
+        Check(failureVm.MaximumSecondarySpacingMm==305 && failureVm.UpperSupportSpacingMm==305,"deep beam automatically sets common network spacing before search");
         failureVm.NetworkBeams[0].DepthMm=900;failureVm.NetworkBeams[1].DepthMm=900;
         Check(failureVm.UpperSupportSpacingMm==350 && !failureVm.HasTowerFailure,"changing depth updates spacing and clears stale results");
         failureVm.OptimizeTowersAsync().GetAwaiter().GetResult();

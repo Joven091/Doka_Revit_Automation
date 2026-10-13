@@ -7,6 +7,13 @@ namespace EngineeringDashboard
     public partial class BeamCalculatorViewModel
     {
         private PlywoodProfile selectedPlywood = PlywoodCatalog.Default;
+        private string plywoodDeflectionLimit = "L/350";
+        public IReadOnlyList<string> PlywoodDeflectionLimitOptions => PlywoodSpacing.DeflectionLimitOptions;
+        public string PlywoodDeflectionLimit
+        {
+            get => plywoodDeflectionLimit;
+            set { plywoodDeflectionLimit=value; Changed(); }
+        }
         public IReadOnlyList<PlywoodProfile> PlywoodOptions => PlywoodCatalog.All;
         public PlywoodProfile SelectedPlywood
         {
@@ -28,8 +35,7 @@ namespace EngineeringDashboard
             : $"{PlywoodLabel} · maximum secondary spacing {MaximumSecondarySpacingMm:0} mm · {PlywoodCriterion}\n"
             + $"Pressure {PlywoodPressureKnM2:0.00} kN/m² · governs: {SecondarySpacingGoverning} · approximate chart reading"
             + $"\n2440 × 1220 mm sheet layout · chart maximum {PlywoodResult.ChartMaximumSpacingMm:0} mm · shorter spans at joints"
-            + (PlywoodResult.ChartPressureKnM2 > PlywoodPressureKnM2 ? $"\nUses the chart minimum of {PlywoodResult.ChartPressureKnM2:0.###} kN/m²." : "")
-            + (DeflectionLimit.Denominator == 0 ? "\nLegacy H20 limit retained; plywood uses L/500." : "");
+            + (PlywoodResult.ChartPressureKnM2 > PlywoodPressureKnM2 ? $"\nUses the chart minimum of {PlywoodResult.ChartPressureKnM2:0.###} kN/m²." : "");
 
         private void CalculatePlywoodSpacing()
         {
@@ -38,7 +44,8 @@ namespace EngineeringDashboard
             {
                 if (textErrors) throw new ArgumentException("Correct the highlighted input to calculate secondary spacing.");
                 if (SelectedPlywood==null || !PlywoodOptions.Contains(SelectedPlywood)) throw new ArgumentException("Select a plywood product and thickness.");
-                if (DeflectionLimit == null || !ContainsOption(DeflectionLimit)) throw new ArgumentException("Select a deflection limit.");
+                if (DeflectionLimit == null || !ContainsOption(DeflectionLimit)) throw new ArgumentException("Select an H20 deflection limit.");
+                int plywoodDenominator=PlywoodSpacing.ParseDeflectionLimit(PlywoodDeflectionLimit);
                 if (UseCustomLoads) { Check(CustomLiveLoad, "Placing + working live load"); Check(CustomFormworkLoad, "Formwork load"); }
                 double pressure;
                 if (IsNetworkMode)
@@ -63,7 +70,7 @@ namespace EngineeringDashboard
                     if (HasRightSlab) ValidateSlab(RightSlabThickness, "Right slab thickness");
                     pressure = AreaLoad(Depth);
                 }
-                PlywoodResult = PlywoodSpacing.CalculateForSheet(SelectedPlywood, pressure, DeflectionLimit.Denominator == 0 ? 500 : DeflectionLimit.Denominator);
+                PlywoodResult = PlywoodSpacing.CalculateForSheet(SelectedPlywood, pressure, plywoodDenominator);
             }
             catch (ArgumentException ex) { PlywoodSpacingWarning = ex.Message; }
             foreach (string name in new[] { nameof(PlywoodResult), nameof(MaximumSecondarySpacingMm), nameof(UpperSupportSpacingMm), nameof(PlywoodPressureKnM2),

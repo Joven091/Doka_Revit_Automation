@@ -48,11 +48,17 @@
                   </StackPanel>
                 </ContentControl>
               </Grid>
-              <StackPanel Margin="0,8,0,12">
-                <TextBlock Text="Plywood · 2440 × 1220 mm"/>
-                <ComboBox x:Name="PlywoodSelector" AutomationProperties.Name="Plywood product and thickness" ItemsSource="{Binding PlywoodOptions}" SelectedItem="{Binding SelectedPlywood, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" DisplayMemberPath="Label"/>
-                <TextBlock Text="{Binding PlywoodSpacingSummary}" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,4,0,0"/>
-              </StackPanel>
+              <Grid Margin="0,8,0,12">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="110"/></Grid.ColumnDefinitions>
+                <StackPanel>
+                  <TextBlock Text="Plywood"/>
+                  <ComboBox x:Name="PlywoodSelector" AutomationProperties.Name="Plywood product and thickness" ItemsSource="{Binding PlywoodOptions}" SelectedItem="{Binding SelectedPlywood, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" DisplayMemberPath="Label" ToolTip="{Binding PlywoodCalculationBasis}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="Plywood limit"/>
+                  <ComboBox x:Name="PlywoodDeflectionSelector" AutomationProperties.Name="Plywood deflection limit" ItemsSource="{Binding PlywoodDeflectionLimitOptions}" SelectedItem="{Binding PlywoodDeflectionLimit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                </StackPanel>
+              </Grid>
               <Expander x:Name="LoadInputsExpander" Margin="0,2,0,0">
                   <Expander.Header><TextBlock><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="Load inputs · default"/><Style.Triggers><DataTrigger Binding="{Binding UseCustomLoads}" Value="True"><Setter Property="Text" Value="Load inputs · custom"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></Expander.Header>
                 <StackPanel Margin="0,10,0,0">
@@ -122,8 +128,8 @@
                 </ContentControl>
                 <ContentControl Grid.Column="2" IsTabStop="False">
                   <StackPanel>
-                    <TextBlock Text="Deflection limit"/>
-                    <ComboBox AutomationProperties.Name="Deflection limit" ItemsSource="{Binding DeflectionLimitOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" ToolTip="Uses span length for span deflection and overhang length for end deflection, with the selected divisor. End deflection includes support rotation."/>
+                    <TextBlock Text="H20 limit"/>
+                    <ComboBox AutomationProperties.Name="H20 deflection limit" ItemsSource="{Binding DeflectionLimitOptions}" SelectedItem="{Binding DeflectionLimit, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}" ToolTip="Uses span length for span deflection and overhang length for end deflection, with the selected divisor. End deflection includes support rotation."/>
                   </StackPanel>
                 </ContentControl>
               </Grid>

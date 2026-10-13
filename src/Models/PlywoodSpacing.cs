@@ -42,7 +42,7 @@ namespace EngineeringDashboard
             + "Continuous equal spans and uniform pressure as illustrated; spacing is between plywood supports. "
             + "Uses the selected L/500, L/350 or L/270 criterion, bending M and shear Q. "
             + "Results round down to 5 mm within the applicable chart domain: " + string.Join("; ", Charts) + ". Lower pressures use the chart minimum. "
-            + "Legacy fixed H20 deflection records use L/500 for plywood. Secondary H20 member strength, "
+            + "Plywood and H20 deflection criteria are separate. Secondary H20 member strength, "
             + "sheet orientation, joints and end/edge support details require separate checks. " + Note;
 
         internal PlywoodProfile(string id, string label, double thickness, string chartReference,
@@ -70,8 +70,10 @@ namespace EngineeringDashboard
             new PlywoodProfile("dokaplex-9mm-9732-121", "Dokaplex · 9 mm", 9, "9732-121",
                 20.0, 1.40, 8.0, 100, 500, 5, 80,
                 "The source describes curved surfaces/inliners and use of this graph for low-loading form facing."),
-            new PlywoodProfile("doka-18mm-9732-103", "Doka plywood · 18 mm", 18, "9732-103",
-                2.30, 5.60, 16.0, 200, 600, 2.5, 60, ""),
+            new PlywoodProfile("doka-18mm-9732-103", "Doka plywood · 18 mm", 18, "18mm-EJ3.1-15pct",
+                2.10, 6.10, 16.0, 200, 800, 2.5, 100,
+                "Replacement diagram: EJ = 3.1 kNm²/m at 15% moisture. Deflection and bending are approximate fits. "
+                + "Shear Q is not shown; the previous 9732-103 shear envelope is retained separately."),
             new PlywoodProfile("doka-21mm-9732-104", "Doka plywood · 21 mm", 21, "9732-104",
                 1.40, 7.80, 19.0, 200, 600, 2.5, 80,
                 "Full chart: 200–600 mm up to 80 kN/m². Detailed chart: 100–300 mm up to 100 kN/m².",
@@ -86,6 +88,19 @@ namespace EngineeringDashboard
     public static class PlywoodSpacing
     {
         public static string Basis => PlywoodCatalog.Default.Basis;
+
+        public static IReadOnlyList<string> DeflectionLimitOptions { get; } = Array.AsReadOnly(new[] {"L/500", "L/350", "L/270"});
+        public static int ParseDeflectionLimit(string criterion)
+        {
+            if (!DeflectionLimitOptions.Contains(criterion)) throw new ArgumentException("Select a plywood deflection limit.");
+            return int.Parse(criterion.Substring(2), System.Globalization.CultureInfo.InvariantCulture);
+        }
+        internal static string RestoreDeflectionLimit(string saved, string previous)
+        {
+            string criterion=saved ?? previous;
+            ParseDeflectionLimit(criterion);
+            return criterion;
+        }
 
         public const double SheetLengthMm = 2440;
         public const double SheetWidthMm = 1220;

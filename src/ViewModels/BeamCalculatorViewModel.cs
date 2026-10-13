@@ -32,7 +32,7 @@ namespace EngineeringDashboard
             return option;
         }
         public IReadOnlyList<BeamDeflectionOption> DeflectionOptions => deflection?.Denominator == 0 ? AvailableDeflectionOptions.Concat(new[] { deflection }).ToArray() : AvailableDeflectionOptions;
-        public string DeflectionCriteriaNote => "L = each H20 support span (overhangs use their own length) or plywood span between secondary supports. H20 checks include support rotation.";
+        public string DeflectionCriteriaNote => "L = each H20 support span; overhangs use their own length.";
         public double PrimaryDeflectionMm { get; private set; }
         public double PrimaryDeflectionUtilization { get; private set; }
         public string PrimaryDeflectionSummary => $"H20 deflection: {PrimaryDeflectionMm:0.00} mm · {PrimaryDeflectionUtilization*100:0.0}% of criterion";

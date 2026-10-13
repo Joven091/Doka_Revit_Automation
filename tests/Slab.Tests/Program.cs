@@ -93,6 +93,17 @@ class Program
   RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;window=new FlexCalculatorWindow();var visualRoot=(FrameworkElement)window.Content;visualRoot.Measure(new Size(1040,860));visualRoot.Arrange(new Rect(0,0,1040,860));visualRoot.UpdateLayout();Pump();v=(FlexCalculatorViewModel)window.DataContext;var import=(Button)window.FindName("ImportButton");Check(import.IsEnabled,"initial import");
   var plywood=(ComboBox)window.FindName("PlywoodSelector");
   Check(plywood.Items.Count==3 && plywood.SelectedItem==PlywoodCatalog.Default,"slab plywood selector default");
+  var plywoodLimit=(ComboBox)window.FindName("PlywoodDeflectionSelector");var h20Limit=v.DeflectionLimit;
+  Check(plywoodLimit.Items.Count==3 && Equals(plywoodLimit.SelectedItem,"L/350"),"slab independent plywood limit default");
+  plywoodLimit.SelectedItem="L/500";Pump();Check(v.SecondaryBeamSpacing==407 && v.DeflectionLimit==h20Limit,"slab plywood limit changes spacing independently");
+  var limitsRecord=window.CaptureCalculation();plywoodLimit.SelectedItem="L/270";Pump();window.RestoreCalculation(limitsRecord);Pump();
+  Check(v.PlywoodDeflectionLimit=="L/500" && v.DeflectionLimit==h20Limit,"slab separate criteria survive save/load");
+  var badLimit=window.CaptureCalculation();badLimit.Inputs.Single(f=>f.Name=="PlywoodDeflectionLimit").Value="L/100";
+  bool badLimitRejected=false;try {window.RestoreCalculation(badLimit);}catch(ArgumentException){badLimitRejected=true;}
+  Check(badLimitRejected && v.PlywoodDeflectionLimit=="L/500","invalid saved slab plywood criterion preserves state");
+  limitsRecord.Inputs.RemoveAll(f=>f.Name=="PlywoodDeflectionLimit");window.RestoreCalculation(limitsRecord);Pump();
+  Check(v.PlywoodDeflectionLimit==h20Limit,"old slab records migrate existing ratio to plywood");
+  Check(!Find<TextBlock>(window).Any(t=>t.Text.Contains("Chart maximum")),"slab selector has no chart prose");
   var secondary=(TextBox)window.FindName("CalculatedSecondarySpacingInput");
   Check(secondary.IsReadOnly && !secondary.IsEnabled && secondary.GetBindingExpression(TextBox.TextProperty).ParentBinding.Mode==System.Windows.Data.BindingMode.OneWay,"slab secondary spacing is locked");
   v.SlabThickness=150;plywood.SelectedItem=PlywoodCatalog.All[0];Pump();Check(v.SecondaryBeamSpacing==275 && v.IsCalculationValid,"slab selector recalculates sheet spacing");

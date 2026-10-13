@@ -1,13 +1,13 @@
 # Plywood selection and sheet-based secondary spacing
 
-Dokaflex beam/slab and D3 shoring tower beam modes share a **Plywood** selector. In the Dokaflex beam calculator it sits below adjacent slab strip width; in the slab calculator it is part of Calculation setup. It offers Dokaplex 9 mm, Doka plywood 18 mm (the existing default) and Doka plywood 21 mm, based on the four supplied raster charts. The same selector is available in the drawing workspace's shared settings. The calculated maximum secondary spacing remains greyed out/read-only and updates when the selection changes.
+Dokaflex beam/slab and D3 shoring tower beam modes share a **Plywood** selector. In the Dokaflex beam calculator it sits below adjacent slab strip width; in the slab calculator it is part of Calculation setup. It offers Dokaplex 9 mm, Doka plywood 18 mm (the existing default) and Doka plywood 21 mm, based on the supplied raster charts, including the replacement 18 mm diagram. The same selector is available in the drawing workspace's shared settings. The calculated maximum secondary spacing remains greyed out/read-only and updates when the selection changes.
 
 ## Chart profiles and limits
 
 | Plywood | Chart reference | Span domain | Pressure domain |
 | --- | --- | --- | --- |
 | Dokaplex 9 mm | 9732-121 | 100–500 mm | 5–80 kN/m² |
-| Doka plywood 18 mm | 9732-103 | 200–600 mm | 2.5–60 kN/m² |
+| Doka plywood 18 mm | 18 mm, EJ=3.1, 15% moisture | 200–800 mm | 2.5–100 kN/m² |
 | Doka plywood 21 mm, full view | 9732-104 | 200–600 mm | 2.5–80 kN/m² |
 | Doka plywood 21 mm, detailed view | 9732-120 | 100–300 mm | 2.5–100 kN/m² |
 
@@ -28,10 +28,10 @@ shear envelope:   p × L   <= Q
 | Plywood | C | M | Q |
 | --- | ---: | ---: | ---: |
 | 9 mm | 20.0 | 1.40 | 8.0 |
-| 18 mm | 2.30 | 5.60 | 16.0 |
+| 18 mm | 2.10 | 6.10 | 16.0 (retained from 9732-103) |
 | 21 mm | 1.40 | 7.80 | 19.0 |
 
-For comparison with the supplied images, the 18 mm M locus gives 0.515, 1.159 and 2.061 mm at 20, 30 and 40 cm, compared with approximate image readings 0.52, 1.18 and 2.10 mm. Its Q locus gives 0.294, 0.994 and 2.355 mm compared with roughly 0.30, 1.02 and 2.45 mm. The 9 mm fit gives 1.563 mm for p=20 at 25 cm and 1.620 mm for p=10 at 30 cm, close to the approximately 1.5–1.6 mm curves; its M and Q fits are deliberately below the visible limiting loci. The 21 mm fit gives 0.567 mm for p=50 at 30 cm and 0.224 mm for p=100 at 20 cm in the detailed view; its M locus is 0.983 mm at 30 cm and 2.953 mm at 52 cm, consistent with the detailed and full views. These rounded readings have image uncertainty.
+The replacement 18 mm diagram states **EJ=3.1 kNm²/m at 15% moisture**. Its fitted load curves give 0.538 mm for p=10 at 40 cm, 2.722 mm for p=10 at 60 cm, and 2.150 mm for p=2.5 at 80 cm, matching approximate visible readings 0.54, 2.7 and 2.15 mm. The fitted M locus gives 0.512, 1.153 and 2.050 mm at 20, 30 and 40 cm, slightly below the visible bending envelope. **The replacement does not show Q:** the previous chart's shear envelope remains an additional restriction; it is not attributed to the new chart. Consequently, some pressures plotted in the replacement still have no passing spacing in its 200–800 mm domain. The existing saved profile ID is retained for compatibility, while reports identify the replacement chart reference. The 9 mm fit gives 1.563 mm for p=20 at 25 cm and 1.620 mm for p=10 at 30 cm, close to the approximately 1.5–1.6 mm curves; its M and Q fits are deliberately below the visible limiting loci. The 21 mm fit gives 0.567 mm for p=50 at 30 cm and 0.224 mm for p=100 at 20 cm in the detailed view; its M locus is 0.983 mm at 30 cm and 2.953 mm at 52 cm, consistent with the detailed and full views. These rounded readings have image uncertainty.
 
 For criterion `L/N`, compute the candidate spans in metres:
 
@@ -43,7 +43,9 @@ L_shear      = Q / p
 
 For each chart covering the pressure, take the smallest structural candidate and that chart's span ceiling. Convert to mm, round down to **5 mm**, and reject candidates below that chart's minimum span. Select the largest supported candidate. This also handles any gaps in future chart domains without interpolating across them.
 
-The denominator follows L/500, L/350 (default) or L/270. Legacy fixed-mm H20 records retain their H20 criterion, while plywood uses an explicitly stated L/500 fallback. Pressures below the product's chart minimum use that minimum conservatively and identify this in the result. Unsupported pressure, missing selection and invalid inputs clear previous spacing/results.
+The **Plywood limit** selector beside each plywood selector independently selects L/500, L/350 (default) or L/270. The separate **H20 limit** governs the H20 checks; neither selector changes the other. This applies to Dokaflex beam/slab and D3 beam modes, including shared drawing settings. The selectors have no visible chart/spacing prose beneath them; details remain in tooltips, reports and diagnostics. The beam review displays only the calculated spacing.
+
+Saved records include `PlywoodDeflectionLimit`. Existing records without that field inherit their saved H20 ratio; legacy fixed-mm H20 beam records migrate to L/500 for plywood. An explicit saved plywood limit takes precedence. Invalid saved limits are rejected before changing the retained model. New sessions and workspace undo/redo include the independent plywood setting. Pressures below the product's chart minimum use that minimum conservatively and identify this in the result. Unsupported pressure, missing selection and invalid inputs clear previous spacing/results.
 
 ## 2440 × 1220 mm sheet layout
 
@@ -66,14 +68,14 @@ Example at 14.90 kN/m² and L/350:
 | Plywood | Maximum secondary spacing |
 | --- | ---: |
 | 9 mm | No listed spacing passes (chart limit 210 mm) |
-| 18 mm | 407 mm (chart limit 435 mm) |
+| 18 mm | 407 mm (chart limit 450 mm) |
 | 21 mm | 488 mm (chart limit 515 mm) |
 
 Sheet-joint row positions are included in D3 transfer/network layouts. Sheet direction/grade, end bearing, overhangs, sheet-edge connections and crossing-beam joint details still require the actual construction arrangement.
 
 ## Verification
 
-`dotnet run --project tests/Beam.Tests -- --plywood` checks all supplied products, pressure/span domains, strength/deflection and downward rounding, 21 mm full/detail selection, domain gaps, selector changes, buildup/prop extension, network loads, missing/unknown selection, legacy criteria, resets and stale-result recovery. The normal beam suite includes these checks. WPF smoke coverage checks both selectors, persisted product identity, old/unknown records, locked fields and workspace undo; Windows is required to execute that host.
+`dotnet run --project tests/Beam.Tests -- --plywood` checks replacement-chart anchors, independent criteria and all supplied products, pressure/span domains, strength/deflection and downward rounding, 21 mm full/detail selection, domain gaps, selector changes, buildup/prop extension, network loads, missing/unknown selection, legacy criteria, resets and stale-result recovery. The normal beam suite includes these checks. WPF smoke coverage checks both selectors, persisted product identity, old/unknown records, locked fields and workspace undo; Windows is required to execute that host.
 
 The Dokaflex beam **Select helper lines** action uses rectangle selection before opening a transaction. It accepts only `PrimaryBeam` helper instances with `Structural Element Type = Beam` and matching H/B length parameters (0.1 mm tolerance). Slab helpers, different beam sizes and unrelated model elements are excluded. Esc cancels without changes; selected instances update atomically with the existing parameter checks.
 

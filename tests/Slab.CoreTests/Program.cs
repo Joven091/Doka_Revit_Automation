@@ -13,11 +13,18 @@ internal static class Program
             var vm=new FlexCalculatorViewModel();
             Check(vm.IsCalculationValid && vm.SecondaryBeamSpacing==488,"default slab uses passing sheet spacing");
             Check(!typeof(FlexCalculatorViewModel).GetProperty(nameof(vm.SecondaryBeamSpacing)).CanWrite,"slab spacing cannot be assigned");
+            vm=new FlexCalculatorViewModel {SlabThickness=300,UseCustomLoads=true,CustomLiveLoad=22.5,CustomFormworkLoad=0,PropSpacing=500,PrimaryBeamCantilever=0,SecondaryBeamCantilever=0};
+            Equal(350,vm.SecondaryBeamSpacing,"30 kPa slab uses replacement chart");
+            vm.DeflectionLimit="L/500";Equal(350,vm.SecondaryBeamSpacing,"slab H20 criterion does not change plywood spacing");
+            vm.PlywoodDeflectionLimit="L/500";Equal(305,vm.SecondaryBeamSpacing,"slab plywood criterion independently changes rows");
+            vm.PlywoodDeflectionLimit="L/270";Equal(350,vm.SecondaryBeamSpacing,"slab plywood criterion can relax independently");
+            Check(vm.DeflectionLimit=="L/500","slab plywood criterion preserves H20 setting");
+            vm.PlywoodDeflectionLimit="L/100";Check(vm.PlywoodResult==null && vm.SecondaryBeamSpacing==0,"invalid slab plywood criterion clears spacing");
             foreach(var plywood in PlywoodCatalog.All)
             foreach(int h in new[] {100,150,300,600})
             foreach(string criterion in new[] {"L/500","L/350","L/270"})
             {
-                vm=new FlexCalculatorViewModel {SlabThickness=h,FloorHeight=h+2400+plywood.ThicknessMm,SelectedPlywood=plywood,DeflectionLimit=criterion};
+                vm=new FlexCalculatorViewModel {SlabThickness=h,FloorHeight=h+2400+plywood.ThicknessMm,SelectedPlywood=plywood,DeflectionLimit=criterion,PlywoodDeflectionLimit=criterion};
                 if(vm.PlywoodResult==null) {Check(!vm.IsCalculationValid && vm.SecondaryBeamSpacing==0,"unavailable sheet spacing invalidates slab");continue;}
                 Check(PlywoodSpacing.StandardSpacingsMm.Contains(vm.SecondaryBeamSpacing),"slab uses only requested spacings");
                 Check(vm.PlywoodResult.DeflectionMm<=vm.PlywoodResult.AllowableDeflectionMm+1e-10 && vm.PlywoodResult.MomentUtilization<=1 && vm.PlywoodResult.ShearUtilization<=1,"slab sheet satisfies all chart limits");
