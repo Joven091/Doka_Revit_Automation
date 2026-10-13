@@ -535,7 +535,7 @@ namespace EngineeringDashboard
                     var b=Model.IndependentBeams[index];Text("I"+(index+1)+" · independent beam",true);Text("Own endpoints and length. Carries this beam's load; slab loads remain on the connected bays.");
                     Number("StartXmm","Start X (mm)",()=>b.StartXmm,v=>b.StartXmm=v,-1000000);Number("StartYmm","Start Y (mm)",()=>b.StartYmm,v=>b.StartYmm=v,-1000000);Number("LengthMm","Length (mm)",()=>b.LengthMm,v=>b.LengthMm=v);
                     Number("WidthMm","Width (mm)",()=>b.WidthMm,v=>b.WidthMm=v);Number("DepthMm","Depth (mm)",()=>b.DepthMm,b.SetDepthKeepingTopMm);Number("BottomElevationMm","Bottom / soffit elevation (mm)",()=>b.BottomElevationMm,v=>b.BottomElevationMm=v,-1000000);ConcreteTop(()=>b.BottomElevationMm,()=>b.DepthMm);
-                    Text($"End: X {b.EndXmm:0.###}, Y {b.EndYmm:0.###} mm");
+                    var endpoint=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,4,0,8)};Action syncEndpoint=()=>endpoint.Text=$"End: X {b.EndXmm:0.###}, Y {b.EndYmm:0.###} mm";syncEndpoint();syncControls.Add(syncEndpoint);properties.Children.Add(endpoint);
                     var rotate=new Button {Content="Rotate 90°",Margin=new Thickness(0,0,0,8)};rotate.Click+=(sender,args)=> {if(CommitFields())Mutate(()=>b.IsVertical=!b.IsVertical);};properties.Children.Add(rotate);
                 }
                 else if(Drawing.SelectedKind==FormworkObject.Beam)
