@@ -227,7 +227,7 @@ internal static class Program
    vm.Exclude600Standalone=false;window.RestoreCalculation(exclusionRecord);Pump();Check(vm.Exclude600Standalone && !vm.IsCalculationValid,"checkbox save/load round trip");
    exclusionRecord.Inputs.RemoveAll(f=>f.Name=="Exclude600Standalone");window.RestoreCalculation(exclusionRecord);Pump();Check(!vm.Exclude600Standalone,"legacy files retain prior unrestricted behavior");
    Check(window.FindName("IgnoreUpliftCheckBox")==null && vm.IgnoreUplift,"uplift exclusion is fixed and has no editable checkbox");
-   var upliftRecord=window.CaptureCalculation();
+   Optimize();var upliftRecord=window.CaptureCalculation();
    vm.IgnoreUplift=false;Check(vm.IgnoreUplift && vm.IsCalculationValid,"legacy setter cannot disable exclusion or alter a checked result");
    window.RestoreCalculation(upliftRecord);Pump();Check(vm.IgnoreUplift && !vm.IsCalculationValid,"restored drawing retains fixed exclusion and requires recalculation");
    upliftRecord.Inputs.RemoveAll(f=>f.Name=="IgnoreUplift");window.RestoreCalculation(upliftRecord);Pump();Check(vm.IgnoreUplift,"older files retain the fixed uplift exclusion");

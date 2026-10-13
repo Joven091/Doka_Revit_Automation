@@ -47,6 +47,7 @@ internal static class IndependentDraftUiTests
         Check(model.IndependentBeams.Count==1 && !drawing.IsDrafting,"second endpoint creates one independent beam");
         var beam=model.IndependentBeams[0];
         Check(beam.IsVertical && beam.StartXmm==-1000 && beam.StartYmm==300 && beam.LengthMm==2575 && beam.EndYmm==2875 && model.BeamLengthMm==6750,"perpendicular beam keeps its own endpoints and length outside the main beam extents");
+        var concrete=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Independent && h.Item3==0).Item1;Check(Math.Abs(concrete.Width-650*drawing.Zoom)<1e-7 && Math.Abs(concrete.Height-2575*drawing.Zoom)<1e-7,"perpendicular concrete retains its full width and independent length");
         Check(view.Fields.ContainsKey("LengthMm") && view.Fields.ContainsKey("StartXmm") && drawing.ObjectTargets.Any(h=>h.Item2==FormworkObject.Independent),"independent geometry has its own editable fields and selection target");
         string single=model.NetworkConfigurationXml;Click(view,"Undo");Check(model.IndependentBeams.Count==0,"one undo removes the complete endpoint placement");Click(view,"Redo");Check(model.NetworkConfigurationXml==single,"redo restores geometry and orientation exactly");
         drawing.Select(FormworkObject.Independent,0);Check(view.BeginDrafting("MV"),"independent beam can move");
@@ -62,6 +63,7 @@ internal static class IndependentDraftUiTests
         Check(model.IndependentBeams.Count==1 && model.IndependentBeams[0].StartXmm==-1000 && model.IndependentBeams[0].LengthMm==2575,"file restore preserves the independent drawing");
         model.TowerLegCapacityKn=70;Calculate(view);
         Check(model.IsCalculationValid && model.IndependentBeamResults.Length==1 && model.IndependentBeamResults[0].LengthMm==2575,"calculation uses the independent length");
+        var first=drawing.Screen(drawing.SceneBounds.Left,drawing.SceneBounds.Top);var last=drawing.Screen(drawing.SceneBounds.Right,drawing.SceneBounds.Bottom);Check(first.X>=0 && first.Y>=0 && last.X<=drawing.ActualWidth && last.Y<=drawing.ActualHeight,"fit includes the entire drawing to the left of the parallel beams");
         Check(drawing.DrawnLegCount==model.NetworkResult.LegCount+model.IndependentBeamResults[0].LegCount,"formwork renders the additional checked legs");
         drawing.Select(FormworkObject.Independent,0);Render(view.Surface);Check(view.SelectedResultText.Contains("I1") && view.SelectedResultText.Contains("independent beam") && view.SelectedResultText.Contains("Slab loads remain"),"selected result states the independent load scope");
         var target=drawing.MemberTargets.First(h=>h.Item2==BeamFormworkCanvas.IndependentMemberId(0));view.ShowMember(target.Item2,target.Item3,target.Item4);Pump();

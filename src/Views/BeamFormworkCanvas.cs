@@ -124,7 +124,7 @@ namespace EngineeringDashboard
         {
             if(!ValidGeometry() || ActualWidth<100 || ActualHeight<100)return;
             SceneBounds=Bounds();Zoom=Math.Max(.001,Math.Min((ActualWidth-140)/SceneBounds.Width,(ActualHeight-160)/Math.Max(500,SceneBounds.Height)));
-            Pan=new Point((ActualWidth-SceneBounds.Width*Zoom)/2,70-SceneBounds.Top*Zoom);fitted=true;InvalidateVisual();
+            Pan=new Point((ActualWidth-SceneBounds.Width*Zoom)/2-SceneBounds.Left*Zoom,70-SceneBounds.Top*Zoom);fitted=true;InvalidateVisual();
         }
         internal void RefitIfNeeded(){if(fitted)Fit();}
         internal void PreserveView()=>fitted=false;
@@ -310,7 +310,7 @@ namespace EngineeringDashboard
         private Point IndependentScreen(IndependentBeamRow beam,double along,double across)=>beam.IsVertical ? Screen(beam.StartXmm-across,beam.StartYmm+along) : Screen(beam.StartXmm+along,beam.StartYmm+across);
         private void DrawIndependent(DrawingContext dc,int index)
         {
-            var beam=Model.IndependentBeams[index];var rect=new Rect(IndependentScreen(beam,0,beam.IsVertical ? beam.WidthMm/2 : -beam.WidthMm/2),IndependentScreen(beam,beam.LengthMm,beam.WidthMm/2));
+            var beam=Model.IndependentBeams[index];var rect=new Rect(IndependentScreen(beam,0,-beam.WidthMm/2),IndependentScreen(beam,beam.LengthMm,beam.WidthMm/2));
             dc.DrawRectangle(Brushes.LightGray,ObjectPen(FormworkObject.Independent,index,rect,Brushes.SlateGray),rect);
             ObjectTargets.Insert(0,Tuple.Create(rect,FormworkObject.Independent,index));
             Label(dc,$"I{index+1} · {beam.WidthMm:0}×{beam.DepthMm:0}",new Point(rect.Left+8,rect.Top+5));
