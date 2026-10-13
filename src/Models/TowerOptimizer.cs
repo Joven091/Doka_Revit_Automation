@@ -331,7 +331,8 @@ namespace EngineeringDashboard
         public string Governing { get; internal set; }
         public int Tested { get; internal set; }
         public bool MinimumLegCountProven { get; internal set; }
-        public string SearchNote => MinimumLegCountProven
+        public bool SearchTimeLimitReached {get;internal set;}
+        public string SearchNote => SearchTimeLimitReached ? "Search time limit reached. Best complete checked layout found; global optimality is not proven." : MinimumLegCountProven
             ? "Minimum leg count meets the load/stock lower bound. Group count/layout are best found in a bounded search."
             : "Best valid layout found in a bounded search; global minimum leg/group count is not proven.";
         private string MemberDemandSummary
@@ -428,28 +429,33 @@ namespace EngineeringDashboard
                 .OrderBy(x => counts[x]).ThenByDescending(x => x).ToArray();
             input.Trace?.Increment(BeamSearchCounter.CoveragePlans,covers.Length);
             TowerLayout best = null; int tested = 0;
-            foreach (int covered in covers)
+            try
             {
-                input.Trace?.Increment(BeamSearchCounter.CoverageVariants);input.Trace?.Context("Covered length "+covered+" mm");
-                if (best != null && counts[covered] * 4 > best.LegCount) continue;
-                double overhang = (input.LengthMm - covered) / 2;
-                var candidateInput = new TowerInput { PrimaryMaterial = input.PrimaryMaterial, LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
-                    TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator,
-                    Trace = input.Trace, IgnoreUplift = input.IgnoreUplift, AllowCustomH20Lengths = input.AllowCustomH20Lengths, CustomH20Scope = input.CustomH20Scope, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
-                TowerLayout candidate;
-                try { candidate = OptimizeCovered(candidateInput); }
-                catch (TowerOptimizationException) {continue;}
-                catch (ArgumentException ex) {input.Diagnostics.Geometry("search limits",$"Coverage {covered} mm: {ex.Message}","Review the reported stock/load bounds; changing leg capacity requires a configuration-specific permissible value.");continue;}
-                tested += candidate.Tested;
-                candidate.PositionsMm = candidate.PositionsMm.Select(x => x + overhang).ToArray();
-                foreach (var piece in candidate.StockPlan.Pieces) piece.StartMm += overhang;
-                candidate.LengthMm = input.LengthMm; candidate.ConcreteEndOverhangMm = overhang;
-                if (best == null || Better(candidate,best)) best = candidate;
+                foreach (int covered in covers)
+                {
+                    input.Trace?.Increment(BeamSearchCounter.CoverageVariants);input.Trace?.Context("Covered length "+covered+" mm");
+                    if (best != null && counts[covered] * 4 > best.LegCount) continue;
+                    double overhang = (input.LengthMm - covered) / 2;
+                    var candidateInput = new TowerInput { PrimaryMaterial = input.PrimaryMaterial, LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
+                        TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator,
+                        Trace = input.Trace, IgnoreUplift = input.IgnoreUplift, AllowCustomH20Lengths = input.AllowCustomH20Lengths, CustomH20Scope = input.CustomH20Scope, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
+                    TowerLayout candidate;
+                    try { candidate = OptimizeCovered(candidateInput); }
+                    catch (TowerOptimizationException) {continue;}
+                    catch (ArgumentException ex) {input.Diagnostics.Geometry("search limits",$"Coverage {covered} mm: {ex.Message}","Review the reported stock/load bounds; changing leg capacity requires a configuration-specific permissible value.");continue;}
+                    tested += candidate.Tested;
+                    candidate.PositionsMm = candidate.PositionsMm.Select(x => x + overhang).ToArray();
+                    foreach (var piece in candidate.StockPlan.Pieces) piece.StartMm += overhang;
+                    candidate.LengthMm = input.LengthMm; candidate.ConcreteEndOverhangMm = overhang;
+                    if (best == null || Better(candidate,best)) best = candidate;
+                }
             }
+            catch(BeamSearchDeadlineException) when(best!=null) {best.SearchTimeLimitReached=true;}
             if(covers.Length==0)input.Diagnostics.Geometry("primary coverage",$"Primary stock coverage: no stock combination totals {input.LengthMm-2*input.MaximumConcreteEndOverhangMm:0.###}–{input.LengthMm:0.###} mm.","Review available stock lengths and the maximum concrete end allowance.");
             if (best == null) throw input.Diagnostics.Exception("No valid layout found within the end-overhang allowance and bounded search.");
             int capacityBound = 2 * Math.Max(2, (int)Math.Ceiling((input.TotalLineLoad / 2 + Math.Abs(input.TransverseLoadMoment) / 2) * covers.Min() / 1000 / input.LegCapacityKn - 1e-10));
-            best.MinimumLegCountProven = best.LegCount == Math.Max(capacityBound, covers.Min(x => counts[x]) * 4);
+            best.SearchTimeLimitReached=input.Trace?.BudgetReached==true;
+            best.MinimumLegCountProven = !best.SearchTimeLimitReached && best.LegCount == Math.Max(capacityBound, covers.Min(x => counts[x]) * 4);
             best.Tested = tested; return best;
         }
         private static TowerLayout OptimizeCovered(TowerInput input)
@@ -471,82 +477,87 @@ namespace EngineeringDashboard
             lower = Math.Max(lower, 1 + (int)Math.Ceiling(Math.Max(0, length - 2 * tail) / longest - 1e-10));
             input.Trace?.Work("Beam-only tower layout enumeration");
             TowerLayout best = null;
-            // Seed isolated towers directly from stock runs. Random gap placement can miss simple two-tower solutions.
-            if (minimumPieces <= 2)
+            try
             {
-                foreach (double first in lengths)
+                // Seed isolated towers directly from stock runs. Random gap placement can miss simple two-tower solutions.
+                if (minimumPieces <= 2)
                 {
-                    input.Trace?.CheckCancellation();
-                    double second = length - first;
-                    if (second < 0 || second > 0 && !lengths.Contains(second)) continue;
-                    var runs = second == 0 ? new[] { first } : new[] { first, second };
-                    foreach (double bay in BaysMm) foreach (double bay2 in BaysMm)
+                    foreach (double first in lengths)
                     {
-                        double start = 0; var positions = new List<double>();
-                        for (int i = 0; i < runs.Length; i++) { double span = i == 0 ? bay : bay2; positions.Add(start + (runs[i] - span) / 2); positions.Add(start + (runs[i] + span) / 2); start += runs[i]; }
-                        if (positions.Any(x => x < 0 || x > length) || positions.Skip(1).Where((x,i) => x <= positions[i]).Any()) continue;
-                        var candidate = Evaluate(input, positions.ToArray(), runs.Length == 1 ? new[] { true } : new[] { true, false, true }, 1524, false); tested++;
-                        if (candidate != null && (best == null || Better(candidate,best))) best = candidate;
-                    }
-                }
-            }
-            for (int count = lower; count <= 40 && attempts < 200000; count++)
-            {
-                if (best != null && count > best.PositionsMm.Length) break;
-                // Rotated groups are isolated: joining across the beam would require more than two primary lines.
-                for (int rotation = 0; rotation < 2; rotation++)
-                {
-                    if (rotation == 1 && count % 2 != 0) continue;
-                    int minGroups = rotation == 1 ? count / 2 : 1;
-                    for (int groups = minGroups; groups <= count / 2; groups++)
-                    {
-                        int joins = count - groups;
-                        if ((rotation == 1 ? joins * 1524 : joins * 600) > length) continue;
-                        // Small joined runs enumerate every bay sequence; larger runs use reproducible mixed samples.
-                        int sequences = rotation == 1 ? 4 : (int)Math.Min(1024, Math.Pow(4, joins));
-                        int trials = Math.Min(4096, Math.Max(256, sequences * 4));
-                        for (int trial = 0; trial < trials && attempts < 200000; trial++)
+                        input.Trace?.CheckCancellation();
+                        double second = length - first;
+                        if (second < 0 || second > 0 && !lengths.Contains(second)) continue;
+                        var runs = second == 0 ? new[] { first } : new[] { first, second };
+                        foreach (double bay in BaysMm) foreach (double bay2 in BaysMm)
                         {
-                            input.Trace?.CheckCancellation();
-                            attempts++;
-                            var sizes = Enumerable.Repeat(2, groups).ToArray();
-                            for (int j = 0; j < count - groups * 2; j++) sizes[trial < sequences ? j % groups : random.Next(groups)]++;
-                            var joined = new bool[count - 1]; int p = 0;
-                            foreach (int size in sizes) { for (int j = 1; j < size; j++) joined[p++] = true; if (p < count - 1) p++; }
-                            double width = rotation == 0 ? 1524 : BaysMm[trial % 4];
-                            var spans = new double[count - 1]; int code = trial % sequences; double used = 0;
-                            for (int j = 0; j < spans.Length; j++) if (joined[j])
-                            {
-                                int digit = trial < sequences * 2 && joins <= 6 ? code % 4 : random.Next(4); code /= 4;
-                                spans[j] = rotation == 1 ? 1524 : BaysMm[digit]; used += spans[j];
-                            }
-                            if (used > length) continue;
-                            double remaining = length - used;
-                            // Allocate remaining length to gaps and ends. Include symmetric and asymmetric candidates.
-                            var weights = new double[groups + 1];
-                            for (int j = 0; j < weights.Length; j++)
-                            {
-                                double nominal = j == 0 || j == groups ? .30 : 1;
-                                weights[j] = nominal * (trial < sequences ? 1 : .15 + random.NextDouble() * 1.7);
-                            }
-                            double sum = weights.Sum(); var spaces = weights.Select(x => remaining * x / sum).ToArray();
-                            // Preserve exact manufactured bay dimensions. Only gaps and the left offset snap to 25 mm.
-                            for (int j = 0; j < spaces.Length - 1; j++) spaces[j] = Math.Floor(spaces[j] / 25) * 25;
-                            int gap = 1; var positions = new double[count]; positions[0] = spaces[0];
-                            for (int j = 0; j < spans.Length; j++) { if (!joined[j]) spans[j] = spaces[gap++]; positions[j + 1] = positions[j] + spans[j]; }
-                            if (spans.Any(x => x < 25) || positions.Last() > length) continue;
-                            tested++;
-                            var candidate = Evaluate(input, positions, joined, width, rotation == 1);
+                            double start = 0; var positions = new List<double>();
+                            for (int i = 0; i < runs.Length; i++) { double span = i == 0 ? bay : bay2; positions.Add(start + (runs[i] - span) / 2); positions.Add(start + (runs[i] + span) / 2); start += runs[i]; }
+                            if (positions.Any(x => x < 0 || x > length) || positions.Skip(1).Where((x,i) => x <= positions[i]).Any()) continue;
+                            var candidate = Evaluate(input, positions.ToArray(), runs.Length == 1 ? new[] { true } : new[] { true, false, true }, 1524, false); tested++;
                             if (candidate != null && (best == null || Better(candidate,best))) best = candidate;
                         }
                     }
                 }
-                if (best != null) break;
+                for (int count = lower; count <= 40 && attempts < 200000; count++)
+                {
+                    if (best != null && count > best.PositionsMm.Length) break;
+                    // Rotated groups are isolated: joining across the beam would require more than two primary lines.
+                    for (int rotation = 0; rotation < 2; rotation++)
+                    {
+                        if (rotation == 1 && count % 2 != 0) continue;
+                        int minGroups = rotation == 1 ? count / 2 : 1;
+                        for (int groups = minGroups; groups <= count / 2; groups++)
+                        {
+                            int joins = count - groups;
+                            if ((rotation == 1 ? joins * 1524 : joins * 600) > length) continue;
+                            // Small joined runs enumerate every bay sequence; larger runs use reproducible mixed samples.
+                            int sequences = rotation == 1 ? 4 : (int)Math.Min(1024, Math.Pow(4, joins));
+                            int trials = Math.Min(4096, Math.Max(256, sequences * 4));
+                            for (int trial = 0; trial < trials && attempts < 200000; trial++)
+                            {
+                                input.Trace?.CheckCancellation();
+                                attempts++;
+                                var sizes = Enumerable.Repeat(2, groups).ToArray();
+                                for (int j = 0; j < count - groups * 2; j++) sizes[trial < sequences ? j % groups : random.Next(groups)]++;
+                                var joined = new bool[count - 1]; int p = 0;
+                                foreach (int size in sizes) { for (int j = 1; j < size; j++) joined[p++] = true; if (p < count - 1) p++; }
+                                double width = rotation == 0 ? 1524 : BaysMm[trial % 4];
+                                var spans = new double[count - 1]; int code = trial % sequences; double used = 0;
+                                for (int j = 0; j < spans.Length; j++) if (joined[j])
+                                {
+                                    int digit = trial < sequences * 2 && joins <= 6 ? code % 4 : random.Next(4); code /= 4;
+                                    spans[j] = rotation == 1 ? 1524 : BaysMm[digit]; used += spans[j];
+                                }
+                                if (used > length) continue;
+                                double remaining = length - used;
+                                // Allocate remaining length to gaps and ends. Include symmetric and asymmetric candidates.
+                                var weights = new double[groups + 1];
+                                for (int j = 0; j < weights.Length; j++)
+                                {
+                                    double nominal = j == 0 || j == groups ? .30 : 1;
+                                    weights[j] = nominal * (trial < sequences ? 1 : .15 + random.NextDouble() * 1.7);
+                                }
+                                double sum = weights.Sum(); var spaces = weights.Select(x => remaining * x / sum).ToArray();
+                                // Preserve exact manufactured bay dimensions. Only gaps and the left offset snap to 25 mm.
+                                for (int j = 0; j < spaces.Length - 1; j++) spaces[j] = Math.Floor(spaces[j] / 25) * 25;
+                                int gap = 1; var positions = new double[count]; positions[0] = spaces[0];
+                                for (int j = 0; j < spans.Length; j++) { if (!joined[j]) spans[j] = spaces[gap++]; positions[j + 1] = positions[j] + spans[j]; }
+                                if (spans.Any(x => x < 25) || positions.Last() > length) continue;
+                                tested++;
+                                var candidate = Evaluate(input, positions, joined, width, rotation == 1);
+                                if (candidate != null && (best == null || Better(candidate,best))) best = candidate;
+                            }
+                        }
+                    }
+                    if (best != null) break;
+                }
             }
+            catch(BeamSearchDeadlineException) when(best!=null) {best.SearchTimeLimitReached=true;}
             if (best == null) throw (input.Diagnostics??new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm,input.Trace,input.IgnoreUplift)).Exception("No valid tower layout found within the bounded search (up to 80 legs).");
             best.Tested = tested;
             int capacityBound = Math.Max(2, (int)Math.Ceiling((input.TotalLineLoad / 2 + Math.Abs(input.TransverseLoadMoment) / 2) * length / 1000 / input.LegCapacityKn - 1e-10));
-            best.MinimumLegCountProven = best.PositionsMm.Length == Math.Max(capacityBound, minimumPieces * 2); return best;
+            best.SearchTimeLimitReached=input.Trace?.BudgetReached==true;
+            best.MinimumLegCountProven = !best.SearchTimeLimitReached && best.PositionsMm.Length == Math.Max(capacityBound, minimumPieces * 2); return best;
         }
         public static TowerLayout Evaluate(TowerInput input, double[] positions, bool[] joined, double width, bool rotated)
         {

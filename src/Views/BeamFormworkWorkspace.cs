@@ -685,9 +685,17 @@ namespace EngineeringDashboard
             $"Efficiency: {beam.SupportEfficiencyPercent:0.0}%";
         internal async Task CalculateAsync()
         {
-            if(!CommitFields())return;CancelDrafting();await Model.OptimizeTowersAsync();Refresh();
-            if(Model.IsCalculationValid){Drawing.Formwork=true;Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;sectionMode=false;Drawing.Fit();Refresh();}
-            else {Geometry();failureExpander.IsExpanded=Model.HasTowerFailure;}
+            if(!CommitFields())return;CancelDrafting();await Model.OptimizeTowersAsync();
+            try
+            {
+                using(Model.MeasureDrawingPreparation())
+                {
+                    Refresh();
+                    if(Model.IsCalculationValid){Drawing.Formwork=true;Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;sectionMode=false;Drawing.Fit();Refresh();}
+                    else {Geometry();failureExpander.IsExpanded=Model.HasTowerFailure;}
+                }
+            }
+            finally {Model.FinishDrawingPreparation();}
         }
         internal void ShowMember(int beam,int run,int line)
         {

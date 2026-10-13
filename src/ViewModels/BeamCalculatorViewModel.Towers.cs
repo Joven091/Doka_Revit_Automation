@@ -45,6 +45,7 @@ namespace EngineeringDashboard
         public double StockEndSetbackMm { get => stockEndSetbackMm; set { stockEndSetbackMm = value; Changed(); } }
         public TowerLayout TowerResult { get; private set; }
         private CancellationTokenSource towerCancellation;
+        internal TimeSpan TowerSearchTimeLimit {get;set;}=TimeSpan.FromSeconds(25);
         public bool IsOptimizing { get; private set; }
         public string SearchProgressText=>towerCancellation?.IsCancellationRequested==true ? "Stopping the search…" : beamSearchTrace?.ProgressText??"Preparing the calculation";
         public double SearchElapsedSeconds=>beamSearchTrace?.ElapsedSeconds??0;
@@ -102,40 +103,65 @@ namespace EngineeringDashboard
         {
             if (!UseTowers || IsOptimizing) return;
             var cancellation=towerCancellation=new CancellationTokenSource();
-            var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs(),cancellation.Token);
+            var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs(),cancellation.Token,TowerSearchTimeLimit);
             int revision = towerRevision; networkBeamOptions.Clear(); IsOptimizing = true; TowerResult = null; NetworkResult=null;IndependentBeamResults=new TowerLayout[0]; TowerFailureDetails=""; IsCalculationValid = false;
             WarningMessage = "Searching tower layouts…"; NotifyTower();
             try
             {
-                var input = CreateTowerInput();
+                TowerInput input;
+                using(trace.Measure(BeamSearchStage.InputValidation))input = CreateTowerInput();
                 input.Trace=trace;
                 var independentInputs=IndependentBeams.Select(b=>IndependentInput(input,b)).ToArray();
                 trace.DerivedInputs(System.FormattableString.Invariant($"Mode: {(input.Network!=null ? "Network" : input.TransferredSlab!=null ? "Transferred slab" : "Beam-only")}; initial beam line load={input.TotalLineLoad:R} kN/m; transverse load moment={input.TransverseLoadMoment:R} kN")
+                    +$"\nSearch configuration: requested workers={input.NetworkSearchWorkers}; reuse={input.ReuseSearchWork}; primary reuse={input.ReuseNetworkNumerics}; transverse reuse={input.ReuseTransverseNumerics}; leg-tier traversal={input.SearchByLegTier}; network bounds={input.PruneNetworkBounds}; economy bounds={input.PruneUneconomicCandidates}; staged primary checks={input.StagePrimaryChecks}; defer layouts={input.DeferTransferLayout}; catalogue-only enforcement={input.RespectNetworkCatalogueLengths}"
                     +(input.TransferredSlab==null ? "" : System.FormattableString.Invariant($"\nTransfer beam load={input.TransferredSlab.BeamLineLoadKnM:R} kN/m; slab area loads L/R={input.TransferredSlab.LeftAreaLoadKnM2:R}/{input.TransferredSlab.RightAreaLoadKnM2:R} kN/m²"))
                     +(input.Network==null ? "" : "\n"+string.Join("\n",input.Network.Beams.Select((b,i)=>System.FormattableString.Invariant($"B{i+1}: area load={input.Network.AreaLoad(b.DepthMm):R} kN/m²; beam line load={input.Network.AreaLoad(b.DepthMm)*b.WidthMm/1000:R} kN/m")).Concat(input.Network.Bays.Select((s,i)=>System.FormattableString.Invariant($"S{i+1}: area load={input.Network.AreaLoad(s.ThicknessMm):R} kN/m²"))))));
                 TransferNetworkResult networkResult=null;
                 TowerLayout[] independentResults=null;
                 var result = await Task.Run(() => {
+                    using(trace.Measure(BeamSearchStage.SolverWall))
+                    {
                     var main=input.Network==null ? TowerOptimizer.Optimize(input) : (networkResult=TransferNetworkOptimizer.Optimize(input,input.Network)).Beams[0];
                     independentResults=independentInputs.Select(i=>TransferredSlabOptimizer.Optimize(i)).ToArray();return main;
+                    }
                 });
                 cancellation.Token.ThrowIfCancellationRequested();
                 if (revision != towerRevision || !UseTowers) {trace.Complete("Discarded: inputs changed during search",summary:networkResult?.Summary??result.Summary);return;}
+                using(trace.Measure(BeamSearchStage.ResultApplication))
+                {
+                if(trace.BudgetReached)
+                {
+                    if(networkResult!=null)networkResult.SearchTimeLimitReached=true;
+                    foreach(var checkedLayout in (networkResult?.Beams??new[] {result}).Concat(independentResults)) {checkedLayout.SearchTimeLimitReached=true;checkedLayout.MinimumLegCountProven=false;}
+                }
                 IndependentBeamResults=independentResults;NetworkResult=networkResult;SelectedNetworkBeam=0;TowerResult = result; LeftLineLoad = result.LeftLineLoad; RightLineLoad = result.RightLineLoad;
                 TotalLineLoad = result.LeftLineLoad + result.RightLineLoad; LimitingFactor = result.Governing;
                 IsCalculationValid = true; WarningMessage = "";
-                trace.Complete("Succeeded",summary:networkResult?.Summary??result.Summary);
+                }
+                trace.Complete(trace.BudgetReached ? "Succeeded: search time limit reached" : "Succeeded",summary:networkResult?.Summary??result.Summary);
             }
             catch (OperationCanceledException) when(cancellation.IsCancellationRequested)
             {
                 trace.Complete("Cancelled", "User cancelled the analysis. Search stopped; no partial result was applied.");
                 WarningMessage="Tower analysis cancelled. Select Diagnose to copy the search details.";
             }
+            catch (BeamSearchDeadlineException ex)
+            {
+                trace.Complete("Time limit reached: no complete solution",ex.Message);
+                if(revision==towerRevision) {WarningMessage=ex.Message;TowerFailureDetails=ex.Message+"\nOpen Diagnose for stage timings and checked candidate counts.";}
+            }
             catch (TowerOptimizationException ex) {trace.Complete("No solution",ex.ToString()+"\n"+ex.Details);if(revision==towerRevision) {WarningMessage=ex.Message;TowerFailureDetails=ex.Details;}}
             catch (ArgumentException ex) {trace.Complete("Rejected input/search",ex.ToString());if (revision == towerRevision) WarningMessage = ex.Message; }
             catch (Exception ex) {trace.Complete("Unexpected error",ex.ToString());if(revision==towerRevision)WarningMessage="Unexpected search error. Select Diagnose to copy the details.";}
-            finally { IsOptimizing = false;towerCancellation=null;cancellation.Dispose();NotifyTower(); }
+            finally
+            {
+                IsOptimizing = false;towerCancellation=null;cancellation.Dispose();
+                using(trace.Measure(BeamSearchStage.ResultApplication))NotifyTower();
+                trace.Finish();lastCompletedFullSearch=trace;
+            }
         }
+        internal IDisposable MeasureDrawingPreparation()=>beamSearchTrace?.Measure(BeamSearchStage.DrawingPreparation);
+        internal void FinishDrawingPreparation()=>beamSearchTrace?.Finish();
         private void NotifyTower()
         {
             NotifyTransfer();

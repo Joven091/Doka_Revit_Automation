@@ -136,7 +136,7 @@ namespace EngineeringDashboard
             primaryMaterial=fresh.primaryMaterial;exclude600Standalone=fresh.exclude600Standalone;allowCustomH20Lengths=fresh.allowCustomH20Lengths;customH20Scope=fresh.customH20Scope;ignoreUplift=fresh.ignoreUplift;
             leftSlabBayMm=fresh.leftSlabBayMm;rightSlabBayMm=fresh.rightSlabBayMm;
             calculatorTextErrors=false;additionalTextErrors.Clear();textErrors=false;
-            beamSearchTrace=null;SelectedNetworkBeam=0;
+            beamSearchTrace=null;lastCompletedFullSearch=null;SelectedNetworkBeam=0;
             NetworkConfigurationXml=fresh.NetworkConfigurationXml;
             OnPropertyChanged(null);NotifyTower();
         }
