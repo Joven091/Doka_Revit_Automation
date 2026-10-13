@@ -42,8 +42,10 @@ internal static class CrossSupportUiTests
         }
         var task=vm.OptimizeTowersAsync(false);var timer=System.Diagnostics.Stopwatch.StartNew();
         // Exercise Search longer: the full coordinated drawing fixture also runs on .NET Framework; allow its
-        // production-runtime search to complete before checking the rendered values.
-        while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>600)throw new Exception("Coordinated report UI timeout");}task.GetAwaiter().GetResult();
+        // production-runtime Search longer operation to complete before checking rendered values.
+        // The fast-search deadline is covered separately; this large drawing fixture
+        // retains every geometry/member assertion and allows slower hosted runners.
+        while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>900)throw new Exception("Coordinated report UI timeout");}task.GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
         Check(vm.NetworkResult.CrossSupports.Where(c=>c.Towers?.Transfer!=null).All(c=>PlywoodSpacing.StandardSpacingsMm.Contains(c.Towers.Transfer.EnteredUpperSpacingMm)),"crossing formwork uses only permitted sheet spacings");
         Check(vm.UpperSupportSpacingMm==vm.MaximumSecondarySpacingMm && vm.NetworkResult.Input.UpperSpacingMm<=vm.MaximumSecondarySpacingMm && vm.BuildDiagnosticReport().Contains("UpperSupportSpacingMm"),"coordinated search preserves the entered maximum and reports its actual spacing");

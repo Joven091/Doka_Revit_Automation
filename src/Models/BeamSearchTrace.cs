@@ -58,10 +58,20 @@ namespace EngineeringDashboard
             if(timeLimitSeconds>0 && (timestamp()-started)/(double)Stopwatch.Frequency>=timeLimitSeconds)
             {Volatile.Write(ref budgetReached,1);throw new BeamSearchDeadlineException();}
         }
-        internal IDisposable Measure(BeamSearchStage stage)=>new Timing(this,stages.GetOrAdd(stage,_=>new StageTime()));
+        internal IDisposable Measure(BeamSearchStage stage)
+        {
+            // Keep the unrestricted production-runtime traversal free of per-member
+            // timing allocations; full searches still record enclosing stages/counters.
+            if(!HasTimeLimit && (stage==BeamSearchStage.PrimaryAnalysis || stage==BeamSearchStage.TransverseAnalysis))return null;
+            return new Timing(this,stages.GetOrAdd(stage,_=>new StageTime()));
+        }
         internal void Workers(int count)=>Volatile.Write(ref workers,count);
         internal long Count(BeamSearchCounter counter)=>Interlocked.Read(ref counters[(int)counter]);
-        internal void Increment(BeamSearchCounter counter,long amount=1) {CheckCancellation();Interlocked.Add(ref counters[(int)counter],amount);}
+        internal void Increment(BeamSearchCounter counter,long amount=1)
+        {
+            if(HasTimeLimit)CheckCancellation();else CancellationToken.ThrowIfCancellationRequested();
+            Interlocked.Add(ref counters[(int)counter],amount);
+        }
         internal void Work(string name) {CheckCancellation();Volatile.Write(ref work,name);}
         internal void Context(string name)=>Volatile.Write(ref context,name);
         internal void DerivedInputs(string text)=>Volatile.Write(ref derivedInputs,text);
@@ -114,6 +124,7 @@ namespace EngineeringDashboard
             text.AppendLine("Network workers: "+Volatile.Read(ref workers));
             foreach(var stage in stages.OrderBy(x=>x.Key))
                 text.AppendLine("Stage "+stage.Key+": "+(Interlocked.Read(ref stage.Value.Ticks)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture)+" seconds; calls="+Interlocked.Read(ref stage.Value.Calls));
+            if(!HasTimeLimit)text.AppendLine("Per-member numerical timing is disabled for full searches; enclosing stage times and numerical counters are retained.");
             text.AppendLine("Stage times include completed calls only; nested stages and parallel worker times overlap and must not be added as wall time.");
             text.AppendLine("Current/last pass: "+Volatile.Read(ref pass));text.AppendLine("Current/last work: "+Volatile.Read(ref work));
             text.AppendLine("Current/last context: "+Volatile.Read(ref context));
