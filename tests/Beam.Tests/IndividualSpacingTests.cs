@@ -61,6 +61,22 @@ internal static class IndividualSpacingTests
         Check(vm.NetworkResult.CrossSupports.Single().HasReducedShutterClearance,"coordinated local shutter exception remains available");
         foreach(var b in vm.NetworkResult.Beams)Members(b);
         Check(vm.NetworkResult.CrossSupports.SelectMany(c=>c.Members).All(m=>m.Utilization<=1+1e-8),"crossing H20 capacities remain checked in the local exception");
+        // Replay the same crossing with reuse disabled: pruning must preserve the selected layout.
+        Func<bool,TowerInput> common=reuse=>new TowerInput {LengthMm=vm.BeamLengthMm,LegCapacityKn=vm.TowerLegCapacityKn,
+            TotalLineLoad=vm.NetworkResult.Input.AreaLoad(1750)*.8,DeflectionDenominator=270,
+            StockLengthsMm=TowerStockPlanner.ParseLengths(vm.StockLengthsText),StockEndSetbackMm=vm.StockEndSetbackMm,
+            MaximumConcreteEndOverhangMm=vm.MaximumConcreteEndOverhangMm,AllowCustomH20Lengths=true,
+            CustomH20Scope=CustomH20LengthScope.SlabSupports,Exclude600Standalone=true,IgnoreUplift=true,ReuseSearchWork=reuse};
+        var reused=TransferNetworkOptimizer.Optimize(common(true),vm.NetworkResult.Input);
+        var reference=TransferNetworkOptimizer.Optimize(common(false),vm.NetworkResult.Input);
+        Near(reused.LegCount,reference.LegCount,"receiver failure pruning preserves tower count");
+        Near(reused.EconomyScoreMm,reference.EconomyScoreMm,"receiver failure pruning preserves layout economy");
+        for(int i=0;i<reused.Beams.Length;i++)
+        {
+            Check(reused.Beams[i].PositionsMm.SequenceEqual(reference.Beams[i].PositionsMm),"receiver reuse preserves actual tower positions");
+            Check(reused.Beams[i].Transfer.RowsMm.SequenceEqual(reference.Beams[i].Transfer.RowsMm),"receiver reuse preserves actual secondary rows");
+            Members(reused.Beams[i]);Members(reference.Beams[i]);
+        }
         Console.WriteLine($"Passed {checks} coordinated individual-spacing checks.");
     }
     internal static void Run()
