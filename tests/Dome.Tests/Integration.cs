@@ -12,6 +12,7 @@ static partial class Program
 {
     private static void Integration()
     {
+        using var approvedSession=new ApprovedLauncherSession(typeof(EngineeringDashboard.LauncherWindow).Assembly);
         var launcher = new EngineeringDashboard.LauncherWindow();
         var root = (FrameworkElement)launcher.Content;
         root.Measure(new Size(600, 680)); root.Arrange(new Rect(0, 0, 600, 680)); root.UpdateLayout();

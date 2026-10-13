@@ -246,6 +246,15 @@ namespace EngineeringDashboard
         {
             allowance=allowance??CrossShutterAllowance.Standard;failure=null;
             var obstacleArray=obstacles.ToArray();
+            bool junctionFirst=common.Trace?.HasTimeLimit==true && r.Input.CrossingBeams[index].SupportMode!=CrossBeamSupportMode.ExistingSupportsOnly;
+            if(junctionFirst)
+            {
+                // Junctions retain checked end-zone transfer to existing receivers.
+                // Timed searches try that arrangement before the full-span tower search.
+                var joint=Junction(common,r,index,obstacleArray,out string reason,allowance);
+                if(joint!=null)return joint;
+                failure=reason;
+            }
             foreach(double spacing in r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(s=>s<=r.Input.CrossSpacing(index)) : new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,250,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7))
             {
                 var result=DedicatedCandidate(common,r,index,spacing,out string reason,allowance:allowance);
@@ -256,7 +265,7 @@ namespace EngineeringDashboard
             // End zones use existing receiving H20s directly at equal soffits,
             // or the existing side shutter down to a deeper receiver. The centre
             // retains its own checked tower and all primary tails keep the shutter gap.
-            if(r.Input.CrossingBeams[index].SupportMode!=CrossBeamSupportMode.ExistingSupportsOnly)
+            if(!junctionFirst && r.Input.CrossingBeams[index].SupportMode!=CrossBeamSupportMode.ExistingSupportsOnly)
             {
                 var joint=Junction(common,r,index,obstacleArray,out string reason,allowance);
                 if(joint!=null)return joint;

@@ -8,6 +8,7 @@ namespace EngineeringDashboard
     public partial class BeamCalculatorViewModel
     {
         private BeamSearchTrace beamSearchTrace;
+        private BeamSearchTrace lastCompletedFullSearch;
         private const string DiagnosticInputs="PlywoodDeflectionLimit,PlywoodProfileId,UseTowers,TransferSlabLoads,UseBeamNetwork,Depth,Width,BeamLengthMm,FloorHeight,NumberOfProps,TowerLegCapacityKn,PrimaryMaterial,StockLengthsText,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,StockEndSetbackMm,MaximumConcreteEndOverhangMm,Exclude600Standalone,UpperSupportSpacingMm,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,SlabStripWidthMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
         private static string DiagnosticValue(object value)=>value is double number ? number.ToString("R",CultureInfo.InvariantCulture) : Convert.ToString(value,CultureInfo.InvariantCulture);
         private string CaptureDiagnosticInputs()
@@ -50,6 +51,11 @@ namespace EngineeringDashboard
                 text.AppendLine(beamSearchTrace.Snapshot());
                 text.AppendLine("\nEXACT INPUTS CAPTURED AT SEARCH START\n"+beamSearchTrace.Inputs);
             }
+            if(lastCompletedFullSearch!=null && !ReferenceEquals(lastCompletedFullSearch,beamSearchTrace))
+            {
+                text.AppendLine("\nLAST COMPLETED FULL SEARCH");text.AppendLine(lastCompletedFullSearch.Snapshot());
+                text.AppendLine("\nFULL SEARCH INPUTS\n"+lastCompletedFullSearch.Inputs);
+            }
             text.AppendLine("\nPLYWOOD SECONDARY SPACING\n"+SecondarySpacingSummary+"\n"+ElementPlywoodSpacingSummary);
             if(IsCalculationValid)text.AppendLine("\nCURRENT RESULT\n"+(NetworkResult?.Summary??TowerResult?.Summary??("Prop spacing mm: "+MaximumPropSpacing.ToString("R",CultureInfo.InvariantCulture))));
             if(IsCalculationValid && IndependentBeamResults.Length>0)text.AppendLine("\nINDEPENDENT BEAM RESULTS\n"+string.Join("\n",IndependentBeamResults.Select((b,i)=>$"I{i+1}: length {b.LengthMm:0.###} mm; own beam load {b.TotalSupportedLoadKn:0.###} kN; {b.LegCount} legs; peak leg {b.MaxLegKn:0.###} kN. Slab loads remain on connected bays.")));
@@ -57,6 +63,7 @@ namespace EngineeringDashboard
             if(!string.IsNullOrEmpty(TowerFailureDetails))text.AppendLine("\nCURRENT FAILURE DETAILS\n"+TowerFailureDetails);
             text.AppendLine("\nPRIMARY MATERIAL BASIS\n"+PrimaryMaterialAssumptions);
             text.AppendLine("\nSEARCH LIMITS / RANKING");
+            text.AppendLine("Interactive search budget: 25 seconds shared by catalogue, custom and fallback passes; cooperative checks stop exploration and preserve fully checked results. Final result processing/rendering has a 5-second target allowance. No feasible result is guaranteed within the budget.");
             text.AppendLine("Beam-only: ≤80 legs / 200000 sampled attempts; rank legs, standalone-600 count, braced bays, wider standalone braces, primary quantity, utilization. Transfer: bounded covers, geometries and cross options; rank relative economy (tower legs, upper feet and material separately), brace preference, symmetry, utilization. Network: bounded mirrored stock/group families, shared upper options and row phases, local beam-only rows and passing-plan coordination; rank relative economy, brace preference, symmetry. Custom mode compares catalogue and custom passes. Global optimality is not proven.");
             text.AppendLine("=== END BEAM FORMWORK DIAGNOSTIC REPORT ===");return text.ToString();
         }

@@ -79,8 +79,25 @@ namespace EngineeringDashboard
             input.AllowCustomH20Lengths = false;
             try { stock = RunPass(input,false,search); } catch (ArgumentException) { }
             finally { input.AllowCustomH20Lengths = true; }
-            try { var custom = RunPass(input,true,search); return stock == null || better(custom,stock) ? custom : stock; }
+            if(input.Trace?.BudgetReached==true)return TimeLimited(stock??throw new BeamSearchDeadlineException());
+            try
+            {
+                var custom=RunPass(input,true,search);
+                var selected=stock==null || better(custom,stock) ? custom : stock;
+                return input.Trace?.BudgetReached==true ? TimeLimited(selected) : selected;
+            }
+            catch (BeamSearchDeadlineException) { if(stock!=null)return TimeLimited(stock);throw; }
             catch (ArgumentException) { if (stock != null) return stock; throw; }
+        }
+        private static T TimeLimited<T>(T result) where T:class
+        {
+            if(result is TowerLayout layout) {layout.SearchTimeLimitReached=true;layout.MinimumLegCountProven=false;}
+            if(result is TransferNetworkResult network)
+            {
+                network.SearchTimeLimitReached=true;
+                foreach(var beam in network.Beams) {beam.SearchTimeLimitReached=true;beam.MinimumLegCountProven=false;}
+            }
+            return result;
         }
         private static T RunPass<T>(TowerInput input,bool custom,Func<T> search)=>input.Trace==null ? search() : input.Trace.RunPass(custom,search);
         internal static int[] CoverageCounts(int total, double[] stocks,CancellationToken cancellationToken=default)
@@ -140,7 +157,9 @@ namespace EngineeringDashboard
                     if (last + 1 < n && positions[last + 1] < end + setback - 1e-7) continue;
                     if (end < length - 1e-7 && last + 1 == n || Math.Abs(end - length) < 1e-7 && last + 1 != n) continue;
                     input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
-                    analyzed=true;var response = TowerBeamAnalysis.Analyze(stock / 1000,
+                    analyzed=true;TowerBeamAnalysis response;
+                    using(input.Trace?.Measure(BeamSearchStage.PrimaryAnalysis))
+                        response = TowerBeamAnalysis.Analyze(stock / 1000,
                         positions.Skip(first).Take(last - first + 1).Select(x => (x - start) / 1000).ToArray(), load+input.Primary.SelfWeightKnM(stock), input.Primary.EI);
                     var u = new[] { response.Reactions.Max() / input.LegCapacityKn, response.Moment / input.Primary.MomentLimitKnM,
                         response.Shear / input.Primary.ShearLimitKn, response.DeflectionUtilization(input.DeflectionLimitMm, input.DeflectionDenominator), input.Primary.Strength(response) };
