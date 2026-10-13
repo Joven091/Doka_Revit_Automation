@@ -342,21 +342,38 @@ namespace EngineeringDashboard
         {
             if(input.HasIndividualSpacings)
             {
-                TowerOptimizationException failure;
-                try {return OptimizeCore(common,input,false);}
-                catch(TowerOptimizationException ex){failure=ex;}
-                var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
-                var attempted=new HashSet<string>();
-                for(int step=worker.CoordinateCrossingLayouts ? 0 : 1;step<PlywoodSpacing.StandardSpacingsMm.Count;step++)
+                // Spacing retries retain exact geometry/response work within this one stock pass.
+                // Concrete loads, capacities, stock scope and exclusions stay constant here.
+                var previousGeometry=common.NetworkGeometryWork;var previousNumerics=common.NetworkNumericalWork;
+                common.NetworkGeometryWork=common.ReuseSearchWork ? new TransferredSlabOptimizer.GeometryCache() : null;
+                using(var numericalWork=common.ReuseSearchWork ? new ThreadLocal<TransferredSlabOptimizer.SearchWorkCache>(()=>new TransferredSlabOptimizer.SearchWorkCache()) : null)
                 {
-                    var candidate=step==0 ? input : input.WithSpacings(step);
-                    string key=string.Join(";",candidate.BeamSpacingsMm.Concat(candidate.SlabSpacingsMm).Concat(candidate.CrossingSpacingsMm));
-                    if(!attempted.Add(key))continue;
-                    try {var result=OptimizeCore(worker,candidate,false);common.Diagnostics=worker.Diagnostics;return result;}
-                    catch(TowerOptimizationException ex){failure=ex;}
+                    common.NetworkNumericalWork=numericalWork;
+                    try {return IndividualTransfer(common,input);}
+                    finally {common.NetworkGeometryWork=previousGeometry;common.NetworkNumericalWork=previousNumerics;}
                 }
-                throw failure;
             }
+            return LegacyTransfer(common,input);
+        }
+        private static TransferNetworkResult IndividualTransfer(TowerInput common,TransferNetworkInput input)
+        {
+            TowerOptimizationException failure;
+            try {return OptimizeCore(common,input,false);}
+            catch(TowerOptimizationException ex){failure=ex;}
+            var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
+            var attempted=new HashSet<string>();
+            for(int step=worker.CoordinateCrossingLayouts ? 0 : 1;step<PlywoodSpacing.StandardSpacingsMm.Count;step++)
+            {
+                var candidate=step==0 ? input : input.WithSpacings(step);
+                string key=string.Join(";",candidate.BeamSpacingsMm.Concat(candidate.SlabSpacingsMm).Concat(candidate.CrossingSpacingsMm));
+                if(!attempted.Add(key))continue;
+                try {var result=OptimizeCore(worker,candidate,false);common.Diagnostics=worker.Diagnostics;return result;}
+                catch(TowerOptimizationException ex){failure=ex;}
+            }
+            throw failure;
+        }
+        private static TransferNetworkResult LegacyTransfer(TowerInput common,TransferNetworkInput input)
+        {
             try {return OptimizeCore(common,input,false);}
             catch(TowerOptimizationException) when(input.PlywoodSheetLengthMm>0 || CrossBeamSupportOptimizer.Modern(input))
             {
@@ -385,7 +402,7 @@ namespace EngineeringDashboard
         {
             input.Validate(common); TransferNetworkResult best=null;int tested=0;
             common.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};var diag=common.Diagnostics;
-            var geometryCache=common.ReuseSearchWork ? new TransferredSlabOptimizer.GeometryCache() : null;
+            var geometryCache=common.ReuseSearchWork ? common.NetworkGeometryWork ?? new TransferredSlabOptimizer.GeometryCache() : null;
             var incumbent=common.PruneNetworkBounds && !separate && input.CrossingBeams.All(c=>c.SupportMode==CrossBeamSupportMode.LegacySlabRows) ? new Incumbent() : null;
             common.Trace?.Work("Network primary cover generation");
             var stockCovers=TransferredSlabOptimizer.StockCovers(common);
@@ -406,7 +423,7 @@ namespace EngineeringDashboard
                 {
                     var worker=common.CopyForSearch();
                     worker.DedicatedCrossCache=new Dictionary<string,DedicatedCrossSearch>();
-                    worker.NetworkNumerics=common.ReuseSearchWork && (common.ReuseNetworkNumerics || common.ReuseTransverseNumerics) ? numericalWork.Value : null;
+                    worker.NetworkNumerics=common.ReuseSearchWork && (common.ReuseNetworkNumerics || common.ReuseTransverseNumerics) ? (common.NetworkNumericalWork ?? numericalWork).Value : null;
                     worker.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};
                     outcomes[index]=SearchScenario(worker,input,stockCovers,geometryCache,incumbent,minimumLegs,scenarios[index].Item1,scenarios[index].Item2,separate);
                 };
@@ -436,7 +453,7 @@ namespace EngineeringDashboard
                 worker.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};
                 worker.DedicatedCrossCache=new Dictionary<string,DedicatedCrossSearch>();
                 // Refinement needs the same exact-response reuse as the initial scenario search.
-                worker.NetworkNumerics=common.ReuseSearchWork && (common.ReuseNetworkNumerics || common.ReuseTransverseNumerics) ? new TransferredSlabOptimizer.SearchWorkCache() : null;
+                worker.NetworkNumerics=common.ReuseSearchWork && (common.ReuseNetworkNumerics || common.ReuseTransverseNumerics) ? common.NetworkNumericalWork?.Value ?? new TransferredSlabOptimizer.SearchWorkCache() : null;
                 var refined=SearchScenario(worker,input,stockCovers,geometryCache,null,minimumLegs,best.SlabCoveredLengthMm,best.RowPhaseMm,separate);
                 diag.Merge(refined.Diagnostics);tested+=refined.Tested;
                 foreach(var candidate in refined.Improvements)if(Better(candidate,best)){best=candidate;CalculateMovement(best,common.Trace);}
@@ -517,6 +534,9 @@ namespace EngineeringDashboard
             var outcome=new ScenarioResult {Diagnostics=common.Diagnostics};
             var solveCache=new Dictionary<Tuple<int,UpperTransferPlan,UpperTransferPlan>,TowerLayout[]>();
             var crossCaches=new Dictionary<int,Dictionary<string,DedicatedCrossSearch>>();
+            // Dedicated central towers depend on crossing concrete and their own geometry.
+            // Reuse them across prefixes; every receiver load and clash is still rechecked.
+            var sharedCrossCache=common.ReuseSearchWork ? common.DedicatedCrossCache ?? new Dictionary<string,DedicatedCrossSearch>() : null;
             var states=new[] {new State {Beams=new TowerLayout[0],Bays=new UpperTransferPlan[0]}}.ToList();
             for(int beam=0;beam<input.Beams.Length && states.Count>0;beam++)
             {
@@ -554,10 +574,10 @@ namespace EngineeringDashboard
                             var network=input.HasIndividualSpacings ? input.WithSpacings(beamCount:beam+1) : new TransferNetworkInput {PlywoodSheetLengthMm=input.PlywoodSheetLengthMm,Beams=input.Beams.Take(beam+1).ToArray(),Bays=input.Bays.Take(beam).ToArray(),CrossingBeams=input.CrossingBeams.Where(c=>c.BayNumber<=beam).ToArray(),UpperSpacingMm=input.UpperSpacingMm,RequestedUpperSpacingMm=input.RequestedUpperSpacingMm,CustomLoads=input.CustomLoads,LiveKnM2=input.LiveKnM2,FormworkKnM2=input.FormworkKnM2};
                             var centres=new double[beam+1];for(int i=1;i<centres.Length;i++)centres[i]=centres[i-1]+input.Beams[i-1].WidthMm/2+input.Bays[i-1].WidthMm+input.Beams[i].WidthMm/2;
                             var partial=new TransferNetworkResult {Input=network,Beams=candidate.Beams,Bays=candidate.Bays.Take(beam).ToArray(),BeamCentresMm=centres,SlabCoveredLengthMm=cover,RowPhaseMm=phase,SlabLoadKn=candidate.Beams.Sum(l=>l.Transfer.SlabLoadKn)};
-                            // Each prefix has a fixed crossing order and concrete geometry; cached
-                            // dedicated candidates are never reused under another prefix's labels.
+                            // Cache keys include the crossing index, concrete geometry and absolute
+                            // position, so inserted crossings cannot reuse another prefix's labels.
                             if(!crossCaches.TryGetValue(beam,out var cache))crossCaches[beam]=cache=new Dictionary<string,DedicatedCrossSearch>();
-                            var worker=common.CopyForSearch();worker.DedicatedCrossCache=cache;
+                            var worker=common.CopyForSearch();worker.DedicatedCrossCache=sharedCrossCache ?? cache;
                             if(!CrossBeamSupportOptimizer.Complete(worker,partial,beam<input.Beams.Length-1))continue;
                             if(beam==input.Beams.Length-1) {outcome.Improvements.Add(partial);continue;}
                         }

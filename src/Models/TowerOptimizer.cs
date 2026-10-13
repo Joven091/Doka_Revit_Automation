@@ -235,6 +235,8 @@ namespace EngineeringDashboard
         // A caller may restrict a solve only when larger leg counts cannot win.
         internal int NetworkLegCeiling = int.MaxValue;
         internal TransferredSlabOptimizer.SearchWorkCache NetworkNumerics;
+        internal TransferredSlabOptimizer.GeometryCache NetworkGeometryWork;
+        internal System.Threading.ThreadLocal<TransferredSlabOptimizer.SearchWorkCache> NetworkNumericalWork;
         internal TowerInput CopyForSearch() => (TowerInput)MemberwiseClone();
         internal string DiagnosticScope="";
         internal double DiagnosticOffsetMm;

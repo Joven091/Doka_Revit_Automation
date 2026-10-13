@@ -50,6 +50,45 @@ internal static class IndividualSpacingTests
             }
         }
     }
+    private static void CompareReceiverReuse(BeamCalculatorViewModel vm)
+    {
+        // Replay the same crossing with reuse disabled: pruning must preserve the selected layout.
+        Func<bool,TowerInput> common=reuse=>new TowerInput {LengthMm=vm.BeamLengthMm,LegCapacityKn=vm.TowerLegCapacityKn,
+            TotalLineLoad=vm.NetworkResult.Input.AreaLoad(1750)*.8,DeflectionDenominator=270,
+            StockLengthsMm=TowerStockPlanner.ParseLengths(vm.StockLengthsText),StockEndSetbackMm=vm.StockEndSetbackMm,
+            MaximumConcreteEndOverhangMm=vm.MaximumConcreteEndOverhangMm,AllowCustomH20Lengths=true,
+            CustomH20Scope=vm.CustomH20Scope,Exclude600Standalone=true,IgnoreUplift=true,ReuseSearchWork=reuse};
+        var reused=TransferNetworkOptimizer.Optimize(common(true),vm.NetworkResult.Input);
+        var reference=TransferNetworkOptimizer.Optimize(common(false),vm.NetworkResult.Input);
+        Near(reused.LegCount,reference.LegCount,"receiver failure pruning preserves tower count");
+        Near(reused.EconomyScoreMm,reference.EconomyScoreMm,"receiver failure pruning preserves layout economy");
+        for(int i=0;i<reused.Beams.Length;i++)
+        {
+            Check(reused.Beams[i].PositionsMm.SequenceEqual(reference.Beams[i].PositionsMm),"receiver reuse preserves actual tower positions");
+            Check(reused.Beams[i].Transfer.RowsMm.SequenceEqual(reference.Beams[i].Transfer.RowsMm),"receiver reuse preserves actual secondary rows");
+            Members(reused.Beams[i]);Members(reference.Beams[i]);
+        }
+    }
+    internal static void PrefixCacheParity()
+    {
+        var vm=new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true,UseBeamNetwork=true,TransferSlabLoads=true,
+            BeamLengthMm=4500,TowerLegCapacityKn=70,MaximumConcreteEndOverhangMm=75,AllowCustomH20Lengths=true,
+            IgnoreUplift=true,Exclude600Standalone=true,DeflectionLimit=BeamCalculatorViewModel.AvailableDeflectionOptions.Single(d=>d.Denominator==270)};
+        vm.AddNetworkBay();for(int i=0;i<vm.NetworkBeams.Count;i++){vm.NetworkBeams[i].WidthMm=i==1 ? 650 : 800;vm.NetworkBeams[i].SetDepthKeepingTopMm(i==1 ? 1150 : 1750);}
+        foreach(var bay in vm.NetworkBays){bay.WidthMm=2575;bay.ThicknessMm=300;}
+        // Bay 2 comes first: adding the third beam changes the crossing labels in the prefix.
+        foreach(int bay in new[] {2,1})vm.CrossingBeams.Add(new TransferCrossingBeamRow {BayNumber=bay,PositionMm=2250,WidthMm=650,DepthMm=1150});
+        vm.OptimizeTowersAsync().GetAwaiter().GetResult();
+        Check(vm.IsCalculationValid && vm.NetworkResult!=null,"reordered crossing prefixes calculate safely: "+vm.WarningMessage);
+        Check(vm.NetworkResult.CrossSupports.All(c=>c.Input.BayNumber==vm.NetworkResult.Input.CrossingBeams[c.CrossingIndex].BayNumber),"cache reuse preserves each crossing's own bay and label");
+        foreach(var c in vm.NetworkResult.CrossSupports)
+        {
+            Near(c.LoadKn,vm.NetworkResult.Input.AreaLoad(c.Input.DepthMm)*c.Input.WidthMm/1000*vm.NetworkBays[c.Input.BayNumber-1].WidthMm/1000,"reordered crossing retains its own complete concrete load");
+            Check(c.Members.All(m=>m.Utilization<=1+1e-8),"reordered crossing H20s pass all checks");
+        }
+        CompareReceiverReuse(vm);
+        Console.WriteLine($"Passed {checks} crossing-prefix cache parity checks.");
+    }
     internal static void ShutterException()
     {
         var vm=new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true,BeamLengthMm=4500,TowerLegCapacityKn=70,MaximumConcreteEndOverhangMm=75,AllowCustomH20Lengths=true,IgnoreUplift=true,TransferSlabLoads=true,UseBeamNetwork=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,Exclude600Standalone=true,DeflectionLimit=BeamCalculatorViewModel.AvailableDeflectionOptions.Single(d=>d.Denominator==270)};
@@ -61,26 +100,17 @@ internal static class IndividualSpacingTests
         Check(vm.NetworkResult.CrossSupports.Single().HasReducedShutterClearance,"coordinated local shutter exception remains available");
         foreach(var b in vm.NetworkResult.Beams)Members(b);
         Check(vm.NetworkResult.CrossSupports.SelectMany(c=>c.Members).All(m=>m.Utilization<=1+1e-8),"crossing H20 capacities remain checked in the local exception");
-        // Replay the same crossing with reuse disabled: pruning must preserve the selected layout.
-        Func<bool,TowerInput> common=reuse=>new TowerInput {LengthMm=vm.BeamLengthMm,LegCapacityKn=vm.TowerLegCapacityKn,
-            TotalLineLoad=vm.NetworkResult.Input.AreaLoad(1750)*.8,DeflectionDenominator=270,
-            StockLengthsMm=TowerStockPlanner.ParseLengths(vm.StockLengthsText),StockEndSetbackMm=vm.StockEndSetbackMm,
-            MaximumConcreteEndOverhangMm=vm.MaximumConcreteEndOverhangMm,AllowCustomH20Lengths=true,
-            CustomH20Scope=CustomH20LengthScope.SlabSupports,Exclude600Standalone=true,IgnoreUplift=true,ReuseSearchWork=reuse};
-        var reused=TransferNetworkOptimizer.Optimize(common(true),vm.NetworkResult.Input);
-        var reference=TransferNetworkOptimizer.Optimize(common(false),vm.NetworkResult.Input);
-        Near(reused.LegCount,reference.LegCount,"receiver failure pruning preserves tower count");
-        Near(reused.EconomyScoreMm,reference.EconomyScoreMm,"receiver failure pruning preserves layout economy");
-        for(int i=0;i<reused.Beams.Length;i++)
-        {
-            Check(reused.Beams[i].PositionsMm.SequenceEqual(reference.Beams[i].PositionsMm),"receiver reuse preserves actual tower positions");
-            Check(reused.Beams[i].Transfer.RowsMm.SequenceEqual(reference.Beams[i].Transfer.RowsMm),"receiver reuse preserves actual secondary rows");
-            Members(reused.Beams[i]);Members(reference.Beams[i]);
-        }
+        CompareReceiverReuse(vm);
         Console.WriteLine($"Passed {checks} coordinated individual-spacing checks.");
     }
     internal static void Run()
     {
+        var signedInput=new TowerInput {NetworkNumerics=new TransferredSlabOptimizer.SearchWorkCache()};
+        var downward=new[] {new BeamDistributedLoad {StartMm=0,EndMm=1000,KnPerM=-1}};var supports=new[] {0.0,1000};
+        var signed=TransferredSlabOptimizer.AnalyzeTransverse(signedInput,BeamSearchCounter.LowerAnalyses,1000,supports,downward,null,449.8756,350,signed:true);
+        Near(signed.TotalLoadKn,-1,"signed crossing increments retain their complete negative force");
+        Reject(()=>TransferredSlabOptimizer.AnalyzeTransverse(signedInput,BeamSearchCounter.LowerAnalyses,1000,supports,downward,null,449.8756,350),"a cached signed increment cannot bypass ordinary load validation");
+        Near(TransferredSlabOptimizer.AnalyzeTransverse(signedInput,BeamSearchCounter.LowerAnalyses,1000,supports,downward,null,449.8756,350,signed:true).TotalLoadKn,-1,"reused signed crossing response retains its force");
         foreach(double first in PlywoodSpacing.StandardSpacingsMm)
         foreach(double second in PlywoodSpacing.StandardSpacingsMm)
         foreach(double length in new[] {2450.0,6100,10600})
@@ -141,7 +171,7 @@ internal static class IndividualSpacingTests
         }
         Near(mixed.SlabLoadKn,mixed.Input.Bays.Sum(b=>mixed.Input.AreaLoad(b.ThicknessMm)*b.WidthMm/1000)*6.9,"different slab loads are conserved individually in the network total");
         foreach(var b in mixed.Beams)Members(b);Loads(mixed);
-        ShutterException();
+        ShutterException();PrefixCacheParity();
         Console.WriteLine($"Passed {checks} individual plywood spacing and H20 capacity checks.");
     }
 }

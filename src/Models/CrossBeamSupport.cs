@@ -267,9 +267,11 @@ namespace EngineeringDashboard
         private static CrossBeamSupportResult DedicatedCandidate(TowerInput common,TransferNetworkResult r,int index,double spacing,out string failure,double nearTrim=0,double farTrim=0,double? width=null,double transverseOffset=0,double spanOffset=0,double nearExtension=0,double farExtension=0,CrossShutterAllowance allowance=null)
         {
             allowance=allowance??CrossShutterAllowance.Standard;
-            var cacheKey=System.FormattableString.Invariant($"{index}|{spacing:R}|{nearTrim:R}|{farTrim:R}|{width??0:R}|{transverseOffset:R}|{spanOffset:R}|{nearExtension:R}|{farExtension:R}|{allowance.Near:R}|{allowance.Far:R}");
-            if(common.DedicatedCrossCache!=null && common.DedicatedCrossCache.TryGetValue(cacheKey,out var cached)) {failure=cached.Failure;return cached.Result;}
             var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2+nearTrim,span=r.Input.Bays[bay].WidthMm-nearTrim-farTrim;
+            // Prefixes can insert earlier crossings. Include labels and all crossing-dependent
+            // concrete/load coordinates rather than assuming an index identifies the same sheet.
+            var cacheKey=System.FormattableString.Invariant($"{index}|{c.BayNumber}|{c.PositionMm:R}|{c.WidthMm:R}|{c.DepthMm:R}|{c.BottomElevationMm:R}|{r.Input.AreaLoad(c.DepthMm):R}|{face:R}|{span:R}|{spacing:R}|{nearTrim:R}|{farTrim:R}|{width??0:R}|{transverseOffset:R}|{spanOffset:R}|{nearExtension:R}|{farExtension:R}|{allowance.Near:R}|{allowance.Far:R}");
+            if(common.DedicatedCrossCache!=null && common.DedicatedCrossCache.TryGetValue(cacheKey,out var cached)) {failure=cached.Failure;return cached.Result;}
             failure=null;
             if(nearTrim+common.MaximumConcreteEndOverhangMm<allowance.Near || farTrim+common.MaximumConcreteEndOverhangMm<allowance.Far)
             {
@@ -664,7 +666,7 @@ namespace EngineeringDashboard
         private static void Reject(TowerInput common,string message)=>common.Diagnostics?.Geometry("cross support",message,"Review elevations, cross position, stock availability, bearing/end allowances and tower geometry.",blocker:true);
         private static TransferMember Analyze(TransferMember source,BeamPointLoad[] points,BeamDistributedLoad[] uniform,TowerInput common,string stage)
         {
-            return new TransferMember {PrimaryMaterial=source.PrimaryMaterial,Name=source.Name,LoadCase=stage,StartMm=source.StartMm,LengthMm=source.LengthMm,H20Count=source.H20Count,PrimarySelfWeightKnM=source.PrimarySelfWeightKnM,SupportsMm=source.SupportsMm,Points=points,Uniform=uniform,Analysis=LoadedBeamAnalysis.AnalyzeSigned(source.LengthMm,source.SupportsMm,uniform,points,source.EI,common.DeflectionDenominator)};
+            return new TransferMember {PrimaryMaterial=source.PrimaryMaterial,Name=source.Name,LoadCase=stage,StartMm=source.StartMm,LengthMm=source.LengthMm,H20Count=source.H20Count,PrimarySelfWeightKnM=source.PrimarySelfWeightKnM,SupportsMm=source.SupportsMm,Points=points,Uniform=uniform,Analysis=TransferredSlabOptimizer.AnalyzeTransverse(common,source.H20Count==2 || source.IsWS10 ? BeamSearchCounter.PrimaryAnalyses : BeamSearchCounter.LowerAnalyses,source.LengthMm,source.SupportsMm,uniform,points,source.EI,common.DeflectionDenominator,signed:true)};
         }
         private static BeamDistributedLoad[] PrimaryIncrement(TransferNetworkResult r,int beam,TransferMember p,int line,IEnumerable<CrossBeamSupportResult> supports,TowerInput common)
         {
