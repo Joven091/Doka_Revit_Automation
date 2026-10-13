@@ -169,7 +169,22 @@ namespace EngineeringDashboard
             bool focusedCrossing=kind==FormworkObject.Crossing && selection.Contains(Tuple.Create(kind,index));
             if(field==null && !focusedCrossing && (vertical ? Math.Abs(b.Y-a.Y)<measured.Height+8 : Math.Abs(b.X-a.X)<measured.Width+12))return false;
             Point label=vertical ? new Point(a.X+7,(a.Y+b.Y)/2-measured.Height/2) : new Point((a.X+b.X)/2,(a.Y+b.Y)/2+labelOffset);
-            if(!Label(dc,text,label,colour,!vertical))return false;
+            var initial=label;
+            bool placed=Label(dc,text,label,colour,!vertical);
+            if(!placed && focusedCrossing)
+            {
+                // Preserve focused setting-out values: move crowded labels to a clear lane,
+                // with a leader linking each displaced label back to its measured segment.
+                double dx=measured.Width+16,dy=measured.Height+6;
+                foreach(var offset in new[] {new Vector(-dx,0),new Vector(dx,0),new Vector(0,-dy),new Vector(0,dy),
+                    new Vector(-dx,-dy),new Vector(-dx,dy),new Vector(dx,-dy),new Vector(dx,dy)})
+                {
+                    label=initial+offset;
+                    if(Label(dc,text,label,colour,!vertical)){placed=true;break;}
+                }
+                if(placed)dc.DrawLine(new Pen(colour,.7),new Point((a.X+b.X)/2,(a.Y+b.Y)/2),label+new Vector(0,measured.Height/2));
+            }
+            if(!placed)return false;
             dc.DrawLine(new Pen(colour,1),a,b);
             foreach(var point in new[] {a,b})dc.DrawLine(new Pen(colour,1),point+(vertical ? new Vector(-4,0) : new Vector(0,-4)),point+(vertical ? new Vector(4,0) : new Vector(0,4)));
             if(field!=null)dimensions.Add(Tuple.Create(AnnotationBounds.Last(),kind,index,field));
