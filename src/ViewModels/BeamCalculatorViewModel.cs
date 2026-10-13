@@ -93,9 +93,9 @@ namespace EngineeringDashboard
         private bool hasLeft, hasRight, customLoads, textErrors;
         private double customLive = 2.25, customFormwork = 0.4;
         private string numberOfProps = "2";
-        private BeamDeflectionOption deflection = AvailableDeflectionOptions[1];
+        private BeamDeflectionOption deflection = AvailableDeflectionOptions[2];
 
-        public BeamCalculatorViewModel() { NetworkBeams.CollectionChanged+=(s,e)=>NetworkCollectionChanged();NetworkBays.CollectionChanged+=(s,e)=>NetworkCollectionChanged();CrossingBeams.CollectionChanged+=(s,e)=>NetworkCollectionChanged();Calculate(); }
+        public BeamCalculatorViewModel() { NetworkBeams.CollectionChanged+=(s,e)=>NetworkCollectionChanged();NetworkBays.CollectionChanged+=(s,e)=>NetworkCollectionChanged();CrossingBeams.CollectionChanged+=(s,e)=>NetworkCollectionChanged();IndependentBeams.CollectionChanged+=IndependentCollectionChanged;Calculate(); }
         public double Depth { get => depth; set { depth = value; Changed(); } }
         public double Width { get => width; set { width = value; Changed(); } }
         public bool HasLeftSlab { get => hasLeft; set { hasLeft = value; Changed(); } }
@@ -157,7 +157,7 @@ namespace EngineeringDashboard
         }
         private void Calculate()
         {
-            towerRevision++; networkBeamOptions.Clear(); TowerFailureDetails=""; TowerResult = null; NetworkResult=null; SelectedNetworkBeam=0;
+            towerRevision++; networkBeamOptions.Clear(); TowerFailureDetails=""; TowerResult = null; NetworkResult=null;IndependentBeamResults=new TowerLayout[0]; SelectedNetworkBeam=0;
             IsCalculationValid = false;
             MaximumPropSpacing = MaximumPropLoad = PrimaryBeamCantilever = PrimaryDeflectionMm = PrimaryDeflectionUtilization = 0;
             LeftLineLoad = RightLineLoad = TotalLineLoad = 0;

@@ -100,7 +100,7 @@ internal static class UpliftAssumptionTests
     {
         MandatoryMemberChecks();
         ModernCrossChecks();
-        Check(!new TowerInput().IgnoreUplift && !new BeamCalculatorViewModel().IgnoreUplift,"default bearing-only behavior retained");
+        Check(!new TowerInput().IgnoreUplift && new BeamCalculatorViewModel().IgnoreUplift,"core bearing checks remain available; calculator uplift exclusion is fixed on");
         var positions=new[] {150.0,750,1350};var joined=new[] {true,true};
         var input=new TowerInput {LengthMm=3000,StockLengthsMm=new[] {3000.0},TotalLineLoad=.5,LegCapacityKn=70,DeflectionDenominator=270};
         Check(TowerOptimizer.Evaluate(input,positions,joined,1524,false)==null,"uplift-only geometry rejected by default");
@@ -123,8 +123,8 @@ internal static class UpliftAssumptionTests
         var vm=new BeamCalculatorViewModel {UseTowers=true,IgnoreUplift=true,BeamLengthMm=2500,StockLengthsText="2500",Depth=200,Width=300};
         vm.OptimizeTowersAsync().GetAwaiter().GetResult();Check(vm.IsCalculationValid && vm.TowerResult.IgnoreUplift,"view model passes opt-in");
         Check(vm.BuildDiagnosticReport().Contains("IgnoreUplift = True") && vm.TowerCalculationBasis.Contains("not calculated"),"diagnostic and calculation basis identify assumption");
-        vm.IgnoreUplift=false;Check(!vm.IsCalculationValid && vm.TowerResult==null,"toggle invalidates results");
-        vm.IgnoreUplift=true;vm.StartNewSession();Check(!vm.IgnoreUplift,"new session clears the case-specific uplift assumption");
+        vm.IgnoreUplift=false;Check(vm.IgnoreUplift && vm.IsCalculationValid && vm.TowerResult!=null,"fixed exclusion cannot be toggled through legacy inputs");
+        vm.IgnoreUplift=true;vm.StartNewSession();Check(vm.IgnoreUplift,"new session retains the fixed uplift assumption");
         Console.WriteLine($"Passed {checks} uplift assumption checks.");
     }
     public static void ReportedCase(string schedulePath=null)

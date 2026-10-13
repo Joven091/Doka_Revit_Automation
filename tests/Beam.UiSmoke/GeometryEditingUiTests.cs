@@ -111,6 +111,7 @@ internal static class GeometryEditingUiTests
         Check(model.IsNetworkMode && model.NetworkBeams.Count==2 && model.NetworkBays.Count==1 && model.NetworkBeams.All(b=>b.WidthMm==725 && b.DepthMm==1375 && b.BottomElevationMm==-1200),"paste from standalone preserves both beam profiles and levels");
         Click(view,"Undo");Check(model.NetworkBeams.Count==1 && !model.IsNetworkMode,"one undo returns a standalone paste to beam-only mode");
         host.RestoreCalculation(original);drawing.Select(FormworkObject.Beam,0);Pump();Render(view.Surface);
+        IndependentDraftUiTests.Run(host,view,model);
         Console.WriteLine($"Passed {checks} geometry editing UI checks.");
     }
 }

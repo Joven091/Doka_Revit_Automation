@@ -261,8 +261,8 @@ internal static class WorkspaceTests
             Check(parent.CaptureDrawingInputs().Inputs.Any(f=>f.Name=="NetworkConfigurationXml") && workspace.Buttons["Save"].IsEnabled,"draft geometry can be saved before recalculation");
             Click("Undo");Check(model.NetworkBeams[1].DepthMm==1200,"undo restores beam depth");Click("Redo");Check(model.NetworkBeams[1].DepthMm==1325,"redo restores edited depth");Click("Undo");
             drawing.Select(FormworkObject.Beam,1);drawing.MoveSelection(42);Pump();Render();Check(model.NetworkBays[0].WidthMm==3950,"moving a beam edits its adjacent span in 25 mm steps");Click("Undo");Check(model.NetworkBays[0].WidthMm==3900,"undo restores dragged span");
-            drawing.Select(FormworkObject.Slab,0);Render();var spanTarget=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Slab && h.Item3==0);
-            Check(drawing.SelectAt(new Point(spanTarget.Item1.Right+40,spanTarget.Item1.Top+spanTarget.Item1.Height/2)) && workspace.Fields["WidthMm"].SelectedText=="3900","clicking a span dimension focuses its exact numeric input");
+            drawing.Select(FormworkObject.Slab,0);Render();int spanLabel=drawing.AnnotationLabels.IndexOf("3900");
+            Check(spanLabel>=0 && drawing.SelectAt(Centre(drawing.AnnotationBounds[spanLabel])) && workspace.Fields["WidthMm"].SelectedText=="3900","clicking the rotated span text focuses its exact numeric input");
             Enter("WidthMm","3850");Check(model.NetworkBays[0].WidthMm==3850,"slab span edits target selected bay");Click("Undo");
             drawing.Select(FormworkObject.Beam,0);Click("AddCrossing");Render();var slab=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Slab && h.Item3==0);
             var place=drawing.Screen(3178,drawing.World(Centre(slab.Item1)).Y);Check(drawing.SelectAt(place),"crossing beam placed by clicking slab");Pump();Render();
@@ -297,13 +297,10 @@ internal static class WorkspaceTests
             customLengthsRecord.Inputs.RemoveAll(f=>f.Name=="AllowCustomH20Lengths");parent.RestoreCalculation(customLengthsRecord);Pump();
             Check(!model.AllowCustomH20Lengths && Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow custom H20 lengths (25 mm)")).IsChecked==false,"legacy files restore disabled custom mode in both windows");
             Check(!Controls<ComboBox>(workspace).Single(c=>c.Name=="CustomH20ScopeSelector").IsEnabled,"scope selector disables when custom master switch is off");
-            var uplift=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Exclude uplift check (connected plywood / deadweight assumed)"));
-            Check(uplift.IsChecked==false,"workspace uplift exclusion defaults off");uplift.IsChecked=true;uplift.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
-            Check(model.IgnoreUplift && !model.IsCalculationValid,"workspace uplift opt-in invalidates the shared result");
-            Click("Undo");Check(!model.IgnoreUplift,"undo restores bearing-only assumptions");Click("Redo");Check(model.IgnoreUplift,"redo restores project uplift assumption");
-            var upliftRecord=parent.CaptureDrawingInputs();Check(upliftRecord.Inputs.Single(f=>f.Name=="IgnoreUplift").Value=="True","workspace uplift assumption saved");
-            model.IgnoreUplift=false;parent.RestoreCalculation(upliftRecord);Pump();Check(model.IgnoreUplift && ((CheckBox)parent.FindName("IgnoreUpliftCheckBox")).IsChecked==true,"loaded uplift assumption synchronizes both windows");
-            upliftRecord.Inputs.RemoveAll(f=>f.Name=="IgnoreUplift");parent.RestoreCalculation(upliftRecord);Pump();Check(!model.IgnoreUplift,"legacy workspace file restores bearing-only assumptions");
+            Check(!Controls<CheckBox>(workspace).Any(c=>c.Content?.ToString().Contains("uplift")==true) && model.IgnoreUplift,"shared settings have no editable uplift checkbox");
+            var upliftRecord=parent.CaptureDrawingInputs();Check(upliftRecord.Inputs.Single(f=>f.Name=="IgnoreUplift").Value=="True","drawing saves the fixed exclusion");
+            model.IgnoreUplift=false;parent.RestoreCalculation(upliftRecord);Pump();Check(model.IgnoreUplift && parent.FindName("IgnoreUpliftCheckBox")==null,"saved and classic controls retain fixed exclusion");
+            upliftRecord.Inputs.RemoveAll(f=>f.Name=="IgnoreUplift");parent.RestoreCalculation(upliftRecord);Pump();Check(model.IgnoreUplift,"legacy drawing cannot disable the fixed exclusion");
             Check(!model.CanCancelOptimization && !workspace.Buttons["Cancel"].IsEnabled,"cancel is disabled without a running analysis");
             var cancelledSearch=workspace.CalculateAsync();
             Check(model.CanCancelOptimization,"running analysis can be cancelled");

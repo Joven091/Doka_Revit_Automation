@@ -21,8 +21,8 @@ namespace EngineeringDashboard
         {get=>primaryMaterial;set {PrimaryBeamProfile.For(value);primaryMaterial=value;Changed();}}
         public string PrimaryMaterialAssumptions=>PrimaryBeamProfile.For(PrimaryMaterial).Assumptions;
         public string WS10CatalogueText=>"WS10 catalogue only (mm): "+string.Join("; ",PrimaryBeamProfile.WS10LengthsMm);
-        private bool ignoreUplift;
-        public bool IgnoreUplift { get => ignoreUplift; set { ignoreUplift=value; Changed(); } }
+        private bool ignoreUplift=true;
+        public bool IgnoreUplift { get => ignoreUplift; set { /* Retained for saved-file compatibility. Uplift exclusion is fixed on. */ } }
         private bool allowCustomH20Lengths;
         public bool AllowCustomH20Lengths { get => allowCustomH20Lengths; set { allowCustomH20Lengths = value; Changed(); } }
         private CustomH20LengthScope customH20Scope;
@@ -34,7 +34,7 @@ namespace EngineeringDashboard
         }
         private double beamLengthMm = 6100, towerLegCapacityKn = 30;
         private string stockLengthsText = TowerStockPlanner.DefaultLengths;
-        private double stockEndSetbackMm = 150, maximumConcreteEndOverhangMm = 75;
+        private double stockEndSetbackMm = 150, maximumConcreteEndOverhangMm = 150;
         public double MaximumConcreteEndOverhangMm { get => maximumConcreteEndOverhangMm; set { maximumConcreteEndOverhangMm = value; Changed(); } }
         private int towerRevision;
         public bool UseTowers { get => useTowers; set { useTowers = value; Changed(); OnPropertyChanged(nameof(UseProps)); } }
@@ -97,26 +97,31 @@ namespace EngineeringDashboard
             Check(input.TotalLineLoad, "Calculated line load", true); Check(Math.Abs(input.TransverseLoadMoment), "Transverse load moment");
             return input;
         }
-        internal void ValidateTowerInputs() { CreateTowerInput(false); if (BeamLengthMm > 50000) throw new ArgumentException("Beam length must not exceed 50,000 mm."); }
+        internal void ValidateTowerInputs() { var common=CreateTowerInput(false);if(IndependentBeams.Count>30)throw new ArgumentException("Use at most 30 independent beams.");foreach(var b in IndependentBeams)IndependentInput(common,b); if (BeamLengthMm > 50000) throw new ArgumentException("Beam length must not exceed 50,000 mm."); }
         public async Task OptimizeTowersAsync()
         {
             if (!UseTowers || IsOptimizing) return;
             var cancellation=towerCancellation=new CancellationTokenSource();
             var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs(),cancellation.Token);
-            int revision = towerRevision; networkBeamOptions.Clear(); IsOptimizing = true; TowerResult = null; NetworkResult=null; TowerFailureDetails=""; IsCalculationValid = false;
+            int revision = towerRevision; networkBeamOptions.Clear(); IsOptimizing = true; TowerResult = null; NetworkResult=null;IndependentBeamResults=new TowerLayout[0]; TowerFailureDetails=""; IsCalculationValid = false;
             WarningMessage = "Searching tower layouts…"; NotifyTower();
             try
             {
                 var input = CreateTowerInput();
                 input.Trace=trace;
+                var independentInputs=IndependentBeams.Select(b=>IndependentInput(input,b)).ToArray();
                 trace.DerivedInputs(System.FormattableString.Invariant($"Mode: {(input.Network!=null ? "Network" : input.TransferredSlab!=null ? "Transferred slab" : "Beam-only")}; initial beam line load={input.TotalLineLoad:R} kN/m; transverse load moment={input.TransverseLoadMoment:R} kN")
                     +(input.TransferredSlab==null ? "" : System.FormattableString.Invariant($"\nTransfer beam load={input.TransferredSlab.BeamLineLoadKnM:R} kN/m; slab area loads L/R={input.TransferredSlab.LeftAreaLoadKnM2:R}/{input.TransferredSlab.RightAreaLoadKnM2:R} kN/m²"))
                     +(input.Network==null ? "" : "\n"+string.Join("\n",input.Network.Beams.Select((b,i)=>System.FormattableString.Invariant($"B{i+1}: area load={input.Network.AreaLoad(b.DepthMm):R} kN/m²; beam line load={input.Network.AreaLoad(b.DepthMm)*b.WidthMm/1000:R} kN/m")).Concat(input.Network.Bays.Select((s,i)=>System.FormattableString.Invariant($"S{i+1}: area load={input.Network.AreaLoad(s.ThicknessMm):R} kN/m²"))))));
                 TransferNetworkResult networkResult=null;
-                var result = await Task.Run(() => { if(input.Network==null)return TowerOptimizer.Optimize(input);networkResult=TransferNetworkOptimizer.Optimize(input,input.Network);return networkResult.Beams[0]; });
+                TowerLayout[] independentResults=null;
+                var result = await Task.Run(() => {
+                    var main=input.Network==null ? TowerOptimizer.Optimize(input) : (networkResult=TransferNetworkOptimizer.Optimize(input,input.Network)).Beams[0];
+                    independentResults=independentInputs.Select(i=>TransferredSlabOptimizer.Optimize(i)).ToArray();return main;
+                });
                 cancellation.Token.ThrowIfCancellationRequested();
                 if (revision != towerRevision || !UseTowers) {trace.Complete("Discarded: inputs changed during search",summary:networkResult?.Summary??result.Summary);return;}
-                NetworkResult=networkResult;SelectedNetworkBeam=0;TowerResult = result; LeftLineLoad = result.LeftLineLoad; RightLineLoad = result.RightLineLoad;
+                IndependentBeamResults=independentResults;NetworkResult=networkResult;SelectedNetworkBeam=0;TowerResult = result; LeftLineLoad = result.LeftLineLoad; RightLineLoad = result.RightLineLoad;
                 TotalLineLoad = result.LeftLineLoad + result.RightLineLoad; LimitingFactor = result.Governing;
                 IsCalculationValid = true; WarningMessage = "";
                 trace.Complete("Succeeded",summary:networkResult?.Summary??result.Summary);
@@ -134,7 +139,7 @@ namespace EngineeringDashboard
         private void NotifyTower()
         {
             NotifyTransfer();
-            foreach (string name in new[] { nameof(PrimaryMaterial),nameof(PrimaryMaterialAssumptions),nameof(TowerFailureDetails),nameof(HasTowerFailure),nameof(IsOptimizing), nameof(CanCancelOptimization), nameof(CanOptimizeTowers), nameof(CanImport), nameof(ShowPropResults), nameof(ShowTowerResults), nameof(TowerSummary), nameof(TowerSchedule), nameof(TowerStockSchedule), nameof(TowerSearchNote), nameof(TowerResult), nameof(WarningMessage), nameof(PrimaryLineSpacingMm), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(LimitingFactor), nameof(IsCalculationValid) }) OnPropertyChanged(name);
+            foreach (string name in new[] { nameof(IndependentBeamResults),nameof(PrimaryMaterial),nameof(PrimaryMaterialAssumptions),nameof(TowerFailureDetails),nameof(HasTowerFailure),nameof(IsOptimizing), nameof(CanCancelOptimization), nameof(CanOptimizeTowers), nameof(CanImport), nameof(ShowPropResults), nameof(ShowTowerResults), nameof(TowerSummary), nameof(TowerSchedule), nameof(TowerStockSchedule), nameof(TowerSearchNote), nameof(TowerResult), nameof(WarningMessage), nameof(PrimaryLineSpacingMm), nameof(LeftLineLoad), nameof(RightLineLoad), nameof(TotalLineLoad), nameof(LimitingFactor), nameof(IsCalculationValid) }) OnPropertyChanged(name);
         }
     }
 }

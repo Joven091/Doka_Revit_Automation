@@ -61,16 +61,18 @@ namespace EngineeringDashboard
             for(int i=1;i<values.Length;i++)values[i]=values[i-1]+Math.Max(235,(result.BeamCentresMm[i]-result.BeamCentresMm[i-1])*.055);return values;
         }
         private static readonly Brush Timber=Brushes.Goldenrod,Steel=Brushes.SlateGray,Concrete=Brushes.LightGray;
-        private void Label(DrawingContext dc,string value,double x,double y,bool centre=false,Brush colour=null)
+        private void Label(DrawingContext dc,string value,double x,double y,bool centre=false,Brush colour=null,bool rotate=false)
         {
             var text=new FormattedText(value,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),11,colour??Brushes.DarkSlateGray,VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            if(centre)x-=text.Width/2;var box=new Rect(x-2,y-1,text.Width+4,text.Height+2);
+            Rect box;
+            if(rotate) {box=new Rect(x-text.Height/2-2,y-text.Width/2-1,text.Height+4,text.Width+2);x-=text.Height/2;y+=text.Width/2;}
+            else {if(centre)x-=text.Width/2;box=new Rect(x-2,y-1,text.Width+4,text.Height+2);}
             if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>Height || AnnotationBounds.Any(r=>r.IntersectsWith(box)))return;
-            AnnotationBounds.Add(box);var drawing=new DrawingGroup();using(var overlay=drawing.Open()){overlay.DrawRectangle(Brushes.White,null,box);overlay.DrawText(text,new Point(x,y));}annotations.Add(drawing);
+            AnnotationBounds.Add(box);var drawing=new DrawingGroup();using(var overlay=drawing.Open()){overlay.DrawRectangle(Brushes.White,null,box);if(rotate)overlay.PushTransform(new RotateTransform(-90,x,y));overlay.DrawText(text,new Point(x,y));if(rotate)overlay.Pop();}annotations.Add(drawing);
         }
         private void Dim(DrawingContext dc,double a,double b,double y,string value,Brush colour=null)
         {
-            colour=colour??Steel;dc.DrawLine(new Pen(colour,1),new Point(a,y),new Point(b,y));foreach(double x in new[] {a,b})dc.DrawLine(new Pen(colour,1),new Point(x,y-3),new Point(x,y+3));if(Math.Abs(b-a)>=value.Length*6+8)Label(dc,value,(a+b)/2,y+4,true,colour);
+            colour=colour??Steel;dc.DrawLine(new Pen(colour,1),new Point(a,y),new Point(b,y));foreach(double x in new[] {a,b})dc.DrawLine(new Pen(colour,1),new Point(x,y-3),new Point(x,y+3));if(Math.Abs(b-a)>=value.Length*6+8)Label(dc,value,(a+b)/2,y-19,true,colour);
         }
         protected override void OnRender(DrawingContext dc)
         {
@@ -198,7 +200,7 @@ namespace EngineeringDashboard
             dc.DrawLine(new Pen(colour,1),new Point(x,top),new Point(x,bottom));
             foreach(double y in new[] {top,bottom})dc.DrawLine(new Pen(colour,1),new Point(x-4,y),new Point(x+4,y));
             var text=new FormattedText(value,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),11,colour,VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            Label(dc,value,left ? x-text.Width-7 : x+7,(top+bottom-text.Height)/2,false,colour);
+            Label(dc,value,x-text.Height/2-7,(top+bottom)/2,false,colour,true);
         }
         private void Section(DrawingContext dc,double y0)
         {
