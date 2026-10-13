@@ -3,6 +3,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace MyRevitAddin.Access
 {
@@ -28,7 +30,13 @@ namespace MyRevitAddin.Access
             {
                 using (var client = AccessClient.Load())
                 {
-                    var window = new AccessWindow(client, checkExisting);
+                    AccessDecision decision = null;
+                    if (checkExisting && owner != null && client.HasSession)
+                    {
+                        decision = CheckSilently(client, owner);
+                        if (decision.Allowed) return true;
+                    }
+                    var window = new AccessWindow(client, checkExisting, decision);
                     if (owner != null) { window.Owner = owner; window.WindowStartupLocation = WindowStartupLocation.CenterOwner; }
                     return window.ShowDialog() == true;
                 }
@@ -41,7 +49,39 @@ namespace MyRevitAddin.Access
             }
         }
 
-        private AccessWindow(AccessClient client, bool checkExisting)
+        // Keep the synchronous caller on the Revit thread while HTTP runs through
+        // a nested dispatcher, as with ShowDialog, but without displaying a form.
+        private static AccessDecision CheckSilently(AccessClient client, Window owner)
+        {
+            var frame = new DispatcherFrame();
+            var decision = new AccessDecision { Reason = "service_unavailable" };
+            bool enabled = owner.IsEnabled;
+            var cursor = Mouse.OverrideCursor;
+            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+            {
+                try
+                {
+                    owner.IsEnabled = false;
+                    Mouse.OverrideCursor = Cursors.Wait;
+                    owner.Dispatcher.BeginInvoke(new Action(async () =>
+                    {
+                        try { decision = await client.Check(timeout.Token); }
+                        catch { /* Show the access form with a retry message. */ }
+                        finally { frame.Continue = false; }
+                    }));
+                    Dispatcher.PushFrame(frame);
+                    return decision;
+                }
+                finally
+                {
+                    timeout.Cancel();
+                    Mouse.OverrideCursor = cursor;
+                    owner.IsEnabled = enabled;
+                }
+            }
+        }
+
+        private AccessWindow(AccessClient client, bool checkExisting, AccessDecision initialDecision)
         {
             this.client = client;
             Title = "Doka Revit Automation — Access";
@@ -88,7 +128,8 @@ namespace MyRevitAddin.Access
             Closed += (sender, args) => { closed = true; cancellation.Cancel(); };
             Loaded += async (sender, args) =>
             {
-                if (client.HasSession && checkExisting) await Run(Check);
+                if (initialDecision != null) ShowDecision(initialDecision);
+                else if (client.HasSession && checkExisting) await Run(Check);
                 else status.Text = client.HasSession ? "You are signed in. You can sign out or switch accounts here."
                     : "Enter your email to receive a one-time sign-in code. Access requires the tool owner's approval.";
             };
@@ -117,6 +158,11 @@ namespace MyRevitAddin.Access
             var result = await client.Check(cancellation.Token);
             if (closed) return;
             if (result.Allowed) { DialogResult = true; return; }
+            ShowDecision(result);
+        }
+
+        private void ShowDecision(AccessDecision result)
+        {
             switch (result.Reason)
             {
                 case "sign_in_required": status.Text = "Sign in with an email code to continue."; break;
