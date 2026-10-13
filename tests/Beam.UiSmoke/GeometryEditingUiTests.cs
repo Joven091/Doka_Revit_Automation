@@ -66,7 +66,9 @@ internal static class GeometryEditingUiTests
         drawing.SelectAt(targetScreen);Render(view.Surface);
         Check(!drawing.IsDrafting && drawing.Centres()[0]==ys[0] && Math.Abs(drawing.Centres()[1]-target.Y)<1e-8,"move applies its snapped destination while retaining the other beam");
         Click(view,"Undo");Check(model.NetworkConfigurationXml==beforeCopy,"move has one undo entry");
-        drawing.Select(FormworkObject.Beam,1);Check(view.BeginDrafting("CO"),"CO starts copy with a base point");
+        drawing.Select(FormworkObject.Beam,1);drawing.Focus();
+        foreach(var letter in new[] {Key.C,Key.O}) {var alias=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(view.Surface),Environment.TickCount,letter){RoutedEvent=Keyboard.PreviewKeyDownEvent};drawing.RaiseEvent(alias);}
+        Check(drawing.DraftCommand=="CO","CO alias starts copy with a base point");
         ys=drawing.Centres();baseScreen=drawing.Screen(model.BeamLengthMm/2,ys[1]);targetScreen=drawing.Screen(model.BeamLengthMm/2,ys[1]+2000);target=drawing.SnapAt(targetScreen);
         drawing.SelectAt(baseScreen);drawing.UpdateDraftPointer(targetScreen);drawing.SelectAt(targetScreen);Render(view.Surface);
         Check(model.NetworkBeams.Count==3 && model.NetworkBeams[2].DepthMm==1375 && Math.Abs(drawing.Centres()[2]-target.Y)<1e-8 && drawing.Centres()[1]==ys[1],"CO creates a matching beam at the picked location without moving the source");
@@ -82,7 +84,17 @@ internal static class GeometryEditingUiTests
         Check(model.CrossingBeams.Count==1 && model.CrossingBeams[0].BayNumber==1,"right-click in a bay inserts the cross beam in that bay");
         drawing.Select(FormworkObject.Crossing,0);Check(view.CopySelectedGeometry(),"cross beam can be copied");
         Check(view.PasteGeometry(false,Tuple.Create(0,2500.0)) && model.CrossingBeams.Count==2 && model.CrossingBeams[1].PositionMm==2500,"cross beam paste places a copy at the destination");
-        Click(view,"Undo");Click(view,"Undo");Check(model.NetworkConfigurationXml==beforeCopy,"undo restores the drawing before crossing placement and paste");
+        Click(view,"Undo");drawing.Select(FormworkObject.Crossing,0);view.BeginDrafting("MV");
+        ys=drawing.Centres();double midBay=(ys[0]+model.NetworkBeams[0].WidthMm/2+ys[1]-model.NetworkBeams[1].WidthMm/2)/2;
+        double sourceX=model.CrossingBeams[0].PositionMm;baseScreen=drawing.Screen(sourceX,midBay);targetScreen=drawing.Screen(sourceX+400,midBay);target=drawing.SnapAt(targetScreen);
+        drawing.SelectAt(baseScreen);drawing.SelectAt(targetScreen);Render(view.Surface);
+        Check(model.CrossingBeams.Count==1 && model.CrossingBeams[0].PositionMm==target.X,"MV moves the selected crossing to its snapped point");Click(view,"Undo");
+        drawing.Select(FormworkObject.Crossing,0);view.BeginDrafting("CO");baseScreen=drawing.Screen(sourceX,midBay);targetScreen=drawing.Screen(sourceX+900,midBay);target=drawing.SnapAt(targetScreen);
+        drawing.SelectAt(baseScreen);drawing.SelectAt(targetScreen);Render(view.Surface);
+        Check(model.CrossingBeams.Count==2 && model.CrossingBeams[0].PositionMm==sourceX && model.CrossingBeams[1].PositionMm==target.X,"CO copies a crossing with base-point placement");Click(view,"Undo");
+        drawing.Select(FormworkObject.Crossing,0);view.BeginDrafting("CS");drawing.SelectAt(drawing.Screen(1875,midBay));Render(view.Surface);
+        Check(model.CrossingBeams.Count==2 && model.CrossingBeams[1].PositionMm==1875 && model.CrossingBeams[1].SupportMode==model.CrossingBeams[0].SupportMode,"CS retains a crossing's support mode at the picked point");Click(view,"Undo");
+        Click(view,"Undo");Check(model.NetworkConfigurationXml==beforeCopy,"undo restores the drawing before crossing placement and paste");
         drawing.SetSelection(new[] {Tuple.Create(FormworkObject.Beam,0),Tuple.Create(FormworkObject.Slab,0)},FormworkObject.Beam,0);Render(view.Surface);
         Check(view.Buttons["Delete"].IsEnabled,"beam and slab selection in a two-beam drawing can be deleted");
         drawing.Focus();var key=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(view.Surface),Environment.TickCount,Key.Delete){RoutedEvent=Keyboard.PreviewKeyDownEvent};drawing.RaiseEvent(key);Pump();Render(view.Surface);

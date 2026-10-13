@@ -58,7 +58,7 @@ namespace EngineeringDashboard
         private bool sectionMode;
         private object selectedObject;
         private string draftCommand,shortcutPrefix;
-        private int shortcutTime,draftIndex;
+        private int draftIndex;
         private FormworkObject draftKind;
         private Point? draftBase;
         private Rect draftSource;
@@ -209,7 +209,7 @@ namespace EngineeringDashboard
             BuildProperties();Refresh();Drawing.Fit();
         }
         private void Mutate(Action change,bool fit=true)
-        {var old=Capture();changing=true;try {change();}finally {changing=false;}if(!Same(old,Capture())){undo.Push(old);redo.Clear();}BuildProperties();Refresh();if(fit)Drawing.Fit();}
+        {if(fit)CancelDrafting();var old=Capture();changing=true;try {change();}finally {changing=false;}if(!Same(old,Capture())){undo.Push(old);redo.Clear();}BuildProperties();Refresh();if(fit)Drawing.Fit();}
         private void History(Stack<State> from,Stack<State> to)
         {if(!CommitFields() || from.Count==0 || Model.IsOptimizing)return;CancelDrafting();to.Push(Capture());Apply(from.Pop());}
         internal void AddBay(bool before)
@@ -260,6 +260,7 @@ namespace EngineeringDashboard
         private void OpenGeometryMenu(Point point)
         {
             CancelDrafting();var bay=Drawing.BayAt(point);var menu=new ContextMenu {PlacementTarget=Drawing};GeometryMenu=menu;
+            menu.PreviewKeyDown+=(sender,args)=> {if(args.Key==Key.Escape){HandleGeometryKey(args.Key,Keyboard.Modifiers);args.Handled=true;}};
             Action<string,bool,Action> add=(text,enabled,action)=> {var item=new MenuItem {Header=text,IsEnabled=enabled};item.Click+=(s,e)=>action();menu.Items.Add(item);};
             add("Insert bay above",Model.CanAddNetworkBay,()=>AddBay(true));
             add("Insert bay below",Model.CanAddNetworkBay,()=>AddBay(false));
@@ -408,7 +409,6 @@ namespace EngineeringDashboard
             }
             if(editingText || sectionMode || Drawing.Formwork || modifiers!=ModifierKeys.None)return false;
             if(key==Key.Delete){CancelDrafting();RemoveSelected();return true;}
-            if(Environment.TickCount-shortcutTime>1500)shortcutPrefix=null;shortcutTime=Environment.TickCount;
             string letter=key==Key.M ? "M" : key==Key.V ? "V" : key==Key.C ? "C" : key==Key.O ? "O" : key==Key.S ? "S" : null;
             string command=(shortcutPrefix??"")+(letter??"");
             if(command=="MV" || command=="CO" || command=="CS"){shortcutPrefix=null;BeginDrafting(command);return true;}
