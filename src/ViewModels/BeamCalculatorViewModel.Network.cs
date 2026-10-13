@@ -59,7 +59,7 @@ namespace EngineeringDashboard
             depth=fresh.depth;width=fresh.width;leftThickness=fresh.leftThickness;rightThickness=fresh.rightThickness;
             floorHeight=fresh.floorHeight;selectedProp=fresh.selectedProp;hasLeft=fresh.hasLeft;hasRight=fresh.hasRight;
             customLoads=fresh.customLoads;customLive=fresh.customLive;customFormwork=fresh.customFormwork;
-            numberOfProps=fresh.numberOfProps;deflection=fresh.deflection;selectedPlywood=fresh.selectedPlywood;slabStripWidthMm=fresh.slabStripWidthMm;
+            numberOfProps=fresh.numberOfProps;deflection=fresh.deflection;selectedPlywood=fresh.selectedPlywood;plywoodDeflectionLimit=fresh.plywoodDeflectionLimit;slabStripWidthMm=fresh.slabStripWidthMm;
             beamLengthMm=fresh.beamLengthMm;towerLegCapacityKn=fresh.towerLegCapacityKn;stockLengthsText=fresh.stockLengthsText;
             stockEndSetbackMm=fresh.stockEndSetbackMm;maximumConcreteEndOverhangMm=fresh.maximumConcreteEndOverhangMm;
             primaryMaterial=fresh.primaryMaterial;exclude600Standalone=fresh.exclude600Standalone;allowCustomH20Lengths=fresh.allowCustomH20Lengths;customH20Scope=fresh.customH20Scope;ignoreUplift=fresh.ignoreUplift;

@@ -31,6 +31,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     // --- Inputs: Secondary Beam Layout ---
     private string _primaryBeamCount = "3";
     private PlywoodProfile _selectedPlywood = PlywoodCatalog.Default;
+    private string _plywoodDeflectionLimit = "L/350";
     private double _secondaryBeamCantilever = 500;
     private string _deflectionLimit = "L/350";
 
@@ -78,6 +79,12 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
     public double CustomLiveLoad { get => _customLiveLoad; set { _customLiveLoad = value; OnPropertyChanged(); Calculate(); } }
     public double CustomFormworkLoad { get => _customFormworkLoad; set { _customFormworkLoad = value; OnPropertyChanged(); Calculate(); } }
 
+    public IReadOnlyList<string> PlywoodDeflectionLimitOptions => PlywoodSpacing.DeflectionLimitOptions;
+    public string PlywoodDeflectionLimit
+    {
+        get => _plywoodDeflectionLimit;
+        set { _plywoodDeflectionLimit=value; OnPropertyChanged(); Calculate(); }
+    }
     public IReadOnlyList<PlywoodProfile> PlywoodOptions => PlywoodCatalog.All;
     public PlywoodProfile SelectedPlywood
     {
@@ -176,6 +183,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         CheckNumber(SlabThickness, "Slab thickness"); CheckNumber(FloorHeight, "Floor height");
         CheckNumber(PropSpacing, "Prop spacing");
         if (SelectedPlywood==null || !PlywoodOptions.Contains(SelectedPlywood)) throw new ArgumentException("Select a plywood product and thickness.");
+        PlywoodSpacing.ParseDeflectionLimit(PlywoodDeflectionLimit);
         if (PropSpacing < 1) throw new ArgumentException("Prop spacing must be at least 1 mm.");
         CheckNumber(SecondaryBeamCantilever, "Secondary cantilever", false); CheckNumber(PrimaryBeamCantilever, "Primary cantilever", false);
         if (UseCustomLoads) { CheckNumber(CustomLiveLoad, "Live load", false); CheckNumber(CustomFormworkLoad, "Formwork load", false); }
@@ -195,7 +203,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         ClearResults();
         try { ValidateInputs();
             double pressure=UseCustomLoads ? 25*SlabThickness/1000+CustomLiveLoad+CustomFormworkLoad : SlabLoadHelper.CalculateTotalLoad(SlabThickness);
-            PlywoodResult=PlywoodSpacing.CalculateForSheet(SelectedPlywood,pressure,int.Parse(DeflectionLimit.Substring(2)));
+            PlywoodResult=PlywoodSpacing.CalculateForSheet(SelectedPlywood,pressure,PlywoodSpacing.ParseDeflectionLimit(PlywoodDeflectionLimit));
             CalculateValidInputs(); IsCalculationValid = SuggestedPrimaryBeamSpacing > 0 && string.IsNullOrEmpty(WarningMessage); }
         catch (ArgumentException ex) { ClearResults(); WarningMessage = ex.Message; }
         OnPropertyChanged(nameof(IsCalculationValid)); OnPropertyChanged(nameof(PropExtensionMm)); OnPropertyChanged(nameof(PropLookupExtensionMm)); OnPropertyChanged(nameof(PrimaryDeflectionMm));

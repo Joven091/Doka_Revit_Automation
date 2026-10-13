@@ -51,7 +51,7 @@ internal static class Program
    if(args.Contains("--drawing-ui")){D3WorkspaceUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));PresentationUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    window=new BeamCalculatorWindow();vm=new BeamCalculatorViewModel();window.DataContext=vm;Render();
    var secondaryText=(TextBlock)window.FindName("SecondarySpacingText");
-   Check(secondaryText.Text==vm.SecondarySpacingSummary && secondaryText.Text.Contains("435 mm"),"secondary result is bound to shared plywood model");
+   Check(secondaryText.Text=="407 mm" && !secondaryText.Text.Contains("chart"),"secondary result is bound to shared plywood model");
    var import=(Button)window.FindName("ImportButton");var results=(Border)window.FindName("ResultsBorder");var diagram=(BeamSupportDiagram)window.FindName("SupportDiagram");
    var picker=(Grid)window.FindName("SupportSystemPicker");var workspace=(Grid)window.FindName("CalculatorWorkspace");
    Check(picker.Visibility==Visibility.Visible && workspace.Visibility==Visibility.Collapsed,"fresh beam calculator starts with visual system choice");
@@ -80,6 +80,18 @@ internal static class Program
    vm.Width+=25;Pump();Check(window.TowerDiagrams==null && diagram.IsSelectionEnabled,"valid input edit closes stale response and leaves primaries clickable");
    var plywoodSelector=(ComboBox)window.FindName("PlywoodSelector");
    Check(plywoodSelector.Items.Count==3 && plywoodSelector.SelectedItem==PlywoodCatalog.Default,"plywood selector exposes supplied products with 18 mm default");
+   var plywoodLimit=(ComboBox)window.FindName("PlywoodDeflectionSelector");var towerPlywoodLimit=(ComboBox)window.FindName("TowerPlywoodDeflectionSelector");
+   Check(plywoodLimit.Items.Count==3 && Equals(plywoodLimit.SelectedItem,"L/350"),"compact independent plywood criterion default");
+   var originalH20=vm.DeflectionLimit;plywoodLimit.SelectedItem="L/500";Pump();
+   Check(vm.PlywoodCriterion=="L/500" && vm.MaximumSecondarySpacingMm==350 && vm.DeflectionLimit==originalH20 && Equals(towerPlywoodLimit.SelectedItem,"L/500"),"plywood limit updates both modes without changing H20");
+   var limitRecord=window.CaptureCalculation();plywoodLimit.SelectedItem="L/270";Pump();window.RestoreCalculation(limitRecord);Pump();
+   Check(vm.PlywoodDeflectionLimit=="L/500" && vm.DeflectionLimit==originalH20,"distinct beam limits survive save/load");
+   var badLimit=window.CaptureCalculation();badLimit.Inputs.Single(f=>f.Name=="PlywoodDeflectionLimit").Value="L/100";
+   bool badLimitRejected=false;try {window.RestoreCalculation(badLimit);}catch(ArgumentException){badLimitRejected=true;}
+   Check(badLimitRejected && vm.PlywoodDeflectionLimit=="L/500","invalid saved plywood criterion preserves retained model");
+   limitRecord.Inputs.RemoveAll(f=>f.Name=="PlywoodDeflectionLimit");window.RestoreCalculation(limitRecord);Pump();
+   Check(vm.PlywoodDeflectionLimit=="L/350","older beam record migrates its H20 ratio to plywood");
+   Check(!Find<TextBlock>(window).Any(t=>t.Text.Contains("Chart maximum") || t.Text.Contains("approximate chart reading")),"plywood chart prose removed from beam UI");
    plywoodSelector.SelectedItem=vm.PlywoodOptions.Single(p=>p.ThicknessMm==9);Pump();
    Check(!vm.IsCalculationValid && vm.MaximumSecondarySpacingMm==0,"9 mm cannot round an unsafe beam spacing up to 250 mm");
    vm.Depth=150;Pump();
@@ -235,7 +247,7 @@ internal static class Program
    bool criterionRejected=false;try {window.RestoreCalculation(invalidCriterion);}catch(ArgumentException){criterionRejected=true;}
    Check(criterionRejected&&vm.DeflectionLimit.Label=="L/350","invalid saved criterion leaves current calculation intact");
    vm.UseTowers=true;Pump();Check(vm.TowerResult==null && !vm.IsCalculationValid,"switching support modes invalidates old results");
-   Check(secondaryText.Text==vm.SecondarySpacingSummary,"D3 displays shared plywood result before optimization");
+   Check(secondaryText.Text==vm.MaximumSecondarySpacingMm.ToString("0",CultureInfo.CurrentCulture)+" mm","D3 displays compact shared plywood result before optimization");
    vm.Depth=900;vm.Width=800;vm.BeamLengthMm=10600;vm.MaximumConcreteEndOverhangMm=75;vm.TowerLegCapacityKn=70;vm.AllowCustomH20Lengths=true;vm.LeftSlabBayMm=2575;vm.LeftSlabThickness=300;vm.HasLeftSlab=true;vm.HasRightSlab=false;vm.TransferSlabLoads=true;Pump();
    Check(!Input("SlabStripWidthMm").IsEnabled && Input("LeftSlabBayMm").IsEnabled && !Input("RightSlabBayMm").IsEnabled,"transfer mode enables only applicable bay inputs");
    Optimize();Check(vm.IsCalculationValid && vm.TowerResult.Transfer!=null,"transferred load optimization through WPF: "+vm.WarningMessage+" · spacing "+vm.UpperSupportSpacingMm+" · end "+vm.MaximumConcreteEndOverhangMm);

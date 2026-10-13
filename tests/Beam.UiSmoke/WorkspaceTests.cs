@@ -132,6 +132,9 @@ internal static class WorkspaceTests
             var originalPlywood=model.SelectedPlywood;plywoodSelector.SelectedItem=model.PlywoodOptions.Single(p=>p.ThicknessMm==21);Pump();
             Check(model.SelectedPlywood.ThicknessMm==21 && !model.IsCalculationValid && workspace.Fields["UpperSupportSpacingMm"].IsReadOnly,"workspace plywood change recalculates locked spacing and invalidates layout");
             Click("Undo");Check(model.SelectedPlywood==originalPlywood,"undo restores plywood choice");Calculate();
+            var plywoodLimit=Controls<ComboBox>(workspace).Single(c=>c.Name=="WorkspacePlywoodDeflectionSelector");var originalPlywoodLimit=model.PlywoodDeflectionLimit;var originalH20=model.DeflectionLimit;
+            plywoodLimit.SelectedItem="L/500";Pump();Check(model.PlywoodDeflectionLimit=="L/500" && model.DeflectionLimit==originalH20 && !model.IsCalculationValid,"workspace plywood limit changes independently and invalidates stale layout");
+            Click("Undo");Check(model.PlywoodDeflectionLimit==originalPlywoodLimit && model.DeflectionLimit==originalH20,"workspace undo restores independent plywood criterion");Calculate();
             var originalResult=model.TowerResult;Click("Diagnose");var diagnosis=workspace.Diagnostics;
             Check(diagnosis!=null && diagnosis.IsVisible && diagnosis.ReportBox.IsReadOnly && diagnosis.ReportBox.Text.Contains("BEAM FORMWORK DIAGNOSTIC REPORT v1"),"diagnose opens copyable report window");
             Check(ReferenceEquals(model.TowerResult,originalResult),"opening diagnosis retains calculated result");

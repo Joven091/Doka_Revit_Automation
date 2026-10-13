@@ -80,6 +80,7 @@ namespace EngineeringDashboard
             if(!TryGetValidCalculation(out var vm)) throw new ArgumentException("Correct the inputs before saving or exporting.");
             var record=CalculationFiles.Capture("Slab",vm,FileInputs);
             record.Inputs.Add(CalculationFiles.Field("PlywoodProfileId",vm.PlywoodProfileId));
+            record.Inputs.Add(CalculationFiles.Field("PlywoodDeflectionLimit",vm.PlywoodDeflectionLimit));
             record.Inputs.Add(CalculationFiles.Field("SecondaryBeamSpacing",vm.SecondaryBeamSpacing));
             return record;
         }
@@ -87,10 +88,11 @@ namespace EngineeringDashboard
         {
             var candidate=new FlexCalculatorViewModel(); CalculationFiles.Apply(record,"Slab",candidate,FileInputs);
             candidate.PlywoodProfileId=record.Inputs.SingleOrDefault(f=>f.Name=="PlywoodProfileId")?.Value ?? PlywoodCatalog.Default.Id;
+            candidate.PlywoodDeflectionLimit=PlywoodSpacing.RestoreDeflectionLimit(record.Inputs.SingleOrDefault(f=>f.Name=="PlywoodDeflectionLimit")?.Value,candidate.DeflectionLimit);
             if(!candidate.IsCalculationValid) throw new ArgumentException("The loaded calculation is invalid: "+candidate.WarningMessage);
             var target=(FlexCalculatorViewModel)DataContext;
             CalculationFiles.Apply(record,"Slab",target,FileInputs);
-            target.SelectedPlywood=candidate.SelectedPlywood;
+            target.SelectedPlywood=candidate.SelectedPlywood; target.PlywoodDeflectionLimit=candidate.PlywoodDeflectionLimit;
             foreach(var box in TextInputs(this)) box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
             RefreshInputValidity();
         }

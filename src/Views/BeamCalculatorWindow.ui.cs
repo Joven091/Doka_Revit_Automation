@@ -207,6 +207,7 @@ namespace EngineeringDashboard
             record.Inputs.Add(CalculationFiles.Field("IgnoreUplift", vm.IgnoreUplift));
             record.Inputs.Add(CalculationFiles.Field("PropConfiguration", vm.SelectedProp?.CapacityKey ?? BeamPropOption.All[0].CapacityKey));
             record.Inputs.Add(CalculationFiles.Field("PlywoodProfileId", vm.PlywoodProfileId));
+            record.Inputs.Add(CalculationFiles.Field("PlywoodDeflectionLimit", vm.PlywoodDeflectionLimit));
             record.Inputs.Add(CalculationFiles.Field("DeflectionCriterion", vm.DeflectionLimit.Label));
             if (vm.DeflectionLimit.Denominator == 0) record.Inputs.Add(CalculationFiles.Field("DeflectionLimitMm", vm.DeflectionLimit.Millimetres));
             return record;
@@ -219,13 +220,14 @@ namespace EngineeringDashboard
             candidate.SelectedProp = BeamPropOption.All.SingleOrDefault(p=>p.CapacityKey==record.Inputs.SingleOrDefault(f=>f.Name=="PropConfiguration")?.Value);
             string limit = record.Inputs.SingleOrDefault(f=>f.Name=="DeflectionLimitMm")?.Value;
             candidate.DeflectionLimit = BeamCalculatorViewModel.RestoreDeflectionOption(record.Inputs.SingleOrDefault(f=>f.Name=="DeflectionCriterion")?.Value, limit);
+            candidate.PlywoodDeflectionLimit=PlywoodSpacing.RestoreDeflectionLimit(record.Inputs.SingleOrDefault(f=>f.Name=="PlywoodDeflectionLimit")?.Value, "L/"+(candidate.DeflectionLimit.Denominator==0 ? 500 : candidate.DeflectionLimit.Denominator));
             RestoreTowerFields(record, candidate);
             if(candidate.UseTowers) candidate.ValidateTowerInputs();
             else if(!candidate.IsCalculationValid) throw new ArgumentException("The loaded calculation is invalid: " + candidate.WarningMessage);
             // Validate a separate model first. Preserve the launcher's retained model instance.
             var target=(BeamCalculatorViewModel)DataContext;
             CalculationFiles.Apply(record,"Beam",target,FileInputs);
-            target.SelectedPlywood=candidate.SelectedPlywood; target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
+            target.SelectedPlywood=candidate.SelectedPlywood; target.PlywoodDeflectionLimit=candidate.PlywoodDeflectionLimit; target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
             target.TransferSlabLoads=candidate.TransferSlabLoads; target.LeftSlabBayMm=candidate.LeftSlabBayMm; target.RightSlabBayMm=candidate.RightSlabBayMm;
             target.UseBeamNetwork=candidate.UseBeamNetwork;if(candidate.NetworkBeams.Count>=2)target.NetworkConfigurationXml=candidate.NetworkConfigurationXml;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
