@@ -342,13 +342,17 @@ namespace EngineeringDashboard
         {
             if(input.HasIndividualSpacings)
             {
-                TowerOptimizationException failure=null;var attempted=new HashSet<string>();
-                for(int step=0;step<PlywoodSpacing.StandardSpacingsMm.Count;step++)
+                TowerOptimizationException failure;
+                try {return OptimizeCore(common,input,false);}
+                catch(TowerOptimizationException ex){failure=ex;}
+                var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
+                var attempted=new HashSet<string>();
+                for(int step=worker.CoordinateCrossingLayouts ? 0 : 1;step<PlywoodSpacing.StandardSpacingsMm.Count;step++)
                 {
                     var candidate=step==0 ? input : input.WithSpacings(step);
                     string key=string.Join(";",candidate.BeamSpacingsMm.Concat(candidate.SlabSpacingsMm).Concat(candidate.CrossingSpacingsMm));
                     if(!attempted.Add(key))continue;
-                    try {return OptimizeCore(common,candidate,false);}
+                    try {var result=OptimizeCore(worker,candidate,false);common.Diagnostics=worker.Diagnostics;return result;}
                     catch(TowerOptimizationException ex){failure=ex;}
                 }
                 throw failure;

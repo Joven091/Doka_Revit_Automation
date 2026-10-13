@@ -50,6 +50,19 @@ internal static class IndividualSpacingTests
             }
         }
     }
+    internal static void ShutterException()
+    {
+        var vm=new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true,BeamLengthMm=4500,TowerLegCapacityKn=70,MaximumConcreteEndOverhangMm=75,AllowCustomH20Lengths=true,IgnoreUplift=true,TransferSlabLoads=true,UseBeamNetwork=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,Exclude600Standalone=true,DeflectionLimit=BeamCalculatorViewModel.AvailableDeflectionOptions.Single(d=>d.Denominator==270)};
+        foreach(var b in vm.NetworkBeams){b.WidthMm=800;b.SetDepthKeepingTopMm(1750);}
+        vm.NetworkBays[0].WidthMm=2175;vm.NetworkBays[0].ThicknessMm=300;
+        vm.CrossingBeams.Add(new TransferCrossingBeamRow {BayNumber=1,PositionMm=2250,WidthMm=650,DepthMm=1150,SupportMode=CrossBeamSupportMode.DedicatedTowers});
+        Check(vm.CrossingBeams[0].MaximumSecondarySpacingMm>0,"directly added crossings calculate their own spacing immediately");vm.OptimizeTowersAsync().GetAwaiter().GetResult();
+        Check(vm.IsCalculationValid && vm.NetworkResult!=null,"independent spacing preserves receiving-layout coordination: "+vm.WarningMessage);
+        Check(vm.NetworkResult.CrossSupports.Single().HasReducedShutterClearance,"coordinated local shutter exception remains available");
+        foreach(var b in vm.NetworkResult.Beams)Members(b);
+        Check(vm.NetworkResult.CrossSupports.SelectMany(c=>c.Members).All(m=>m.Utilization<=1+1e-8),"crossing H20 capacities remain checked in the local exception");
+        Console.WriteLine($"Passed {checks} coordinated individual-spacing checks.");
+    }
     internal static void Run()
     {
         foreach(double first in PlywoodSpacing.StandardSpacingsMm)
@@ -112,6 +125,7 @@ internal static class IndividualSpacingTests
         }
         Near(mixed.SlabLoadKn,mixed.Input.Bays.Sum(b=>mixed.Input.AreaLoad(b.ThicknessMm)*b.WidthMm/1000)*6.9,"different slab loads are conserved individually in the network total");
         foreach(var b in mixed.Beams)Members(b);Loads(mixed);
+        ShutterException();
         Console.WriteLine($"Passed {checks} individual plywood spacing and H20 capacity checks.");
     }
 }

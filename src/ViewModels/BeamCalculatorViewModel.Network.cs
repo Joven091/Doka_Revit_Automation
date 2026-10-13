@@ -121,8 +121,20 @@ namespace EngineeringDashboard
             NetworkConfigurationXml=fresh.NetworkConfigurationXml;
             OnPropertyChanged(null);NotifyTower();
         }
-        private void SubscribeNetwork() {for(int i=0;i<NetworkBeams.Count;i++)NetworkBeams[i].Label="B"+(i+1);for(int i=0;i<NetworkBays.Count;i++)NetworkBays[i].Label=$"S{i+1}";foreach(var b in NetworkBeams)b.PropertyChanged+=NetworkChanged;foreach(var b in NetworkBays)b.PropertyChanged+=NetworkChanged;foreach(var c in CrossingBeams)c.PropertyChanged+=NetworkChanged;}
-        private void UnsubscribeNetwork() {foreach(var b in NetworkBeams)b.PropertyChanged-=NetworkChanged;foreach(var b in NetworkBays)b.PropertyChanged-=NetworkChanged;foreach(var c in CrossingBeams)c.PropertyChanged-=NetworkChanged;}
+        private readonly System.Collections.Generic.HashSet<INotifyPropertyChanged> observedNetworkRows=new System.Collections.Generic.HashSet<INotifyPropertyChanged>();
+        private void SubscribeNetwork()
+        {
+            for(int i=0;i<NetworkBeams.Count;i++)NetworkBeams[i].Label="B"+(i+1);
+            for(int i=0;i<NetworkBays.Count;i++)NetworkBays[i].Label=$"S{i+1}";
+            var current=NetworkBeams.Cast<INotifyPropertyChanged>().Concat(NetworkBays).Concat(CrossingBeams).ToArray();
+            foreach(var row in observedNetworkRows.Where(r=>!current.Contains(r)).ToArray())
+            {row.PropertyChanged-=NetworkChanged;observedNetworkRows.Remove(row);}
+            foreach(var row in current)if(observedNetworkRows.Add(row))row.PropertyChanged+=NetworkChanged;
+        }
+        private void UnsubscribeNetwork()
+        {foreach(var row in observedNetworkRows)row.PropertyChanged-=NetworkChanged;observedNetworkRows.Clear();}
+        private void NetworkCollectionChanged()
+        {SubscribeNetwork();Changed(nameof(NetworkConfigurationXml));NotifyNetwork();}
         private void NetworkChanged(object sender,PropertyChangedEventArgs e) {if(e.PropertyName==nameof(TransferBeamRow.MaximumSecondarySpacingMm))return;Changed(nameof(NetworkConfigurationXml));NotifyNetwork();}
         private void InitializeNetwork()
         {
@@ -138,7 +150,7 @@ namespace EngineeringDashboard
             if(NetworkBeams.Count==0)InitializeNetwork();if(!CanAddNetworkBay)return;
             var beam=new TransferBeamRow {Label="B"+(NetworkBeams.Count+1),DepthMm=NetworkBeams.Last().DepthMm,WidthMm=NetworkBeams.Last().WidthMm,BottomElevationMm=NetworkBeams.Last().BottomElevationMm};
             var bay=new TransferBayRow {Label="S"+(NetworkBays.Count+1),WidthMm=NetworkBays.Last().WidthMm,ThicknessMm=NetworkBays.Last().ThicknessMm};
-            NetworkBeams.Add(beam);NetworkBays.Add(bay);beam.PropertyChanged+=NetworkChanged;bay.PropertyChanged+=NetworkChanged;Changed();NotifyNetwork();
+            NetworkBeams.Add(beam);NetworkBays.Add(bay);Changed();NotifyNetwork();
         }
         public void RemoveNetworkBay()
         {
@@ -170,7 +182,7 @@ namespace EngineeringDashboard
             if(NetworkBeams.Count==1 || CrossingBeams.Count>=30)return;
             UseBeamNetwork=true;
             var c=new TransferCrossingBeamRow {PositionMm=BeamLengthMm/2,DepthMm=Math.Max(600,NetworkBays[0].ThicknessMm)};
-            CrossingBeams.Add(c);c.PropertyChanged+=NetworkChanged;Changed();NotifyNetwork();
+            CrossingBeams.Add(c);Changed();NotifyNetwork();
         }
         public void RemoveCrossingBeam(TransferCrossingBeamRow c)
         {
