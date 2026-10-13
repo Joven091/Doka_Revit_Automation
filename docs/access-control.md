@@ -230,7 +230,7 @@ and email confirmation was verified in the database at 04:19 UTC on 13 October
 2026. The user reported SIGN-IN VERIFIED from the local test. The matching
 owner account was then approved with no expiry. The user then reported ACCESS APPROVED from the live authorization check
 using the same session. Email delivery, OTP verification, and owner approval
-are confirmed; live revocation and Windows/Revit verification remain pending. Receiving a code alone does not approve access.
+are confirmed; live revocation and interactive Revit verification remain pending. Receiving a code alone does not approve access.
 
 Use the standalone `scripts/test-email-access.ps1 -Email your-address@example.com`
 on Windows to enter the code
@@ -261,7 +261,8 @@ dotnet build tests/Access.Tests/Access.Tests.csproj -c Release
 & tests/Access.Tests/bin/Release/net48/Access.Tests.exe
 ```
 
-These client checks and builds have not run in the current Linux environment.
+Windows CI passed the 21 backend tests, DPAPI client harness, and Release add-in build
+on 13 October 2026 ([run 38349258102](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/38349258102)).
 The same checks can be run together from the repository root on Windows:
 
 ```powershell
@@ -271,8 +272,8 @@ The same checks can be run together from the repository root on Windows:
 ```
 
 The migration and Edge Function are deployed, database permissions and security
-advisors checked, and public settings filled. Configure SMTP and both code email
-templates, then perform the live checks below. SMTP credentials must be configured only in
+advisors checked, and public settings filled. SMTP and both code email templates
+are configured; complete the remaining live checks below. SMTP credentials must be configured only in
 Supabase, through a provider account you control.
 
 After deployment and desktop integration, verify signup and returning-user code
@@ -287,5 +288,7 @@ require the configured Supabase project, email provider, and Revit on Windows.
 
 The access changes are prepared on current main at `d62b5f9`. The four standalone
 commands removed upstream remain removed. The current installer paths and WPF
-resource URI fix are preserved. The planned delivery branch is `codex/supabase-email-access`. GitHub upload
-awaits explicit user approval; it has not been created yet.
+resource URI fix are preserved. The delivery branch is `codex/supabase-email-access`, published in
+[PR #136](https://github.com/Joven091/Doka_Revit_Automation/pull/136).
+Fetch that branch to get complete files. Windows CI runs the access validation
+script automatically; interactive Revit checks remain required before release.
