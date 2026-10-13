@@ -123,7 +123,7 @@ namespace EngineeringDashboard
         }
         private void SubscribeNetwork() {for(int i=0;i<NetworkBeams.Count;i++)NetworkBeams[i].Label="B"+(i+1);for(int i=0;i<NetworkBays.Count;i++)NetworkBays[i].Label=$"S{i+1}";foreach(var b in NetworkBeams)b.PropertyChanged+=NetworkChanged;foreach(var b in NetworkBays)b.PropertyChanged+=NetworkChanged;foreach(var c in CrossingBeams)c.PropertyChanged+=NetworkChanged;}
         private void UnsubscribeNetwork() {foreach(var b in NetworkBeams)b.PropertyChanged-=NetworkChanged;foreach(var b in NetworkBays)b.PropertyChanged-=NetworkChanged;foreach(var c in CrossingBeams)c.PropertyChanged-=NetworkChanged;}
-        private void NetworkChanged(object sender,PropertyChangedEventArgs e) {Changed(nameof(NetworkConfigurationXml));NotifyNetwork();}
+        private void NetworkChanged(object sender,PropertyChangedEventArgs e) {if(e.PropertyName==nameof(TransferBeamRow.MaximumSecondarySpacingMm))return;Changed(nameof(NetworkConfigurationXml));NotifyNetwork();}
         private void InitializeNetwork()
         {
             UnsubscribeNetwork();NetworkBeams.Clear();NetworkBays.Clear();CrossingBeams.Clear();NetworkBeams.Add(new TransferBeamRow {DepthMm=Depth,WidthMm=Width});
@@ -178,7 +178,7 @@ namespace EngineeringDashboard
         }
         private TransferNetworkInput CreateNetworkInput()
         {
-            return new TransferNetworkInput {PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm,Beams=NetworkBeams.Select(b=>new TransferBeamRow {WidthMm=b.WidthMm,DepthMm=b.DepthMm,BottomElevationMm=b.BottomElevationMm}).ToArray(),Bays=NetworkBays.Select(b=>new TransferBayRow {WidthMm=b.WidthMm,ThicknessMm=b.ThicknessMm}).ToArray(),CrossingBeams=CrossingBeams.Select(c=>new TransferCrossingBeamRow {BayNumber=c.BayNumber,PositionMm=c.PositionMm,WidthMm=c.WidthMm,DepthMm=c.DepthMm,BottomElevationMm=c.BottomElevationMm,SupportMode=c.SupportMode}).ToArray(),UpperSpacingMm=UpperSupportSpacingMm,CustomLoads=UseCustomLoads,LiveKnM2=CustomLiveLoad,FormworkKnM2=CustomFormworkLoad};
+            return new TransferNetworkInput {PlywoodProfileId=PlywoodProfileId,PlywoodDeflectionDenominator=PlywoodSpacing.ParseDeflectionLimit(PlywoodDeflectionLimit),BeamSpacingsMm=NetworkBeams.Select(b=>b.MaximumSecondarySpacingMm).ToArray(),SlabSpacingsMm=NetworkBays.Select(b=>b.MaximumSecondarySpacingMm).ToArray(),CrossingSpacingsMm=CrossingBeams.Select(b=>b.MaximumSecondarySpacingMm).ToArray(),PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm,Beams=NetworkBeams.Select(b=>new TransferBeamRow {WidthMm=b.WidthMm,DepthMm=b.DepthMm,BottomElevationMm=b.BottomElevationMm}).ToArray(),Bays=NetworkBays.Select(b=>new TransferBayRow {WidthMm=b.WidthMm,ThicknessMm=b.ThicknessMm}).ToArray(),CrossingBeams=CrossingBeams.Select(c=>new TransferCrossingBeamRow {BayNumber=c.BayNumber,PositionMm=c.PositionMm,WidthMm=c.WidthMm,DepthMm=c.DepthMm,BottomElevationMm=c.BottomElevationMm,SupportMode=c.SupportMode}).ToArray(),UpperSpacingMm=UpperSupportSpacingMm,CustomLoads=UseCustomLoads,LiveKnM2=CustomLiveLoad,FormworkKnM2=CustomFormworkLoad};
         }
         internal void SelectNetworkBeam(int beam)
         {

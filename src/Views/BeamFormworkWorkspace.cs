@@ -439,10 +439,10 @@ namespace EngineeringDashboard
             box.TextChanged+=(s,e)=> {if(changing)return;editor.Dirty=true;ValidateEditor(editor);Model.SetAdditionalTextInputErrors(this,true);Refresh();};
             box.LostKeyboardFocus+=(s,e)=>CommitFields();box.KeyDown+=(s,e)=> {if(e.Key==Key.Enter){CommitFields();e.Handled=true;}};
         }
-        private void CalculatedNumber(string name,string label)
+        private void CalculatedNumber(string name,string label,object source=null)
         {
             Text(label);var box=new TextBox {Name="Edit"+name,IsReadOnly=true,IsEnabled=false,Background=Brushes.LightGray,Padding=new Thickness(7),Margin=new Thickness(0,0,0,8),ToolTip="Calculated from the selected plywood chart."};
-            box.SetBinding(TextBox.TextProperty,new System.Windows.Data.Binding(name) {Source=Model,Mode=System.Windows.Data.BindingMode.OneWay,StringFormat="0.###"});
+            box.SetBinding(TextBox.TextProperty,new System.Windows.Data.Binding(name) {Source=source??Model,Mode=System.Windows.Data.BindingMode.OneWay,StringFormat="0.###"});
             Fields[name]=box;properties.Children.Add(box);
         }
         private bool ValidateEditor(NumberEditor editor)
@@ -485,8 +485,9 @@ namespace EngineeringDashboard
                 {var c=Model.CrossingBeams[index];Text("X"+(index+1)+" · crossing beam",true);Number("PositionMm","Position along beam (mm)",()=>c.PositionMm,v=>c.PositionMm=v,0);Number("WidthMm","Width (mm)",()=>c.WidthMm,v=>c.WidthMm=v);Number("DepthMm","Total depth (mm)",()=>c.DepthMm,c.SetDepthKeepingTopMm);Number("BottomElevationMm","Bottom / soffit elevation (mm)",()=>c.BottomElevationMm,v=>c.BottomElevationMm=v,-1000000);ConcreteTop(()=>c.BottomElevationMm,()=>c.DepthMm);Text("Cross-beam supports");var mode=new ComboBox {ItemsSource=c.SupportModes,DisplayMemberPath="Label",SelectedValuePath="Value",SelectedValue=c.SupportMode,Margin=new Thickness(0,0,0,12)};mode.SelectionChanged+=(sender,args)=> {if(changing || !(mode.SelectedValue is CrossBeamSupportMode value))return;if(CommitFields())Mutate(()=>c.SupportMode=value);else Refresh();};syncControls.Add(()=>mode.SelectedValue=c.SupportMode);properties.Children.Add(mode);Text(CrossBeamSupportResult.Limitations);Text("Slab bay");var bay=new ComboBox {ItemsSource=Model.NetworkBays.Select(s=>s.Label).ToArray(),SelectedIndex=c.BayNumber-1,Margin=new Thickness(0,0,0,12)};bay.SelectionChanged+=(s,e)=> {if(changing || bay.SelectedIndex<0)return;int choice=bay.SelectedIndex;if(CommitFields())Mutate(()=>c.BayNumber=choice+1);else Refresh();};syncControls.Add(()=>bay.SelectedIndex=c.BayNumber-1);properties.Children.Add(bay);}
                 if(Drawing.SelectedObjects.Length>1)Text(Drawing.SelectedObjects.Length+" objects selected. Shift-click toggles selection; Delete removes the selected areas.");
                 if(!Drawing.Formwork && !sectionMode)Text("Geometry commands: MV move · CO copy · CS create similar. Pick a beam, then type the two-letter command.");
+                if(Drawing.SelectedObjects.Length==1)CalculatedNumber(nameof(TransferBeamRow.MaximumSecondarySpacingMm),"Spacing limit (mm)",SelectedObject());
                 int selectionControls=properties.Children.Count;var objectFields=new HashSet<string>(Fields.Keys);
-                Text("Applies to every beam and slab bay.");Number("BeamLengthMm","Beam length (mm)",()=>Model.BeamLengthMm,v=>Model.BeamLengthMm=v);CalculatedNumber("UpperSupportSpacingMm","Maximum secondary spacing (mm) · calculated");Number("TowerLegCapacityKn","Permissible leg load (kN)",()=>Model.TowerLegCapacityKn,v=>Model.TowerLegCapacityKn=v);
+                Text("Applies to every beam and slab bay.");Number("BeamLengthMm","Beam length (mm)",()=>Model.BeamLengthMm,v=>Model.BeamLengthMm=v);CalculatedNumber("UpperSupportSpacingMm",Model.IsNetworkMode ? "Minimum beam spacing limit (mm)" : "Beam spacing limit (mm)");Number("TowerLegCapacityKn","Permissible leg load (kN)",()=>Model.TowerLegCapacityKn,v=>Model.TowerLegCapacityKn=v);
                 Text("Plywood");var plywood=new ComboBox {Name="WorkspacePlywoodSelector",ItemsSource=Model.PlywoodOptions,SelectedItem=Model.SelectedPlywood,DisplayMemberPath="Label",Margin=new Thickness(0,0,0,12)};
                 plywood.SelectionChanged+=(s,e)=> {if(changing || !(plywood.SelectedItem is PlywoodProfile option))return;if(CommitFields())Mutate(()=>Model.SelectedPlywood=option);else Refresh();};syncControls.Add(()=>plywood.SelectedItem=Model.SelectedPlywood);properties.Children.Add(plywood);
                 Text("Plywood limit");var plywoodLimit=new ComboBox {Name="WorkspacePlywoodDeflectionSelector",ItemsSource=Model.PlywoodDeflectionLimitOptions,SelectedItem=Model.PlywoodDeflectionLimit,Margin=new Thickness(0,0,0,12)};
@@ -603,7 +604,7 @@ namespace EngineeringDashboard
             {
                 var bay=network.Bays[index];int rows=network.SlabRowCount(index);
                 if(bay==null) {selectedSummary.Text=$"Selected slab · S{index+1}\nSeparate slab formwork required.\nDesign and quantities are not calculated here.\nNo slab load transfers to B{index+1} or B{index+2}.";return;}
-                string spacing=network.SecondarySpacingNotice.Length==0 ? $"Maximum row spacing {network.Input.UpperSpacingMm:0.###} mm." : network.SecondarySpacingNotice;
+                string spacing=network.Input.HasIndividualSpacings ? $"Slab spacing {network.Input.BaySpacing(index):0} mm · limit {Model.NetworkBays[index].MaximumSecondarySpacingMm:0} mm." : network.SecondarySpacingNotice.Length==0 ? $"Maximum row spacing {network.Input.UpperSpacingMm:0.###} mm." : network.SecondarySpacingNotice;
                 selectedSummary.Text=$"Selected slab · S{index+1}\n{rows} slab H20s × {bay.StockLengthMm:0.###} mm{(bay.IsCustomLength ? " custom" : " stock")}\nEqual foot setback {bay.NearFootMm:0.###} mm from both concrete faces; repeat every row.\n{spacing}\n{2*rows} upper feet · carried by B{index+1} and B{index+2}\nActual member and leg reactions are checked separately for each loading stage.";
             }
             else if(Drawing.SelectedKind==FormworkObject.Crossing && index<Model.CrossingBeams.Count)

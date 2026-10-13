@@ -280,6 +280,11 @@ internal static class Program
    vm.NetworkBeams[1].DepthMm=1200;vm.NetworkBeams[2].DepthMm=1500;vm.NetworkBeams[2].WidthMm=900;vm.NetworkBays[1].WidthMm=3500;vm.NetworkBays[1].ThicknessMm=250;Render();
    var depthInput=VisualInputs((DependencyObject)window.Content).Single(t=>t.DataContext==vm.NetworkBeams[1] && t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path=="DepthMm");
    Check(depthInput.Text=="1200","each beam depth is editable in the UI");
+   var beamSpacingInput=VisualInputs((DependencyObject)window.Content).Single(t=>t.DataContext==vm.NetworkBeams[1] && t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path=="MaximumSecondarySpacingMm");
+   var slabSpacingInput=VisualInputs((DependencyObject)window.Content).Single(t=>t.DataContext==vm.NetworkBays[0] && t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path=="MaximumSecondarySpacingMm");
+   Check(beamSpacingInput.IsReadOnly && !beamSpacingInput.IsEnabled && slabSpacingInput.IsReadOnly && !slabSpacingInput.IsEnabled,"individual beam and slab spacing fields are locked and greyed out");
+   Check(beamSpacingInput.Text==vm.NetworkBeams[1].MaximumSecondarySpacingMm.ToString(CultureInfo.CurrentCulture) && slabSpacingInput.Text==vm.NetworkBays[0].MaximumSecondarySpacingMm.ToString(CultureInfo.CurrentCulture),"dimension rows display their own calculated plywood limits");
+   Check(vm.BuildDiagnosticReport().Contains(vm.NetworkBays[0].Label+": slab"),"diagnostics identify each slab's own limit");
    var widthInput=VisualInputs((DependencyObject)window.Content).Single(t=>t.DataContext==vm.NetworkBeams[2] && t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path=="WidthMm");
    widthInput.Text="950";widthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(vm.NetworkBeams[2].WidthMm==950 && !vm.IsCalculationValid,"each beam width is editable and invalidates the result");
    widthInput.Text="oops";widthInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();Check(!vm.CanOptimizeTowers,"invalid individual beam width blocks optimization");

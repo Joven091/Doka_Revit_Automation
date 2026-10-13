@@ -49,7 +49,7 @@ namespace EngineeringDashboard
                 text.AppendLine(beamSearchTrace.Snapshot());
                 text.AppendLine("\nEXACT INPUTS CAPTURED AT SEARCH START\n"+beamSearchTrace.Inputs);
             }
-            text.AppendLine("\nPLYWOOD SECONDARY SPACING\n"+SecondarySpacingSummary);
+            text.AppendLine("\nPLYWOOD SECONDARY SPACING\n"+SecondarySpacingSummary+"\n"+ElementPlywoodSpacingSummary);
             if(IsCalculationValid)text.AppendLine("\nCURRENT RESULT\n"+(NetworkResult?.Summary??TowerResult?.Summary??("Prop spacing mm: "+MaximumPropSpacing.ToString("R",CultureInfo.InvariantCulture))));
             if(IsCalculationValid && NetworkResult!=null)text.AppendLine("\nSELECTED NETWORK LAYOUT\n"+NetworkResult.LayoutDiagnostics);
             if(!string.IsNullOrEmpty(TowerFailureDetails))text.AppendLine("\nCURRENT FAILURE DETAILS\n"+TowerFailureDetails);

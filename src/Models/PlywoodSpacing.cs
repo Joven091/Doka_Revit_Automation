@@ -151,6 +151,60 @@ namespace EngineeringDashboard
             return rows.ToArray();
         }
 
+        // Every sheet joint stays fixed. Adjacent slab bays share a receiving beam;
+        // align nearby rows or shorten an interval to keep 80 mm H20 flanges clear.
+        internal static double[] CompatibleSheetRows(double start, double end, double maximum, double[] adjacent)
+        {
+            if (adjacent==null || adjacent.Length==0) return SheetSupportRows(start,end,maximum);
+            var nominal=SheetSupportRows(start,end,maximum);
+            if(nominal.All(x=>adjacent.All(a=>Math.Abs(x-a)<1e-7 || Math.Abs(x-a)>=80-1e-7)))return nominal;
+            var anchors=SheetSupportRows(start,end,50000);
+            var rows=new List<double> {anchors[0]};
+            Func<double,bool> clear=x=>adjacent.All(a=>Math.Abs(x-a)<1e-7 || Math.Abs(x-a)>=80-1e-7);
+            if (!anchors.All(clear)) throw new ArgumentException("Sheet-joint supports cannot overlap adjacent H20 rows.");
+            for(int i=1;i<anchors.Length;i++)
+            {
+                double last=anchors[i];
+                while(last-rows.Last()>maximum+1e-7)
+                {
+                    double previous=rows.Last(),target=Math.Min(previous+maximum,last-80);
+                    var choices=new[] {target}.Concat(adjacent.SelectMany(a=>new[] {a,a-80,a+80}))
+                        .Where(x=>x>=previous+80-1e-7 && x<=target+1e-7 && clear(x)).OrderByDescending(x=>x).ToArray();
+                    if(choices.Length==0) throw new ArgumentException("No non-overlapping H20 row satisfies this plywood spacing.");
+                    rows.Add(choices[0]);
+                }
+                rows.Add(last);
+            }
+            return rows.ToArray();
+        }
+        internal static double[] FillRequiredRows(double start,double end,double maximum,double[] required)
+        {
+            var anchors=SheetSupportRows(start,end,50000).ToList();
+            // Mandatory slab feet can replace nearby primary-stock end rows, but never sheet joints.
+            foreach(double x in required)
+            {
+                foreach(double a in anchors.Where(a=>Math.Abs(a-x)>1e-7 && Math.Abs(a-x)<80-1e-7).ToArray())
+                {
+                    if(Math.Abs(a/SheetLengthMm-Math.Round(a/SheetLengthMm))<1e-7)
+                        throw new ArgumentException("A slab support clashes with a mandatory beam sheet joint.");
+                    anchors.Remove(a);
+                }
+                anchors.Add(x);
+            }
+            var sorted=anchors.Distinct().OrderBy(x=>x).ToArray();
+            if(sorted.Any(x=>x<=start || x>=end) || sorted.Zip(sorted.Skip(1),(a,b)=>b-a).Any(g=>g<80-1e-7))
+                throw new ArgumentException("H20 support rows overlap or lie outside primary coverage.");
+            var result=new List<double> {sorted[0]};
+            for(int i=1;i<sorted.Length;i++)
+            {
+                while(sorted[i]-result.Last()>maximum+1e-7)result.Add(Math.Min(result.Last()+maximum,sorted[i]-80));
+                result.Add(sorted[i]);
+            }
+            return result.ToArray();
+        }
+        internal static double[] RowTributaries(double start,double end,double[] rows)
+            =>rows.Select((x,i)=>(i==rows.Length-1 ? end : (x+rows[i+1])/2)-(i==0 ? start : (rows[i-1]+x)/2)).ToArray();
+
         public static PlywoodSpacingResult Calculate(double pressureKnM2, int denominator)
             => Calculate(PlywoodCatalog.Default, pressureKnM2, denominator);
 

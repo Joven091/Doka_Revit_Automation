@@ -101,10 +101,10 @@ namespace EngineeringDashboard
                 {
                     double lo=Math.Max(a,c.PositionMm-c.WidthMm/2),hi=Math.Min(b,c.PositionMm+c.WidthMm/2);
                     if(hi<=lo)continue;
-                    if(lo>segment && Math.Max(Math.Abs(segment-rows[active[k]]),Math.Abs(lo-rows[active[k]]))>n.UpperSpacingMm+1e-7)return null;
+                    if(lo>segment && Math.Max(Math.Abs(segment-rows[active[k]]),Math.Abs(lo-rows[active[k]]))>n.BaySpacing(bay)+1e-7)return null;
                     widths[active[k]]-=hi-lo;segment=Math.Max(segment,hi);
                 }
-                if(b>segment && Math.Max(Math.Abs(segment-rows[active[k]]),Math.Abs(b-rows[active[k]]))>n.UpperSpacingMm+1e-7)return null;
+                if(b>segment && Math.Max(Math.Abs(segment-rows[active[k]]),Math.Abs(b-rows[active[k]]))>n.BaySpacing(bay)+1e-7)return null;
             }
             return widths;
         }
@@ -201,8 +201,13 @@ namespace EngineeringDashboard
             double lf,rf;
             if(!ValidFillerGap(c.BottomElevationMm,r.Input.Beams[bay].BottomElevationMm,out lf) || !ValidFillerGap(c.BottomElevationMm,r.Input.Beams[bay+1].BottomElevationMm,out rf))
             {failure=$"X{index+1}: cross H20 underside {c.BottomElevationMm-200:0.###} mm is below a receiving secondary top (negative filler gap).";return null;}
-            var rows=Enumerable.Range(0,left.RowsMm.Length).Where(i=>Math.Abs(left.RowsMm[i]-c.PositionMm)<=c.WidthMm/2-40+1e-7).ToArray();
+            var rows=Enumerable.Range(0,left.RowsMm.Length).Where(i=>Math.Abs(left.RowsMm[i]-c.PositionMm)<=c.WidthMm/2-40+1e-7 && right.RowsMm.Any(x=>Math.Abs(x-left.RowsMm[i])<1e-7)).ToArray();
             if(rows.Length==0) {failure=$"X{index+1}: no receiving secondary within the cross-beam width including the 80 mm H20 flange.";return null;}
+            double maximum=r.Input.CrossSpacing(index);
+            if(left.RowsMm[rows[0]]-(c.PositionMm-c.WidthMm/2)>maximum+1e-7
+                || c.PositionMm+c.WidthMm/2-left.RowsMm[rows.Last()]>maximum+1e-7
+                || rows.Select(i=>left.RowsMm[i]).Zip(rows.Skip(1).Select(i=>left.RowsMm[i]),(a,b)=>b-a).Any(g=>g>maximum+1e-7))
+            {failure=$"X{index+1}: aligned receiving rows exceed this crossing's plywood spacing limit.";return null;}
             double near=left.LowerStockStartMm+left.LowerStockLengthMm-r.Input.Beams[bay].WidthMm/2-BearingInsetMm;
             double far=-right.LowerStockStartMm-r.Input.Beams[bay+1].WidthMm/2-BearingInsetMm;
             near=Math.Min(r.Beams[bay].TransverseOffsetMm+r.Beams[bay].WidthMm/2-r.Input.Beams[bay].WidthMm/2,Math.Min(350,Math.Min(near,span/2-150)));far=Math.Min(r.Beams[bay+1].WidthMm/2-r.Beams[bay+1].TransverseOffsetMm-r.Input.Beams[bay+1].WidthMm/2,Math.Min(350,Math.Min(far,span/2-150)));
@@ -229,7 +234,7 @@ namespace EngineeringDashboard
                     for(int side=0;side<2;side++)
                     {
                         int beam=bay+side;double y=face+(side==0 ? near : span-far);
-                        var bearing=new CrossBeamBearing {Beam=beam,Row=rows[k],Xmm=x,Ymm=y,ReceivingTopMm=r.Input.Beams[beam].BottomElevationMm,H20UndersideMm=c.BottomElevationMm-200,ReactionKn=m.Analysis.Reactions[side],FootprintStartMm=lo,FootprintEndMm=hi};bearings.Add(bearing);
+                        var bearing=new CrossBeamBearing {Beam=beam,Row=side==0 ? rows[k] : Array.FindIndex(right.RowsMm,v=>Math.Abs(v-x)<1e-7),Xmm=x,Ymm=y,ReceivingTopMm=r.Input.Beams[beam].BottomElevationMm,H20UndersideMm=c.BottomElevationMm-200,ReactionKn=m.Analysis.Reactions[side],FootprintStartMm=lo,FootprintEndMm=hi};bearings.Add(bearing);
                         if(bearing.FillerHeightMm>1e-7)solids.Add(new FormworkSolid {Name=$"X{index+1} filler B{beam+1}/T{rows[k]+1}",X0=x-40,X1=x+40,Y0=y-40,Y1=y+40,Z0=bearing.ReceivingTopMm,Z1=bearing.H20UndersideMm});
                     }
                 }
@@ -241,7 +246,7 @@ namespace EngineeringDashboard
         {
             allowance=allowance??CrossShutterAllowance.Standard;failure=null;
             var obstacleArray=obstacles.ToArray();
-            foreach(double spacing in r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(s=>s<=r.Input.UpperSpacingMm) : new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,250,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7))
+            foreach(double spacing in r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(s=>s<=r.Input.CrossSpacing(index)) : new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,250,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7))
             {
                 var result=DedicatedCandidate(common,r,index,spacing,out string reason,allowance:allowance);
                 if(result!=null)reason=Clash(result.Solids,obstacleArray);
@@ -469,7 +474,7 @@ namespace EngineeringDashboard
                 var effective=EndZoneWidths(lo,hi,rows.Select(row=>t.RowsMm[row]).ToArray());
                 for(int k=0;k<rows.Length;k++)
                 {
-                    if(k==0 && t.RowsMm[rows[k]]-lo>r.Input.UpperSpacingMm+1e-7 || k==rows.Length-1 && hi-t.RowsMm[rows[k]]>r.Input.UpperSpacingMm+1e-7 || k>0 && t.RowsMm[rows[k]]-t.RowsMm[rows[k-1]]>r.Input.UpperSpacingMm+1e-7) {failure=$"X{index+1}: an end-zone sheathing strip exceeds the entered secondary spacing.";return null;}
+                    if(k==0 && t.RowsMm[rows[k]]-lo>r.Input.CrossSpacing(index)+1e-7 || k==rows.Length-1 && hi-t.RowsMm[rows[k]]>r.Input.CrossSpacing(index)+1e-7 || k>0 && t.RowsMm[rows[k]]-t.RowsMm[rows[k-1]]>r.Input.CrossSpacing(index)+1e-7) {failure=$"X{index+1}: an end-zone sheathing strip exceeds the entered secondary spacing.";return null;}
                     double a=side==0 ? face : face+span-trim,z=a+trim;
                     double bearing=(a+z)/2,local=bearing-r.BeamCentresMm[beam];
                     if(shutter && (local<t.LowerStockStartMm+40-1e-7 || local>t.LowerStockStartMm+t.LowerStockLengthMm-40+1e-7)) {failure=$"X{index+1}: the side-shutter bearing lies outside B{beam+1}'s receiving H20 stock.";return null;}
@@ -480,7 +485,7 @@ namespace EngineeringDashboard
             var shutters=zones.Where(z=>z.IsShutterEndZone).GroupBy(z=>z.Beam).Select(g=>g.First()).Select(z=>new FormworkSolid {Name=$"X{index+1} side shutter on B{z.Beam+1}",IsSideShutter=true,X0=z.FootprintStartMm,X1=z.FootprintEndMm,Y0=z.EndZoneStartMm,Y1=z.EndZoneEndMm,Z0=z.ReceivingTopMm,Z1=z.H20UndersideMm}).ToArray();
             if(Clash(shutters,obstacles)!=null){failure=$"X{index+1}: side-shutter assembly clashes with existing formwork.";return null;}
             obstacles=obstacles.Concat(shutters).ToArray();
-            var spacings=(r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(s=>s<=r.Input.UpperSpacingMm) : new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7)).ToArray();
+            var spacings=(r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(s=>s<=r.Input.CrossSpacing(index)) : new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7)).ToArray();
             var widths=new[] {1000.0,1500,2000,1524,600};
             var offsets=new[] {0.0,25,-25,50,-50,75,-75,100,-100,125,-125,150,-150};
             foreach(double spacing in spacings)
@@ -767,7 +772,7 @@ namespace EngineeringDashboard
                     }
                     names.Add(name);cases.Add(primary);lowerCases.Add(lower);
                 }
-                l.Transfer=new TransferredSlabResult {RowsMm=t.RowsMm,SlabRowIndices=t.SlabRowIndices,TributaryWidthsMm=t.TributaryWidthsMm,LeftUpperScales=t.LeftUpperScales,RightUpperScales=t.RightUpperScales,EnteredUpperSpacingMm=t.EnteredUpperSpacingMm,CrossFormwork=t.CrossFormwork,BeamLoadKn=t.BeamLoadKn,LowerStockStartMm=t.LowerStockStartMm,LowerStockLengthMm=t.LowerStockLengthMm,LeftFootMm=t.LeftFootMm,RightFootMm=t.RightFootMm,LeftUpperStockMm=t.LeftUpperStockMm,RightUpperStockMm=t.RightUpperStockMm,LeftUpperEdgeMm=t.LeftUpperEdgeMm,RightUpperEdgeMm=t.RightUpperEdgeMm,LeftUpperCustom=t.LeftUpperCustom,RightUpperCustom=t.RightUpperCustom,LowerCustom=t.LowerCustom,LeftFootReactionKn=t.LeftFootReactionKn,RightFootReactionKn=t.RightFootReactionKn,SlabMovementMm=t.SlabMovementMm,CoveredSlabAreaM2=t.CoveredSlabAreaM2,SlabLoadKn=t.SlabLoadKn,ShutterLoadKn=t.ShutterLoadKn,PrimaryCases=cases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=t.UpperMembers,CaseNames=names.ToArray()};
+                l.Transfer=new TransferredSlabResult {RowsMm=t.RowsMm,SlabRowIndices=t.SlabRowIndices,TributaryWidthsMm=t.TributaryWidthsMm,LeftUpperScales=t.LeftUpperScales,RightUpperScales=t.RightUpperScales,EnteredUpperSpacingMm=t.EnteredUpperSpacingMm,LeftSlabSpacingMm=t.LeftSlabSpacingMm,RightSlabSpacingMm=t.RightSlabSpacingMm,HasIndividualSpacings=t.HasIndividualSpacings,CrossFormwork=t.CrossFormwork,BeamLoadKn=t.BeamLoadKn,LowerStockStartMm=t.LowerStockStartMm,LowerStockLengthMm=t.LowerStockLengthMm,LeftFootMm=t.LeftFootMm,RightFootMm=t.RightFootMm,LeftUpperStockMm=t.LeftUpperStockMm,RightUpperStockMm=t.RightUpperStockMm,LeftUpperEdgeMm=t.LeftUpperEdgeMm,RightUpperEdgeMm=t.RightUpperEdgeMm,LeftUpperCustom=t.LeftUpperCustom,RightUpperCustom=t.RightUpperCustom,LowerCustom=t.LowerCustom,LeftFootReactionKn=t.LeftFootReactionKn,RightFootReactionKn=t.RightFootReactionKn,SlabMovementMm=t.SlabMovementMm,CoveredSlabAreaM2=t.CoveredSlabAreaM2,SlabLoadKn=t.SlabLoadKn,ShutterLoadKn=t.ShutterLoadKn,PrimaryCases=cases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=t.UpperMembers,CaseNames=names.ToArray()};
                 l.LeftReactions=left;l.RightReactions=right;l.MinimumLeftReactions=minLeft;l.MinimumRightReactions=minRight;l.MaxLegKn=Math.Max(left.Max(),right.Max());
                 var all=cases.Concat(lowerCases).SelectMany(c=>c).Concat(t.UpperMembers).ToArray();
                 l.MomentKnM=all.Max(m=>m.Analysis.MomentKnM);l.ShearKn=all.Max(m=>m.Analysis.ShearKn);l.DeflectionMm=all.Max(m=>m.Analysis.DeflectionMm);l.Utilization=Math.Max(l.MaxLegKn/l.LegCapacityKn,all.Max(m=>m.Utilization));l.Governing=l.MaxLegKn/l.LegCapacityKn>=all.Max(m=>m.Utilization) ? "Leg capacity" : all.OrderByDescending(m=>m.Utilization).First().Name;
