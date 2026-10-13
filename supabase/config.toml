@@ -1,0 +1,4 @@
+# The function validates the user's token with Supabase Auth itself. This also
+# supports projects using asymmetric JWT signing keys.
+[functions.authorize-tool]
+verify_jwt = false

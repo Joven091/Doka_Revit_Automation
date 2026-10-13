@@ -16,10 +16,12 @@ namespace EngineeringDashboard
         {
             InitializeComponent();
         }
+        private void BtnAccount_Click(object sender, RoutedEventArgs e) => MyRevitAddin.Access.AccessWindow.Manage(this);
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
 
         private void BtnDomeCalculator_Click(object sender, RoutedEventArgs e)
         {
+            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
             Hide();
             try
             {
@@ -31,6 +33,7 @@ namespace EngineeringDashboard
 
         private void BtnBackpropping_Click(object sender, RoutedEventArgs e)
         {
+            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
             Hide();
             try { new BackproppingWindow { Owner = this }.ShowDialog(); }
             finally { Show(); }
@@ -38,6 +41,7 @@ namespace EngineeringDashboard
 
         private void BtnFlexCalculator_Click(object sender, RoutedEventArgs e)
         {
+            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
             Hide();
             try
             {
@@ -45,6 +49,7 @@ namespace EngineeringDashboard
                 {
                     var choice = new SlabSystemWindow { Owner = this };
                     if (choice.ShowDialog() != true) break;
+                    if (!MyRevitAddin.Access.AccessWindow.Require(this)) break;
                     if (choice.UseD3)
                     {
                         if (_d3SlabViewModel == null) _d3SlabViewModel = new D3SlabCalculatorViewModel();
@@ -64,6 +69,7 @@ namespace EngineeringDashboard
         private bool closingAfterImport;
         private void BtnBeamCalculator_Click(object sender, RoutedEventArgs e)
         {
+            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
             // Hide the launcher
             this.Hide();
 

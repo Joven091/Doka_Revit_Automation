@@ -12,13 +12,14 @@ namespace EngineeringDashboard
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
+            if (!MyRevitAddin.Access.AccessWindow.Require()) return Result.Cancelled;
             try
             {
                 App = commandData.Application;
 
                 // Instantiate the Launcher Window
                 LauncherWindow launcher = new LauncherWindow();
-                
+
                 // ShowDialog keeps the window on top and pauses Revit until closed
                 launcher.ShowDialog();
 
