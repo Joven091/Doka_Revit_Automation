@@ -35,7 +35,7 @@ internal static class NetworkEconomyTests
                 }
                 Console.WriteLine($"ECONOMY B{index+1} legs={beam.LegCount} primaryCoverage={beamLength} primaryRuns={string.Join(",",beam.StockPlan.Pieces.Select(p=>p.StockLengthMm))} maxBeamTributary={beam.Transfer.TributaryWidthsMm.Max():0.###}");
             }
-            Near(result.SlabLoadKn,network.Bays.Sum(b=>network.AreaLoad(b.ThicknessMm)*b.WidthMm/1000)*result.SlabCoveredLengthMm/1000,"shared full bay slab load conserved");
+            Near(result.SlabLoadKn,network.Bays.Sum(b=>network.AreaLoad(b.ThicknessMm)*b.WidthMm/1000)*result.Beams[0].LengthMm/1000,"shared full bay slab load conserved");
             Console.WriteLine(common.Trace.Snapshot());
             return result;
         }

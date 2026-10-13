@@ -66,9 +66,7 @@ internal static class PrimaryUdlTests
                     {
                         double station=member.StartMm+(band.StartMm+band.EndMm)/2;
                         double fullBeamFactor=beam.LengthMm/(beam.LengthMm-2*beam.ConcreteEndOverhangMm);
-                        double slabEdge=(beam.LengthMm-result.SlabCoveredLengthMm)/2;
-                        bool onSlab=station>=slabEdge && station<=slabEdge+result.SlabCoveredLengthMm;
-                        double expected=(line==0 ? beamQ-beamR2 : beamR2)*fullBeamFactor+(onSlab && left ? l[line] : 0)+(onSlab && right ? r[line] : 0);
+                        double expected=((line==0 ? beamQ-beamR2 : beamR2)+(left ? l[line] : 0)+(right ? r[line] : 0))*fullBeamFactor;
                         foreach(var crossing in network.CrossingBeams)
                         {
                             bool active=crossing.BayNumber==b && left || crossing.BayNumber==b+1 && right;

@@ -171,9 +171,22 @@ internal static class WorkspaceTests
             Click("Formwork");Render(output==null ? null : Path.ChangeExtension(output,"workspace-overview.png"));
             Check(drawing.DrawnLegCount==model.NetworkResult.LegCount && drawing.MemberTargets.Count>0,"formwork overlays all calculated legs and primary pairs");
             Check(drawing.LegTargets.Count==drawing.DrawnLegCount && drawing.LegTargets.All(t=>t.Item2.Contains("/70 kN")),"every visible leg has load and permissible-capacity inspection");
-            var optionSource=model.NetworkResult;
+            var optionRecord=parent.CaptureCalculation();
             var optionTask=model.GetNetworkBeamOptionsAsync(1);var optionDeadline=DateTime.UtcNow.AddMinutes(2);
             while(!optionTask.IsCompleted && DateTime.UtcNow<optionDeadline){Pump();Thread.Sleep(10);}
+            Check(optionTask.IsCompleted && optionTask.Result.Any(o=>ReferenceEquals(o.Result,model.NetworkResult)),"alternative search retains the selected full-load arrangement");
+            // Restored slab end loads can leave only the original heavy arrangement.
+            // Test Option 2 on a separate lighter case, without admitting unsafe options.
+            bool lighterOptions=optionTask.Result.Count(o=>o.IsAvailable)==1;
+            if(lighterOptions)
+            {
+                foreach(var b in model.NetworkBeams)b.SetDepthKeepingTopMm(500);
+                foreach(var b in model.NetworkBays)b.ThicknessMm=100;
+                Calculate();
+                optionTask=model.GetNetworkBeamOptionsAsync(1);optionDeadline=DateTime.UtcNow.AddMinutes(2);
+                while(!optionTask.IsCompleted && DateTime.UtcNow<optionDeadline){Pump();Thread.Sleep(10);}
+            }
+            var optionSource=model.NetworkResult;
             if(!optionTask.IsCompleted || optionTask.Result.Count(o=>o.IsAvailable)<=1)Console.WriteLine(model.BuildDiagnosticReport());
             Check(optionTask.IsCompleted && optionTask.Result.Count(o=>o.IsAvailable)>1,"beam alternatives are generated without blocking the drawing dispatcher");
             var beamTarget=drawing.ObjectTargets.First(t=>t.Item2==FormworkObject.Beam && t.Item3==1);
@@ -186,6 +199,7 @@ internal static class WorkspaceTests
             Check(drawing.DrawnLegCount==model.NetworkResult.LegCount && workspace.NetworkResultText.Contains(model.NetworkResult.LegCount+" tower legs"),"drawing and quantities refresh after selecting an alternate");
             optionItems[0].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));optionMenu.IsOpen=false;Pump();Render();
             Check(ReferenceEquals(model.NetworkResult,optionSource),"Option 1 restores the original verified layout");
+            if(lighterOptions){parent.RestoreCalculation(optionRecord);Pump();Calculate();}
             double planHeight=drawing.ActualHeight;var hit=drawing.MemberTargets.First();Check(drawing.SelectAt(Centre(hit.Item1)),"primary H20 is selected directly from plan");Pump();Render();
             Check(workspace.Diagrams!=null && workspace.Diagrams.IsVisible && workspace.Diagrams.Owner==parent && workspace.Diagrams.SelectedTransferMember.H20Count==2,"primary pair opens a diagram owned by the main D3 calculator");
             Check(Math.Abs(workspace.Diagrams.LoadedAnalysis.TotalLoadKn-model.NetworkResult.Beams[hit.Item2].Transfer.PrimaryCases[workspace.Diagrams.SelectedLoadCase][hit.Item3].Analysis.TotalLoadKn)<1e-8,"plan selection displays actual member load");

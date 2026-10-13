@@ -615,7 +615,7 @@ namespace EngineeringDashboard
             for(int bay=0;bay<r.Bays.Length;bay++)if(r.Bays[bay]!=null)
             {
                 double removed=r.Input.CrossingBeams.Where(c=>c.BayNumber==bay+1 && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows).Sum(c=>c.WidthMm);
-                expectedSlab+=r.Input.AreaLoad(r.Input.Bays[bay].ThicknessMm)*(r.SlabCoveredLengthMm-removed)*r.Input.Bays[bay].WidthMm/1e6;
+                expectedSlab+=r.Input.AreaLoad(r.Input.Bays[bay].ThicknessMm)*(common.LengthMm-removed)*r.Input.Bays[bay].WidthMm/1e6;
                 expectedSlab+=r.Input.CrossingBeams.Where(c=>c.BayNumber==bay+1 && c.SupportMode==CrossBeamSupportMode.LegacySlabRows).Sum(c=>(r.Input.AreaLoad(c.DepthMm)-r.Input.AreaLoad(r.Input.Bays[bay].ThicknessMm))*c.WidthMm*r.Input.Bays[bay].WidthMm/1e6);
             }
             if(Math.Abs(expectedSlab-r.SlabLoadKn)>1e-6*Math.Max(1,expectedSlab)) {Reject(common,"No receiving slab H20 arrangement conserves the slab load outside cross footprints.");return false;}

@@ -37,7 +37,7 @@ internal static class CoordinatedDesignerTests
                 Near(t.BeamLoadKn,concrete,"full beam concrete including end strips retained");
                 Near(t.PrimaryCases[Array.IndexOf(t.CaseNames,"Beam")].Sum(m=>m.Analysis.TotalLoadKn),concrete,"full beam-concrete force reaches primary UDL");
                 string combined=beam==0 ? "Beam + right slab" : beam==result.Beams.Length-1 ? "Beam + left slab" : "Beam + both slabs";
-                Near(t.PrimaryCases[Array.IndexOf(t.CaseNames,combined)].Sum(m=>m.Analysis.TotalLoadKn),concrete+t.SlabLoadKn,"primary slab transfer conserves physical slab force without extending past shared coverage");
+                Near(t.PrimaryCases[Array.IndexOf(t.CaseNames,combined)].Sum(m=>m.Analysis.TotalLoadKn),concrete+t.SlabLoadKn,"primary slab transfer conserves physical slab force including longitudinal end strips");
                 foreach(int row in Enumerable.Range(0,t.RowsMm.Length).Except(t.SlabRowIndices))
                 {
                     Near(t.UpperScale(true,row),0,"beam-only row has no left slab foot");Near(t.UpperScale(false,row),0,"beam-only row has no right slab foot");
@@ -86,7 +86,8 @@ internal static class CoordinatedDesignerTests
         var covers=TransferredSlabOptimizer.StockCovers(Common());Check(covers.Any(c=>c.SequenceEqual(new[] {1800.0,3300,1800})),"mirrored centre-stock family survives short-cover DP");
         Check(2*TowerOptimizer.TowerLegTimberEquivalentMm>5000,"two saved tower legs justify five extra metres of timber");
         Check(TowerOptimizer.UpperFootTimberEquivalentMm<TowerOptimizer.TowerLegTimberEquivalentMm,"upper feet and tower legs carry distinct economic weights");
-        var reference=Solve("reported geometry",Common(),Network());
+        var referenceCommon=Common();referenceCommon.MaximumConcreteEndOverhangMm=150;
+        var reference=Solve("reported geometry",referenceCommon,Network());
         Check(reference.CrossSupports.All(c=>!c.HasReducedShutterClearance),"automatic design exhausts normal spacing/pattern search before using local shutter exceptions");
         Check(reference.LegCount<=46,"reported network finds the reduced-leg complete arrangement");
         Check(reference.Beams[0].StockPlan.Pieces.Select(p=>p.StockLengthMm).SequenceEqual(new[] {1800.0,3300,1800}) && reference.Beams[0].LegCount==14,"B1 discovers the designer centre-linked layout");

@@ -24,13 +24,15 @@ jobs:
   primary-udl:
     runs-on: windows-latest
     # Run the reported coordinated layout on both runtimes, then its WPF previews.
-    timeout-minutes: 40
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release -- --primary-udl
+      - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release --no-build -- --slab-end-loads
+      - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release --no-build -- --slab-end-loads-reported
       - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release --no-build -- --primary-udl-reported
       - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release --no-build -- --network-fallback
       - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release --no-build -- --custom-h20-scope
@@ -46,6 +48,8 @@ jobs:
       - run: dotnet build tests/Beam.Net48/Beam.Net48.csproj -c Release --warnaserror
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --ws10
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --primary-udl
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --slab-end-loads
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --slab-end-loads-reported
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --primary-udl-reported
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --uplift
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --network-fallback
