@@ -215,7 +215,7 @@ internal static class WorkspaceTests
             Check(optionItems.Length==optionTask.Result.Count(o=>o.IsAvailable) && optionItems[0].IsChecked,"context menu lists checked complete options and marks the selected one");
             optionItems[1].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));Pump();Render();
             Check(ReferenceEquals(model.NetworkResult,optionTask.Result.Where(o=>o.IsAvailable).ElementAt(1).Result) && model.SelectedNetworkBeam==1 && ReferenceEquals(model.TowerResult,model.NetworkResult.Beams[1]),"Option 2 updates complete network and inspected beam together");
-            Check(drawing.DrawnLegCount==model.NetworkResult.LegCount && workspace.NetworkResultText.Contains(model.NetworkResult.LegCount+" tower legs"),"drawing and quantities refresh after selecting an alternate");
+            Check(drawing.DrawnLegCount==model.NetworkResult.LegCount && workspace.SelectedResultText.Contains(model.NetworkResult.Beams[1].LegCount+" tower legs"),"drawing and selected-beam quantities refresh after selecting an alternate");
             optionItems[0].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));optionMenu.IsOpen=false;Pump();Render();
             Check(ReferenceEquals(model.NetworkResult,optionSource),"Option 1 restores the original verified layout");
             if(lighterOptions){parent.RestoreCalculation(optionRecord);Pump();Calculate();}

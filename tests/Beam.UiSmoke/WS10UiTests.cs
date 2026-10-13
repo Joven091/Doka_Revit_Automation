@@ -51,7 +51,7 @@ internal static class WS10UiTests
             Click(view,"Undo");Check(model.PrimaryMaterial==PrimaryBeamMaterial.DoubleH20,"material change participates in undo");
             Click(view,"Redo");Check(model.PrimaryMaterial==PrimaryBeamMaterial.WS10,"material change participates in redo");
             Calculate(view);var result=model.NetworkResult;
-            Check(view.NetworkResultText.Contains("WS10s") && result.Beams.All(b=>b.Primary.IsWS10),"result quantities and primaries identify steel");
+            Check(result.WS10Count>0 && result.Beams.All(b=>b.Primary.IsWS10) && view.NetworkResultText=="" && view.SelectedResultText.Contains("Efficiency:"),"steel retains its quantities and primary profile while the selection card shows load and efficiency");
             Check(view.Drawing.AnnotationLabels.Any(t=>t.StartsWith("WS10 · ")),"plan length labels identify WS10");
             var colour=((SolidColorBrush)PrimaryDrawing.WS10Colour).Color;Check(colour.B>colour.R && colour!=Colors.Goldenrod,"steel has its own blue drawing colour");
             Preview(view.Surface,output==null ? null : Path.ChangeExtension(output,"ws10-plan.png"));
