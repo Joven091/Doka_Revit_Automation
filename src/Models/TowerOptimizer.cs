@@ -297,6 +297,12 @@ namespace EngineeringDashboard
         public double[] MinimumRightReactions { get; internal set; }
         public double MinimumLegReaction(bool left,int index) => (left ? MinimumLeftReactions : MinimumRightReactions)?[index] ?? (left ? LeftReactions : RightReactions)[index];
         public TowerStockPlan StockPlan { get; internal set; }
+        // Combined applied load, not the sum of reaction envelopes from different load cases.
+        public double TotalSupportedLoadKn => Transfer != null
+            ? Transfer.PrimaryCases.Last().Sum(m => m.Analysis.TotalLoadKn)
+            : LeftReactions.Sum() + RightReactions.Sum();
+        public double TotalLegCapacityKn => LegCount * LegCapacityKn;
+        public double SupportEfficiencyPercent => TotalSupportedLoadKn / TotalLegCapacityKn * 100;
         public double LegUtilizationPercent => MaxLegKn / LegCapacityKn * 100;
         public string PrimaryMaterialSummary=>Primary.Assumptions;
         public string MaterialQuantities=>$"{StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s"+(StockPlan.WS10Count==0 ? "" : $" · {StockPlan.WS10Count} WS10s");

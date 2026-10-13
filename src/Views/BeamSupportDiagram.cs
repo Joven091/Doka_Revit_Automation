@@ -25,6 +25,9 @@ namespace EngineeringDashboard
             if (model?.UseTowers != true) return base.MeasureOverride(availableSize);
             return new Size(Math.Max(MinWidth, double.IsInfinity(availableSize.Width) ? MinWidth : availableSize.Width), double.IsNaN(Height) ? 0 : Height);
         }
+        internal readonly List<Rect> AnnotationBounds=new List<Rect>();
+        private readonly List<DrawingGroup> annotations=new List<DrawingGroup>();
+        public int DrawnAcrossDimensionCount {get;private set;}
         public int DrawnEndDimensionCount { get; private set; }
         public void SelectMember(int run, int line, int member) { selectedRun = run; selectedLine = line; selectedMember = member; InvalidateVisual(); }
         internal bool SelectAt(Point point)
@@ -125,7 +128,7 @@ namespace EngineeringDashboard
             DrawnTransferRowCount = DrawnFootCount = DrawnH20ProfileCount = 0;
             if(model?.TowerResult?.Transfer != null) dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if (model == null || !model.IsCalculationValid) return;
-            if (model.UseTowers) { DrawTowerPlan(dc); return; }
+            if (model.UseTowers) { DrawTowerPlan(dc);foreach(var annotation in annotations)dc.DrawDrawing(annotation);return; }
             // Ratios across the beam are geometric; longitudinal length/prop height are schematic.
             double scale = Math.Min(ActualWidth / 470, ActualHeight / 440);
             if (scale <= 0) return;
@@ -190,11 +193,11 @@ namespace EngineeringDashboard
                 var piece = layout.StockPlan.Pieces[i];
                 for (int line = 0; line < 2; line++) for (int member = 0; member < layout.Primary.CountPerLine; member++)
                 {
-                    double y = line == 0 ? top : bottom, offset = layout.Primary.IsWS10 ? 0 : member == 0 ? -5 : 5;
+                    double y = line == 0 ? top : bottom,width=Math.Max(3,80*scale),offset=layout.Primary.IsWS10 ? 0 : (member==0 ? -1 : 1)*(width+Math.Max(1,20*scale))/2;
                     bool selected = i == selectedRun && line == selectedLine && (selectedMember < 0 || member == selectedMember);
                     if(layout.Primary.IsWS10)PrimaryDrawing.Plan(dc,new Point(x0+piece.StartMm*scale,y),new Point(x0+piece.EndMm*scale,y),layout.Primary,selected,4);
-                    else dc.DrawLine(new Pen(selected ? Brushes.DodgerBlue : i % 2 == 0 ? Gold : GoldSide, selected ? 4 : 2), new Point(x0 + piece.StartMm * scale, y + offset), new Point(x0 + piece.EndMm * scale, y + offset));
-                    MemberTargets.Add(Tuple.Create(new Rect(x0 + piece.StartMm * scale, y + offset - 4, piece.StockLengthMm * scale, 8), i, line, member));
+                    else H20Drawing.PlanOutline(dc,new Point(x0+piece.StartMm*scale,y+offset),new Point(x0+piece.EndMm*scale,y+offset),width,selected ? Brushes.DodgerBlue : i%2==0 ? Gold : GoldSide,selected);
+                    MemberTargets.Add(Tuple.Create(new Rect(x0 + piece.StartMm * scale, y + offset - Math.Max(4,width/2+2), piece.StockLengthMm * scale, 2*Math.Max(4,width/2+2)), i, line, member));
                     DrawnStockPieceCount++;
                 }
                 double dimY = bottom + (layout.Transfer == null ? 65 : 55);
@@ -245,6 +248,10 @@ namespace EngineeringDashboard
             }
             dc.DrawLine(new Pen(Steel, 1), new Point(x0, bottom + (layout.Transfer == null ? 91 : 121)), new Point(x0 + layout.LengthMm * scale, bottom + (layout.Transfer == null ? 91 : 121)));
             Label(dc, "Concrete beam: " + layout.LengthMm.ToString("0.###") + " mm", ActualWidth / 2, bottom + (layout.Transfer == null ? 96 : 126), true);
+            double acrossX=ActualWidth-12;
+            dc.DrawLine(new Pen(Steel,1),new Point(acrossX,top),new Point(acrossX,bottom));
+            foreach(double y in new[] {top,bottom})dc.DrawLine(new Pen(Steel,1),new Point(acrossX-4,y),new Point(acrossX+4,y));
+            Label(dc,layout.WidthMm.ToString("0.###"),acrossX-10,(top+bottom)/2-7,true);DrawnAcrossDimensionCount++;
             Label(dc, (layout.Rotated ? "Cross" : "Frame") + " across: " + layout.WidthMm.ToString("0") + " mm · concrete end overhang: " + layout.ConcreteEndOverhangMm.ToString("0.###") + " mm/end", x0, bottom + (layout.Transfer == null ? 113 : 143));
             if(layout.Transfer != null) DrawTransferSection(dc,layout);
         }
@@ -320,7 +327,10 @@ namespace EngineeringDashboard
             var text = new FormattedText(value, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
                 new Typeface("Segoe UI"), 11, colour??SteelSide, VisualTreeHelper.GetDpi(this).PixelsPerDip);
             if (centered) { text.MaxTextWidth = Math.Max(1, text.Width); text.TextAlignment = TextAlignment.Center; x -= text.MaxTextWidth / 2; }
-            dc.DrawText(text, new Point(x, y));
+            var box=new Rect(x-2,y-1,text.Width+4,text.Height+2);
+            if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>ActualHeight || AnnotationBounds.Exists(r=>r.IntersectsWith(box)))return;
+            AnnotationBounds.Add(box);var drawing=new DrawingGroup();
+            using(var overlay=drawing.Open()){overlay.DrawRectangle(Brushes.White,null,box);overlay.DrawText(text,new Point(x,y));}annotations.Add(drawing);
         }
     }
 }

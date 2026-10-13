@@ -50,7 +50,8 @@ internal static class PresentationUiTests
         var palette=new RenderTargetBitmap(100,70,96,96,PixelFormats.Pbgra32);palette.Render(plan);
         var colours=new byte[100*70*4];palette.CopyPixels(colours,400,0);
         Func<int,int,Color> pixel=(x,y)=>Color.FromArgb(colours[(y*100+x)*4+3],colours[(y*100+x)*4+2],colours[(y*100+x)*4+1],colours[(y*100+x)*4]);
-        Check(pixel(50,17).R>pixel(50,17).B && pixel(50,50).B>pixel(50,50).G,"orange primary and purple secondary remain visually distinct");
+        Check(pixel(50,15).R>pixel(50,15).B && pixel(50,50).B>pixel(50,50).G,"orange primary and purple secondary remain visually distinct");
+        Check(pixel(50,15).A>0 && pixel(50,25).A>0 && pixel(10,17).A>0 && pixel(10,23).A>0 && pixel(50,20).A==0,"double H20 plan profiles have closed ends and a clear gap");
         // Check visible flange/web geometry independently of labels or draw counters.
         var drawing=new DrawingVisual();using(var dc=drawing.RenderOpen())H20Drawing.EndSection(dc,new Rect(10,10,80,200));
         var profile=new RenderTargetBitmap(100,220,96,96,PixelFormats.Pbgra32);profile.Render(drawing);

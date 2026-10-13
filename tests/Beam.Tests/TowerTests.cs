@@ -86,6 +86,9 @@ internal static class TowerTests
         var input = new TowerInput { LengthMm = 3000, StockLengthsMm = new[] { 3000.0 }, LegCapacityKn = 30, TotalLineLoad = 10, DeflectionLimitMm = 5 };
         var joined = TowerOptimizer.Evaluate(input, new[] { 250.0, 1250, 2750 }, new[] { true, true }, 1524, false);
         Check(joined != null && joined.LegCount == 6 && joined.GroupCount == 1, "mixed joined bays share frame/legs");
+        Near(joined.TotalSupportedLoadKn,30,1e-9,"standalone summary includes the full applied beam load");
+        Near(joined.TotalLegCapacityKn,180,1e-9,"summary capacity counts every leg once");
+        Near(joined.SupportEfficiencyPercent,100.0/6,1e-9,"efficiency compares total load with total capacity");
         Check(TowerOptimizer.Evaluate(input, new[] { 250.0, 1250, 2750 }, new[] { true, false }, 1524, false) == null, "no standalone frame");
         Check(TowerOptimizer.Evaluate(input, new[] { 250.0, 1250, 2750 }, new[] { true, true }, 1500, false) == null, "frame width fixed");
         input.LegCapacityKn = 1; Check(TowerOptimizer.Evaluate(input, new[] { 250.0, 1250, 2750 }, new[] { true, true }, 1524, false) == null, "leg overload rejection");
