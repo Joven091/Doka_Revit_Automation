@@ -115,6 +115,7 @@ namespace EngineeringDashboard
             toolbar.Children.Add(Button("Undo","Undo",()=>History(undo,redo)));toolbar.Children.Add(Button("Redo","Redo",()=>History(redo,undo)));
             toolbar.Children.Add(new Border {Width=1,Height=26,Background=Brushes.LightGray,Margin=new Thickness(10,0,10,0)});
             var calculate=Button("Calculate","Calculate",async()=>await CalculateAsync());calculate.SetResourceReference(StyleProperty,"PrimaryAction");toolbar.Children.Add(calculate);
+            toolbar.Children.Add(Button("SearchLonger","Search longer",async()=>await CalculateAsync(false)));
             toolbar.Children.Add(Button("Cancel","Cancel",()=> {Model.CancelOptimization();Refresh();}));
             toolbar.Children.Add(Button("Diagnose","Diagnose",ShowDiagnostics));root.Children.Add(toolbar);
             var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition());body.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(325)});Grid.SetRow(body,1);root.Children.Add(body);
@@ -608,6 +609,8 @@ namespace EngineeringDashboard
             Model.SetAdditionalTextInputErrors(this,pending);
             Buttons["NewSession"].IsEnabled=!Model.IsOptimizing;
             Buttons["Calculate"].IsEnabled=valid && !Model.IsOptimizing;
+            Buttons["SearchLonger"].IsEnabled=valid && !pending && Model.CanSearchLonger;
+            Buttons["SearchLonger"].Visibility=Model.CanSearchLonger ? Visibility.Visible : Visibility.Collapsed;
             Buttons["Cancel"].IsEnabled=Model.CanCancelOptimization;
             Buttons["Formwork"].IsEnabled=Model.IsCalculationValid && !pending;
             Buttons["Section"].IsEnabled=Model.IsCalculationValid && Model.NetworkResult!=null && !pending;
@@ -683,9 +686,9 @@ namespace EngineeringDashboard
             $"Total load (beam + slab): {beam.TotalSupportedLoadKn:0.00} kN\n"+
             $"{beam.LegCount} tower legs × {beam.LegCapacityKn:0.##} kN = {beam.TotalLegCapacityKn:0.00} kN\n"+
             $"Efficiency: {beam.SupportEfficiencyPercent:0.0}%";
-        internal async Task CalculateAsync()
+        internal async Task CalculateAsync(bool useTimeLimit=true)
         {
-            if(!CommitFields())return;CancelDrafting();await Model.OptimizeTowersAsync();
+            if(!CommitFields())return;CancelDrafting();await Model.OptimizeTowersAsync(useTimeLimit);
             try
             {
                 using(Model.MeasureDrawingPreparation())

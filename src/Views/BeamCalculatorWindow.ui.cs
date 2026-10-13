@@ -177,6 +177,10 @@ namespace EngineeringDashboard
                 : $"Beam {observedModel.Width:0.##} × {observedModel.Depth:0.##} mm · {observedModel.NumberOfProps} props per primary line\nPrimary lines {observedModel.PrimaryLineSpacingMm:0.##} mm apart";
         }
         private void CancelBeamAnalysis_Click(object sender,RoutedEventArgs e)=>observedModel?.CancelOptimization();
+        private async void SearchLonger_Click(object sender,RoutedEventArgs e)
+        {
+            RefreshInputValidity();if(observedModel?.CanSearchLonger==true)await observedModel.OptimizeTowersAsync(false);
+        }
         private async void OptimizeTowers_Click(object sender, RoutedEventArgs e)
         {
             RefreshInputValidity();

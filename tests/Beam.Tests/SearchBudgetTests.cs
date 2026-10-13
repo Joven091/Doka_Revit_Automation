@@ -121,6 +121,9 @@ internal static class SearchBudgetTests
         Check(vm.BuildDiagnosticReport().Contains("LAST COMPLETED FULL SEARCH") && vm.BuildDiagnosticReport().Contains("Search outcome: Succeeded"),"a later operation cannot erase the completed full-search trace");
         vm.TowerSearchTimeLimit=TimeSpan.FromTicks(1);vm.OptimizeTowersAsync().GetAwaiter().GetResult();
         Check(!vm.IsOptimizing && !vm.IsCalculationValid && vm.TowerResult==null && vm.BuildDiagnosticReport().Contains("Time limit reached: no complete solution"),"interactive timeout clears old results and explains absence of a complete solution");
+        Check(vm.CanSearchLonger,"deadline exposes an explicit full-search action");
+        vm.OptimizeTowersAsync(false).GetAwaiter().GetResult();
+        Check(vm.IsCalculationValid && !vm.CanSearchLonger && vm.BuildDiagnosticReport().Contains("Search budget seconds: Unlimited"),"explicit longer search can finish a layout and reports its unlimited budget");
         vm.StartNewSession();Check(!vm.BuildDiagnosticReport().Contains("LAST COMPLETED FULL SEARCH"),"new session clears retained diagnostics");
         Console.WriteLine($"Passed {checks} search budget and completed-result checks.");
     }

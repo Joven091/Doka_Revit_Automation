@@ -321,29 +321,21 @@ namespace EngineeringDashboard
         public static TransferNetworkResult Optimize(TowerInput common,TransferNetworkInput input)
         {
             input.Validate(common);
-            bool previousCoordination=common.CoordinateCrossingLayouts;
-            // Timed modern networks coordinate receiving layouts before expensive
-            // complete-network crossing trials. Unlimited reference traversal stays unchanged.
-            if(common.Trace?.HasTimeLimit==true && CrossBeamSupportOptimizer.Modern(input))common.CoordinateCrossingLayouts=true;
-            try
+            try {return PreferredShutterDetail(common,input);}
+            catch(TowerOptimizationException fullFailure) when (!common.AllowCustomH20Lengths && common.AllowSeparateSlabFallback)
             {
-                try {return PreferredShutterDetail(common,input);}
-                catch(TowerOptimizationException fullFailure) when (!common.AllowCustomH20Lengths && common.AllowSeparateSlabFallback)
+                var fullDiagnostics=common.Diagnostics;
+                common.Trace?.Work("Separate slab formwork fallback");
+                try
                 {
-                    var fullDiagnostics=common.Diagnostics;
-                    common.Trace?.Work("Separate slab formwork fallback");
-                    try
-                    {
-                        var result=common.Trace==null ? OptimizeCore(common,input,true) : common.Trace.RunPass(false,()=>OptimizeCore(common,input,true));
-                        result.FullTransferFailureDetails=fullFailure.Details;
-                        result.SeparateSlabReasons=result.Bays.Select((b,i)=>b==null ? fullDiagnostics.SeparateBayExplanation(i) : "").ToArray();
-                        return result;
-                    }
-                    catch(TowerOptimizationException partialFailure)
-                    {throw new TowerOptimizationException(partialFailure.Message,fullFailure.Details+"\n\nSeparate slab formwork fallback also failed:\n"+partialFailure.Details);}
+                    var result=common.Trace==null ? OptimizeCore(common,input,true) : common.Trace.RunPass(false,()=>OptimizeCore(common,input,true));
+                    result.FullTransferFailureDetails=fullFailure.Details;
+                    result.SeparateSlabReasons=result.Bays.Select((b,i)=>b==null ? fullDiagnostics.SeparateBayExplanation(i) : "").ToArray();
+                    return result;
                 }
+                catch(TowerOptimizationException partialFailure)
+                {throw new TowerOptimizationException(partialFailure.Message,fullFailure.Details+"\n\nSeparate slab formwork fallback also failed:\n"+partialFailure.Details);}
             }
-            finally {common.CoordinateCrossingLayouts=previousCoordination;}
         }
         private static TransferNetworkResult PreferredShutterDetail(TowerInput common,TransferNetworkInput input)
         {
