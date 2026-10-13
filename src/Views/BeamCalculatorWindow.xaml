@@ -240,7 +240,7 @@
                 <ComboBox x:Name="CustomH20ScopeSelector" ItemsSource="{Binding CustomH20ScopeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding CustomH20Scope}" IsEnabled="{Binding AllowCustomH20Lengths}" ToolTip="Beam supports: primary and lower H20s, including crossings. Slab supports: slab H20s."/>
                 <CheckBox x:Name="Exclude600StandaloneCheckBox" Content="Exclude standalone 600 mm towers" IsChecked="{Binding Exclude600Standalone}" ToolTip="Applies in either orientation. Joined 600 mm bays remain allowed."/>
                 <Button x:Name="OptimizeTowersButton" Content="Optimize towers" IsEnabled="{Binding CanOptimizeTowers}" Click="OptimizeTowers_Click" Margin="0,8"/>
-                <Button x:Name="SearchLongerButton" Content="Search longer" IsEnabled="{Binding CanSearchLonger}" Click="SearchLonger_Click" ToolTip="Run the full bounded search after the fast search reaches its time limit." Margin="0,0,0,8"/>
+                <Button x:Name="SearchLongerButton" Content="Search longer" IsEnabled="{Binding CanSearchLonger}" Click="SearchLonger_Click" ToolTip="Run the full bounded search after the fast search reaches its time limit." Margin="0,0,0,8"/>
                 <Button x:Name="CancelBeamAnalysisButton" Content="Cancel analysis" IsEnabled="{Binding CanCancelOptimization}" Click="CancelBeamAnalysis_Click" ToolTip="Stop the current tower, custom H20 or beam/slab network search." Margin="0,0,0,8"/>
                 <Button x:Name="DiagnoseBeamButton" Content="Diagnose" Click="DiagnoseBeam_Click" ToolTip="Copy inputs, live search timing and progress, and failure details for review."/>
               </StackPanel>

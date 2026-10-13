@@ -374,7 +374,7 @@ internal static class Program
    checks+=PresentationUiTests.Run(args.Length>0 ? args[0] : null);
    WorkspaceTests.Run(window,vm,customWorkspaceRecord,args.Length>0 ? args[0] : null);
    checks+=CaseDiagramUiTests.Run();
-   checks+=SearchBudgetUiTests.Run();CrossSupportUiTests.Run(args.Length>0 ? args[0] : null);
+   SearchBudgetUiTests.Run();checks+=CrossSupportUiTests.Run(args.Length>0 ? args[0] : null);
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }
   catch(Exception ex){Console.Error.WriteLine(ex);window?.Close();return 1;}

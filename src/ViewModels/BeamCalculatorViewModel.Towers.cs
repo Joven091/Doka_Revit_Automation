@@ -57,7 +57,7 @@ namespace EngineeringDashboard
         }
         public string TowerFailureDetails {get;private set;}="";
         public bool HasTowerFailure=>!string.IsNullOrEmpty(TowerFailureDetails);
-        public bool CanSearchLonger=>UseTowers && !IsOptimizing && !textErrors && beamSearchTrace?.BudgetReached==true;
+        public bool CanSearchLonger=>UseTowers && !IsOptimizing && !textErrors && (beamSearchTrace?.BudgetReached==true || NetworkResult?.SearchTimeLimitReached==true || TowerResult?.SearchTimeLimitReached==true);
         public bool CanOptimizeTowers => UseTowers && !IsOptimizing && !textErrors;
         public bool CanImport => IsCalculationValid && !UseTowers;
         public bool ShowPropResults => IsCalculationValid && !UseTowers;
