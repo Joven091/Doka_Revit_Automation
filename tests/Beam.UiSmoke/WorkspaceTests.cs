@@ -261,8 +261,8 @@ internal static class WorkspaceTests
             Check(parent.CaptureDrawingInputs().Inputs.Any(f=>f.Name=="NetworkConfigurationXml") && workspace.Buttons["Save"].IsEnabled,"draft geometry can be saved before recalculation");
             Click("Undo");Check(model.NetworkBeams[1].DepthMm==1200,"undo restores beam depth");Click("Redo");Check(model.NetworkBeams[1].DepthMm==1325,"redo restores edited depth");Click("Undo");
             drawing.Select(FormworkObject.Beam,1);drawing.MoveSelection(42);Pump();Render();Check(model.NetworkBays[0].WidthMm==3950,"moving a beam edits its adjacent span in 25 mm steps");Click("Undo");Check(model.NetworkBays[0].WidthMm==3900,"undo restores dragged span");
-            drawing.Select(FormworkObject.Slab,0);Render();var spanTarget=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Slab && h.Item3==0);
-            Check(drawing.SelectAt(new Point(spanTarget.Item1.Right+40,spanTarget.Item1.Top+spanTarget.Item1.Height/2)) && workspace.Fields["WidthMm"].SelectedText=="3900","clicking a span dimension focuses its exact numeric input");
+            drawing.Select(FormworkObject.Slab,0);Render();int spanLabel=drawing.AnnotationLabels.IndexOf("3900");
+            Check(spanLabel>=0 && drawing.SelectAt(Centre(drawing.AnnotationBounds[spanLabel])) && workspace.Fields["WidthMm"].SelectedText=="3900","clicking the rotated span text focuses its exact numeric input");
             Enter("WidthMm","3850");Check(model.NetworkBays[0].WidthMm==3850,"slab span edits target selected bay");Click("Undo");
             drawing.Select(FormworkObject.Beam,0);Click("AddCrossing");Render();var slab=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Slab && h.Item3==0);
             var place=drawing.Screen(3178,drawing.World(Centre(slab.Item1)).Y);Check(drawing.SelectAt(place),"crossing beam placed by clicking slab");Pump();Render();
