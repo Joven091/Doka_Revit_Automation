@@ -111,3 +111,12 @@ At equal support count, beam and network searches avoid standalone 600 mm towers
 Each lower secondary H20 is centred on its concrete beam, including when tower legs are offset. Stock selection must enclose every bearing and load, with the required end allowance on both ends; member analysis and drawings use these actual centred coordinates. Plan H20 colours distinguish orange paired primaries from purple single secondaries; the existing secondary-visibility toggle and member selection remain available. Diagnostics include tower preferences and secondary midpoint offsets.
 
 `dotnet run --project tests/Beam.Tests -c Release -- --designer-preferences` checks wide/narrow/linked/rotated tower choices, mirrored one-sided secondary centring and the diagnostic's three parallel-beam dimensions.
+
+
+## Beam selection and plan readability
+
+The drawing workspace shows each double H20 as two closed outlines with bevelled ends, retaining the existing timber and selection colours. Beam selection shows the combined beam-and-slab design load in kN, number of tower legs with their total permissible capacity, and efficiency = total supported load / (legs x permissible capacity per leg) x 100%. This is an aggregate capacity comparison; individual leg checks still govern the design. Transfer loads come from the simultaneous combined primary case, rather than summing leg envelopes from different loading stages. Beam-only results use the equilibrium sum of their leg reactions. The calculated coverage and separate-slab exclusions still apply. Full engineering details remain in the calculator, reports and Diagnose.
+
+Esc clears geometry, formwork and section selections, closes the selected member diagram, and hides the beam result card. It also works while the diagram window or a property input has focus. The calculated layout is retained.
+
+Metric workspace plan text stays at a fixed screen size. Annotation masks are drawn above all structural lines, and overlapping labels are suppressed. Fine spacing chains, stock labels and end offsets appear only when neighbouring beam rows have enough screen space; horizontal dimensions also need room for the measured text. Hover over a braced bay or gap for its exact spacing and across-frame width when overview dimensions are hidden. Focused crossing dimensions can move to a clear label lane, with leaders connecting displaced values to their measured segments. Across-frame dimensions use the calculated tower width in both orientations, including frames perpendicular to the beam. All dimensions are in mm.

@@ -23,6 +23,14 @@ internal static class NetworkTests
             Check(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad-1e-7,"lower secondary design retains full end tributaries");
             Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r>=-1e-7 && r<=common.LegCapacityKn+1e-8),"each beam's legs checked");
             Check(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"primary UDL covers physical beam, shutter and slab load");
+            Check(beam.TotalSupportedLoadKn>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"summary includes the full beam and transferred slab load");
+            Near(beam.TotalLegCapacityKn,beam.LegCount*common.LegCapacityKn,"summary counts each tower leg once");
+            Near(beam.SupportEfficiencyPercent,100*beam.TotalSupportedLoadKn/(beam.LegCount*common.LegCapacityKn),"combined design-load efficiency");
+            double applied=beam.TotalSupportedLoadKn;
+            var envelope=(double[])beam.LeftReactions.Clone();
+            for(int i=0;i<beam.LeftReactions.Length;i++)beam.LeftReactions[i]+=10;
+            Near(beam.TotalSupportedLoadKn,applied,"summary does not sum reaction envelopes from different stages");
+            Array.Copy(envelope,beam.LeftReactions,envelope.Length);
             foreach(var m in beam.Transfer.LowerCases.Last())
             {
                 var shutters=m.Points.Where(p=>Math.Abs(Math.Abs(p.PositionMm+m.StartMm)-input.Beams[b].WidthMm/2-100)<1e-6).ToArray();

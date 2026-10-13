@@ -17,6 +17,8 @@ namespace EngineeringDashboard
         public bool SectionOnly {get;set;}
         public bool ShowAllDimensions {get;set;}
         internal int DrawnConcreteEndZoneCount {get;private set;}
+        private readonly List<DrawingGroup> annotations=new List<DrawingGroup>();
+        internal readonly List<Tuple<int,double>> AcrossDimensions=new List<Tuple<int,double>>();
         internal readonly List<Rect> AnnotationBounds=new List<Rect>();
         public event Action<int,int,int> MemberSelected;
         public event Action<int> SeparateSlabSelected;
@@ -64,7 +66,7 @@ namespace EngineeringDashboard
             var text=new FormattedText(value,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),11,colour??Brushes.DarkSlateGray,VisualTreeHelper.GetDpi(this).PixelsPerDip);
             if(centre)x-=text.Width/2;var box=new Rect(x-2,y-1,text.Width+4,text.Height+2);
             if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>Height || AnnotationBounds.Any(r=>r.IntersectsWith(box)))return;
-            AnnotationBounds.Add(box);dc.DrawRectangle(Brushes.White,null,box);dc.DrawText(text,new Point(x,y));
+            AnnotationBounds.Add(box);var drawing=new DrawingGroup();using(var overlay=drawing.Open()){overlay.DrawRectangle(Brushes.White,null,box);overlay.DrawText(text,new Point(x,y));}annotations.Add(drawing);
         }
         private void Dim(DrawingContext dc,double a,double b,double y,string value,Brush colour=null)
         {
@@ -72,9 +74,9 @@ namespace EngineeringDashboard
         }
         protected override void OnRender(DrawingContext dc)
         {
-            base.OnRender(dc);DrawnConcreteEndZoneCount=0;AnnotationBounds.Clear();MemberTargets.Clear();SeparateBayTargets.Clear();DrawnWS10ProfileCount=DrawnH20ProfileCount=DrawnPrimarySectionCount=0;DrawnTowerLegCount=DrawnPrimaryLengthCount=DrawnSecondaryLengthCount=DrawnCrossingBeamCount=0;if(result==null || ActualWidth<100)return;
+            base.OnRender(dc);DrawnConcreteEndZoneCount=0;AnnotationBounds.Clear();annotations.Clear();AcrossDimensions.Clear();MemberTargets.Clear();SeparateBayTargets.Clear();DrawnWS10ProfileCount=DrawnH20ProfileCount=DrawnPrimarySectionCount=0;DrawnTowerLegCount=DrawnPrimaryLengthCount=DrawnSecondaryLengthCount=DrawnCrossingBeamCount=0;if(result==null || ActualWidth<100)return;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));
-            if(SectionOnly) {Section(dc,55);return;}
+            if(SectionOnly) {Section(dc,55);foreach(var annotation in annotations)dc.DrawDrawing(annotation);return;}
             Label(dc,$"mm · primary = {result.Beams[0].Primary.Description}/line · secondaries = single H20 @ {result.Input.UpperSpacingMm:0}",30,8);
             Label(dc,"Primary H20: orange · secondary H20: purple · cyan: frames · yellow: crosses",30,27);
             var ys=Centres();var crossSolids=result.CrossSupports.SelectMany(c=>c.Solids).ToArray();
@@ -128,6 +130,10 @@ namespace EngineeringDashboard
                     if(leg<b.Joined.Length && b.Joined[leg])
                         TowerPlanDrawing.BracedBay(dc,a,c,new Point(xx(b.PositionsMm[leg+1]),top),new Point(xx(b.PositionsMm[leg+1]),bottom),b.Rotated);
                 }
+                double acrossX=ActualWidth-24;
+                dc.DrawLine(new Pen(Steel,1),new Point(acrossX,top),new Point(acrossX,bottom));
+                foreach(double y in new[] {top,bottom})dc.DrawLine(new Pen(Steel,1),new Point(acrossX-4,y),new Point(acrossX+4,y));
+                Label(dc,b.WidthMm.ToString("0.###"),acrossX-8,(top+bottom)/2-8,true);AcrossDimensions.Add(Tuple.Create(beam,b.WidthMm));
                 for(int leg=0;leg<b.Joined.Length;)
                 {
                     int count=1;double interval=b.PositionsMm[leg+1]-b.PositionsMm[leg];
@@ -141,7 +147,7 @@ namespace EngineeringDashboard
             }
             DrawCrossPlan(dc,ys,xx);
             var last=result.Beams.Last();double endY=ys.Last()+last.WidthMm*.055/2+121;Dim(dc,xx(0),xx(last.LengthMm),endY,$"Beam length {last.LengthMm:0} · concrete beyond H20 {last.ConcreteEndOverhangMm:0.###} / end");
-            Section(dc,endY+60);
+            Section(dc,endY+60);foreach(var annotation in annotations)dc.DrawDrawing(annotation);
         }
         private void DrawCrossPlan(DrawingContext dc,double[] ys,Func<double,double> xx)
         {

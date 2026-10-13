@@ -8,11 +8,30 @@ namespace EngineeringDashboard
     /// 40 mm flange thickness and a 27 mm web. Bounds come from drawing geometry.</summary>
     internal static class H20Drawing
     {
-        internal static void Plan(DrawingContext dc,Point start,Point end,int count,bool active,double separation=3)
+        internal static void Plan(DrawingContext dc,Point start,Point end,int count,bool active,double separation=3,double memberWidth=4)
         {
-            var delta=end-start;var normal=new Vector(-delta.Y,delta.X);normal.Normalize();normal*=separation;
-            var pen=new Pen(active ? Brushes.DodgerBlue : count==1 ? Brushes.MediumPurple : Brushes.Goldenrod,active || count==2 ? 2 : 1.3);
-            foreach(double side in count==2 ? new[] {-1.0,1} : new[] {0.0})dc.DrawLine(pen,start+normal*side,end+normal*side);
+            var delta=end-start;if(delta.Length<.1)return;
+            var normal=new Vector(-delta.Y,delta.X);normal.Normalize();
+            var colour=active ? Brushes.DodgerBlue : count==1 ? Brushes.MediumPurple : Brushes.Goldenrod;
+            if(count==1){dc.DrawLine(new Pen(colour,active ? 2 : 1.3),start,end);return;}
+            foreach(double side in new[] {-1.0,1.0})
+                PlanOutline(dc,start+normal*(separation*side),end+normal*(separation*side),memberWidth,colour,active);
+        }
+        internal static void PlanOutline(DrawingContext dc,Point start,Point end,double width,Brush colour,bool active=false)
+        {
+            var delta=end-start;if(delta.Length<.1)return;
+            var direction=delta;direction.Normalize();var normal=new Vector(-direction.Y,direction.X);
+            // Closed flange outline with bevelled ends, as in the Doka floor-plan symbol.
+            double half=Math.Max(3,width)/2,tip=Math.Min(half,delta.Length/4);
+            var shape=new StreamGeometry();using(var path=shape.Open())
+            {
+                path.BeginFigure(start+normal*(-half+tip),false,true);
+                foreach(var point in new[] {start+direction*tip-normal*half,end-direction*tip-normal*half,
+                    end+normal*(-half+tip),end+normal*(half-tip),end-direction*tip+normal*half,
+                    start+direction*tip+normal*half,start+normal*(half-tip)})path.LineTo(point,true,false);
+            }
+            shape.Freeze();dc.DrawGeometry(null,new Pen(colour,active ? 1.5 : 1),shape);
+            dc.DrawLine(new Pen(colour,.6){DashStyle=DashStyles.Dash},start,end);
         }
         private static readonly Brush Flange=new SolidColorBrush(Color.FromRgb(231,183,70));
         private static readonly Brush Web=new SolidColorBrush(Color.FromRgb(185,137,73));
@@ -56,9 +75,9 @@ namespace EngineeringDashboard
     {
         internal static readonly Brush WS10Colour=new SolidColorBrush(Color.FromRgb(44,91,156));
         private static readonly Brush Fill=new SolidColorBrush(Color.FromRgb(176,197,224));
-        internal static void Plan(DrawingContext dc,Point start,Point end,PrimaryBeamProfile profile,bool selected,double separation=3)
+        internal static void Plan(DrawingContext dc,Point start,Point end,PrimaryBeamProfile profile,bool selected,double separation=3,double memberWidth=4)
         {
-            if(!profile.IsWS10) {H20Drawing.Plan(dc,start,end,2,selected,separation);return;}
+            if(!profile.IsWS10) {H20Drawing.Plan(dc,start,end,2,selected,separation,memberWidth);return;}
             var delta=end-start;if(delta.Length<.1)return;
             var normal=new Vector(-delta.Y,delta.X);normal.Normalize();normal*=separation;
             var pen=new Pen(selected ? Brushes.MediumPurple : WS10Colour,selected ? 2.5 : 1.8);

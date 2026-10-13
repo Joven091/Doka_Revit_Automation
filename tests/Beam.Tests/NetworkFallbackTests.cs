@@ -49,6 +49,7 @@ internal static class NetworkFallbackTests
         Check(serial.RequiresSeparateSlabFormwork && serial.SeparateSlabCount==1 && serial.Bays[0]==null && serial.Bays[1]!=null,"only S1 moves to separate slab formwork");
         Check(serial.Beams[0].Transfer.UpperMembers.Length==0 && serial.Beams[0].Transfer.CaseNames.SequenceEqual(new[] {"Beam"}),"B1 is checked for its own beam load");
         Near(serial.Beams[0].Transfer.SlabLoadKn,0,"B1 has no slab or shutter load");
+        Near(serial.Beams[0].TotalSupportedLoadKn,input.AreaLoad(input.Beams[0].DepthMm)*input.Beams[0].WidthMm/1000*common.LengthMm/1000,"summary excludes separate slab formwork loads");
         Check(serial.Beams[1].Transfer.LeftUpperStockMm==0 && serial.Beams[1].Transfer.RightUpperStockMm>0 && serial.Beams[2].Transfer.LeftUpperStockMm>0,"B2 and B3 still carry S2");
         Check(serial.Summary.Contains("Separate slab formwork required: S1") && serial.Schedule.Contains("design are excluded") && serial.LayoutDiagnostics.Contains("S1: separate slab formwork"),"scope exclusion is visible in summaries, schedules and diagnostics");
         Check(serial.Beams.All(b=>b.StockPlan.Pieces.All(p=>common.StockLengthsMm.Contains(p.StockLengthMm)) && common.StockLengthsMm.Contains(b.Transfer.LowerStockLengthMm)),"fallback retains catalogue primary and lower stocks");

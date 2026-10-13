@@ -68,7 +68,9 @@ internal static class CrossSupportUiTests
         var focus=workspace.Drawing.Screen((primary.Min(s=>s.X0)+primary.Max(s=>s.X1))/2,(primary.Min(s=>s.Y0)+primary.Max(s=>s.Y1))/2);workspace.Drawing.PanBy(new Vector(1000-focus.X,550-focus.Y));workspace.Drawing.ZoomAt(3,new Point(1000,550));
         Capture(workspace.Drawing,2000,1100,Preview(previewPath,"coordinated-report-setting-out"));
         var settingLabels=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).OfType<GlyphRunDrawing>().Select(g=>new string(g.GlyphRun.Characters.ToArray())).ToArray();
-        Check(workspace.Drawing.CrossingSettingOut.Where(d=>d.Item1==0).All(d=>settingLabels.Contains(d.Item3.ToString("0.###"))),"focused crossing displays every setting-out value, including both H20 overhangs");
+        var missingSettingOut=workspace.Drawing.CrossingSettingOut.Where(d=>d.Item1==0 && !settingLabels.Contains(d.Item3.ToString("0.###"))).ToArray();
+        Check(missingSettingOut.Length==0,"focused crossing displays every setting-out value, including both H20 overhangs; missing: "+string.Join(", ",missingSettingOut.Select(d=>d.Item2+" = "+d.Item3.ToString("0.###"))));
+        Check(!workspace.Drawing.AnnotationBounds.Where((r,i)=>workspace.Drawing.AnnotationBounds.Skip(i+1).Any(r.IntersectsWith)).Any(),"focused crossing labels remain separate after moving crowded dimensions");
         workspace.Drawing.Select(FormworkObject.Slab,1);Pump();Check(workspace.SelectedResultText.Contains("entered maximum "+vm.MaximumSecondarySpacingMm.ToString("0.###",System.Globalization.CultureInfo.InvariantCulture)),"slab inspector explains tighter junction spacing");
         workspace.Buttons["Section"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
         for(int i=0;i<vm.NetworkResult.CrossSupports.Length;i++)
