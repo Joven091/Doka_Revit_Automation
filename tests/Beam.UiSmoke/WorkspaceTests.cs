@@ -88,9 +88,14 @@ internal static class WorkspaceTests
         Click("Undo");Render();Check(model.NetworkConfigurationXml==withCrossings && drawing.SelectedObjects.Length==2,"one undo restores the entire batch and its selection");
         Click("Redo");Render();Check(model.NetworkBeams.Count==2 && model.CrossingBeams.Count==1,"one redo reapplies the entire batch");
         var two=model.NetworkConfigurationXml;drawing.Select(FormworkObject.Beam,0);Render();
-        Check(!workspace.Buttons["Delete"].IsEnabled && workspace.RemovalPreview.Contains("at least two"),"minimum connected-network geometry blocks deletion visibly");
-        workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None);Check(model.NetworkConfigurationXml==two,"minimum-network deletion never partially removes geometry");
-        Click("Undo");Render();Check(model.NetworkConfigurationXml==withCrossings,"rejected deletion creates no extra undo entry");
+        Check(workspace.Buttons["Delete"].IsEnabled,"two-beam network allows deletion to leave a single beam");
+        double survivorWidth=model.NetworkBeams[1].WidthMm,survivorDepth=model.NetworkBeams[1].DepthMm;
+        workspace.HandleGeometryKey(Key.Delete,ModifierKeys.None);Render();
+        Check(model.NetworkBeams.Count==1 && model.NetworkBays.Count==0 && model.CrossingBeams.Count==0 && !model.IsNetworkMode && model.Width==survivorWidth && model.Depth==survivorDepth,"deletion leaves the surviving beam in beam-only design");
+        drawing.Select(FormworkObject.Beam,0);Render();Check(!workspace.Buttons["Delete"].IsEnabled && workspace.RemovalPreview.Contains("at least one"),"last beam deletion is blocked visibly");
+        Click("Undo");Render();Check(model.NetworkConfigurationXml==two && model.IsNetworkMode,"one undo restores the last bay and crossing");
+        Click("Redo");Render();Check(model.NetworkBeams.Count==1 && !model.IsNetworkMode,"redo returns to standalone design");
+        Click("Undo");Click("Undo");Render();Check(model.NetworkConfigurationXml==withCrossings,"undo restores the earlier connected network");
         drawing.Select(FormworkObject.Beam,1);Render();var depth=workspace.Fields["DepthMm"];
         depth.Focus();var textDelete=new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(workspace.Surface),Environment.TickCount,Key.Delete){RoutedEvent=Keyboard.PreviewKeyDownEvent};depth.RaiseEvent(textDelete);Pump();
         Check(model.NetworkConfigurationXml==withCrossings,"delete while editing numeric text does not remove drawing geometry");

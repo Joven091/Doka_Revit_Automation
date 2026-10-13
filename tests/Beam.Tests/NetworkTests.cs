@@ -57,7 +57,7 @@ internal static class NetworkTests
         var vm=new BeamCalculatorViewModel {UseTowers=true,HasLeftSlab=true,TransferSlabLoads=true,UseBeamNetwork=true};
         Check(vm.NetworkBeams.Count==2,"network initializes two actual beams");vm.AddNetworkBay();vm.NetworkBeams[1].DepthMm=1200;Check(vm.NetworkBeams.Count==3 && vm.NetworkBays.Count==2,"add slab and beam");
         var xml=vm.NetworkConfigurationXml;var other=new BeamCalculatorViewModel();other.NetworkConfigurationXml=xml;Near(other.NetworkBeams[1].DepthMm,1200,"per-beam depths saved");
-        vm.RemoveNetworkBay();Check(vm.NetworkBeams.Count==2 && !vm.CanRemoveNetworkBay,"remove preserves connected sequence");
+        vm.RemoveNetworkBay();Check(vm.NetworkBeams.Count==2 && vm.CanRemoveNetworkBay,"remove preserves the chain and allows the remaining bay to be removed");
         var bracePositions=new[] {450.0,1450,2450,3450,4450};
         var braceJoins=TowerOptimizer.RemoveRedundantJoins(new[] {true,true,true,true},bracePositions,false);
         Check(braceJoins.SequenceEqual(new[] {true,false,true,true}),"five frames split into one standalone and one joined tower with three cross bays");
