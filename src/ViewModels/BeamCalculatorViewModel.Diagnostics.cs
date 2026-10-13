@@ -21,6 +21,7 @@ namespace EngineeringDashboard
             for(int i=0;i<NetworkBeams.Count;i++)text.AppendLine(FormattableString.Invariant($"B{i+1}: width={NetworkBeams[i].WidthMm:R}; depth={NetworkBeams[i].DepthMm:R} mm; bottom={NetworkBeams[i].BottomElevationMm:R} mm"));
             for(int i=0;i<NetworkBays.Count;i++)text.AppendLine(FormattableString.Invariant($"S{i+1}: clear span={NetworkBays[i].WidthMm:R}; thickness={NetworkBays[i].ThicknessMm:R} mm"));
             for(int i=0;i<CrossingBeams.Count;i++) {var c=CrossingBeams[i];text.AppendLine(FormattableString.Invariant($"X{i+1}: slab bay={c.BayNumber}; centre={c.PositionMm:R}; width={c.WidthMm:R}; depth={c.DepthMm:R} mm; bottom={c.BottomElevationMm:R} mm; supports={c.SupportMode}"));}
+            for(int i=0;i<IndependentBeams.Count;i++){var b=IndependentBeams[i];text.AppendLine(FormattableString.Invariant($"I{i+1}: independent; start=({b.StartXmm:R},{b.StartYmm:R}); end=({b.EndXmm:R},{b.EndYmm:R}); length={b.LengthMm:R}; width={b.WidthMm:R}; depth={b.DepthMm:R}; bottom={b.BottomElevationMm:R} mm; own beam load, no slab transfer"));}
             return text.ToString();
         }
         // Read-only capture on the UI thread: no validation, recalculation, model API or input commits.
@@ -51,6 +52,7 @@ namespace EngineeringDashboard
             }
             text.AppendLine("\nPLYWOOD SECONDARY SPACING\n"+SecondarySpacingSummary+"\n"+ElementPlywoodSpacingSummary);
             if(IsCalculationValid)text.AppendLine("\nCURRENT RESULT\n"+(NetworkResult?.Summary??TowerResult?.Summary??("Prop spacing mm: "+MaximumPropSpacing.ToString("R",CultureInfo.InvariantCulture))));
+            if(IsCalculationValid && IndependentBeamResults.Length>0)text.AppendLine("\nINDEPENDENT BEAM RESULTS\n"+string.Join("\n",IndependentBeamResults.Select((b,i)=>$"I{i+1}: length {b.LengthMm:0.###} mm; own beam load {b.TotalSupportedLoadKn:0.###} kN; {b.LegCount} legs; peak leg {b.MaxLegKn:0.###} kN. Slab loads remain on connected bays.")));
             if(IsCalculationValid && NetworkResult!=null)text.AppendLine("\nSELECTED NETWORK LAYOUT\n"+NetworkResult.LayoutDiagnostics);
             if(!string.IsNullOrEmpty(TowerFailureDetails))text.AppendLine("\nCURRENT FAILURE DETAILS\n"+TowerFailureDetails);
             text.AppendLine("\nPRIMARY MATERIAL BASIS\n"+PrimaryMaterialAssumptions);

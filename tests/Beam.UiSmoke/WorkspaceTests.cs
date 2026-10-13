@@ -297,13 +297,10 @@ internal static class WorkspaceTests
             customLengthsRecord.Inputs.RemoveAll(f=>f.Name=="AllowCustomH20Lengths");parent.RestoreCalculation(customLengthsRecord);Pump();
             Check(!model.AllowCustomH20Lengths && Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow custom H20 lengths (25 mm)")).IsChecked==false,"legacy files restore disabled custom mode in both windows");
             Check(!Controls<ComboBox>(workspace).Single(c=>c.Name=="CustomH20ScopeSelector").IsEnabled,"scope selector disables when custom master switch is off");
-            var uplift=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Exclude uplift check (connected plywood / deadweight assumed)"));
-            Check(uplift.IsChecked==false,"workspace uplift exclusion defaults off");uplift.IsChecked=true;uplift.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
-            Check(model.IgnoreUplift && !model.IsCalculationValid,"workspace uplift opt-in invalidates the shared result");
-            Click("Undo");Check(!model.IgnoreUplift,"undo restores bearing-only assumptions");Click("Redo");Check(model.IgnoreUplift,"redo restores project uplift assumption");
-            var upliftRecord=parent.CaptureDrawingInputs();Check(upliftRecord.Inputs.Single(f=>f.Name=="IgnoreUplift").Value=="True","workspace uplift assumption saved");
-            model.IgnoreUplift=false;parent.RestoreCalculation(upliftRecord);Pump();Check(model.IgnoreUplift && ((CheckBox)parent.FindName("IgnoreUpliftCheckBox")).IsChecked==true,"loaded uplift assumption synchronizes both windows");
-            upliftRecord.Inputs.RemoveAll(f=>f.Name=="IgnoreUplift");parent.RestoreCalculation(upliftRecord);Pump();Check(!model.IgnoreUplift,"legacy workspace file restores bearing-only assumptions");
+            Check(!Controls<CheckBox>(workspace).Any(c=>c.Content?.ToString().Contains("uplift")==true) && model.IgnoreUplift,"shared settings have no editable uplift checkbox");
+            var upliftRecord=parent.CaptureDrawingInputs();Check(upliftRecord.Inputs.Single(f=>f.Name=="IgnoreUplift").Value=="True","drawing saves the fixed exclusion");
+            model.IgnoreUplift=false;parent.RestoreCalculation(upliftRecord);Pump();Check(model.IgnoreUplift && parent.FindName("IgnoreUpliftCheckBox")==null,"saved and classic controls retain fixed exclusion");
+            upliftRecord.Inputs.RemoveAll(f=>f.Name=="IgnoreUplift");parent.RestoreCalculation(upliftRecord);Pump();Check(model.IgnoreUplift,"legacy drawing cannot disable the fixed exclusion");
             Check(!model.CanCancelOptimization && !workspace.Buttons["Cancel"].IsEnabled,"cancel is disabled without a running analysis");
             var cancelledSearch=workspace.CalculateAsync();
             Check(model.CanCancelOptimization,"running analysis can be cancelled");

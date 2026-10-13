@@ -36,7 +36,7 @@ namespace EngineeringDashboard
             if(Math.Abs(NearFootMm-FarFootMm)>1e-7)throw new ArgumentException("Slab H20 supports must have equal setbacks from both concrete faces and equal stock-end overhangs.");
         }
     }
-    public sealed class TransferBeamRow : INotifyPropertyChanged
+    public class TransferBeamRow : INotifyPropertyChanged
     {
         public string Label {get;set;}
         private double maximumSecondarySpacing;
@@ -51,6 +51,22 @@ namespace EngineeringDashboard
         public double WidthMm {get=>width;set {width=value;PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(nameof(WidthMm)));}}
         public void SetDepthKeepingTopMm(double value) {double top=BottomElevationMm+DepthMm;DepthMm=value;BottomElevationMm=top-value;}
         public event PropertyChangedEventHandler PropertyChanged;
+        protected void GeometryChanged(string name)=>PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(name));
+    }
+    public sealed class IndependentBeamRow : TransferBeamRow
+    {
+        private double startX,startY,length=3000;private bool vertical;
+        public double StartXmm {get=>startX;set {startX=value;GeometryChanged(nameof(StartXmm));}}
+        public double StartYmm {get=>startY;set {startY=value;GeometryChanged(nameof(StartYmm));}}
+        public double LengthMm {get=>length;set {length=value;GeometryChanged(nameof(LengthMm));}}
+        public bool IsVertical {get=>vertical;set {vertical=value;GeometryChanged(nameof(IsVertical));}}
+        [System.Xml.Serialization.XmlIgnore] public double EndXmm=>StartXmm+(IsVertical ? 0 : LengthMm);
+        [System.Xml.Serialization.XmlIgnore] public double EndYmm=>StartYmm+(IsVertical ? LengthMm : 0);
+        internal void Validate()
+        {
+            if(new[] {StartXmm,StartYmm,EndXmm,EndYmm,WidthMm,DepthMm,LengthMm,BottomElevationMm}.Any(x=>!TowerBeamAnalysis.Finite(x)) || Math.Abs(StartXmm)>1000000 || Math.Abs(StartYmm)>1000000 || WidthMm<=0 || WidthMm>10000 || DepthMm<=0 || DepthMm>10000 || LengthMm<=0 || LengthMm>30000)throw new ArgumentException("Independent beams require a valid start point, positive width/depth and a length up to 30,000 mm.");
+        }
+        internal IndependentBeamRow Copy()=>new IndependentBeamRow {WidthMm=WidthMm,DepthMm=DepthMm,BottomElevationMm=BottomElevationMm,StartXmm=StartXmm,StartYmm=StartYmm,LengthMm=LengthMm,IsVertical=IsVertical};
     }
     public sealed class TransferBayRow : INotifyPropertyChanged
     {

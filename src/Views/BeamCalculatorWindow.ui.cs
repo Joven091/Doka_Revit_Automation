@@ -194,7 +194,7 @@ namespace EngineeringDashboard
             foreach (var field in CalculationFiles.Capture("Beam", vm, "TransferSlabLoads,UpperSupportSpacingMm,LeftSlabBayMm,RightSlabBayMm").Inputs) record.Inputs.Add(field);
             record.Inputs.Add(CalculationFiles.Field("UseTowers", vm.UseTowers));
             record.Inputs.Add(CalculationFiles.Field("UseBeamNetwork",vm.UseBeamNetwork));
-            if(vm.NetworkBeams.Count>0)record.Inputs.Add(CalculationFiles.Field("NetworkConfigurationXml",vm.NetworkConfigurationXml));
+            if(vm.NetworkBeams.Count>0 || vm.IndependentBeams.Count>0)record.Inputs.Add(CalculationFiles.Field("NetworkConfigurationXml",vm.NetworkConfigurationXml));
             record.Inputs.Add(CalculationFiles.Field("PlanOriginYmm",vm.PlanOriginYmm));
             record.Inputs.Add(CalculationFiles.Field("BeamLengthMm", vm.BeamLengthMm));
             record.Inputs.Add(CalculationFiles.Field("TowerLegCapacityKn", vm.TowerLegCapacityKn));
@@ -230,7 +230,7 @@ namespace EngineeringDashboard
             CalculationFiles.Apply(record,"Beam",target,FileInputs);
             target.SelectedPlywood=candidate.SelectedPlywood; target.PlywoodDeflectionLimit=candidate.PlywoodDeflectionLimit; target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
             target.TransferSlabLoads=candidate.TransferSlabLoads; target.LeftSlabBayMm=candidate.LeftSlabBayMm; target.RightSlabBayMm=candidate.RightSlabBayMm;
-            target.UseBeamNetwork=candidate.UseBeamNetwork;if(candidate.NetworkBeams.Count>0)target.NetworkConfigurationXml=candidate.NetworkConfigurationXml;
+            target.UseBeamNetwork=candidate.UseBeamNetwork;target.ClearIndependentBeams();if(candidate.NetworkBeams.Count>0 || candidate.IndependentBeams.Count>0)target.NetworkConfigurationXml=candidate.NetworkConfigurationXml;
             target.PlanOriginYmm=candidate.PlanOriginYmm;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
             target.PrimaryMaterial=candidate.PrimaryMaterial;
@@ -291,6 +291,12 @@ namespace EngineeringDashboard
                     CalculationFiles.Field("SearchStatus", vm.TowerSearchNote), CalculationFiles.Field("TotalLineLoadKnPerM", vm.TotalLineLoad),
                     CalculationFiles.Field("LeftLineLoadKnPerM", vm.LeftLineLoad), CalculationFiles.Field("RightLineLoadKnPerM", vm.RightLineLoad) };
                 if(tower.Transfer != null) {fields.Add(CalculationFiles.Field("TransferredSlabSummary",tower.Transfer.Summary));fields.Add(CalculationFiles.Field("EstimatedSlabSoffitMovementMm",tower.Transfer.SlabMovementMm));fields.Add(CalculationFiles.Field("ShutterLoadKn",tower.Transfer.ShutterLoadKn));}
+                if(vm.IndependentBeamResults.Length>0)
+                {
+                    fields.Add(CalculationFiles.Field("IndependentBeamCount",vm.IndependentBeamResults.Length));fields.Add(CalculationFiles.Field("IndependentTowerLegCount",vm.IndependentBeamResults.Sum(b=>b.LegCount)));
+                    fields.Add(CalculationFiles.Field("TotalDocumentTowerLegCount",(vm.NetworkResult?.LegCount??tower.LegCount)+vm.IndependentBeamResults.Sum(b=>b.LegCount)));
+                    fields.Add(CalculationFiles.Field("IndependentBeamSchedules",string.Join("\n\n",vm.IndependentBeamResults.Select((b,i)=>$"I{i+1}: own beam load only; length {b.LengthMm:0.###} mm; no slab transfer\n{b.Summary}\n{b.StockSchedule}"))));
+                }
                 if(vm.NetworkResult!=null) {fields.Add(CalculationFiles.Field("NetworkSummary",vm.NetworkResult.Summary));fields.Add(CalculationFiles.Field("NetworkSignedReactions",string.Join("\n",vm.NetworkResult.Beams.Select((b,i)=>$"B{i+1}: {b.UpliftSummary}"))));fields.Add(CalculationFiles.Field("AllBeamSchedules",vm.NetworkResult.Schedule));fields.Add(CalculationFiles.Field("TotalNetworkH20LengthMm",vm.NetworkResult.TimberMm));fields.Add(CalculationFiles.Field("TotalNetworkWS10LengthMm",vm.NetworkResult.WS10LengthMm));fields.Add(CalculationFiles.Field("TotalNetworkSlabLoadKn",vm.NetworkResult.SlabLoadKn));if(vm.NetworkResult.RequiresSeparateSlabFormwork)fields.Add(CalculationFiles.Field("FullTransferFailureDetails",vm.NetworkResult.FullTransferFailureDetails));}
                 return CalculationFiles.Report("Beam — shoring towers", record.Inputs, fields, vm.TowerCalculationBasis);
             }

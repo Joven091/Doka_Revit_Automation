@@ -19,12 +19,30 @@ namespace EngineeringDashboard
         public TransferBeamRow[] Beams {get;set;}
         public TransferBayRow[] Bays {get;set;}
         public TransferCrossingBeamRow[] CrossingBeams {get;set;}
+        public IndependentBeamRow[] IndependentBeams {get;set;}
     }
     public partial class BeamCalculatorViewModel
     {
         public ObservableCollection<TransferBeamRow> NetworkBeams {get;}=new ObservableCollection<TransferBeamRow>();
         public ObservableCollection<TransferBayRow> NetworkBays {get;}=new ObservableCollection<TransferBayRow>();
         public ObservableCollection<TransferCrossingBeamRow> CrossingBeams {get;}=new ObservableCollection<TransferCrossingBeamRow>();
+        public ObservableCollection<IndependentBeamRow> IndependentBeams {get;}=new ObservableCollection<IndependentBeamRow>();
+        public TowerLayout[] IndependentBeamResults {get;private set;}=new TowerLayout[0];
+        private void IndependentCollectionChanged(object sender,System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            if(e.OldItems!=null)foreach(IndependentBeamRow b in e.OldItems)b.PropertyChanged-=NetworkChanged;
+            if(e.NewItems!=null)foreach(IndependentBeamRow b in e.NewItems)b.PropertyChanged+=NetworkChanged;
+            for(int i=0;i<IndependentBeams.Count;i++)IndependentBeams[i].Label="I"+(i+1);
+            Changed(nameof(NetworkConfigurationXml));
+        }
+        internal void ClearIndependentBeams()
+        {foreach(var b in IndependentBeams)b.PropertyChanged-=NetworkChanged;IndependentBeams.Clear();}
+        internal TowerInput IndependentInput(TowerInput common,IndependentBeamRow beam)
+        {
+            beam.Validate();var input=common.CopyForSearch();input.Network=null;input.LengthMm=beam.LengthMm;input.TotalLineLoad=AreaLoad(beam.DepthMm)*beam.WidthMm/1000;input.TransverseLoadMoment=0;
+            input.TransferredSlab=new TransferredSlabInput {IsNetwork=true,IncludeMainBeamEndLoads=true,PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm,BeamWidthMm=beam.WidthMm,BeamLineLoadKnM=input.TotalLineLoad,UpperSpacingMm=beam.MaximumSecondarySpacingMm};
+            input.DiagnosticScope=beam.Label+" · independent beam · ";input.TransferredSlab.Validate(input);return input;
+        }
         private bool useBeamNetwork;
         private double planOriginYmm;
         public double PlanOriginYmm {get=>planOriginYmm;set {if(!TowerBeamAnalysis.Finite(value) || Math.Abs(value)>1000000)throw new ArgumentException("Invalid drawing origin.");if(planOriginYmm==value)return;planOriginYmm=value;OnPropertyChanged(nameof(PlanOriginYmm));}}
@@ -77,7 +95,7 @@ namespace EngineeringDashboard
         public string NetworkSelectedLabel=>IsNetworkMode ? $"Inspecting B{SelectedNetworkBeam+1}" : "";
         public string NetworkConfigurationXml
         {
-            get {using(var text=new StringWriter(CultureInfo.InvariantCulture)) {new XmlSerializer(typeof(TransferNetworkConfiguration)).Serialize(text,new TransferNetworkConfiguration {SupportFormatVersion=2,PlanOriginYmm=PlanOriginYmm,Beams=NetworkBeams.Count==1 && !IsNetworkMode ? new[] {StandaloneDefinition()} : NetworkBeams.ToArray(),Bays=NetworkBays.ToArray(),CrossingBeams=CrossingBeams.ToArray()});return text.ToString();}}
+            get {using(var text=new StringWriter(CultureInfo.InvariantCulture)) {new XmlSerializer(typeof(TransferNetworkConfiguration)).Serialize(text,new TransferNetworkConfiguration {SupportFormatVersion=2,PlanOriginYmm=PlanOriginYmm,Beams=NetworkBeams.Count<=1 && !IsNetworkMode ? new[] {StandaloneDefinition()} : NetworkBeams.ToArray(),Bays=NetworkBays.ToArray(),CrossingBeams=CrossingBeams.ToArray(),IndependentBeams=IndependentBeams.ToArray()});return text.ToString();}}
             set
             {
                 TransferNetworkConfiguration config;
@@ -87,9 +105,10 @@ namespace EngineeringDashboard
                 if(config.CrossingBeams!=null && (config.CrossingBeams.Length>30 || config.CrossingBeams.Any(c=>c==null)))throw new ArgumentException("Invalid saved crossing beams.");
                 if(config.Beams.Length==1 && config.CrossingBeams?.Length>0)throw new ArgumentException("A standalone beam cannot contain slab crossing beams.");
                 if(!TowerBeamAnalysis.Finite(config.PlanOriginYmm) || Math.Abs(config.PlanOriginYmm)>1000000)throw new ArgumentException("Invalid saved drawing origin.");
+                if(config.IndependentBeams!=null) {if(config.IndependentBeams.Length>30 || config.IndependentBeams.Any(b=>b==null))throw new ArgumentException("Invalid saved independent beams.");foreach(var b in config.IndependentBeams)b.Validate();}
                 if(config.SupportFormatVersion<0 || config.SupportFormatVersion>2)throw new ArgumentException("Unsupported cross-beam support format.");
                 if(config.SupportFormatVersion<2)foreach(var c in config.CrossingBeams??new TransferCrossingBeamRow[0])c.SupportMode=CrossBeamSupportMode.LegacySlabRows;
-                PlanOriginYmm=config.PlanOriginYmm;UnsubscribeNetwork();NetworkBeams.Clear();NetworkBays.Clear();CrossingBeams.Clear();foreach(var c in config.CrossingBeams??new TransferCrossingBeamRow[0])CrossingBeams.Add(c);foreach(var b in config.Beams)NetworkBeams.Add(b);foreach(var b in config.Bays)NetworkBays.Add(b);SubscribeNetwork();if(NetworkBeams.Count==1)SetStandaloneMode();Changed();NotifyNetwork();
+                PlanOriginYmm=config.PlanOriginYmm;ClearIndependentBeams();foreach(var b in config.IndependentBeams??new IndependentBeamRow[0])IndependentBeams.Add(b);UnsubscribeNetwork();NetworkBeams.Clear();NetworkBays.Clear();CrossingBeams.Clear();foreach(var c in config.CrossingBeams??new TransferCrossingBeamRow[0])CrossingBeams.Add(c);foreach(var b in config.Beams)NetworkBeams.Add(b);foreach(var b in config.Bays)NetworkBays.Add(b);SubscribeNetwork();if(NetworkBeams.Count==1)SetStandaloneMode();Changed();NotifyNetwork();
             }
         }
         internal TransferBeamRow StandaloneDefinition()

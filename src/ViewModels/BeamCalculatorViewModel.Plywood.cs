@@ -30,11 +30,12 @@ namespace EngineeringDashboard
         public PlywoodSpacingResult RightSlabPlywoodResult {get;private set;}
         public double LeftSlabSecondarySpacingMm=>LeftSlabPlywoodResult?.MaximumSpacingMm??0;
         public double RightSlabSecondarySpacingMm=>RightSlabPlywoodResult?.MaximumSpacingMm??0;
-        public string ElementPlywoodSpacingSummary=>IsNetworkMode
+        public string ElementPlywoodSpacingSummary=>(IsNetworkMode
             ? string.Join("\n",NetworkBeams.Select(b=>$"{b.Label}: beam {b.DepthMm:0} mm · spacing limit {b.MaximumSecondarySpacingMm:0} mm")
                 .Concat(NetworkBays.Select(b=>$"{b.Label}: slab {b.ThicknessMm:0} mm · spacing limit {b.MaximumSecondarySpacingMm:0} mm"))
                 .Concat(CrossingBeams.Select((c,i)=>$"X{i+1}: crossing {c.DepthMm:0} mm · spacing limit {c.MaximumSecondarySpacingMm:0} mm")))
-            : $"Beam: {MaximumSecondarySpacingMm:0} mm"+(HasLeftSlab ? $"\nLeft slab: {LeftSlabSecondarySpacingMm:0} mm" : "")+(HasRightSlab ? $"\nRight slab: {RightSlabSecondarySpacingMm:0} mm" : "");
+            : $"Beam: {MaximumSecondarySpacingMm:0} mm"+(HasLeftSlab ? $"\nLeft slab: {LeftSlabSecondarySpacingMm:0} mm" : "")+(HasRightSlab ? $"\nRight slab: {RightSlabSecondarySpacingMm:0} mm" : ""))
+            +string.Concat(IndependentBeams.Select(b=>$"\n{b.Label}: independent beam {b.DepthMm:0} mm · spacing limit {b.MaximumSecondarySpacingMm:0} mm"));
         public double MaximumSecondarySpacingMm => PlywoodResult?.MaximumSpacingMm ?? 0;
         public double PlywoodPressureKnM2 => PlywoodResult?.PressureKnM2 ?? 0;
         public string SecondarySpacingGoverning => PlywoodResult?.Governing ?? "";
@@ -87,12 +88,13 @@ namespace EngineeringDashboard
                     if(HasLeftSlab)LeftSlabPlywoodResult=PlywoodSpacing.CalculateForSheet(SelectedPlywood,AreaLoad(LeftSlabThickness),plywoodDenominator);
                     if(HasRightSlab)RightSlabPlywoodResult=PlywoodSpacing.CalculateForSheet(SelectedPlywood,AreaLoad(RightSlabThickness),plywoodDenominator);
                 }
+                foreach(var b in IndependentBeams){b.Validate();b.SetPlywoodSpacing(PlywoodSpacing.CalculateForSheet(SelectedPlywood,AreaLoad(b.DepthMm),plywoodDenominator).MaximumSpacingMm);}
                 PlywoodResult = PlywoodSpacing.CalculateForSheet(SelectedPlywood, pressure, plywoodDenominator);
             }
             catch (ArgumentException ex)
             {
                 PlywoodResult=null;LeftSlabPlywoodResult=RightSlabPlywoodResult=null;PlywoodSpacingWarning=ex.Message;
-                foreach(var b in NetworkBeams)b.SetPlywoodSpacing(0);foreach(var b in NetworkBays)b.SetPlywoodSpacing(0);foreach(var c in CrossingBeams)c.SetPlywoodSpacing(0);
+                foreach(var b in NetworkBeams)b.SetPlywoodSpacing(0);foreach(var b in NetworkBays)b.SetPlywoodSpacing(0);foreach(var c in CrossingBeams)c.SetPlywoodSpacing(0);foreach(var b in IndependentBeams)b.SetPlywoodSpacing(0);
             }
             foreach (string name in new[] { nameof(PlywoodResult), nameof(MaximumSecondarySpacingMm), nameof(UpperSupportSpacingMm), nameof(PlywoodPressureKnM2),
                 nameof(LeftSlabSecondarySpacingMm),nameof(RightSlabSecondarySpacingMm),nameof(ElementPlywoodSpacingSummary),nameof(SecondarySpacingGoverning), nameof(PlywoodCriterion), nameof(PlywoodSpacingWarning), nameof(SecondarySpacingSummary) }) OnPropertyChanged(name);

@@ -90,7 +90,8 @@ internal static class Program
    bool badLimitRejected=false;try {window.RestoreCalculation(badLimit);}catch(ArgumentException){badLimitRejected=true;}
    Check(badLimitRejected && vm.PlywoodDeflectionLimit=="L/500","invalid saved plywood criterion preserves retained model");
    limitRecord.Inputs.RemoveAll(f=>f.Name=="PlywoodDeflectionLimit");window.RestoreCalculation(limitRecord);Pump();
-   Check(vm.PlywoodDeflectionLimit=="L/350","older beam record migrates its H20 ratio to plywood");
+   Check(vm.PlywoodDeflectionLimit=="L/"+originalH20.Denominator,"older beam record migrates its H20 ratio to plywood");
+   vm.PlywoodDeflectionLimit="L/350";Pump();
    Check(!Find<TextBlock>(window).Any(t=>t.Text.Contains("Chart maximum") || t.Text.Contains("approximate chart reading")),"plywood chart prose removed from beam UI");
    plywoodSelector.SelectedItem=vm.PlywoodOptions.Single(p=>p.ThicknessMm==9);Pump();
    Check(!vm.IsCalculationValid && vm.MaximumSecondarySpacingMm==0,"9 mm cannot round an unsafe beam spacing up to 250 mm");
@@ -225,12 +226,11 @@ internal static class Program
    var exclusionRecord=window.CaptureCalculation();Check(window.BuildReport().Contains("Exclude600Standalone") || window.BuildReport().Contains("Exclude600 Standalone"),"report records standalone exclusion");
    vm.Exclude600Standalone=false;window.RestoreCalculation(exclusionRecord);Pump();Check(vm.Exclude600Standalone && !vm.IsCalculationValid,"checkbox save/load round trip");
    exclusionRecord.Inputs.RemoveAll(f=>f.Name=="Exclude600Standalone");window.RestoreCalculation(exclusionRecord);Pump();Check(!vm.Exclude600Standalone,"legacy files retain prior unrestricted behavior");
-   var upliftBox=(CheckBox)window.FindName("IgnoreUpliftCheckBox");
-   Check(upliftBox.IsChecked==false,"uplift exclusion defaults off");
-   upliftBox.IsChecked=true;Pump();Check(vm.IgnoreUplift && !vm.IsCalculationValid,"uplift opt-in binds and invalidates stale results");Optimize();
-   var upliftRecord=window.CaptureCalculation();Check(window.BuildReport().Contains("Uplift excluded from acceptance") && window.BuildReport().Contains("Minimum signed reaction"),"report retains project assumption and signed reaction");
-   upliftBox.IsChecked=false;window.RestoreCalculation(upliftRecord);Pump();Check(vm.IgnoreUplift && !vm.IsCalculationValid,"uplift opt-in saved/restored without stale result");
-   upliftRecord.Inputs.RemoveAll(f=>f.Name=="IgnoreUplift");window.RestoreCalculation(upliftRecord);Pump();Check(!vm.IgnoreUplift,"older files retain bearing-only uplift checks");
+   Check(window.FindName("IgnoreUpliftCheckBox")==null && vm.IgnoreUplift,"uplift exclusion is fixed and has no editable checkbox");
+   var upliftRecord=window.CaptureCalculation();
+   vm.IgnoreUplift=false;Check(vm.IgnoreUplift && vm.IsCalculationValid,"legacy setter cannot disable exclusion or alter a checked result");
+   window.RestoreCalculation(upliftRecord);Pump();Check(vm.IgnoreUplift && !vm.IsCalculationValid,"restored drawing retains fixed exclusion and requires recalculation");
+   upliftRecord.Inputs.RemoveAll(f=>f.Name=="IgnoreUplift");window.RestoreCalculation(upliftRecord);Pump();Check(vm.IgnoreUplift,"older files retain the fixed uplift exclusion");
    var old=towerSaved;old.Inputs.RemoveAll(f=>new[]{"UseTowers","BeamLengthMm","TowerLegCapacityKn","StockLengthsText","StockEndSetbackMm","MaximumConcreteEndOverhangMm"}.Contains(f.Name));
    window.RestoreCalculation(old);Pump();Check(!vm.UseTowers && vm.IsCalculationValid,"legacy prop record loads");
    var reopened=new BeamCalculatorWindow { DataContext=vm };Pump();

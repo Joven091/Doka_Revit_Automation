@@ -248,11 +248,11 @@ namespace EngineeringDashboard
                 if(layout.Joined[i])DrawnBayDimensionCount+=count;else DrawnGapDimensionCount+=count;i+=count;
             }
             dc.DrawLine(new Pen(Steel, 1), new Point(x0, bottom + (layout.Transfer == null ? 91 : 121)), new Point(x0 + layout.LengthMm * scale, bottom + (layout.Transfer == null ? 91 : 121)));
-            Label(dc, "Concrete beam: " + layout.LengthMm.ToString("0.###") + " mm", ActualWidth / 2, bottom + (layout.Transfer == null ? 96 : 126), true);
+            Label(dc, "Concrete beam: " + layout.LengthMm.ToString("0.###") + " mm", ActualWidth / 2, bottom + (layout.Transfer == null ? 72 : 102), true);
             double acrossX=x0+layout.PositionsMm.OrderBy(x=>Math.Abs(x-layout.LengthMm/2)).First()*scale-18;
             dc.DrawLine(new Pen(Brushes.Firebrick,1),new Point(acrossX,top),new Point(acrossX,bottom));
             foreach(double y in new[] {top,bottom})dc.DrawLine(new Pen(Brushes.Firebrick,1),new Point(acrossX-4,y),new Point(acrossX+4,y));
-            Label(dc,layout.WidthMm.ToString("0.###"),acrossX-25,(top+bottom)/2-7,true,Brushes.Firebrick);DrawnAcrossDimensionCount++;
+            Label(dc,layout.WidthMm.ToString("0.###"),acrossX-14,(top+bottom)/2,false,Brushes.Firebrick,true);DrawnAcrossDimensionCount++;
             Label(dc, (layout.Rotated ? "Cross" : "Frame") + " across: " + layout.WidthMm.ToString("0") + " mm · concrete end overhang: " + layout.ConcreteEndOverhangMm.ToString("0.###") + " mm/end", x0, bottom + (layout.Transfer == null ? 113 : 143));
             if(layout.Transfer != null) DrawTransferSection(dc,layout);
         }
@@ -268,7 +268,7 @@ namespace EngineeringDashboard
             double depthX=xx(-model.Width/2)-14;
             dc.DrawLine(new Pen(Steel,1),new Point(depthX,beamTop),new Point(depthX,beamBottom));
             foreach(double y in new[] {beamTop,beamBottom})dc.DrawLine(new Pen(Steel,1),new Point(depthX-4,y),new Point(depthX+4,y));
-            Label(dc,$"D {model.Depth:0.###}",depthX-8,(beamTop+beamBottom)/2-7,true);
+            Label(dc,$"D {model.Depth:0.###}",depthX-14,(beamTop+beamBottom)/2,false,null,true);
             foreach(double centre in new[] {0.0,leftBay>0 ? -model.Width-leftBay : double.NaN,rightBay>0 ? model.Width+rightBay : double.NaN})
                 if(!double.IsNaN(centre))
                 {
@@ -287,7 +287,7 @@ namespace EngineeringDashboard
             {
                 dc.DrawLine(new Pen(Steel,1),new Point(xx(a),y),new Point(xx(b),y));
                 foreach(double end in new[] {a,b}) dc.DrawLine(new Pen(Steel,1),new Point(xx(end),y-3),new Point(xx(end),y+3));
-                Label(dc,label,(xx(a)+xx(b))/2,y+3,true);
+                Label(dc,label,(xx(a)+xx(b))/2,y-18,true);
             };
             int maxRow=Array.IndexOf(t.TributaryWidthsMm,System.Linq.Enumerable.Max(t.TributaryWidthsMm));
             int lowerEncoded=layout.StockPlan.Pieces.Length+maxRow;
@@ -305,7 +305,7 @@ namespace EngineeringDashboard
                 double thicknessX=xx(face+sign*bay/2);
                 dc.DrawLine(new Pen(Steel,1),new Point(thicknessX,beamTop),new Point(thicknessX,slabBottom));
                 foreach(double y in new[] {beamTop,slabBottom})dc.DrawLine(new Pen(Steel,1),new Point(thicknessX-4,y),new Point(thicknessX+4,y));
-                Label(dc,$"t {thickness:0.###}",thicknessX+7,(beamTop+slabBottom)/2-7);
+                Label(dc,$"t {thickness:0.###}",thicknessX-14,(beamTop+slabBottom)/2,false,null,true);
                 foreach(double x in new[] {near,far})
                 {
                     dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x),slabBottom+20),new Point(xx(x),beamBottom));
@@ -332,15 +332,16 @@ namespace EngineeringDashboard
             dim(layout.WidthMm/2,t.LowerStockStartMm+t.LowerStockLengthMm,beamBottom+78,$"{t.LowerStockStartMm+t.LowerStockLengthMm-layout.WidthMm/2:0}");
 
         }
-        private void Label(DrawingContext dc, string value, double x, double y, bool centered = false,Brush colour=null)
+        private void Label(DrawingContext dc, string value, double x, double y, bool centered = false,Brush colour=null,bool rotate=false)
         {
             var text = new FormattedText(value, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
                 new Typeface("Segoe UI"), 11, colour??SteelSide, VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            if (centered) { text.MaxTextWidth = Math.Max(1, text.Width); text.TextAlignment = TextAlignment.Center; x -= text.MaxTextWidth / 2; }
-            var box=new Rect(x-2,y-1,text.Width+4,text.Height+2);
+            if (!rotate && centered) { text.MaxTextWidth = Math.Max(1, text.Width); text.TextAlignment = TextAlignment.Center; x -= text.MaxTextWidth / 2; }
+            var box=rotate ? new Rect(x-text.Height/2-2,y-text.Width/2-1,text.Height+4,text.Width+2) : new Rect(x-2,y-1,text.Width+4,text.Height+2);
+            if(rotate){x-=text.Height/2;y+=text.Width/2;}
             if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>ActualHeight || AnnotationBounds.Exists(r=>r.IntersectsWith(box)))return;
             AnnotationBounds.Add(box);var drawing=new DrawingGroup();
-            using(var overlay=drawing.Open()){overlay.DrawRectangle(Brushes.White,null,box);overlay.DrawText(text,new Point(x,y));}annotations.Add(drawing);
+            using(var overlay=drawing.Open()){overlay.DrawRectangle(Brushes.White,null,box);if(rotate)overlay.PushTransform(new RotateTransform(-90,x,y));overlay.DrawText(text,new Point(x,y));if(rotate)overlay.Pop();}annotations.Add(drawing);
         }
     }
 }

@@ -8,7 +8,7 @@ using System.Windows.Media;
 
 namespace EngineeringDashboard
 {
-    internal enum FormworkObject { Beam, Slab, Crossing }
+    internal enum FormworkObject { Beam, Slab, Crossing, Independent }
     /// <summary>Plan geometry uses one mm coordinate system for drawing, picking and edits.</summary>
     internal sealed class BeamFormworkCanvas : FrameworkElement
     {
@@ -47,10 +47,11 @@ namespace EngineeringDashboard
         internal Rect? DraftPreview;
         internal Point? DraftBasePoint,SnappedPoint;
         internal string SnapName;
+        internal Point? DraftPointerWorld;
         internal event Action<Point> DraftPointRequested,DraftPointerChanged;
         internal bool IsDrafting=>DraftCommand!=null;
         internal void CancelDrafting()
-        {DraftCommand=null;DraftPreview=null;DraftBasePoint=null;SnappedPoint=null;SnapName=null;Cursor=Cursors.Arrow;InvalidateVisual();}
+        {DraftCommand=null;DraftPreview=null;DraftBasePoint=null;SnappedPoint=null;SnapName=null;DraftPointerWorld=null;Cursor=Cursors.Arrow;InvalidateVisual();}
         internal Point SnapAt(Point screen)
         {
             var ys=Centres();var beams=Beams();var candidates=new List<Tuple<Point,string>>();
@@ -66,13 +67,19 @@ namespace EngineeringDashboard
                 foreach(double y in new[] {ys[bay],ys[bay+1]})candidates.Add(Tuple.Create(new Point(c.PositionMm,y),"Intersection"));
                 candidates.Add(Tuple.Create(new Point(c.PositionMm,(ys[bay]+beams[bay].WidthMm/2+ys[bay+1]-beams[bay+1].WidthMm/2)/2),"Midpoint"));
             }
+            foreach(var beam in Model.IndependentBeams)
+            {
+                candidates.Add(Tuple.Create(new Point(beam.StartXmm,beam.StartYmm),"Endpoint"));
+                candidates.Add(Tuple.Create(new Point(beam.EndXmm,beam.EndYmm),"Endpoint"));
+                candidates.Add(Tuple.Create(new Point((beam.StartXmm+beam.EndXmm)/2,(beam.StartYmm+beam.EndYmm)/2),"Midpoint"));
+            }
             var closest=candidates.OrderBy(c=>(Screen(c.Item1.X,c.Item1.Y)-screen).Length).FirstOrDefault();
             bool snapped=closest!=null && (Screen(closest.Item1.X,closest.Item1.Y)-screen).Length<=10;
             var world=World(screen);var point=snapped ? closest.Item1 : new Point(Math.Round(world.X/25)*25,Math.Round(world.Y/25)*25);
             SnappedPoint=point;SnapName=snapped ? closest.Item2 : "25 mm grid";return point;
         }
         internal void UpdateDraftPointer(Point screen)
-        {if(!IsDrafting)return;DraftPointerChanged?.Invoke(SnapAt(screen));InvalidateVisual();}
+        {if(!IsDrafting)return;DraftPointerWorld=SnapAt(screen);DraftPointerChanged?.Invoke(DraftPointerWorld.Value);InvalidateVisual();}
         private bool fitted=true;
         private Point mouseStart,panStart;
         private bool panning,dragging;
@@ -89,6 +96,7 @@ namespace EngineeringDashboard
         private TransferBeamRow[] Beams()=>Model.IsNetworkMode ? Model.NetworkBeams.ToArray() : new[] {new TransferBeamRow {WidthMm=Model.Width,DepthMm=Model.Depth}};
         private bool ValidGeometry()=>TowerBeamAnalysis.Finite(Model.BeamLengthMm) && Model.BeamLengthMm>0 && Model.BeamLengthMm<=50000
             && Beams().All(b=>TowerBeamAnalysis.Finite(b.WidthMm) && b.WidthMm>0 && b.WidthMm<=10000)
+            && Model.IndependentBeams.All(b=>TowerBeamAnalysis.Finite(b.StartXmm) && TowerBeamAnalysis.Finite(b.StartYmm) && TowerBeamAnalysis.Finite(b.LengthMm) && b.LengthMm>0 && TowerBeamAnalysis.Finite(b.WidthMm) && b.WidthMm>0)
             && (!Model.IsNetworkMode || Model.NetworkBays.All(b=>TowerBeamAnalysis.Finite(b.WidthMm) && b.WidthMm>0 && b.WidthMm<=20000));
         private Rect Bounds()
         {
@@ -102,6 +110,13 @@ namespace EngineeringDashboard
             double minX=0,maxX=Model.BeamLengthMm;
             if(Model.IsCalculationValid && Model.NetworkResult!=null)foreach(var solid in Model.NetworkResult.CrossSupports.SelectMany(c=>c.Solids))
             {minX=Math.Min(minX,solid.X0);maxX=Math.Max(maxX,solid.X1);min=Math.Min(min,solid.Y0+Model.PlanOriginYmm);max=Math.Max(max,solid.Y1+Model.PlanOriginYmm);}
+            for(int i=0;i<Model.IndependentBeams.Count;i++)
+            {
+                var beam=Model.IndependentBeams[i];var layout=Model.IsCalculationValid ? Model.IndependentBeamResults.ElementAtOrDefault(i) : null;
+                double half=Math.Max(beam.WidthMm,Math.Max(layout?.WidthMm??0,layout?.Transfer?.LowerStockLengthMm??0))/2;
+                var bounds=beam.IsVertical ? new Rect(beam.StartXmm-half,beam.StartYmm,half*2,beam.LengthMm) : new Rect(beam.StartXmm,beam.StartYmm-half,beam.LengthMm,half*2);
+                minX=Math.Min(minX,bounds.Left);maxX=Math.Max(maxX,bounds.Right);min=Math.Min(min,bounds.Top);max=Math.Max(max,bounds.Bottom);
+            }
             return new Rect(minX,min,maxX-minX,max-min);
         }
         private TowerLayout Layout(int beam)=>!Model.IsCalculationValid ? null : Model.IsNetworkMode ? Model.NetworkResult?.Beams[beam] : Model.TowerResult;
@@ -176,17 +191,18 @@ namespace EngineeringDashboard
             return new Pen(normal,width);
         }
         internal void SelectMember(int beam,int run,int line) {memberBeam=beam;memberRun=run;memberLine=line;InvalidateVisual();}
-        private bool Label(DrawingContext dc,string text,Point at,Brush colour=null,bool centre=false)
+        private bool Label(DrawingContext dc,string text,Point at,Brush colour=null,bool centre=false,bool rotate=false)
         {
             var f=new FormattedText(text,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,colour??Brushes.DarkSlateGray,VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            if(centre)at.X-=f.Width/2;
-            var box=new Rect(at.X-2,at.Y-1,f.Width+4,f.Height+2);
+            Rect box;
+            if(rotate) {box=new Rect(at.X-f.Height/2-2,at.Y-f.Width/2-1,f.Height+4,f.Width+2);at=new Point(at.X-f.Height/2,at.Y+f.Width/2);}
+            else {if(centre)at.X-=f.Width/2;box=new Rect(at.X-2,at.Y-1,f.Width+4,f.Height+2);}
             if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>ActualHeight || AnnotationBounds.Any(r=>r.IntersectsWith(box)))return false;
             AnnotationBounds.Add(box);AnnotationLabels.Add(text);
             // Draw masks last so later structure and dimension lines cannot cross the text.
-            var drawing=new DrawingGroup();using(var overlay=drawing.Open()){overlay.DrawRectangle(Brushes.White,null,box);overlay.DrawText(f,at);}annotations.Add(drawing);return true;
+            var drawing=new DrawingGroup();using(var overlay=drawing.Open()){overlay.DrawRectangle(Brushes.White,null,box);if(rotate)overlay.PushTransform(new RotateTransform(-90,at.X,at.Y));overlay.DrawText(f,at);if(rotate)overlay.Pop();}annotations.Add(drawing);return true;
         }
-        private bool Dimension(DrawingContext dc,Point a,Point b,string text,FormworkObject kind,int index,string field,Brush colour=null,double labelOffset=4,bool labelLeft=false)
+        private bool Dimension(DrawingContext dc,Point a,Point b,string text,FormworkObject kind,int index,string field,Brush colour=null,double labelOffset=-4,bool labelLeft=false)
         {
             colour=colour??Brushes.SlateGray;
             bool vertical=Math.Abs(a.X-b.X)<.1;
@@ -194,10 +210,10 @@ namespace EngineeringDashboard
             // Focused crossing setting-out can place short overhang labels outside their segments.
             // Collision checks still prevent text overlap at every zoom level.
             bool focusedCrossing=kind==FormworkObject.Crossing && selection.Contains(Tuple.Create(kind,index));
-            if(field==null && !focusedCrossing && (vertical ? Math.Abs(b.Y-a.Y)<measured.Height+8 : Math.Abs(b.X-a.X)<measured.Width+12))return false;
-            Point label=vertical ? new Point(labelLeft ? a.X-measured.Width-7 : a.X+7,(a.Y+b.Y)/2-measured.Height/2) : new Point((a.X+b.X)/2,(a.Y+b.Y)/2+labelOffset);
+            if(field==null && !focusedCrossing && (vertical ? Math.Abs(b.Y-a.Y)<measured.Width+12 : Math.Abs(b.X-a.X)<measured.Width+12))return false;
+            Point label=vertical ? new Point(a.X-measured.Height/2-7,(a.Y+b.Y)/2) : new Point((a.X+b.X)/2,(a.Y+b.Y)/2-measured.Height+labelOffset);
             var initial=label;
-            bool placed=Label(dc,text,label,colour,!vertical);
+            bool placed=Label(dc,text,label,colour,!vertical,vertical);
             if(!placed && focusedCrossing)
             {
                 // Preserve focused setting-out values: move crowded labels to a clear lane,
@@ -207,7 +223,7 @@ namespace EngineeringDashboard
                     new Vector(-dx,-dy),new Vector(-dx,dy),new Vector(dx,-dy),new Vector(dx,dy)})
                 {
                     label=initial+offset;
-                    if(Label(dc,text,label,colour,!vertical)){placed=true;break;}
+                    if(Label(dc,text,label,colour,!vertical,vertical)){placed=true;break;}
                 }
                 if(placed)dc.DrawLine(new Pen(colour,.7),new Point((a.X+b.X)/2,(a.Y+b.Y)/2),label+new Vector(0,measured.Height/2));
             }
@@ -260,6 +276,7 @@ namespace EngineeringDashboard
                 Label(dc,$"B{i+1} · {b.WidthMm:0}×{b.DepthMm:0}",new Point(rect.Left+8,rect.Top+5));
 
             }
+            for(int i=0;i<Model.IndependentBeams.Count;i++)DrawIndependent(dc,i);
             if(Formwork)Label(dc,"Primary H20: orange · secondary H20: purple",new Point(16,16));
             if(Formwork)for(int i=0;i<beams.Length;i++)if(Layout(i)!=null)DrawSupports(dc,Layout(i),i,ys[i],selection.Contains(Tuple.Create(FormworkObject.Beam,i)) || AllDimensions || Zoom>=.08);
             if(Formwork && Model.NetworkResult!=null)DrawCrossSupports(dc);
@@ -288,6 +305,39 @@ namespace EngineeringDashboard
             }
             Label(dc,AddCrossing ? "Click a slab bay to place a crossing beam." : Formwork ? "Wheel: zoom · middle drag: pan · double-click: fit · click beam/H20: diagrams · Esc: clear" : "Click: select · Shift-click: toggle · drag blank space: window/crossing selection · Delete: remove · Esc: clear",new Point(16,ActualHeight-25),Brushes.SlateGray);
             foreach(var annotation in annotations)dc.DrawDrawing(annotation);
+        }
+        internal static int IndependentMemberId(int index)=>-1000-index;
+        private Point IndependentScreen(IndependentBeamRow beam,double along,double across)=>beam.IsVertical ? Screen(beam.StartXmm-across,beam.StartYmm+along) : Screen(beam.StartXmm+along,beam.StartYmm+across);
+        private void DrawIndependent(DrawingContext dc,int index)
+        {
+            var beam=Model.IndependentBeams[index];var rect=new Rect(IndependentScreen(beam,0,beam.IsVertical ? beam.WidthMm/2 : -beam.WidthMm/2),IndependentScreen(beam,beam.LengthMm,beam.WidthMm/2));
+            dc.DrawRectangle(Brushes.LightGray,ObjectPen(FormworkObject.Independent,index,rect,Brushes.SlateGray),rect);
+            ObjectTargets.Insert(0,Tuple.Create(rect,FormworkObject.Independent,index));
+            Label(dc,$"I{index+1} · {beam.WidthMm:0}×{beam.DepthMm:0}",new Point(rect.Left+8,rect.Top+5));
+            if(AllDimensions || selection.Contains(Tuple.Create(FormworkObject.Independent,index)))
+                Dimension(dc,IndependentScreen(beam,0,beam.IsVertical ? beam.WidthMm/2 : -beam.WidthMm/2)+new Vector(beam.IsVertical ? -24 : 0,beam.IsVertical ? 0 : -24),IndependentScreen(beam,beam.LengthMm,beam.IsVertical ? beam.WidthMm/2 : -beam.WidthMm/2)+new Vector(beam.IsVertical ? -24 : 0,beam.IsVertical ? 0 : -24),$"Length {beam.LengthMm:0.###} mm",FormworkObject.Independent,index,"LengthMm");
+            var layout=Model.IsCalculationValid ? Model.IndependentBeamResults.ElementAtOrDefault(index) : null;if(!Formwork || layout==null)return;
+            int encoded=IndependentMemberId(index);
+            DrawTowerFrames(dc,layout,$"I{index+1}",(along,across)=>IndependentScreen(beam,along,across));
+            for(int run=0;run<layout.StockPlan.Pieces.Length;run++)for(int line=0;line<2;line++)
+            {
+                var piece=layout.StockPlan.Pieces[run];double across=(line==0 ? -1 : 1)*layout.WidthMm/2;
+                var first=IndependentScreen(beam,piece.StartMm,across);var last=IndependentScreen(beam,piece.EndMm,across);
+                PrimaryDrawing.Plan(dc,first,last,layout.Primary,memberBeam==encoded && memberRun==run && memberLine==line);
+                if(!layout.Primary.IsWS10)DrawnH20ProfileCount+=2;
+                MemberTargets.Add(Tuple.Create(MemberHit(first,last),encoded,run,line));
+            }
+            if(ShowSecondaryH20s && layout.Transfer!=null)for(int row=0;row<layout.Transfer.RowsMm.Length;row++)
+            {
+                var t=layout.Transfer;var first=IndependentScreen(beam,t.RowsMm[row],t.LowerStockStartMm);var last=IndependentScreen(beam,t.RowsMm[row],t.LowerStockStartMm+t.LowerStockLengthMm);
+                H20Drawing.Plan(dc,first,last,1,memberBeam==encoded && memberRun==layout.StockPlan.Pieces.Length+row);DrawnSecondaryH20Count++;
+                MemberTargets.Add(Tuple.Create(MemberHit(first,last),encoded,layout.StockPlan.Pieces.Length+row,0));
+            }
+            if(AllDimensions || selection.Contains(Tuple.Create(FormworkObject.Independent,index)))
+            {
+                double station=layout.PositionsMm.OrderBy(x=>Math.Abs(x-layout.LengthMm/2)).First();
+                Dimension(dc,IndependentScreen(beam,station,-layout.WidthMm/2)+new Vector(beam.IsVertical ? 0 : -18,beam.IsVertical ? -18 : 0),IndependentScreen(beam,station,layout.WidthMm/2)+new Vector(beam.IsVertical ? 0 : -18,beam.IsVertical ? -18 : 0),layout.WidthMm.ToString("0.###"),FormworkObject.Independent,index,null,Brushes.Firebrick);
+            }
         }
         private static Rect MemberHit(Point start,Point end)
         {var hit=new Rect(start,end);hit.Inflate(8,8);return hit;}
@@ -478,6 +528,8 @@ namespace EngineeringDashboard
             foreach(var hit in dimensions)if(hit.Item1.Contains(point)){Select(hit.Item2,hit.Item3);DimensionSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}
             foreach(var hit in ObjectTargets)if(hit.Item1.Contains(point))
             {
+                if(Formwork && hit.Item2==FormworkObject.Independent && Model.IndependentBeamResults.ElementAtOrDefault(hit.Item3)!=null)
+                {Select(FormworkObject.Independent,hit.Item3);MemberSelected?.Invoke(IndependentMemberId(hit.Item3),0,0);return true;}
                 if(Formwork && hit.Item2==FormworkObject.Beam && Layout(hit.Item3)!=null)
                 {
                     var layout=Layout(hit.Item3);double x=World(point).X;

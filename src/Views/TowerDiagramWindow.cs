@@ -60,6 +60,8 @@ namespace EngineeringDashboard
             Background=Brushes.WhiteSmoke;
             Content = new ScrollViewer { Content = panel, Background = Brushes.WhiteSmoke, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
                 }
+        internal TowerDiagramWindow(BeamCalculatorViewModel model,TowerLayout independent,string label):this(model)
+        {layout=independent??throw new ArgumentNullException(nameof(independent));beamLabel=label;}
         public TowerDiagramWindow(BeamCalculatorViewModel model,CrossBeamSupportResult support):this(model)
         {crossSupport=support??throw new ArgumentNullException(nameof(support));}
         private void RefreshCross()
