@@ -22,6 +22,7 @@ static class Program
  static void SaveImage(RenderTargetBitmap image,string path){var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(image));using(var file=File.Create(path))png.Save(file);}
  static void LauncherChecks()
  {
+  using var approvedSession=new ApprovedLauncherSession(typeof(LauncherWindow).Assembly);
   var launcher=new LauncherWindow();launcher.Show();D3SlabCalculatorViewModel retained=null;
   for(int attempt=0;attempt<2;attempt++)
   {

@@ -28,11 +28,6 @@ jobs:
       # Check slab controls and spacing before the slower beam layout previews.
       - run: dotnet run --project tests/Slab.CoreTests/Slab.CoreTests.csproj -c Release
       - run: dotnet run --project tests/Slab.Tests/Slab.Tests.csproj -c Release
-      # Check interactive controls before the slower calculation/search regressions.
-      - name: Beam UI checks and previews
-        run: |
-          New-Item -ItemType Directory -Force artifacts | Out-Null
-          dotnet run --project tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release -- artifacts/beam.png
       - run: dotnet run --project tests/Dome.Tests/Dome.Tests.csproj -c Release
       - run: dotnet run --project tests/D3Slab.Tests/D3Slab.Tests.csproj -c Release
       - run: dotnet run --project tests/D3Slab.UiSmoke/D3Slab.UiSmoke.csproj -c Release
@@ -51,12 +46,6 @@ jobs:
         run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --network-economy
       - run: dotnet run --project tests/Backpropping.Tests/Backpropping.Tests.csproj -c Release
       - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: beam-ui-previews
-          path: artifacts/
-          if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
         with:
           name: revit2024-addin
           path: |
@@ -70,3 +59,22 @@ jobs:
           path: artifacts/installer/Install_DokaRevitAutomation.exe
           if-no-files-found: error
 
+  beam-ui:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      # Check interactive controls before the slower calculation/search regressions.
+      - name: Beam UI checks and previews
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          dotnet run --project tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release -- artifacts/beam.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beam-ui-previews
+          path: artifacts/
+          if-no-files-found: ignore
