@@ -77,7 +77,7 @@ namespace EngineeringDashboard
             base.OnRender(dc);DrawnConcreteEndZoneCount=0;AnnotationBounds.Clear();annotations.Clear();AcrossDimensions.Clear();MemberTargets.Clear();SeparateBayTargets.Clear();DrawnWS10ProfileCount=DrawnH20ProfileCount=DrawnPrimarySectionCount=0;DrawnTowerLegCount=DrawnPrimaryLengthCount=DrawnSecondaryLengthCount=DrawnCrossingBeamCount=0;if(result==null || ActualWidth<100)return;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,Height));
             if(SectionOnly) {Section(dc,55);foreach(var annotation in annotations)dc.DrawDrawing(annotation);return;}
-            Label(dc,$"mm · primary = {result.Beams[0].Primary.Description}/line · secondaries = single H20 @ {result.Input.UpperSpacingMm:0}",30,8);
+            Label(dc,$"mm · primary = {result.Beams[0].Primary.Description}/line · secondaries = single H20"+(result.Input.HasIndividualSpacings ? " · spacings by element" : $" @ {result.Input.UpperSpacingMm:0}"),30,8);
             Label(dc,"Primary H20: orange · secondary H20: purple · cyan: frames · yellow: crosses",30,27);
             var ys=Centres();var crossSolids=result.CrossSupports.SelectMany(c=>c.Solids).ToArray();
             double minX=Math.Min(0,crossSolids.Select(s=>s.X0).DefaultIfEmpty(0).Min()),maxX=Math.Max(result.Beams[0].LengthMm,crossSolids.Select(s=>s.X1).DefaultIfEmpty(0).Max());

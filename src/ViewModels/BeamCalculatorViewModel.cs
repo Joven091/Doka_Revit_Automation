@@ -95,7 +95,7 @@ namespace EngineeringDashboard
         private string numberOfProps = "2";
         private BeamDeflectionOption deflection = AvailableDeflectionOptions[1];
 
-        public BeamCalculatorViewModel() { Calculate(); }
+        public BeamCalculatorViewModel() { NetworkBeams.CollectionChanged+=(s,e)=>NetworkCollectionChanged();NetworkBays.CollectionChanged+=(s,e)=>NetworkCollectionChanged();CrossingBeams.CollectionChanged+=(s,e)=>NetworkCollectionChanged();Calculate(); }
         public double Depth { get => depth; set { depth = value; Changed(); } }
         public double Width { get => width; set { width = value; Changed(); } }
         public bool HasLeftSlab { get => hasLeft; set { hasLeft = value; Changed(); } }

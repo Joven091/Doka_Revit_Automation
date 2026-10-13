@@ -87,7 +87,8 @@ internal static class PlywoodTests
         Check(spacingNotifications>0,"spacing changes notify locked fields");
         vm.CrossingBeams.Add(new TransferCrossingBeamRow {DepthMm=2200,WidthMm=400,PositionMm=3000});
         vm.CustomLiveLoad=2.5; // Trigger recalculation; inactive custom load has no pressure effect.
-        Near(vm.PlywoodPressureKnM2,57.9,"crossing-beam pressure participates in plywood envelope");
+        Near(vm.PlywoodPressureKnM2,52.9,"crossing pressure does not tighten unrelated main beams");
+        Near(vm.CrossingBeams[0].MaximumSecondarySpacingMm,PlywoodSpacing.CalculateForSheet(vm.SelectedPlywood,57.9,350).MaximumSpacingMm,"crossing uses its own concrete depth");
         vm.NetworkBeams[1].DepthMm=4000;
         Check(vm.MaximumSecondarySpacingMm==0 && vm.PlywoodResult==null && vm.WarningMessage.Contains("100 kN/m²"),"out-of-chart network clears stale result");
         vm=new BeamCalculatorViewModel {UseCustomLoads=true,CustomLiveLoad=0,CustomFormworkLoad=0};

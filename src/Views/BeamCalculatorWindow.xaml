@@ -107,26 +107,28 @@
               <CheckBox x:Name="TransferredSlabCheckBox" Content="Transfer slab loads through beam supports" IsChecked="{Binding TransferSlabLoads}" IsEnabled="{Binding CanSelectTransfer}" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}"/>
               <Button x:Name="DrawingWorkspaceButton" Content="Open drawing workspace" Click="DrawingWorkspace_Click" Visibility="{Binding UseTowers, Converter={StaticResource BoolToVis}}" Margin="0,8"/>
               <StackPanel IsEnabled="{Binding IsTransferMode}" Visibility="{Binding IsTransferMode, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Maximum secondary spacing (mm) · calculated"/>
+                <TextBlock Text="Beam spacing limit (mm)"/>
                 <TextBox x:Name="CalculatedSecondarySpacingInput" Text="{Binding UpperSupportSpacingMm, Mode=OneWay}" IsReadOnly="True" IsEnabled="False" Background="#ECEFF1" ToolTip="Calculated from the selected plywood chart. Updates with plywood selection, concrete depth, loads and the deflection criterion."/>
                 <CheckBox x:Name="BeamNetworkCheckBox" Content="Individual beams and slab bays" IsChecked="{Binding UseBeamNetwork}"/>
                 <StackPanel x:Name="NetworkInputs" IsEnabled="{Binding IsNetworkMode}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}">
                   <TextBlock Text="Beams, left to right" FontWeight="SemiBold"/>
                   <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Grid.Column="1" Text="Width (mm)"/><TextBlock Grid.Column="3" Text="Depth (mm)"/></Grid>
                   <ItemsControl ItemsSource="{Binding NetworkBeams}"><ItemsControl.ItemTemplate><DataTemplate>
-                    <Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
                       <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
                       <TextBox Grid.Column="1" AutomationProperties.Name="Beam width (mm)" ToolTip="Beam width (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                       <TextBox Grid.Column="3" AutomationProperties.Name="Beam depth (mm)" ToolTip="Beam depth (mm)" Text="{Binding DepthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                       <TextBlock Grid.Row="1" Grid.Column="1" Text="Bottom elevation (mm)"/><TextBox Grid.Row="1" Grid.Column="3" ToolTip="Main beam bottom / soffit elevation (mm), z upwards" Text="{Binding BottomElevationMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                      <TextBlock Grid.Row="2" Grid.Column="1" Text="Spacing limit (mm)"/><TextBox Grid.Row="2" Grid.Column="3" AutomationProperties.Name="Beam spacing limit (mm)" Text="{Binding MaximumSecondarySpacingMm,Mode=OneWay}" IsReadOnly="True" IsEnabled="False" Background="#ECEFF1"/>
                     </Grid>
                   </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
                   <TextBlock Text="Slab bays · clear width / thickness (mm)" FontWeight="SemiBold" Margin="0,8,0,0"/>
                   <ItemsControl ItemsSource="{Binding NetworkBays}"><ItemsControl.ItemTemplate><DataTemplate>
-                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
                       <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
                       <TextBox Grid.Column="1" ToolTip="Clear slab bay (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
-                      <TextBox Grid.Column="3" ToolTip="Slab thickness (mm)" Text="{Binding ThicknessMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                      <TextBox Grid.Column="3" ToolTip="Slab thickness (mm)" Text="{Binding ThicknessMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                      <TextBlock Grid.Row="1" Grid.Column="1" Text="Spacing limit (mm)"/><TextBox Grid.Row="1" Grid.Column="3" AutomationProperties.Name="Slab spacing limit (mm)" Text="{Binding MaximumSecondarySpacingMm,Mode=OneWay}" IsReadOnly="True" IsEnabled="False" Background="#ECEFF1"/>
                     </Grid>
                   </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
                   <Expander Header="Crossing beams" Margin="0,8,0,0">
@@ -134,7 +136,7 @@
                       <TextBlock Style="{StaticResource Hint}" Text="Across clear bay · centre from main beam start · elevations in mm (z upwards). Filler bearing strength and stability are not verified."/>
                       <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="45"/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="26"/></Grid.ColumnDefinitions><TextBlock Text="Bay"/><TextBlock Grid.Column="1" Text="Centre"/><TextBlock Grid.Column="2" Text="Width"/><TextBlock Grid.Column="3" Text="Depth"/></Grid>
                       <ItemsControl ItemsSource="{Binding CrossingBeams}"><ItemsControl.ItemTemplate><DataTemplate>
-                        <Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="45"/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="26"/></Grid.ColumnDefinitions>
+                        <Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="45"/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="26"/></Grid.ColumnDefinitions>
                           <TextBox ToolTip="Slab bay number" Text="{Binding BayNumber, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                           <TextBox Grid.Column="1" ToolTip="Centre from beam start (mm)" Text="{Binding PositionMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                           <TextBox Grid.Column="2" ToolTip="Crossing beam width (mm)" Text="{Binding WidthMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
@@ -142,6 +144,7 @@
                           <Button Grid.Column="4" Content="×" Padding="2" Margin="2" ToolTip="Remove crossing beam" Tag="{Binding}" Click="RemoveCrossingBeam_Click"/>
                           <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="Bottom elevation (mm)"/><TextBox Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2" ToolTip="Cross beam bottom / soffit elevation (mm), z upwards" Text="{Binding BottomElevationMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                           <ComboBox Grid.Row="2" Grid.ColumnSpan="4" ToolTip="Cross beam support arrangement" ItemsSource="{Binding SupportModes}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SupportMode, UpdateSourceTrigger=PropertyChanged}"/>
+                          <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="Spacing limit (mm)"/><TextBox Grid.Row="3" Grid.Column="2" Grid.ColumnSpan="2" AutomationProperties.Name="Crossing spacing limit (mm)" Text="{Binding MaximumSecondarySpacingMm,Mode=OneWay}" IsReadOnly="True" IsEnabled="False" Background="#ECEFF1"/>
                         </Grid>
                       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
                       <Button x:Name="AddCrossingBeamButton" Content="Add crossing beam" Click="AddCrossingBeam_Click"/>
@@ -150,10 +153,12 @@
                 </StackPanel>
                 <WrapPanel><Button x:Name="AddBeamBayButton" Content="Add slab + beam" Click="AddBeamBay_Click" IsEnabled="{Binding CanAddNetworkBay}"/><Button x:Name="RemoveBeamBayButton" Content="Remove last bay" Click="RemoveBeamBay_Click" IsEnabled="{Binding CanRemoveNetworkBay}" Visibility="{Binding IsNetworkMode, Converter={StaticResource BoolToVis}}"/></WrapPanel>
                 <StackPanel IsEnabled="{Binding ShowLeftBay}" Visibility="{Binding ShowLeftBay, Converter={StaticResource BoolToVis}}">
-                  <TextBlock Text="Left clear slab bay (mm)"/><TextBox Text="{Binding LeftSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                  <TextBlock Text="Left clear slab bay (mm)"/><TextBox Text="{Binding LeftSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                  <TextBlock Text="Slab spacing limit (mm)"/><TextBox Text="{Binding LeftSlabSecondarySpacingMm,Mode=OneWay}" IsReadOnly="True" IsEnabled="False" Background="#ECEFF1"/>
                 </StackPanel>
                 <StackPanel IsEnabled="{Binding ShowRightBay}" Visibility="{Binding ShowRightBay, Converter={StaticResource BoolToVis}}">
-                  <TextBlock Text="Right clear slab bay (mm)"/><TextBox Text="{Binding RightSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                  <TextBlock Text="Right clear slab bay (mm)"/><TextBox Text="{Binding RightSlabBayMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                  <TextBlock Text="Slab spacing limit (mm)"/><TextBox Text="{Binding RightSlabSecondarySpacingMm,Mode=OneWay}" IsReadOnly="True" IsEnabled="False" Background="#ECEFF1"/>
                 </StackPanel>
                 <TextBlock Style="{StaticResource Hint}" Text="Matching opposite beam · beam concrete placed first · foot centres ≥250 mm from beam face."/>
               </StackPanel>
@@ -300,7 +305,7 @@
           </Border>
           <Border x:Name="SecondarySpacingBorder" Background="#EEF4FA" Padding="14" Margin="0,0,0,12">
             <StackPanel>
-              <TextBlock Text="Maximum secondary spacing · plywood" FontWeight="SemiBold"/>
+              <TextBlock Text="Beam spacing limit · plywood" FontWeight="SemiBold"/>
               <TextBlock x:Name="SecondarySpacingText" Text="{Binding MaximumSecondarySpacingMm, StringFormat='{}{0:0} mm'}" TextWrapping="Wrap" Margin="0,6,0,0"/>
             </StackPanel>
           </Border>

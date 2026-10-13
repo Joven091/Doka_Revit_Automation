@@ -336,6 +336,8 @@ internal static class WorkspaceTests
             Check(workspace.Section.SelectAt(Centre(sectionHit.Item1)),"slab secondary selected from section");Pump();Check(workspace.Diagrams.SelectedTransferMember.H20Count==1,"section selection uses single slab H20 diagrams");
             var record=parent.CaptureCalculation();parent.RestoreCalculation(record);Pump();Check(model.NetworkBeams[1].DepthMm==1200 && model.NetworkBays[0].WidthMm==3900,"drawing inputs round-trip through existing calculation files");
             parent.RestoreCalculation(customSetup);Pump();Render();
+            var elementSpacing=workspace.Fields[nameof(TransferBeamRow.MaximumSecondarySpacingMm)];
+            Check(elementSpacing.IsReadOnly && !elementSpacing.IsEnabled,"selected element spacing is locked in the drawing workspace");
             var spacingField=workspace.Fields["UpperSupportSpacingMm"];
             Check(spacingField.IsReadOnly && !spacingField.IsEnabled && spacingField.Text==model.UpperSupportSpacingMm.ToString("0.###",CultureInfo.CurrentCulture),"workspace shows locked calculated row spacing");
             var legacySpacing=parent.CaptureDrawingInputs();legacySpacing.Inputs.Single(f=>f.Name=="UpperSupportSpacingMm").Value="750";
