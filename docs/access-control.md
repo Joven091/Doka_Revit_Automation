@@ -40,10 +40,14 @@ notice: client access is intentionally denied. The verified owner account now ha
 Live HTTP checks could not run because the environment's proxy is unreachable;
 Windows build, DPAPI harness, and Revit checks remain pending.
 
-The initial design requires internet access and rechecks authorization at each
-command/tool opening. It does not grant offline access. Revocation prevents the
-next checked action; it does not interrupt an already-running calculation or
-modify a Revit model. Older unrestricted installers cannot be retroactively
+The desktop checks online approval once per Revit process, on first tool use.
+A successful approval is cached only in process memory until Revit exits,
+sign-out/account switching starts, or an explicit access recheck is made.
+Calculator openings then work without further network requests, including offline.
+Revocation and approval expiry take effect on the next check, normally after
+restarting Revit; an existing process can remain approved indefinitely. This
+tradeoff was explicitly accepted for a smoother experience. Checks never
+interrupt an already-running calculation or modify a Revit model. Older unrestricted installers cannot be retroactively
 revoked. Local DLL checks can be patched; essential server-side functionality
 is needed for protection against determined reverse engineering.
 
@@ -143,12 +147,13 @@ Supabase project administrators retain control; protect those accounts with MFA.
 Implementation: `src/Access/AccessClient.cs` performs Auth and online approval
 requests; `AccessWindow.cs` provides the cancellable modal sign-in/check UI.
 Only HTTP work is asynchronous. Command bodies run on their original Revit
-thread after the modal gate returns successfully. An open dashboard rechecks
-access on each calculator opening, including slab-system switching. Use
+thread after the modal gate returns successfully. Calculator openings and
+slab-system switching reuse the process approval without loading credentials
+or making network requests. Reopening the dashboard also reuses that approval. Use
 **Account / sign out** on the dashboard to clear credentials or switch accounts.
 Sessions are stored under the current user's LocalAppData directory using
-Windows DPAPI, bound to the project. No approvals are persisted. Sign-out clears
-the local session even if server sign-out fails; the UI reports an unconfirmed
+Windows DPAPI, bound to the project. No approvals are persisted to disk. Sign-out clears the in-memory approval
+before attempting server sign-out and clears the local session even if that fails; the UI reports an unconfirmed
 server sign-out. Supabase may still accept an issued access token until its
 expiry; disable the approval row for immediate denial on the next checked action.
 
@@ -192,7 +197,7 @@ messages. A successful code verification still needs the approval check below.
 Persist refresh tokens using Windows DPAPI scoped to the current user. Refresh
 expired access tokens through `/auth/v1/token?grant_type=refresh_token`, and
 persist the rotated refresh token. Clear the local session on sign-out and
-revoke it through Supabase Auth. Send this request before each protected action:
+revoke it through Supabase Auth. Send this request when no process approval exists:
 
 ```http
 POST https://PROJECT_REF.supabase.co/functions/v1/authorize-tool
@@ -202,8 +207,8 @@ Authorization: Bearer SUPABASE_USER_ACCESS_TOKEN
 
 No user ID, email, or device identity is accepted from the caller. The function
 derives identity from the validated token and checks the approval table on every
-request. Only HTTP 200 with `allowed: true` permits the current action. Do not
-cache approvals as offline licenses. Fail closed on malformed responses,
+request. Only HTTP 200 with `allowed: true` establishes process approval. Never
+persist that approval across Revit restarts. When checking, fail closed on malformed responses,
 timeouts, or outages, and offer a retry without touching the Revit model.
 
 | Status / reason | User experience |
@@ -216,7 +221,7 @@ timeouts, or outages, and offer a retry without touching the Revit model.
 | 503 / `service_unavailable` | Explain that access cannot be checked; offer retry. |
 
 Protect the remaining dashboard `IExternalCommand.Execute` method, plus tool-opening
-handlers so an already-open dashboard cannot bypass later revocation. Keep
+handlers so sign-out or account switching requires approval again. Keep
 network/authentication work asynchronous in a modal WPF UI, without making
 Revit API calls on background threads. Resume Revit actions on the main thread
 only after authorization completes. Provide sign-out/switch-account controls.
@@ -278,9 +283,10 @@ Supabase, through a provider account you control.
 
 After deployment and desktop integration, verify signup and returning-user code
 delivery, invalid/expired codes, token refresh, a permitted account, an
-unapproved account, and revocation while the
-dashboard remains open. Check that an authenticated client cannot modify
-`tool_access`, an invalid token cannot obtain approval, offline use is blocked,
+unapproved account, and revocation followed by a Revit restart. Confirm that
+repeated calculator openings make no approval requests after success, and
+that sign-out (including failed server sign-out) clears process approval. Check that an authenticated client cannot modify
+`tool_access`, an invalid token cannot obtain approval, first use after restart is blocked offline,
 and cancelling sign-in leaves the Revit model untouched. These live checks
 require the configured Supabase project, email provider, and Revit on Windows.
 

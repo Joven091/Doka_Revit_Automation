@@ -12,6 +12,9 @@ namespace MyRevitAddin.Access
     // Only HTTP/authentication runs asynchronously; no Revit API is used here.
     internal sealed class AccessWindow : Window
     {
+        // Process memory only: restarting Revit always requires a fresh approval.
+        // AccessWindow entry points and callbacks run on the UI thread.
+        private static bool approvedForRevitSession;
         private readonly AccessClient client;
         private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
         private readonly StackPanel controls = new StackPanel();
@@ -21,7 +24,12 @@ namespace MyRevitAddin.Access
         private string requestedEmail;
         private bool closed;
 
-        internal static bool Require(Window owner = null) => Open(owner, true);
+        internal static bool Require(Window owner = null)
+        {
+            if (approvedForRevitSession) return true;
+            approvedForRevitSession = Open(owner, true);
+            return approvedForRevitSession;
+        }
         internal static void Manage(Window owner) => Open(owner, false);
 
         private static bool Open(Window owner, bool checkExisting)
@@ -95,6 +103,7 @@ namespace MyRevitAddin.Access
             {
                 string address = email.Text.Trim();
                 if (string.IsNullOrWhiteSpace(address)) { status.Text = "Enter your email address."; return; }
+                approvedForRevitSession = false;
                 await client.SendCode(address, cancellation.Token);
                 requestedEmail = address;
                 code.Clear();
@@ -108,6 +117,7 @@ namespace MyRevitAddin.Access
                 if (requestedEmail == null || !string.Equals(requestedEmail, email.Text.Trim(), StringComparison.OrdinalIgnoreCase))
                 { status.Text = "Request a code for this email address first."; return; }
                 if (string.IsNullOrWhiteSpace(code.Text)) { status.Text = "Enter the code from your email."; return; }
+                approvedForRevitSession = false;
                 await client.VerifyCode(requestedEmail, code.Text.Trim(), cancellation.Token);
                 code.Clear();
                 await Check();
@@ -115,6 +125,7 @@ namespace MyRevitAddin.Access
             AddButton("Retry access check", Check);
             AddButton("Sign out / switch account", async () =>
             {
+                approvedForRevitSession = false;
                 requestedEmail = null; code.Clear();
                 await client.SignOut(cancellation.Token);
                 status.Text = "Signed out. Enter your email to sign in.";
@@ -155,9 +166,10 @@ namespace MyRevitAddin.Access
 
         private async Task Check()
         {
+            approvedForRevitSession = false;
             var result = await client.Check(cancellation.Token);
             if (closed) return;
-            if (result.Allowed) { DialogResult = true; return; }
+            if (result.Allowed) { approvedForRevitSession = true; DialogResult = true; return; }
             ShowDecision(result);
         }
 
