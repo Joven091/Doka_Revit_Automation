@@ -1,0 +1,30 @@
+name: Access control
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/access-control.yml'
+      - 'src/**'
+      - 'tests/Access.Tests/**'
+      - 'scripts/validate-access.ps1'
+      - 'supabase/functions/authorize-tool/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-access:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify backend, Windows DPAPI client, and Revit build
+        shell: powershell
+        run: ./scripts/validate-access.ps1 -RequireConfiguredProject

@@ -30,6 +30,8 @@ SolidCompression=yes
 PrivilegesRequired=lowest
 
 [Files]
+; Public project settings only; never distribute server or SMTP secrets.
+Source: "{#BuildOutput}\access-settings.json"; DestDir: "{app}"; Flags: ignoreversion
 ; 1. Copy the manifest file (.addin)
 Source: "{#RepoRoot}MyRevitAddin.addin"; DestDir: "{app}"; Flags: ignoreversion
 
