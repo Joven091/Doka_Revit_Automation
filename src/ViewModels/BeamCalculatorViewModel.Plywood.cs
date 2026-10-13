@@ -59,7 +59,7 @@ namespace EngineeringDashboard
                 double pressure;
                 if (IsNetworkMode)
                 {
-                    // A common row spacing must cover the deepest beam, slab and crossing beam.
+                    // Derive each beam, slab and crossing limit from its own concrete depth.
                     var input = CreateNetworkInput();
                     // The real spacing is derived below; validate geometry using the chart minimum
                     // so clearing the previous result cannot create a spacing/pressure dependency.

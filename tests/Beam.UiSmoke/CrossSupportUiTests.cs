@@ -204,7 +204,7 @@ internal static class CrossSupportUiTests
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Drawing.Select(FormworkObject.Crossing,0);workspace.Show();Pump();
         Check(workspace.Fields.ContainsKey("BottomElevationMm"),"cross bottom elevation exposed in workspace");
         workspace.Drawing.Select(FormworkObject.Slab,0);Pump();
-        Check(workspace.SelectedResultText.Contains("Equal foot setback") && workspace.SelectedResultText.Contains("repeat every row") && workspace.SelectedResultText.Contains(vm.NetworkResult.SecondarySpacingNotice.Length==0 ? "Maximum row spacing "+vm.NetworkResult.Input.UpperSpacingMm.ToString("0.###",System.Globalization.CultureInfo.CurrentCulture) : vm.NetworkResult.SecondarySpacingNotice),"workspace exposes the repeated symmetric slab support detail and spacing");
+        Check(workspace.SelectedResultText.Contains("Equal foot setback") && workspace.SelectedResultText.Contains("repeat every row") && workspace.SelectedResultText.Contains($"Slab spacing {vm.NetworkResult.Input.BaySpacing(0):0} mm · limit {vm.NetworkBays[0].MaximumSecondarySpacingMm:0} mm."),"workspace exposes the repeated symmetric slab support detail and spacing");
         var slab=vm.NetworkResult.Beams[0].Transfer.UpperMembers.Single(m=>m.Name=="Upper right");
         Check(Math.Abs(slab.SupportsMm[0]+slab.SupportsMm[1]-slab.LengthMm)<1e-7 && Math.Abs(slab.Analysis.Reactions[0]-slab.Analysis.Reactions[1])<1e-7,"drawn slab member has symmetric supports and actual equal uniform-load reactions");
         workspace.Close();
