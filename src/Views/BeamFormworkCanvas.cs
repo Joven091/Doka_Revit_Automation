@@ -164,8 +164,10 @@ namespace EngineeringDashboard
             colour=colour??Brushes.SlateGray;
             bool vertical=Math.Abs(a.X-b.X)<.1;
             var measured=new FormattedText(text,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,colour,VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            // Use screen space, not world distance: a dimension chain must fit its actual text.
-            if(field==null && (vertical ? Math.Abs(b.Y-a.Y)<measured.Height+8 : Math.Abs(b.X-a.X)<measured.Width+12))return false;
+            // Focused crossing setting-out can place short overhang labels outside their segments.
+            // Collision checks still prevent text overlap at every zoom level.
+            bool focusedCrossing=kind==FormworkObject.Crossing && selection.Contains(Tuple.Create(kind,index));
+            if(field==null && !focusedCrossing && (vertical ? Math.Abs(b.Y-a.Y)<measured.Height+8 : Math.Abs(b.X-a.X)<measured.Width+12))return false;
             Point label=vertical ? new Point(a.X+7,(a.Y+b.Y)/2-measured.Height/2) : new Point((a.X+b.X)/2,(a.Y+b.Y)/2+labelOffset);
             if(!Label(dc,text,label,colour,!vertical))return false;
             dc.DrawLine(new Pen(colour,1),a,b);
