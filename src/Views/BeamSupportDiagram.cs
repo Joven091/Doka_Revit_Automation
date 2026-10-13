@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
@@ -248,10 +249,10 @@ namespace EngineeringDashboard
             }
             dc.DrawLine(new Pen(Steel, 1), new Point(x0, bottom + (layout.Transfer == null ? 91 : 121)), new Point(x0 + layout.LengthMm * scale, bottom + (layout.Transfer == null ? 91 : 121)));
             Label(dc, "Concrete beam: " + layout.LengthMm.ToString("0.###") + " mm", ActualWidth / 2, bottom + (layout.Transfer == null ? 96 : 126), true);
-            double acrossX=ActualWidth-12;
-            dc.DrawLine(new Pen(Steel,1),new Point(acrossX,top),new Point(acrossX,bottom));
-            foreach(double y in new[] {top,bottom})dc.DrawLine(new Pen(Steel,1),new Point(acrossX-4,y),new Point(acrossX+4,y));
-            Label(dc,layout.WidthMm.ToString("0.###"),acrossX-10,(top+bottom)/2-7,true);DrawnAcrossDimensionCount++;
+            double acrossX=x0+layout.PositionsMm.OrderBy(x=>Math.Abs(x-layout.LengthMm/2)).First()*scale-18;
+            dc.DrawLine(new Pen(Brushes.Firebrick,1),new Point(acrossX,top),new Point(acrossX,bottom));
+            foreach(double y in new[] {top,bottom})dc.DrawLine(new Pen(Brushes.Firebrick,1),new Point(acrossX-4,y),new Point(acrossX+4,y));
+            Label(dc,layout.WidthMm.ToString("0.###"),acrossX-25,(top+bottom)/2-7,true,Brushes.Firebrick);DrawnAcrossDimensionCount++;
             Label(dc, (layout.Rotated ? "Cross" : "Frame") + " across: " + layout.WidthMm.ToString("0") + " mm · concrete end overhang: " + layout.ConcreteEndOverhangMm.ToString("0.###") + " mm/end", x0, bottom + (layout.Transfer == null ? 113 : 143));
             if(layout.Transfer != null) DrawTransferSection(dc,layout);
         }
@@ -263,8 +264,11 @@ namespace EngineeringDashboard
                 double start=centre+(centre==0 ? t.LowerStockStartMm : -t.LowerStockStartMm-t.LowerStockLengthMm);
                 min=Math.Min(min,start);max=Math.Max(max,start+t.LowerStockLengthMm); }
             double scale=(ActualWidth-60)/(max-min); Func<double,double> xx=x=>30+(x-min)*scale;
-            Label(dc,"Load-transfer section · transverse dimensions (mm); vertical schematic",30,y0-22);
             double beamBottom=y0+110,beamTop=y0+20;
+            double depthX=xx(-model.Width/2)-14;
+            dc.DrawLine(new Pen(Steel,1),new Point(depthX,beamTop),new Point(depthX,beamBottom));
+            foreach(double y in new[] {beamTop,beamBottom})dc.DrawLine(new Pen(Steel,1),new Point(depthX-4,y),new Point(depthX+4,y));
+            Label(dc,$"D {model.Depth:0.###}",depthX-8,(beamTop+beamBottom)/2-7,true);
             foreach(double centre in new[] {0.0,leftBay>0 ? -model.Width-leftBay : double.NaN,rightBay>0 ? model.Width+rightBay : double.NaN})
                 if(!double.IsNaN(centre))
                 {
@@ -295,28 +299,34 @@ namespace EngineeringDashboard
                 double sign=side==0 ? -1 : 1,face=sign*model.Width/2,foot=side==0 ? t.LeftFootMm : t.RightFootMm,edge=side==0 ? t.LeftUpperEdgeMm : t.RightUpperEdgeMm,stock=side==0 ? t.LeftUpperStockMm : t.RightUpperStockMm;
                 double near=face+sign*foot,far=face+sign*(bay-foot),a=face+sign*edge,b=face+sign*(edge+stock);
                 // Upper assembly is represented only by vertical feet and its loaded bearer.
-                dc.DrawRectangle(ConcreteTop,null,new Rect(Math.Min(xx(face),xx(face+sign*bay)),beamTop-10,bay*scale,10));
+                double thickness=side==0 ? model.LeftSlabThickness : model.RightSlabThickness;
+                double slabBottom=beamTop+(beamBottom-beamTop)*thickness/model.Depth;
+                dc.DrawRectangle(ConcreteTop,null,new Rect(Math.Min(xx(face),xx(face+sign*bay)),beamTop,bay*scale,slabBottom-beamTop));
+                double thicknessX=xx(face+sign*bay/2);
+                dc.DrawLine(new Pen(Steel,1),new Point(thicknessX,beamTop),new Point(thicknessX,slabBottom));
+                foreach(double y in new[] {beamTop,slabBottom})dc.DrawLine(new Pen(Steel,1),new Point(thicknessX-4,y),new Point(thicknessX+4,y));
+                Label(dc,$"t {thickness:0.###}",thicknessX+7,(beamTop+slabBottom)/2-7);
                 foreach(double x in new[] {near,far})
                 {
-                    dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x),beamTop+20),new Point(xx(x),beamBottom));
+                    dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x),slabBottom+20),new Point(xx(x),beamBottom));
                     dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x)-4,beamBottom),new Point(xx(x),beamBottom));
                     dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x)+4,beamBottom),new Point(xx(x),beamBottom));
                 }
                 foreach(double shutter in new[] {face+sign*100,face+sign*(bay-100)})
                 {
-                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter),beamTop-10),new Point(xx(shutter),beamBottom));
+                    dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter),slabBottom),new Point(xx(shutter),beamBottom));
                     dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter)-4,beamBottom),new Point(xx(shutter),beamBottom));
                     dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter)+4,beamBottom),new Point(xx(shutter),beamBottom));
                 }
                 int encoded=layout.StockPlan.Pieces.Length+t.RowsMm.Length+maxRow*2+side;
                 bool selected=encoded==selectedRun;
-                var upperRect=new Rect(Math.Min(xx(a),xx(b)),beamTop,stock*scale,20);
+                var upperRect=new Rect(Math.Min(xx(a),xx(b)),slabBottom,stock*scale,20);
                 H20Drawing.Longitudinal(dc,upperRect,selected,true);DrawnH20ProfileCount++;
                 MemberTargets.Add(Tuple.Create(upperRect,encoded,0,0));
                 dim(face,near,beamBottom+45,$"Face → foot {foot:0}");
                 dim(face+sign*bay,far,beamBottom+45,$"{foot:0}");
-                dim(a,near,beamTop-36,$"End → foot {foot-edge:0}");
-                dim(a,b,beamTop-64,$"Slab H20 1 × {stock:0}{((side==0 ? t.LeftUpperCustom : t.RightUpperCustom) ? " custom" : "")} · bay {bay:0}");
+                dim(face,face+sign*bay,beamTop-64,$"Span {bay:0.###}");
+                dim(a,b,beamTop-36,$"Slab H20 1 × {stock:0}{((side==0 ? t.LeftUpperCustom : t.RightUpperCustom) ? " custom" : "")}");
             }
             dim(t.LowerStockStartMm,-layout.WidthMm/2,beamBottom+78,$"End → primary {-layout.WidthMm/2-t.LowerStockStartMm:0}");
             dim(layout.WidthMm/2,t.LowerStockStartMm+t.LowerStockLengthMm,beamBottom+78,$"{t.LowerStockStartMm+t.LowerStockLengthMm-layout.WidthMm/2:0}");

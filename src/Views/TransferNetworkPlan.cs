@@ -130,10 +130,9 @@ namespace EngineeringDashboard
                     if(leg<b.Joined.Length && b.Joined[leg])
                         TowerPlanDrawing.BracedBay(dc,a,c,new Point(xx(b.PositionsMm[leg+1]),top),new Point(xx(b.PositionsMm[leg+1]),bottom),b.Rotated);
                 }
-                double acrossX=ActualWidth-24;
-                dc.DrawLine(new Pen(Steel,1),new Point(acrossX,top),new Point(acrossX,bottom));
-                foreach(double y in new[] {top,bottom})dc.DrawLine(new Pen(Steel,1),new Point(acrossX-4,y),new Point(acrossX+4,y));
-                Label(dc,b.WidthMm.ToString("0.###"),acrossX-8,(top+bottom)/2-8,true);AcrossDimensions.Add(Tuple.Create(beam,b.WidthMm));
+                double acrossX=xx(b.PositionsMm.OrderBy(x=>Math.Abs(x-b.LengthMm/2)).First())-18;
+                VerticalDim(dc,acrossX,top,bottom,b.WidthMm.ToString("0.###"),Brushes.Firebrick,true);
+                AcrossDimensions.Add(Tuple.Create(beam,b.WidthMm));
                 for(int leg=0;leg<b.Joined.Length;)
                 {
                     int count=1;double interval=b.PositionsMm[leg+1]-b.PositionsMm[leg];
@@ -193,10 +192,16 @@ namespace EngineeringDashboard
                 }
             }
         }
+        private void VerticalDim(DrawingContext dc,double x,double top,double bottom,string value,Brush colour=null,bool left=false)
+        {
+            colour=colour??Steel;
+            dc.DrawLine(new Pen(colour,1),new Point(x,top),new Point(x,bottom));
+            foreach(double y in new[] {top,bottom})dc.DrawLine(new Pen(colour,1),new Point(x-4,y),new Point(x+4,y));
+            var text=new FormattedText(value,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),11,colour,VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            Label(dc,value,left ? x-text.Width-7 : x+7,(top+bottom-text.Height)/2,false,colour);
+        }
         private void Section(DrawingContext dc,double y0)
         {
-            Label(dc,"Section · red: slab feet · blue: shutter loads · select H20 for diagrams",30,y0);
-            Label(dc,$"Slab H20 feet: equal setbacks at both faces; repeat every row · maximum spacing {result.Input.UpperSpacingMm:0.###} mm",30,y0+19);
             double min=double.MaxValue,max=double.MinValue;
             for(int b=0;b<result.Beams.Length;b++) {var t=result.Beams[b].Transfer;min=Math.Min(min,result.BeamCentresMm[b]+t.LowerStockStartMm);max=Math.Max(max,result.BeamCentresMm[b]+t.LowerStockStartMm+t.LowerStockLengthMm);}
             foreach(var support in result.CrossSupports)foreach(var solid in support.Solids) {min=Math.Min(min,solid.Y0);max=Math.Max(max,solid.Y1);}
@@ -207,7 +212,9 @@ namespace EngineeringDashboard
             {
                 var b=result.Beams[beam];var input=result.Input.Beams[beam];var t=b.Transfer;double centre=result.BeamCentresMm[beam],bottom=top+(highest-input.BottomElevationMm)*depthScale,beamTop=top+(highest-input.BottomElevationMm-input.DepthMm)*depthScale;
                 dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(xx(centre-input.WidthMm/2),beamTop,input.WidthMm*scale,bottom-beamTop));
-                Label(dc,$"B{beam+1}",xx(centre),top-20,true);
+                Label(dc,$"B{beam+1}",xx(centre),beamTop-22,true);
+                double depthX=xx(centre-input.WidthMm/2)-18;
+                VerticalDim(dc,depthX,beamTop,bottom,$"D {input.DepthMm:0.###}",Steel,true);
                 int row=Enumerable.Range(0,t.RowsMm.Length).OrderByDescending(r=>t.LowerCases.Max(c=>c[r].Utilization)).First(),encoded=b.StockPlan.Pieces.Length+row;
                 double start=xx(centre+t.LowerStockStartMm),end=xx(centre+t.LowerStockStartMm+t.LowerStockLengthMm);
                 var lowerRect=new Rect(start,bottom,end-start,200*depthScale);
@@ -235,10 +242,15 @@ namespace EngineeringDashboard
             for(int bay=0;bay<result.Bays.Length;bay++)
             {
                 var slab=result.Input.Bays[bay];var plan=result.Bays[bay];
+                double slabFace=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2;
+                double slabTop=top+(highest-Math.Max(result.Input.Beams[bay].BottomElevationMm+result.Input.Beams[bay].DepthMm,result.Input.Beams[bay+1].BottomElevationMm+result.Input.Beams[bay+1].DepthMm))*depthScale;
+                double slabBottom=slabTop+slab.ThicknessMm*depthScale;
+                Dim(dc,xx(slabFace),xx(slabFace+slab.WidthMm),slabTop-42,$"S{bay+1} span {slab.WidthMm:0.###}");
+                VerticalDim(dc,xx(slabFace+slab.WidthMm/2),slabTop,slabBottom,$"t {slab.ThicknessMm:0.###}");
                 if(plan==null)
                 {
                     double faceX=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2;
-                    var separateRect=new Rect(xx(faceX),top,slab.WidthMm*scale,slab.ThicknessMm*depthScale);
+                    var separateRect=new Rect(xx(faceX),slabTop,slab.WidthMm*scale,slab.ThicknessMm*depthScale);
                     dc.DrawRectangle(Brushes.Moccasin,new Pen(Brushes.Goldenrod,.6),separateRect);
                     SeparateBayTargets.Add(Tuple.Create(separateRect,bay));
                     double midpoint=faceX+slab.WidthMm/2;
@@ -248,7 +260,7 @@ namespace EngineeringDashboard
                 }
                 double face=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2,other=face+slab.WidthMm;
                 double a=face+plan.EdgeMm,b=a+plan.StockLengthMm,near=face+plan.NearFootMm,far=other-plan.FarFootMm,soffit=top+(highest-Math.Max(result.Input.Beams[bay].BottomElevationMm+result.Input.Beams[bay].DepthMm,result.Input.Beams[bay+1].BottomElevationMm+result.Input.Beams[bay+1].DepthMm)+slab.ThicknessMm)*depthScale;
-                dc.DrawRectangle(Brushes.LightSteelBlue,null,new Rect(xx(face),top,slab.WidthMm*scale,slab.ThicknessMm*depthScale));
+                dc.DrawRectangle(Brushes.LightSteelBlue,null,new Rect(xx(face),slabTop,slab.WidthMm*scale,slab.ThicknessMm*depthScale));
                 int row=Array.IndexOf(result.Beams[bay].Transfer.RightUpperScales,result.Beams[bay].Transfer.RightUpperScales.Max());
                 if(result.SlabRowCount(bay)==0)continue;
                 int encoded=result.Beams[bay].StockPlan.Pieces.Length+result.Beams[bay].Transfer.RowsMm.Length+row*2+1;
@@ -262,7 +274,6 @@ namespace EngineeringDashboard
                     double shutter=side==0 ? face+100 : other-100;dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter),soffit),new Point(xx(shutter),bottom));Arrow(dc,xx(shutter),bottom,Brushes.SteelBlue);
                     if(ShowAllDimensions || selectedBeam==beam)
                     {
-                        Label(dc,$"Edge {plan.EdgeMm:0}",xx(shutter),top-40,true);
                         Dim(dc,xx(side==0 ? face : far),xx(side==0 ? near : other),soffit+29,$"Foot { (side==0 ? plan.NearFootMm : plan.FarFootMm):0}");
                     }
                 }

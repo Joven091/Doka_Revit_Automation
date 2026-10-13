@@ -15,6 +15,7 @@ namespace EngineeringDashboard
     public sealed class TransferNetworkConfiguration
     {
         public int SupportFormatVersion {get;set;}
+        public double PlanOriginYmm {get;set;}
         public TransferBeamRow[] Beams {get;set;}
         public TransferBayRow[] Bays {get;set;}
         public TransferCrossingBeamRow[] CrossingBeams {get;set;}
@@ -25,12 +26,50 @@ namespace EngineeringDashboard
         public ObservableCollection<TransferBayRow> NetworkBays {get;}=new ObservableCollection<TransferBayRow>();
         public ObservableCollection<TransferCrossingBeamRow> CrossingBeams {get;}=new ObservableCollection<TransferCrossingBeamRow>();
         private bool useBeamNetwork;
-        public bool UseBeamNetwork {get=>useBeamNetwork;set {if(useBeamNetwork==value)return;useBeamNetwork=value;if(value && NetworkBeams.Count==0)InitializeNetwork();Changed();NotifyNetwork();}}
+        private double planOriginYmm;
+        public double PlanOriginYmm {get=>planOriginYmm;set {if(!TowerBeamAnalysis.Finite(value) || Math.Abs(value)>1000000)throw new ArgumentException("Invalid drawing origin.");if(planOriginYmm==value)return;planOriginYmm=value;OnPropertyChanged(nameof(PlanOriginYmm));}}
+        internal double[] GeometryCentres()
+        {
+            if(!IsNetworkMode)return new[] {PlanOriginYmm};
+            var ys=new double[NetworkBeams.Count];ys[0]=PlanOriginYmm;
+            for(int i=1;i<ys.Length;i++)ys[i]=ys[i-1]+NetworkBeams[i-1].WidthMm/2+NetworkBays[i-1].WidthMm+NetworkBeams[i].WidthMm/2;
+            return ys;
+        }
+        internal bool TryMoveParallelBeam(int index,double offset)
+        {
+            if(!TowerBeamAnalysis.Finite(offset) || Math.Abs(offset)<.001)return false;
+            if(!IsNetworkMode) {if(index!=0 || Math.Abs(PlanOriginYmm+offset)>1000000)return false;PlanOriginYmm+=offset;return true;}
+            if(index<0 || index>=NetworkBeams.Count)return false;
+            double before=index>0 ? NetworkBays[index-1].WidthMm+offset : 0,after=index<NetworkBays.Count ? NetworkBays[index].WidthMm-offset : 0;
+            if(index>0 && (before<500 || before>20000) || index<NetworkBays.Count && (after<500 || after>20000) || index==0 && Math.Abs(PlanOriginYmm+offset)>1000000)return false;
+            if(index>0)NetworkBays[index-1].WidthMm=before;else PlanOriginYmm+=offset;
+            if(index<NetworkBays.Count)NetworkBays[index].WidthMm=after;
+            return true;
+        }
+        internal bool TryInsertParallelBeam(TransferBeamRow source,double centre,out int index)
+        {
+            index=-1;if(source==null || !TowerBeamAnalysis.Finite(source.WidthMm) || source.WidthMm<=0 || source.WidthMm>10000 || !TowerBeamAnalysis.Finite(source.DepthMm) || source.DepthMm<=0 || !TowerBeamAnalysis.Finite(source.BottomElevationMm) || !TowerBeamAnalysis.Finite(centre) || Math.Abs(centre)>1000000 || !CanAddNetworkBay)return false;
+            var ys=GeometryCentres();int at=Array.FindIndex(ys,y=>y>=centre);if(at<0)at=ys.Length;
+            var rows=IsNetworkMode ? NetworkBeams.ToArray() : new[] {StandaloneDefinition()};
+            double before=at>0 ? centre-ys[at-1]-(rows[at-1].WidthMm+source.WidthMm)/2 : 0;
+            double after=at<ys.Length ? ys[at]-centre-(rows[at].WidthMm+source.WidthMm)/2 : 0;
+            if(at>0 && (before<500 || before>20000) || at<ys.Length && (after<500 || after>20000))return false;
+            if(!IsNetworkMode)
+            {
+                UnsubscribeNetwork();NetworkBeams.Clear();NetworkBays.Clear();CrossingBeams.Clear();NetworkBeams.Add(rows[0]);SubscribeNetwork();
+            }
+            InsertNetworkBay(at==ys.Length ? at-1 : at,at<ys.Length);
+            var row=NetworkBeams[at];row.WidthMm=source.WidthMm;row.DepthMm=source.DepthMm;row.BottomElevationMm=source.BottomElevationMm;
+            if(at>0)NetworkBays[at-1].WidthMm=before;else PlanOriginYmm=centre;
+            if(at<ys.Length)NetworkBays[at].WidthMm=after;
+            index=at;return true;
+        }
+        public bool UseBeamNetwork {get=>useBeamNetwork;set {if(useBeamNetwork==value)return;useBeamNetwork=value;if(value && NetworkBeams.Count==1){InsertNetworkBay(0,false);return;}if(value && NetworkBeams.Count==0)InitializeNetwork();Changed();NotifyNetwork();}}
         public bool IsNetworkMode=>IsTransferMode && UseBeamNetwork;
         public bool ShowSingleTransfer=>IsTransferMode && !UseBeamNetwork;
         public bool ShowSingleGeometry=>!IsNetworkMode;
         public bool CanAddNetworkBay=>NetworkBeams.Count<TransferNetworkInput.MaximumBeamCount;
-        public bool CanRemoveNetworkBay=>NetworkBeams.Count>2;
+        public bool CanRemoveNetworkBay=>NetworkBeams.Count>1;
         public TransferNetworkResult NetworkResult {get;private set;}
         public int SelectedNetworkBeam {get;private set;}
         public string NetworkSummary=>NetworkResult?.Summary??"";
@@ -38,18 +77,31 @@ namespace EngineeringDashboard
         public string NetworkSelectedLabel=>IsNetworkMode ? $"Inspecting B{SelectedNetworkBeam+1}" : "";
         public string NetworkConfigurationXml
         {
-            get {using(var text=new StringWriter(CultureInfo.InvariantCulture)) {new XmlSerializer(typeof(TransferNetworkConfiguration)).Serialize(text,new TransferNetworkConfiguration {SupportFormatVersion=2,Beams=NetworkBeams.ToArray(),Bays=NetworkBays.ToArray(),CrossingBeams=CrossingBeams.ToArray()});return text.ToString();}}
+            get {using(var text=new StringWriter(CultureInfo.InvariantCulture)) {new XmlSerializer(typeof(TransferNetworkConfiguration)).Serialize(text,new TransferNetworkConfiguration {SupportFormatVersion=2,PlanOriginYmm=PlanOriginYmm,Beams=NetworkBeams.Count==1 && !IsNetworkMode ? new[] {StandaloneDefinition()} : NetworkBeams.ToArray(),Bays=NetworkBays.ToArray(),CrossingBeams=CrossingBeams.ToArray()});return text.ToString();}}
             set
             {
                 TransferNetworkConfiguration config;
                 using(var text=new StringReader(value??""))using(var reader=XmlReader.Create(text,new XmlReaderSettings {DtdProcessing=DtdProcessing.Prohibit,XmlResolver=null,MaxCharactersInDocument=50000}))
                     config=(TransferNetworkConfiguration)new XmlSerializer(typeof(TransferNetworkConfiguration)).Deserialize(reader);
-                if(config?.Beams==null || config.Bays==null || config.Beams.Length<2 || config.Beams.Length>TransferNetworkInput.MaximumBeamCount || config.Bays.Length!=config.Beams.Length-1 || config.Beams.Any(b=>b==null) || config.Bays.Any(b=>b==null))throw new ArgumentException("Invalid saved beam/slab network.");
+                if(config?.Beams==null || config.Bays==null || config.Beams.Length<1 || config.Beams.Length>TransferNetworkInput.MaximumBeamCount || config.Bays.Length!=config.Beams.Length-1 || config.Beams.Any(b=>b==null) || config.Bays.Any(b=>b==null))throw new ArgumentException("Invalid saved beam/slab network.");
                 if(config.CrossingBeams!=null && (config.CrossingBeams.Length>30 || config.CrossingBeams.Any(c=>c==null)))throw new ArgumentException("Invalid saved crossing beams.");
+                if(config.Beams.Length==1 && config.CrossingBeams?.Length>0)throw new ArgumentException("A standalone beam cannot contain slab crossing beams.");
+                if(!TowerBeamAnalysis.Finite(config.PlanOriginYmm) || Math.Abs(config.PlanOriginYmm)>1000000)throw new ArgumentException("Invalid saved drawing origin.");
                 if(config.SupportFormatVersion<0 || config.SupportFormatVersion>2)throw new ArgumentException("Unsupported cross-beam support format.");
                 if(config.SupportFormatVersion<2)foreach(var c in config.CrossingBeams??new TransferCrossingBeamRow[0])c.SupportMode=CrossBeamSupportMode.LegacySlabRows;
-                UnsubscribeNetwork();NetworkBeams.Clear();NetworkBays.Clear();CrossingBeams.Clear();foreach(var c in config.CrossingBeams??new TransferCrossingBeamRow[0])CrossingBeams.Add(c);foreach(var b in config.Beams)NetworkBeams.Add(b);foreach(var b in config.Bays)NetworkBays.Add(b);SubscribeNetwork();Changed();NotifyNetwork();
+                PlanOriginYmm=config.PlanOriginYmm;UnsubscribeNetwork();NetworkBeams.Clear();NetworkBays.Clear();CrossingBeams.Clear();foreach(var c in config.CrossingBeams??new TransferCrossingBeamRow[0])CrossingBeams.Add(c);foreach(var b in config.Beams)NetworkBeams.Add(b);foreach(var b in config.Bays)NetworkBays.Add(b);SubscribeNetwork();if(NetworkBeams.Count==1)SetStandaloneMode();Changed();NotifyNetwork();
             }
+        }
+        internal TransferBeamRow StandaloneDefinition()
+        {
+            var old=NetworkBeams.FirstOrDefault();
+            return new TransferBeamRow {WidthMm=Width,DepthMm=Depth,BottomElevationMm=(old==null ? 0 : old.BottomElevationMm+old.DepthMm)-Depth};
+        }
+        private void SetStandaloneMode()
+        {
+            var beam=NetworkBeams.Single();depth=beam.DepthMm;width=beam.WidthMm;
+            useBeamNetwork=false;transferSlabLoads=false;hasLeft=hasRight=false;SelectedNetworkBeam=0;
+            OnPropertyChanged(null);NotifyTransfer();NotifyTower();
         }
         internal void StartNewSession()
         {
@@ -82,6 +134,7 @@ namespace EngineeringDashboard
         }
         public void AddNetworkBay()
         {
+            if(NetworkBeams.Count==1){InsertNetworkBay(0,false);return;}
             if(NetworkBeams.Count==0)InitializeNetwork();if(!CanAddNetworkBay)return;
             var beam=new TransferBeamRow {Label="B"+(NetworkBeams.Count+1),DepthMm=NetworkBeams.Last().DepthMm,WidthMm=NetworkBeams.Last().WidthMm,BottomElevationMm=NetworkBeams.Last().BottomElevationMm};
             var bay=new TransferBayRow {Label="S"+(NetworkBays.Count+1),WidthMm=NetworkBays.Last().WidthMm,ThicknessMm=NetworkBays.Last().ThicknessMm};
@@ -89,34 +142,33 @@ namespace EngineeringDashboard
         }
         public void RemoveNetworkBay()
         {
-            if(!CanRemoveNetworkBay)return;NetworkBeams.Last().PropertyChanged-=NetworkChanged;NetworkBays.Last().PropertyChanged-=NetworkChanged;
-            NetworkBeams.RemoveAt(NetworkBeams.Count-1);NetworkBays.RemoveAt(NetworkBays.Count-1);
-            foreach(var c in CrossingBeams.Where(c=>c.BayNumber>NetworkBays.Count).ToArray())RemoveCrossingBeam(c);
-            Changed();NotifyNetwork();
+            if(CanRemoveNetworkBay)RemoveNetworkBeam(NetworkBeams.Count-1);
         }
         public void InsertNetworkBay(int beamIndex,bool before)
         {
             if(!CanAddNetworkBay || beamIndex<0 || beamIndex>=NetworkBeams.Count)return;
-            var source=NetworkBeams[beamIndex];int bayIndex=beamIndex;
-            var bay=NetworkBays[Math.Min(bayIndex,NetworkBays.Count-1)];
-            UnsubscribeNetwork();
+            bool standalone=NetworkBeams.Count==1;
+            var source=standalone ? StandaloneDefinition() : NetworkBeams[beamIndex];int bayIndex=beamIndex;
+            var bay=NetworkBays.Count==0 ? new TransferBayRow {WidthMm=RightSlabBayMm,ThicknessMm=RightSlabThickness} : NetworkBays[Math.Min(bayIndex,NetworkBays.Count-1)];
+            UnsubscribeNetwork();if(standalone)NetworkBeams[0]=source;
             NetworkBeams.Insert(before ? beamIndex : beamIndex+1,new TransferBeamRow {WidthMm=source.WidthMm,DepthMm=source.DepthMm,BottomElevationMm=source.BottomElevationMm});
             NetworkBays.Insert(bayIndex,new TransferBayRow {WidthMm=bay.WidthMm,ThicknessMm=bay.ThicknessMm});
             foreach(var c in CrossingBeams)if(c.BayNumber>bayIndex)c.BayNumber++;
-            SubscribeNetwork();Changed();NotifyNetwork();
+            SubscribeNetwork();if(standalone){useBeamNetwork=true;transferSlabLoads=true;OnPropertyChanged(null);NotifyTransfer();}Changed();NotifyNetwork();
         }
         public void RemoveNetworkBeam(int beamIndex)
         {
             if(!CanRemoveNetworkBay || beamIndex<0 || beamIndex>=NetworkBeams.Count)return;
-            int bayIndex=Math.Max(0,beamIndex-1);UnsubscribeNetwork();
+            int bayIndex=Math.Max(0,beamIndex-1);double nextOrigin=beamIndex==0 ? PlanOriginYmm+NetworkBeams[0].WidthMm/2+NetworkBays[0].WidthMm+NetworkBeams[1].WidthMm/2 : PlanOriginYmm;UnsubscribeNetwork();
             foreach(var c in CrossingBeams.Where(c=>c.BayNumber==bayIndex+1).ToArray())CrossingBeams.Remove(c);
             foreach(var c in CrossingBeams)if(c.BayNumber>bayIndex+1)c.BayNumber--;
-            NetworkBeams.RemoveAt(beamIndex);NetworkBays.RemoveAt(bayIndex);
-            SubscribeNetwork();Changed();NotifyNetwork();
+            NetworkBeams.RemoveAt(beamIndex);NetworkBays.RemoveAt(bayIndex);PlanOriginYmm=nextOrigin;
+            SubscribeNetwork();if(NetworkBeams.Count==1)SetStandaloneMode();Changed();NotifyNetwork();
         }
         public void AddCrossingBeam()
         {
-            UseBeamNetwork=true;if(CrossingBeams.Count>=30)return;
+            if(NetworkBeams.Count==1 || CrossingBeams.Count>=30)return;
+            UseBeamNetwork=true;
             var c=new TransferCrossingBeamRow {PositionMm=BeamLengthMm/2,DepthMm=Math.Max(600,NetworkBays[0].ThicknessMm)};
             CrossingBeams.Add(c);c.PropertyChanged+=NetworkChanged;Changed();NotifyNetwork();
         }

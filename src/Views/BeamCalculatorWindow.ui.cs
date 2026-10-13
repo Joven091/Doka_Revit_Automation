@@ -194,7 +194,8 @@ namespace EngineeringDashboard
             foreach (var field in CalculationFiles.Capture("Beam", vm, "TransferSlabLoads,UpperSupportSpacingMm,LeftSlabBayMm,RightSlabBayMm").Inputs) record.Inputs.Add(field);
             record.Inputs.Add(CalculationFiles.Field("UseTowers", vm.UseTowers));
             record.Inputs.Add(CalculationFiles.Field("UseBeamNetwork",vm.UseBeamNetwork));
-            if(vm.NetworkBeams.Count>=2)record.Inputs.Add(CalculationFiles.Field("NetworkConfigurationXml",vm.NetworkConfigurationXml));
+            if(vm.NetworkBeams.Count>0)record.Inputs.Add(CalculationFiles.Field("NetworkConfigurationXml",vm.NetworkConfigurationXml));
+            record.Inputs.Add(CalculationFiles.Field("PlanOriginYmm",vm.PlanOriginYmm));
             record.Inputs.Add(CalculationFiles.Field("BeamLengthMm", vm.BeamLengthMm));
             record.Inputs.Add(CalculationFiles.Field("TowerLegCapacityKn", vm.TowerLegCapacityKn));
             record.Inputs.Add(CalculationFiles.Field("PrimaryMaterial", vm.PrimaryMaterial));
@@ -229,7 +230,8 @@ namespace EngineeringDashboard
             CalculationFiles.Apply(record,"Beam",target,FileInputs);
             target.SelectedPlywood=candidate.SelectedPlywood; target.PlywoodDeflectionLimit=candidate.PlywoodDeflectionLimit; target.SelectedProp=candidate.SelectedProp; target.DeflectionLimit=candidate.DeflectionLimit;
             target.TransferSlabLoads=candidate.TransferSlabLoads; target.LeftSlabBayMm=candidate.LeftSlabBayMm; target.RightSlabBayMm=candidate.RightSlabBayMm;
-            target.UseBeamNetwork=candidate.UseBeamNetwork;if(candidate.NetworkBeams.Count>=2)target.NetworkConfigurationXml=candidate.NetworkConfigurationXml;
+            target.UseBeamNetwork=candidate.UseBeamNetwork;if(candidate.NetworkBeams.Count>0)target.NetworkConfigurationXml=candidate.NetworkConfigurationXml;
+            target.PlanOriginYmm=candidate.PlanOriginYmm;
             target.UseTowers = candidate.UseTowers; target.BeamLengthMm = candidate.BeamLengthMm; target.TowerLegCapacityKn = candidate.TowerLegCapacityKn;
             target.PrimaryMaterial=candidate.PrimaryMaterial;
             target.AllowCustomH20Lengths = candidate.AllowCustomH20Lengths;
@@ -245,7 +247,7 @@ namespace EngineeringDashboard
             // Ignore legacy manual UpperSupportSpacingMm; the restored inputs determine the maximum.
             foreach (string field in new[] { "TransferSlabLoads", "LeftSlabBayMm", "RightSlabBayMm" })
                 if (record.Inputs.Any(f=>f.Name==field)) CalculationFiles.Apply(record,"Beam",vm,field);
-            foreach(string field in new[] {"UseBeamNetwork","NetworkConfigurationXml"})if(record.Inputs.Any(f=>f.Name==field))CalculationFiles.Apply(record,"Beam",vm,field);
+            foreach(string field in new[] {"UseBeamNetwork","NetworkConfigurationXml","PlanOriginYmm"})if(record.Inputs.Any(f=>f.Name==field))CalculationFiles.Apply(record,"Beam",vm,field);
             vm.IgnoreUplift = false;
             if (record.Inputs.Any(f => f.Name == "IgnoreUplift")) CalculationFiles.Apply(record, "Beam", vm, "IgnoreUplift");
             vm.AllowCustomH20Lengths = false;
