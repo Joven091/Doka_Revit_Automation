@@ -125,7 +125,7 @@ namespace EngineeringDashboard
         {
             base.OnRender(dc); DrawnPropCount = DrawnSlabCount = DrawnTowerLegCount = DrawnStockPieceCount = 0;
             DrawnBayDimensionCount = DrawnGapDimensionCount = DrawnEndDimensionCount = 0; MemberTargets.Clear(); propFaces.Clear();
-            DrawnTransferRowCount = DrawnFootCount = DrawnH20ProfileCount = 0;
+            DrawnTransferRowCount = DrawnFootCount = DrawnH20ProfileCount = DrawnAcrossDimensionCount = 0;AnnotationBounds.Clear();annotations.Clear();
             if(model?.TowerResult?.Transfer != null) dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if (model == null || !model.IsCalculationValid) return;
             if (model.UseTowers) { DrawTowerPlan(dc);foreach(var annotation in annotations)dc.DrawDrawing(annotation);return; }
