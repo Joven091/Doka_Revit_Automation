@@ -537,8 +537,8 @@ namespace EngineeringDashboard
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);var p=e.GetPosition(this);
+            if(panning) {Pan=panStart+(p-mouseStart);fitted=false;if(IsDrafting)UpdateDraftPointer(p);else InvalidateVisual();return;}
             if(IsDrafting){UpdateDraftPointer(p);return;}
-            if(panning) {Pan=panStart+(p-mouseStart);fitted=false;InvalidateVisual();}
             if(dragging) {dragDelta=SelectedKind==FormworkObject.Crossing ? p.X-mouseStart.X : p.Y-mouseStart.Y;InvalidateVisual();}
             if(selecting) {windowEnd=p;InvalidateVisual();}
             if(!panning && !dragging && !selecting)
