@@ -185,10 +185,16 @@ namespace EngineeringDashboard
         }
         private static string Clash(IEnumerable<FormworkSolid> added,IEnumerable<FormworkSolid> other)
         {
-            var a=added.ToArray();var b=other.ToArray();
+            var indexed=other as FormworkObstacleIndex;
+            var a=indexed==null ? added.ToArray() : added as FormworkSolid[] ?? added.ToArray();
+            var b=indexed==null ? other.ToArray() : null;
             for(int i=0;i<a.Length;i++)
             {
-                foreach(var s in b)if(a[i].Conflicts(s))return $"Physical overlap: {a[i].Name} / {s.Name}.";
+                if(indexed!=null)
+                {
+                    var s=indexed.FirstConflict(a[i]);if(s!=null)return $"Physical overlap: {a[i].Name} / {s.Name}.";
+                }
+                else foreach(var s in b)if(a[i].Conflicts(s))return $"Physical overlap: {a[i].Name} / {s.Name}.";
                 for(int j=0;j<i;j++)if(a[i].Conflicts(a[j]))return $"Physical overlap: {a[i].Name} / {a[j].Name}.";
             }
             return null;
@@ -411,7 +417,7 @@ namespace EngineeringDashboard
             }
             return values.Where(v=>Math.Abs(v)<=500+1e-7).Distinct().ToArray();
         }
-        private static CrossBeamSupportResult ProjectedJunction(TowerInput common,TransferNetworkResult r,int index,double spacing,double width,double offset,double alongSpan,double near,double far,FormworkSolid[] obstacles,out string failure,double? preferredBay=null,CrossShutterAllowance allowance=null)
+        private static CrossBeamSupportResult ProjectedJunction(TowerInput common,TransferNetworkResult r,int index,double spacing,double width,double offset,double alongSpan,double near,double far,IEnumerable<FormworkSolid> obstacles,out string failure,double? preferredBay=null,CrossShutterAllowance allowance=null,TowerInput preparedInput=null)
         {
             allowance=allowance??CrossShutterAllowance.Standard;failure=null;var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;
             double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2+near,span=r.Input.Bays[bay].WidthMm-near-far;
@@ -448,10 +454,32 @@ namespace EngineeringDashboard
                         if(Clash(secondarySolids,obstacles)!=null)continue;
                         var tributaries=EndZoneWidths(0,span,rows);double q=r.Input.AreaLoad(c.DepthMm)*c.WidthMm/1000;
                         var transverse=new TransferMember {H20Count=1,Name="Junction secondary",StartMm=lowerStart,LengthMm=lowerStock,SupportsMm=new[] {-width/2-lowerStart,width/2-lowerStart},Points=new BeamPointLoad[0],Uniform=new[] {new BeamDistributedLoad {StartMm=-offset-c.WidthMm/2-lowerStart,EndMm=-offset+c.WidthMm/2-lowerStart,KnPerM=q/(c.WidthMm/1000)}}};
-                        var input=common.CopyForSearch();input.Network=null;
+                        var input=preparedInput??common.CopyForSearch();input.Network=null;
                         var unit=Analyze(transverse,transverse.Points,transverse.Uniform,input,"Cross concrete");
-                        var lower=rows.Select((y,i)=>{double design=Math.Max(spacing,tributaries[i])/1000;return new TransferMember {H20Count=1,Name=$"T{i+1}",LoadCase="Cross concrete + construction/formwork",StartMm=lowerStart,LengthMm=lowerStock,SupportsMm=unit.SupportsMm,Points=unit.Points,Uniform=unit.Uniform.Select(u=>new BeamDistributedLoad {StartMm=u.StartMm,EndMm=u.EndMm,KnPerM=u.KnPerM*design}).ToArray(),Analysis=unit.Analysis.Scale(design)};}).ToArray();
-                        if(lower.Any(m=>!Pass(m,input,$"X{index+1} junction secondary")))continue;
+                        bool reuse=common.ReuseSearchWork && common.OptimizeCrossingJunctions,passing=true;
+                        TransferMember[] lower;
+                        if(!reuse)
+                        {
+                            // The benchmark retains the original allocation/traversal path.
+                            lower=rows.Select((y,i)=>{double design=Math.Max(spacing,tributaries[i])/1000;return new TransferMember {H20Count=1,Name=$"T{i+1}",LoadCase="Cross concrete + construction/formwork",StartMm=lowerStart,LengthMm=lowerStock,SupportsMm=unit.SupportsMm,Points=unit.Points,Uniform=unit.Uniform.Select(u=>new BeamDistributedLoad {StartMm=u.StartMm,EndMm=u.EndMm,KnPerM=u.KnPerM*design}).ToArray(),Analysis=unit.Analysis.Scale(design)};}).ToArray();
+                            passing=!lower.Any(m=>!Pass(m,input,$"X{index+1} junction secondary"));
+                        }
+                        else
+                        {
+                            lower=new TransferMember[rows.Length];double previousScale=double.NaN;LoadedBeamAnalysis scaled=null;
+                            for(int row=0;row<rows.Length;row++)
+                            {
+                                double design=Math.Max(spacing,tributaries[row])/1000;
+                                // Equal tributaries share the same immutable scaled response.
+                                // A changed factor still calls the original exact Scale routine.
+                                if(design!=previousScale) {scaled=unit.Analysis.Scale(design);previousScale=design;}
+                                lower[row]=new TransferMember {H20Count=1,Name=$"T{row+1}",LoadCase="Cross concrete + construction/formwork",StartMm=lowerStart,LengthMm=lowerStock,SupportsMm=unit.SupportsMm,Points=unit.Points,Uniform=unit.Uniform.Select(u=>new BeamDistributedLoad {StartMm=u.StartMm,EndMm=u.EndMm,KnPerM=u.KnPerM*design}).ToArray(),Analysis=scaled};
+                                // Preserve check order while avoiding allocation of later rows
+                                // after the same first failed check as the reference traversal.
+                                if(!Pass(lower[row],input,$"X{index+1} junction secondary")) {passing=false;break;}
+                            }
+                        }
+                        if(!passing)continue;
                         // As in the existing end-strip model, distribute the full load on
                         // centred covered concrete, conserving force and its exact centroid.
                         var primary=Enumerable.Range(0,2).Select(line=>new TransferMember {PrimaryMaterial=common.PrimaryMaterial,Name=$"P1 {(line==0 ? "L" : "R")}",H20Count=2,StartMm=start,LengthMm=stock,SupportsMm=positions.Select(x=>x-start).ToArray(),Points=new BeamPointLoad[0],Uniform=new[] {new BeamDistributedLoad {StartMm=edge-start,EndMm=span-edge-start,KnPerM=unit.Analysis.Reactions[line]*span/(span-2*edge)}}}).ToArray();
@@ -496,6 +524,9 @@ namespace EngineeringDashboard
             var shutters=zones.Where(z=>z.IsShutterEndZone).GroupBy(z=>z.Beam).Select(g=>g.First()).Select(z=>new FormworkSolid {Name=$"X{index+1} side shutter on B{z.Beam+1}",IsSideShutter=true,X0=z.FootprintStartMm,X1=z.FootprintEndMm,Y0=z.EndZoneStartMm,Y1=z.EndZoneEndMm,Z0=z.ReceivingTopMm,Z1=z.H20UndersideMm}).ToArray();
             if(Clash(shutters,obstacles)!=null){failure=$"X{index+1}: side-shutter assembly clashes with existing formwork.";return null;}
             obstacles=obstacles.Concat(shutters).ToArray();
+            IEnumerable<FormworkSolid> collisions=common.ReuseSearchWork && common.OptimizeCrossingJunctions ? new FormworkObstacleIndex(obstacles) : (IEnumerable<FormworkSolid>)obstacles;
+            TowerInput preparedInput=null;
+            if(common.ReuseSearchWork && common.OptimizeCrossingJunctions) {preparedInput=common.CopyForSearch();preparedInput.Network=null;}
             var spacings=(r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(s=>s<=r.Input.CrossSpacing(index)) : new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7)).ToArray();
             var widths=new[] {1000.0,1500,2000,1524,600};
             var offsets=new[] {0.0,25,-25,50,-50,75,-75,100,-100,125,-125,150,-150};
@@ -511,7 +542,7 @@ namespace EngineeringDashboard
                 foreach(double shift in shifts)
                 foreach(double offset in offsets)
                 {
-                        var projected=ProjectedJunction(common,r,index,spacing,width,offset,shift,near,far,obstacles,out string projectedFailure,preferredBay,allowance);
+                        var projected=ProjectedJunction(common,r,index,spacing,width,offset,shift,near,far,collisions,out string projectedFailure,preferredBay,allowance,preparedInput);
                         if(projected==null) {if(projectedFailure!=null)failure=projectedFailure;continue;}
                         return JunctionResult(c,index,projected,zones,shutters,near,far,span,offset,shift);
                     }
@@ -522,12 +553,12 @@ namespace EngineeringDashboard
                     if(centred==null) {failure=reason;continue;}
                     // Sliding the legs cannot repair a timber intersection. Discard that
                     // geometry before reanalysing any support translations.
-                    reason=Clash(centred.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope),obstacles);
+                    reason=Clash(centred.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope),collisions);
                     if(reason!=null) {failure=reason;continue;}
                     foreach(double alongSpan in new[] {0.0}.Concat(Enumerable.Range(1,20).SelectMany(i=>new[] {i*25.0,-i*25.0})))
                     {
                         var shiftedLegs=centred.Solids.Where(s=>s.IsLeg || s.IsTowerEnvelope).Select(s=>new FormworkSolid {Name=s.Name,IsLeg=s.IsLeg,IsTowerEnvelope=s.IsTowerEnvelope,TowerOwner=s.TowerOwner,X0=s.X0,X1=s.X1,Y0=s.Y0+alongSpan,Y1=s.Y1+alongSpan,Z0=s.Z0,Z1=s.Z1});
-                        reason=Clash(shiftedLegs,obstacles);
+                        reason=Clash(shiftedLegs,collisions);
                         if(reason!=null) {failure=reason;continue;}
                         // Coordinate support translation with the real primary stock ends.
                         // Only unloaded primary tails project into the junction; coplanar
@@ -537,7 +568,7 @@ namespace EngineeringDashboard
                         double farExtension=Math.Max(0,25*Math.Ceiling((common.StockEndSetbackMm-(last.EndMm-centred.Towers.PositionsMm[last.LastSupport]-alongSpan))/25));
                         if(nearExtension>near+1e-7 || farExtension>far+1e-7)continue;
                         var result=alongSpan==0 ? centred : DedicatedCandidate(common,r,index,spacing,out reason,near,far,width,offset,alongSpan,nearExtension,farExtension,allowance);
-                        if(result!=null)reason=Clash(result.Solids,obstacles);
+                        if(result!=null)reason=Clash(result.Solids,collisions);
                         if(result==null || reason!=null) {failure=reason;continue;}
                         return JunctionResult(c,index,result,zones,shutters,near,far,span,offset,alongSpan);
                     }

@@ -161,3 +161,11 @@ After selecting a checked network, a single-run, four-leg dedicated crossing tow
 Plywood sheet-joint rows, primary-stock end rows, slab-foot rows and crossing-end-zone bearings stay fixed. A change blocked by one of these components retains the original checked arrangement. Main-primary UDLs and conservative secondary design loads retain their original spacing basis; physical positions and extra H20 quantities appear in the plan and schedule. Moving or adding an H20 does not introduce another concrete tributary into the primary UDL.
 
 Selected horizontal dimension labels use clear lanes above their dimension lines, including when short setting-out segments require a leader.
+
+### Crossing-junction work reuse
+
+Junction placement builds a read-only spatial index of its fixed obstacle snapshot. Bounding boxes only discard pairs that cannot intersect; every remaining pair uses the original `FormworkSolid.Conflicts` test, including bearing-contact tolerance and tower ownership. The index returns the same first conflicting obstacle as the original scan. Candidate ordering, stock choices, all member/leg checks and complete-result acceptance remain in place.
+
+The same junction prepares its fixed analysis input once. Equal secondary tributaries share an immutable response produced by the original `LoadedBeamAnalysis.Scale` routine. A different factor gets a new exact scaled response. Rows are constructed and checked in order, ending at the same first failed check as the reference traversal. No elapsed-time deadline is applied to normal calculation.
+
+Run `--obstacle-index` for randomized and contact/ownership clash parity. Run `--crossing-optimization-benchmark` for the exact reported 2026-10-14 geometry with optimized and reference junction work in the same process. The optimized run goes first, and the benchmark checks the selected schedule, unrounded member forces/deflections/reactions, complete candidate count, numerical-check count, physical clashes and individual leg capacity. The Windows baseline workflow runs this comparison on .NET Framework 4.8 and .NET 10 and saves both reports.

@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'tests/Beam.Tests/DiagnosticFullBenchmark.cs'
+      - 'tests/Beam.Tests/CrossingOptimizationTests.cs'
       - '.github/workflows/beam-solution-baseline.yml'
   workflow_dispatch:
 
@@ -32,13 +33,13 @@ jobs:
             dotnet build tests/Beam.Tests/Beam.Tests.csproj -c Release --warnaserror
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Measure full reported search
+      - name: Compare optimized and reference reported searches
         shell: pwsh
         run: |
           if ('${{ matrix.runtime }}' -eq 'net48') {
-            & tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --diagnostic-full-benchmark 2>&1 | Tee-Object -FilePath baseline-${{ matrix.runtime }}.txt
+            & tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --crossing-optimization-benchmark 2>&1 | Tee-Object -FilePath baseline-${{ matrix.runtime }}.txt
           } else {
-            dotnet tests/Beam.Tests/bin/Release/net10.0/Beam.Tests.dll --diagnostic-full-benchmark 2>&1 | Tee-Object -FilePath baseline-${{ matrix.runtime }}.txt
+            dotnet tests/Beam.Tests/bin/Release/net10.0/Beam.Tests.dll --crossing-optimization-benchmark 2>&1 | Tee-Object -FilePath baseline-${{ matrix.runtime }}.txt
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4

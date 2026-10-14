@@ -45,6 +45,7 @@ namespace EngineeringDashboard
         public double StockEndSetbackMm { get => stockEndSetbackMm; set { stockEndSetbackMm = value; Changed(); } }
         public TowerLayout TowerResult { get; private set; }
         private CancellationTokenSource towerCancellation;
+        internal bool OptimizeCrossingJunctions {get;set;}=true;
         // Optional deadline for explicitly requested diagnostic runs; normal calculation is unrestricted.
         internal TimeSpan TowerSearchTimeLimit {get;set;}=TimeSpan.FromSeconds(25);
         public bool IsOptimizing { get; private set; }
@@ -112,10 +113,10 @@ namespace EngineeringDashboard
             {
                 TowerInput input;
                 using(trace.Measure(BeamSearchStage.InputValidation))input = CreateTowerInput();
-                input.Trace=trace;
+                input.Trace=trace;input.OptimizeCrossingJunctions=OptimizeCrossingJunctions;
                 var independentInputs=IndependentBeams.Select(b=>IndependentInput(input,b)).ToArray();
                 trace.DerivedInputs(System.FormattableString.Invariant($"Mode: {(input.Network!=null ? "Network" : input.TransferredSlab!=null ? "Transferred slab" : "Beam-only")}; initial beam line load={input.TotalLineLoad:R} kN/m; transverse load moment={input.TransverseLoadMoment:R} kN")
-                    +$"\nSearch configuration: requested workers={input.NetworkSearchWorkers}; reuse={input.ReuseSearchWork}; primary reuse={input.ReuseNetworkNumerics}; transverse reuse={input.ReuseTransverseNumerics}; leg-tier traversal={input.SearchByLegTier}; network bounds={input.PruneNetworkBounds}; economy bounds={input.PruneUneconomicCandidates}; staged primary checks={input.StagePrimaryChecks}; defer layouts={input.DeferTransferLayout}; catalogue-only enforcement={input.RespectNetworkCatalogueLengths}"
+                    +$"\nSearch configuration: requested workers={input.NetworkSearchWorkers}; reuse={input.ReuseSearchWork}; primary reuse={input.ReuseNetworkNumerics}; transverse reuse={input.ReuseTransverseNumerics}; leg-tier traversal={input.SearchByLegTier}; network bounds={input.PruneNetworkBounds}; crossing optimization={input.OptimizeCrossingJunctions}; economy bounds={input.PruneUneconomicCandidates}; staged primary checks={input.StagePrimaryChecks}; defer layouts={input.DeferTransferLayout}; catalogue-only enforcement={input.RespectNetworkCatalogueLengths}"
                     +(input.TransferredSlab==null ? "" : System.FormattableString.Invariant($"\nTransfer beam load={input.TransferredSlab.BeamLineLoadKnM:R} kN/m; slab area loads L/R={input.TransferredSlab.LeftAreaLoadKnM2:R}/{input.TransferredSlab.RightAreaLoadKnM2:R} kN/m²"))
                     +(input.Network==null ? "" : "\n"+string.Join("\n",input.Network.Beams.Select((b,i)=>System.FormattableString.Invariant($"B{i+1}: area load={input.Network.AreaLoad(b.DepthMm):R} kN/m²; beam line load={input.Network.AreaLoad(b.DepthMm)*b.WidthMm/1000:R} kN/m")).Concat(input.Network.Bays.Select((s,i)=>System.FormattableString.Invariant($"S{i+1}: area load={input.Network.AreaLoad(s.ThicknessMm):R} kN/m²"))))));
                 TransferNetworkResult networkResult=null;
