@@ -4,6 +4,8 @@ on:
     paths:
       - 'tests/Beam.Tests/DiagnosticFullBenchmark.cs'
       - 'tests/Beam.Tests/CrossingOptimizationTests.cs'
+      - 'tests/Beam.Tests/CrossingFootprintTests.cs'
+      - 'src/Models/CrossBeamSupport.cs'
       - '.github/workflows/beam-solution-baseline.yml'
   workflow_dispatch:
 

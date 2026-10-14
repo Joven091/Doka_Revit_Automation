@@ -219,6 +219,7 @@ namespace EngineeringDashboard
         // Tests can replay the original search without reuse; production searches reuse work.
         internal bool ReuseSearchWork = true;
         internal bool OptimizeCrossingJunctions = true;
+        internal bool PrecheckCrossingFootprints = true;
         // Regression tests can replay the former common-primary-coverage restriction.
         internal bool IndependentNetworkPrimaryCoverage = true;
         internal bool CoordinateCrossingLayouts;

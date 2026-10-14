@@ -140,6 +140,13 @@ namespace EngineeringDashboard
                 first=last+1;
             }
         }
+        internal static IEnumerable<FormworkSolid> ProjectedTowerLegs(TowerLayout layout,string owner,double originX,double originY,double head)
+        {
+            // Identical to the dedicated result's actual leg solids. Unlike the
+            // frame reservation, these also conflict with timber and concrete.
+            foreach(double station in layout.PositionsMm)foreach(int side in new[] {-1,1})
+                yield return new FormworkSolid {Name=owner+" tower leg",TowerOwner=owner,X0=originX+side*layout.WidthMm/2-40,X1=originX+side*layout.WidthMm/2+40,Y0=originY+station-40,Y1=originY+station+40,Z0=-1e6,Z1=head,IsLeg=true};
+        }
         internal static IEnumerable<FormworkSolid> NetworkSolids(TransferNetworkResult r)
         {
             for(int b=0;b<r.Beams.Length;b++)
@@ -428,6 +435,14 @@ namespace EngineeringDashboard
                 double[] positions={span/2+alongSpan-towerBay/2,span/2+alongSpan+towerBay/2};
                 var footprint=new TowerLayout {PositionsMm=positions,Joined=new[] {true},WidthMm=width};
                 if(Clash(TowerEnvelopes(footprint,$"X{index+1}",c.PositionMm+offset,face,false,c.BottomElevationMm-200-common.Primary.DepthMm),obstacles)!=null)continue;
+                // The final result would reject these exact legs against the same
+                // fixed obstacles. Reject that impossible footprint before stock,
+                // row, member and result construction; retain the final full clash check.
+                if(common.ReuseSearchWork && common.OptimizeCrossingJunctions && common.PrecheckCrossingFootprints
+                    && Clash(ProjectedTowerLegs(footprint,$"X{index+1}",c.PositionMm+offset,face,c.BottomElevationMm-200-common.Primary.DepthMm),obstacles)!=null)
+                {
+                    common.Trace?.Increment(BeamSearchCounter.CrossingLegClashesRejected);continue;
+                }
                 double lo=Math.Min(common.MaximumConcreteEndOverhangMm,positions[0]-common.StockEndSetbackMm),hi=Math.Max(span-common.MaximumConcreteEndOverhangMm,positions[1]+common.StockEndSetbackMm);
                 foreach(double stock in TailStocks(common,hi-lo,span+near+far-allowance.Near-allowance.Far,true))
                 {
