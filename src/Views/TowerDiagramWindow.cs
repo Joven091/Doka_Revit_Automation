@@ -24,6 +24,8 @@ namespace EngineeringDashboard
         internal ComboBox LoadCaseSelector {get;private set;}
         internal Expander CheckedCasesDetails {get;private set;}
         internal DataGrid CheckedCasesTable {get;private set;}
+        internal TabControl LoadingTabs {get;private set;}
+        internal EquivalentLoadingView EquivalentView {get;private set;}
         private readonly TowerLayout layout;
         private readonly CrossBeamSupportResult crossSupport;
         private readonly BeamCalculatorViewModel propModel;
@@ -136,6 +138,7 @@ namespace EngineeringDashboard
         }
         private void RefreshTransfer()
         {
+            int tabIndex=LoadingTabs?.SelectedIndex??0;LoadingTabs=null;EquivalentView=null;
             var t=layout.Transfer; int runs=layout.StockPlan.Pieces.Length;
             bool upper=SelectedRun>=runs+t.RowsMm.Length;
             var cases=upper ? null : Enumerable.Range(0,t.CaseNames.Length).Select(c=>SelectedRun<runs ? t.PrimaryCases[c][SelectedRun+SelectedLine*runs] : t.LowerCases[c][SelectedRun-runs]).ToArray();
@@ -168,6 +171,7 @@ namespace EngineeringDashboard
                 LoadCaseSelector=selector;choices.Children.Add(selector);
                 charts.Children.Add(choices);
             }
+            int designStart=charts.Children.Count;
             if(primary)
                 charts.Children.Add(new Border {Background=new SolidColorBrush(Color.FromRgb(255,246,219)),Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
                     Child=new TextBlock {Text="UDL design model · full secondary tributaries; crossing loads remain over their footprints.",TextWrapping=TextWrapping.Wrap}});
@@ -181,6 +185,18 @@ namespace EngineeringDashboard
             LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);
             AddChart("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,true);
             AddResponseCharts(m,primary);
+            if(!primary && !upper && t.UnitLowerCases.Length>0)
+            {
+                var design=new StackPanel();
+                while(charts.Children.Count>designStart)
+                {var child=charts.Children[designStart];charts.Children.RemoveAt(designStart);design.Children.Add(child);}
+                var tabs=new TabControl {Margin=new Thickness(0,6,0,0)};LoadingTabs=tabs;
+                var equivalent=EquivalentTransferredLoading.Create(layout,SelectedRun-runs,SelectedLoadCase);
+                EquivalentView=new EquivalentLoadingView(equivalent,t.ColumnSupportLoads.Length>0,()=>tabs.SelectedIndex=1);
+                tabs.Items.Add(new TabItem {Header="Equivalent loads",Content=EquivalentView});
+                tabs.Items.Add(new TabItem {Header="Secondary design checks",Content=design});tabs.SelectedIndex=tabIndex;
+                charts.Children.Add(tabs);
+            }
         }
         private static string UpperSpacingLabel(TransferredSlabResult t,int encoded)
         {

@@ -21,7 +21,7 @@ internal static class SlabEndLoadTests
     }
     public static void Run()
     {
-        // Reproduce the report's 125 mm concrete strips beyond shared timber.
+        // Concrete beyond shared slab coverage belongs to external column-side supports.
         foreach(var mode in new CrossBeamSupportMode?[] {null,CrossBeamSupportMode.Automatic,CrossBeamSupportMode.LegacySlabRows})
         foreach(double phase in new[] {-50.0,0,50})
         {
@@ -32,23 +32,25 @@ internal static class SlabEndLoadTests
             int count=actual.Length;double first=(6650-(count-1)*250)/2.0+phase;
             var rows=Enumerable.Range(0,count).Select(i=>125+first+i*250).ToArray();
             var added=actual.Zip(covered,(a,b)=>a-b).ToArray();
-            Near(added.Sum(),250,"both physical slab strips reach slab rows");
-            Near(added.Zip(rows,(w,x)=>w*x).Sum(),250*3450,"end-strip resultant stays at the concrete centre");
-            Check(added.Any(w=>w<0),"signed two-row sheathing influences retained");
+            Near(added.Sum(),0,"external slab strips are not added to slab rows");
+            Near(added.Zip(rows,(w,x)=>w*x).Sum(),0,"slab rows acquire no external-strip moment");
+            Check(added.All(w=>Math.Abs(w)<1e-8),"no external end-strip influence enters secondary design");
             if(mode==CrossBeamSupportMode.Automatic)
                 for(int i=0;i<count;i++)if(Math.Abs(rows[i]-3450)<365-1e-7)Near(actual[i],0,"crossing-excluded slab rows receive no end load");
         }
         Check(TransferNetworkOptimizer.EffectiveWidthsMm(new TowerInput {LengthMm=6900},Network(),0,6650,150)==null,
-            "short support coverage cannot hide an excessive concrete-end distance");
+            "external assumption cannot move active rows outside shared support coverage");
+        Check(TransferNetworkOptimizer.EffectiveWidthsMm(new TowerInput {LengthMm=6900},Network(),0,6650,300)==null,
+            "external assumption cannot hide an excessive end span within supported coverage");
         var sheetNetwork=Network();sheetNetwork.UpperSpacingMm=275;sheetNetwork.PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm;
         var sheetRows=PlywoodSpacing.SheetSupportRows(125,6775,275);
         var sheetWidths=TransferNetworkOptimizer.EffectiveWidthsMm(new TowerInput {LengthMm=6900},sheetNetwork,0,6650,0);
         Check(sheetWidths!=null,"sheet-joint rows support the full concrete ends");
         var sheetBaseline=Enumerable.Range(0,sheetRows.Length).Select(i=>(i==sheetRows.Length-1 ? 6775 : (sheetRows[i]+sheetRows[i+1])/2)-(i==0 ? 125 : (sheetRows[i-1]+sheetRows[i])/2)).ToArray();
         var sheetAdded=sheetWidths.Zip(sheetBaseline,(a,b)=>a-b).ToArray();
-        Near(sheetWidths.Sum(),6900,"sheet layout does not shorten physical slab loading");
-        Near(sheetAdded.Sum(),250,"sheet layout retains both concrete end strips");
-        Near(sheetAdded.Zip(sheetRows,(w,x)=>w*x).Sum(),250*3450,"nonuniform sheet-joint rows retain the end-strip resultant");
+        Near(sheetWidths.Sum(),6650,"sheet rows carry only their supported slab region");
+        Near(sheetAdded.Sum(),0,"sheet rows do not acquire external concrete strips");
+        Near(sheetAdded.Zip(sheetRows,(w,x)=>w*x).Sum(),0,"nonuniform sheet joints acquire no external-strip moment");
         // The last 75 mm of the photographed primary must retain the slab baseline.
         var loads=TransferredSlabOptimizer.PrimaryUniformLoads(2950,3900,9.916,14.110,0,new BeamDistributedLoad[0],new BeamDistributedLoad[0]);
         Check(loads.Length==1 && loads[0].StartMm==0 && loads[0].EndMm==3900,"slab load extends through the final 75 mm");
@@ -69,18 +71,14 @@ internal static class SlabEndLoadTests
             common.TransferredSlab=new TransferredSlabInput {IsNetwork=true,IncludeMainBeamEndLoads=true,AllowLongerPrimaryCoverage=true,FixedCoveredLengthMm=1900,FixedRowPhaseMm=0,
                 PlywoodSheetLengthMm=n.PlywoodSheetLengthMm,BeamWidthMm=300,BeamLineLoadKnM=n.AreaLoad(200)*.3,UpperSpacingMm=spacing,RightBayMm=1800,RightAreaLoadKnM2=n.AreaLoad(100),RightEffectiveWidthsMm=widths};
             var beam=TransferredSlabOptimizer.Optimize(common);var t=beam.Transfer;
-            var actualRows=t.SlabRowIndices.Select(i=>t.RowsMm[i]).ToArray();
-            double firstEnd=100*(actualRows[1]-50)/(actualRows[1]-actualRows[0]);
-            int last=actualRows.Length-1;
-            double lastEnd=100*(2050-actualRows[last-1])/(actualRows[last]-actualRows[last-1]);
-            Near(t.UpperScale(false,t.SlabRowIndices[0]),(spacing+firstEnd)/1000,"first slab row checks the full end-strip influence");
-            Near(t.UpperScale(false,t.SlabRowIndices.Last()),(spacing+lastEnd)/1000,"last slab row checks the full end-strip influence");
+            Near(t.UpperScale(false,t.SlabRowIndices[0]),spacing/1000,"first slab row retains nominal pitch without external-strip increment");
+            Near(t.UpperScale(false,t.SlabRowIndices.Last()),spacing/1000,"last slab row retains nominal pitch without external-strip increment");
             Near(beam.StockPlan.Pieces.Sum(p=>p.StockLengthMm),2000,"primary extends beyond the shorter shared grid on both lines");
             Near(t.SlabLoadKn,n.AreaLoad(100)*1.8*2.1/2,"receiver takes half the complete slab and shutter load");
-            Near(t.CoveredSlabAreaM2,2.1*t.RightUpperStockMm/1000,"reported load area includes longitudinal concrete ends");
+            Near(t.CoveredSlabAreaM2,1.9*t.RightUpperStockMm/1000,"H20 covered area excludes externally supported longitudinal strips");
             var stage=t.PrimaryCases[Array.IndexOf(t.CaseNames,"Beam + right slab")];
             Near(stage.Sum(m=>m.Analysis.TotalLoadKn)+t.ColumnSupportLoadKn(Array.IndexOf(t.CaseNames,"Beam + right slab")),t.BeamLoadKn+t.SlabLoadKn,"full beam and slab force reaches primary checks");
-            Near(stage.Sum(m=>m.Analysis.Reactions.Zip(m.SupportsMm,(r,x)=>r*(x+m.StartMm)/1000).Sum())+t.ColumnSupportLoadKn(Array.IndexOf(t.CaseNames,"Beam + right slab"))*1.05,(t.BeamLoadKn+t.SlabLoadKn)*1.05,"full primary resultant at physical midpoint");
+            Near(stage.Sum(m=>m.Analysis.Reactions.Zip(m.SupportsMm,(r,x)=>r*(x+m.StartMm)/1000).Sum())+t.ColumnSupportLoads[Array.IndexOf(t.CaseNames,"Beam + right slab")].Sum(x=>x.TotalMomentKnM),(t.BeamLoadKn+t.SlabLoadKn)*1.05,"primary plus external support resultant preserves physical moment");
             foreach(var m in t.PrimaryCases.Concat(t.LowerCases).SelectMany(c=>c).Concat(t.UpperMembers))Member(m);
             Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r<=70+1e-8),"each corrected tower reaction checked");
             foreach(int row in Enumerable.Range(0,t.RowsMm.Length).Except(t.SlabRowIndices))Near(t.UpperScale(false,row),0,"local beam-only rows acquire no slab feet");

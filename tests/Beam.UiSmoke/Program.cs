@@ -47,7 +47,7 @@ internal static class Program
    System.Windows.Media.RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;
    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));
-   if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
+   if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    if(args.Contains("--drawing-ui")){D3WorkspaceUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));PresentationUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));DimensionLaneUiTests.Run();return 0;}
    window=new BeamCalculatorWindow();vm=new BeamCalculatorViewModel();window.DataContext=vm;Render();
    var secondaryText=(TextBlock)window.FindName("SecondarySpacingText");
@@ -257,7 +257,7 @@ internal static class Program
    Check(diagram.MinWidth>=1000,"transfer plan retains its minimum readable width for scrolling");
    var transferRecord=window.CaptureCalculation();Check(window.BuildReport().Contains("UpperSupportSpacingMm") || window.BuildReport().Contains("Upper Support Spacing Mm"),"report contains transfer inputs");
    Check(window.BuildReport().Contains("MaximumSecondarySpacingMm") || window.BuildReport().Contains("Maximum Secondary Spacing Mm"),"tower report includes plywood spacing");
-   Check(window.BuildReport().Contains("Beam + left slab") && window.BuildReport().Contains("receiving beam slab load"),"report contains discrete transfer cases and load coverage");
+   Check(window.BuildReport().Contains("Beam + left slab") && window.BuildReport().Contains("physical slab reference including external end supports"),"report contains discrete transfer cases and load coverage");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
    var lowerHit=diagram.MemberTargets.First(h=>h.Item2>=vm.TowerResult.StockPlan.Pieces.Length && h.Item2<vm.TowerResult.StockPlan.Pieces.Length+transferred.RowsMm.Length);
    Check(diagram.SelectAt(new Point(lowerHit.Item1.X+lowerHit.Item1.Width/2,lowerHit.Item1.Y+lowerHit.Item1.Height/2)),"select lower paired bearer in main plan");Pump();
@@ -373,7 +373,7 @@ internal static class Program
    checks+=D3WorkspaceUiTests.Run(args.Length>0 ? args[0] : null);
    checks+=PresentationUiTests.Run(args.Length>0 ? args[0] : null);
    WorkspaceTests.Run(window,vm,customWorkspaceRecord,args.Length>0 ? args[0] : null);
-   checks+=CaseDiagramUiTests.Run();
+   checks+=CaseDiagramUiTests.Run();EquivalentLoadingUiTests.Run();
    SearchBudgetUiTests.Run();checks+=CrossSupportUiTests.Run(args.Length>0 ? args[0] : null);
    window.Close();Console.WriteLine($"Passed {checks} beam WPF checks.");return 0;
   }
