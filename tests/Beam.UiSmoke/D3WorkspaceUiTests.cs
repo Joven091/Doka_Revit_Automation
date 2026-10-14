@@ -37,6 +37,18 @@ internal static class D3WorkspaceUiTests
             Check(view.Drawing.DrawnSecondaryH20Count==0,"secondary H20s start hidden");
             Click(view,"SecondaryH20s");view.Drawing.UpdateLayout();Pump();
             Check(view.Drawing.DrawnSecondaryH20Count>0 && ReferenceEquals(result,model.NetworkResult),"visibility button reveals members without recalculation");
+            // Rendering fixture: retain the checked row response while changing physical setting-out.
+            var transfer=result.Beams[0].Transfer;int source=Enumerable.Range(0,transfer.RowsMm.Length).First(i=>(transfer.LeftUpperScales?[i]??0)==0 && (transfer.RightUpperScales?[i]??0)==0);
+            int originalCount=view.Drawing.DrawnSecondaryH20Count;double[] physical=transfer.RowsMm.Concat(new[] {transfer.RowsMm[source]+35}).ToArray();
+            transfer.SettingOutRowsMm=physical;transfer.SettingOutDesignRows=Enumerable.Range(0,transfer.RowsMm.Length).Concat(new[] {source}).ToArray();
+            view.Drawing.InvalidateVisual();view.Drawing.UpdateLayout();Pump();
+            Check(view.Drawing.DrawnSecondaryH20Count==originalCount+1,"added physical H20 is drawn and counted once without duplicating slab H20s");
+            int encoded=result.Beams[0].StockPlan.Pieces.Length+source;
+            var copies=view.Drawing.MemberTargets.Where(t=>t.Item2==0 && t.Item3==encoded).ToArray();
+            Check(copies.Length==2 && copies[0].Item1!=copies[1].Item1,"physical secondary copies have distinct actual hit targets");
+            view.ShowMember(0,encoded,0);Pump();Check(view.Diagrams.LoadedAnalysis==view.Diagrams.SelectedTransferMember.Analysis,"added secondary opens its conservative checked design response");view.Diagrams.Close();
+            transfer.SettingOutRowsMm=null;transfer.SettingOutDesignRows=null;view.Drawing.InvalidateVisual();view.Drawing.UpdateLayout();Pump();
+            Check(view.Drawing.DrawnSecondaryH20Count==originalCount,"restoring setting-out preserves the checked design and quantities");
             var hit=view.Drawing.MemberTargets.First(t=>t.Item2>=0 && t.Item3>=result.Beams[t.Item2].StockPlan.Pieces.Length);
             view.ShowMember(hit.Item2,hit.Item3,hit.Item4);Pump();
             Check(view.Diagrams.Owner==host && view.Diagrams.SelectedTransferMember.H20Count==1 && view.Diagrams.LoadedAnalysis.DeflectionEvaluated,"a visible secondary opens its checked diagrams owned by the calculator");

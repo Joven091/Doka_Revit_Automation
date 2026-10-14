@@ -81,7 +81,7 @@ namespace EngineeringDashboard
         internal string Failure;
     }
     /// <summary>Cross formwork is evaluated on complete network candidates, before ranking them.</summary>
-    public static class CrossBeamSupportOptimizer
+    public static partial class CrossBeamSupportOptimizer
     {
         public const double H20DepthMm=200, H20WidthMm=80, BearingInsetMm=150, SideShutterClearanceMm=200;
         internal static bool Modern(TransferNetworkInput n)=>n.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows);
@@ -147,7 +147,7 @@ namespace EngineeringDashboard
                 var l=r.Beams[b];var t=l.Transfer;double y=r.BeamCentresMm[b],bottom=r.Input.Beams[b].BottomElevationMm;
                 foreach(var p in l.StockPlan.Pieces)foreach(int side in new[] {-1,1})
                     foreach(var solid in PrimarySolids($"B{b+1} primary",p.StartMm,y+l.TransverseOffsetMm+side*l.WidthMm/2,p.StockLengthMm,true,bottom-200,l.Primary))yield return solid;
-                for(int row=0;row<t.RowsMm.Length;row++)yield return Timber($"B{b+1}/T{row+1}",t.RowsMm[row],y+t.LowerStockStartMm,t.LowerStockLengthMm,false,bottom);
+                for(int physical=0;physical<t.PhysicalRowCount;physical++)yield return Timber($"B{b+1}/T{t.PhysicalRowDesignIndex(physical)+1}",t.PhysicalRowPosition(physical),y+t.LowerStockStartMm,t.LowerStockLengthMm,false,bottom);
                 foreach(double x in l.PositionsMm)foreach(int side in new[] {-1,1})yield return new FormworkSolid {Name=$"B{b+1} tower leg",TowerOwner=$"B{b+1}",X0=x-40,X1=x+40,Y0=y+l.TransverseOffsetMm+side*l.WidthMm/2-40,Y1=y+l.TransverseOffsetMm+side*l.WidthMm/2+40,Z0=-1e6,Z1=bottom-200-l.Primary.DepthMm,IsLeg=true};
                 foreach(var frame in TowerEnvelopes(l,$"B{b+1}",0,y+l.TransverseOffsetMm,true,bottom-200-l.Primary.DepthMm))yield return frame;
             }

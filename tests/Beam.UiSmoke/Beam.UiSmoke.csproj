@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+<ItemGroup><Compile Include="../../src/Models/SecondarySettingOut.cs"/></ItemGroup>
 <!-- Match the production assembly and resource path for assembly-qualified WPF URIs. -->
 <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>MyRevitAddin</AssemblyName><TargetFramework>net48</TargetFramework><LangVersion>latest</LangVersion><UseWPF>true</UseWPF></PropertyGroup>
 <ItemGroup><PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all"/>
