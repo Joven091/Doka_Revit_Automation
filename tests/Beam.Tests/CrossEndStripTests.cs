@@ -65,9 +65,9 @@ internal static class CrossEndStripTests
             Near(reference.MaxLegKn,result.MaxLegKn,"cached and reference end-strip leg loads agree");
             Near(reference.StockPlan.TotalStockLengthMm,result.StockPlan.TotalStockLengthMm,"cached and reference stock plans agree");
         }
-        var strict=Common();strict.IgnoreUplift=false;strict.LengthMm=2677;strict.TransferredSlab=new TransferredSlabInput {IsNetwork=true,IncludeConcreteEndStrips=true,BeamWidthMm=650,BeamLineLoadKnM=q,UpperSpacingMm=250};
-        var bearingOnly=TransferredSlabOptimizer.Optimize(strict);EndStripChecks(bearingOnly,q,2677);
-        Check(Members(bearingOnly).All(m=>m.Analysis.Reactions.Min()>=-1e-7),"signed applied strip influences do not disable bearing-only acceptance");
+        var legacy=Common();legacy.IgnoreUplift=false;legacy.LengthMm=2677;legacy.TransferredSlab=new TransferredSlabInput {IsNetwork=true,IncludeConcreteEndStrips=true,BeamWidthMm=650,BeamLineLoadKnM=q,UpperSpacingMm=250};
+        var layout=TransferredSlabOptimizer.Optimize(legacy);EndStripChecks(layout,q,2677);
+        Check(layout.IgnoreUplift && Members(layout).All(m=>m.Analysis.Reactions.All(TowerBeamAnalysis.Finite)),"legacy false retains signed end-strip reactions under fixed search policy");
         var uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=1000,KnPerM=1}};
         var supports=new[] {0.0,1000};
         var a=new TransferredSlabOptimizer.PrimaryKey(1000,supports,uniform,new[] {new BeamPointLoad {PositionMm=100,Kn=.1}});

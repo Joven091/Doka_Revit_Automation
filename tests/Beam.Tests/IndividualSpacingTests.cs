@@ -109,7 +109,8 @@ internal static class IndividualSpacingTests
         var downward=new[] {new BeamDistributedLoad {StartMm=0,EndMm=1000,KnPerM=-1}};var supports=new[] {0.0,1000};
         var signed=TransferredSlabOptimizer.AnalyzeTransverse(signedInput,BeamSearchCounter.LowerAnalyses,1000,supports,downward,null,449.8756,350,signed:true);
         Near(signed.TotalLoadKn,-1,"signed crossing increments retain their complete negative force");
-        Reject(()=>TransferredSlabOptimizer.AnalyzeTransverse(signedInput,BeamSearchCounter.LowerAnalyses,1000,supports,downward,null,449.8756,350),"a cached signed increment cannot bypass ordinary load validation");
+        Near(TransferredSlabOptimizer.AnalyzeTransverse(signedInput,BeamSearchCounter.LowerAnalyses,1000,supports,downward,null,449.8756,350).TotalLoadKn,-1,"fixed search policy retains signed loads when reusing crossing responses");
+        Reject(()=>LoadedBeamAnalysis.Analyze(1000,supports,downward,null,449.8756,350),"ordinary low-level analysis still validates unsigned loads");
         Near(TransferredSlabOptimizer.AnalyzeTransverse(signedInput,BeamSearchCounter.LowerAnalyses,1000,supports,downward,null,449.8756,350,signed:true).TotalLoadKn,-1,"reused signed crossing response retains its force");
         foreach(double first in PlywoodSpacing.StandardSpacingsMm)
         foreach(double second in PlywoodSpacing.StandardSpacingsMm)

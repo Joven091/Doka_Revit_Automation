@@ -34,7 +34,9 @@ internal static class IndependentBeamTests
                 Check(result.Primary.Material==material && result.IgnoreUplift && result.MaxLegKn<=70+1e-8 && members.All(m=>m.Analysis.DeflectionEvaluated && m.Utilization<=1+1e-8),"independent primary, lower H20, deflection and leg checks pass");
                 double expectedBeam=vm.NetworkResult.Input.AreaLoad(row.DepthMm)*row.WidthMm/1000*row.LengthMm/1000;
                 double steel=result.Transfer.PrimaryCases.Last().Sum(m=>m.IsWS10 ? m.Primary.SelfWeightKnM(m.LengthMm)*m.LengthMm/1000 : 0);
-                Check(result.Transfer.SlabLoadKn==0 && Math.Abs(result.TotalSupportedLoadKn-expectedBeam-steel)<1e-7 && members.All(m=>Math.Abs(m.Analysis.Reactions.Sum()-m.Analysis.TotalLoadKn)<1e-7),"own beam load and steel self-weight are conserved without fabricated slab loads");
+                double column=result.Transfer.ColumnSupportLoadKn(result.Transfer.CaseNames.Length-1);
+                Console.WriteLine($"Independent {material} I{i+1}: primary={result.TotalSupportedLoadKn:G12}, column={column:G12}, beam={expectedBeam:G12}, steel={steel:G12} kN");
+                Check(result.Transfer.SlabLoadKn==0 && Math.Abs(result.TotalSupportedLoadKn+column-expectedBeam-steel)<1e-7 && members.All(m=>Math.Abs(m.Analysis.Reactions.Sum()-m.Analysis.TotalLoadKn)<1e-7),"own beam load and steel self-weight are conserved without fabricated slab loads");
             }
             Check(vm.BuildDiagnosticReport().Contains("I1: independent") && vm.BuildDiagnosticReport().Contains("INDEPENDENT BEAM RESULTS"),"diagnostics record independent geometry and load scope");
             independent.LengthMm=2450;Check(!vm.IsCalculationValid && vm.IndependentBeamResults.Length==0 && vm.NetworkResult==null,"endpoint/length edits clear all stale results");

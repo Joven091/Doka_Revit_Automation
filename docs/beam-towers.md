@@ -80,7 +80,7 @@ Beam-only optimization retains its leg and brace ranking. Transfer/network optim
 
 Custom beam-only primaries are searched on the 25 mm grid. Transfer/network primary candidates add balanced runs with one to ten independent members, using the shortest, longest and midpoint grid coverage within the existing end allowance, plus small joint shifts to avoid transverse rows at member breaks. Catalogue covers remain in the candidate set. Lower secondaries add the shortest 25 mm length enclosing the existing bearings and point loads with end allowance; unloaded tails do not require a dense length search. Slab members search every 25 mm length within the existing 200–350 mm edge-strip range, including when catalogue lengths already fit. The existing bounded geometry/option caps remain; a global optimum is not proven.
 
-All member capacities, deflection criteria, bearing-uplift rejection, permissible leg loads, support setbacks, load stages and network row alignment still apply. Custom lengths solve availability restrictions, not failed structural checks. With the option off, the previous slab-only custom fallback remains in place.
+All member capacities, deflection criteria, signed uplift reporting, permissible leg loads, support setbacks, load stages and network row alignment still apply. Custom lengths solve availability restrictions, not failed structural checks. With the option off, the previous slab-only custom fallback remains in place.
 
 
 ## Copyable diagnosis for slow searches
@@ -93,16 +93,13 @@ The report includes a build module ID and runtime information; current model inp
 
 Use **Cancel** in the drawing toolbar or **Cancel analysis** in the beam calculator to stop a running search. Cancellation is checked during coverage generation, layout enumeration and member/load-case checks. The current numerical check may finish before the search stops. Cancel is disabled once requested; Calculate is available again after the search has stopped. No partial layout is published. Diagnose retains the elapsed time, last search stage, counters and a `Cancelled` outcome, and a fresh calculation starts with a new cancellation state.
 
-## Project-specific connected formwork assumption
+## Uplift search policy
 
-**Exclude uplift check (connected plywood / deadweight assumed)** is available in the D3 calculator and drawing workspace. It defaults off. Enable it only for a calculation using this stated project assumption: plywood connects the formwork and adequate stabilizing deadweight/restraint is provided. This option excludes negative bearing/leg reactions from candidate rejection. It does not calculate connection capacity, add stabilizing deadweight, average leg loads or replace signed reactions with zero. Moment, shear, relative deflection, maximum individual leg load, geometry and staged load checks still apply. The legacy prop calculator and the other calculators are unchanged.
+Uplift is excluded from candidate rejection in the beam/tower calculator and its standalone, transferred-slab, network and crossing search paths. The legacy `IgnoreUplift` property is retained for saved-file/API compatibility but always reads true, including after assigning false or starting a new session. The legacy prop calculator and other calculators are unchanged.
 
-The option is saved with the Beam inputs, included in diagnostic reports, and recorded explicitly in the calculation basis and exported report. Older files default to bearing-only checks. Changing it clears stale results; drawing undo/redo restores it, and **New session** resets it. Accepted member schedules retain their minimum signed reactions. Tower leg schedules and drawing tooltips retain both the maximum compression and minimum signed reaction across stages. Negative transfer reactions remain signed in the primary UDL design model, with full deflection evaluation. Shared crossing reactions retain their physical footprints, and conservative reaction bounds for larger crossing sets remain reported.
+Signed applied forces, member reactions and minimum leg reactions remain visible in reports, schedules and drawing tooltips. Negative reactions require tensile restraint: bearing-only supports cannot carry tension. Any such layout is conditional on separate support/anchorage verification. Connection capacity and stabilizing deadweight adequacy are not calculated, and no balancing loads or reaction clamps are added. Moment, shear, relative deflection, maximum individual compression, geometry and construction-stage checks remain mandatory.
 
-For the uploaded 6,900 mm legacy crossing case, the current primary UDL solver retains leg-capacity rejection at 275 mm upper spacing with uplift excluded. At 250 mm it finds a complete layout with 118 tower legs and a 42.24 kN peak leg load; every calculated H20 passes moment, shear and relative deflection. These results supersede the earlier point-load calculation. The replay explicitly uses Legacy slab rows, matching the uploaded report; modern crossings are separately tested with shared and dedicated supports.
-
-Run `tests/Beam.Tests` with `--uplift` for assumption/force-propagation checks and `--uplift-reported` to replay the uploaded case and the closer-spacing search. The default regression suite retains bearing-only behavior. Windows smoke tests cover both checkboxes, result invalidation, save/load, old-file defaults and drawing undo/redo.
-
+Run `tests/Beam.Tests` with `--uplift` for signed force propagation and mandatory structural checks, and `--uplift-reported` for the 6,900 mm legacy-crossing case. The reported case now accepts a fully checked solution at 275 mm; it must not assert failure based on an obsolete uplift policy. Modern shared and dedicated crossings are checked separately.
 
 ## Designer preferences and centred secondary H20s
 
