@@ -240,7 +240,7 @@ namespace EngineeringDashboard
         public double EconomyScoreMm=>LegCount*TowerOptimizer.TowerLegTimberEquivalentMm+UpperFootCount*TowerOptimizer.UpperFootTimberEquivalentMm+MaterialMm;
         public double SymmetryErrorMm=>AllTowers.Sum(b=>b.SymmetryErrorMm);
         public int H20Count=>Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.PhysicalRowCount)+Enumerable.Range(0,Bays.Length).Sum(SlabRowCount)+CrossSupports.Sum(c=>c.H20Count);
-        public string SecondarySpacingNotice=>Input.HasIndividualSpacings ? string.Join("; ",Input.BeamSpacingsMm.Select((x,i)=>$"B{i+1} nominal beam {x:0} mm").Concat(Input.SlabSpacingsMm.Select((x,i)=>$"S{i+1} nominal slab {x:0} mm")))+". Actual local gaps can be shorter to align slab feet and sheet joints; effective design tributary widths retain each member’s nominal minimum and local load increments." : Input.RequestedUpperSpacingMm.HasValue ? System.FormattableString.Invariant($"Secondary spacing {Input.UpperSpacingMm:0.###} mm, within entered maximum {Input.RequestedUpperSpacingMm.Value:0.###} mm; ") + (Input.PlywoodSheetLengthMm>0 ? "closer listed sheet spacing for support/member checks." : "nominal design spacing; actual local gaps can be shorter for junction clearance.") : "";
+        public string SecondarySpacingNotice=>Input.HasIndividualSpacings ? string.Join("; ",Input.BeamSpacingsMm.Select((x,i)=>$"B{i+1} nominal beam {x:0} mm").Concat(Input.SlabSpacingsMm.Select((x,i)=>$"S{i+1} nominal slab {x:0} mm")).Concat(Input.CrossingSpacingsMm.Select((x,i)=>$"X{i+1} secondary spacing limit {x:0} mm")))+". Actual local gaps can be shorter to align slab feet and sheet joints; effective design tributary widths retain each member’s nominal minimum and local load increments." : Input.RequestedUpperSpacingMm.HasValue ? System.FormattableString.Invariant($"Secondary spacing {Input.UpperSpacingMm:0.###} mm, within entered maximum {Input.RequestedUpperSpacingMm.Value:0.###} mm; ") + (Input.PlywoodSheetLengthMm>0 ? "closer listed sheet spacing for support/member checks." : "nominal design spacing; actual local gaps can be shorter for junction clearance.") : "";
         public double PeakLegKn=>Math.Max(Beams.Max(b=>b.MaxLegKn),CrossSupports.Select(c=>c.Towers?.MaxLegKn??0).DefaultIfEmpty().Max());
         public string Summary=>(SecondarySpacingNotice.Length==0 ? "" : SecondarySpacingNotice+"\n")+$"{Beams.Length} beams · {Bays.Length} slab bays · {LegCount} tower legs\n{H20Count} H20s{(WS10Count>0 ? $" · {WS10Count} WS10s" : "")} · {TimberMm/1000:0.00} m timber{(WS10Count>0 ? $" · {WS10LengthMm/1000:0.00} m WS10" : "")} · peak leg {PeakLegKn:0.00} kN\nSlab movement {SlabMovementMm:0.00} mm · "+(SearchTimeLimitReached ? "best checked solution found within search time limit" : "best found in bounded search")+(RequiresSeparateSlabFormwork ? "\n"+SeparateSlabNotice : "")+(Beams.Any(b=>b.Transfer.ColumnSupportLoads.Length>0) ? "\nUncovered longitudinal end strips: external column-side supports; capacity requires separate verification." : "");
         public string LayoutDiagnostics=>string.Join("\n",CrossSupports.Select(c=>c.Schedule))+"\n"+System.FormattableString.Invariant($"Shared slab support coverage={SlabCoveredLengthMm:0.###} mm; physical slab length={Beams[0].LengthMm:0.###} mm; row phase={RowPhaseMm:0.###} mm; rows={SlabRowsMm.Length}; upper feet={UpperFootCount}; relative economy={EconomyScoreMm/1000:0.###} m timber equivalent; symmetry error={SymmetryErrorMm:0.###} mm")
@@ -401,25 +401,102 @@ namespace EngineeringDashboard
             return LegacyTransfer(common,input);
         }
         private static TransferNetworkResult SearchSpacing(TowerInput common,TransferNetworkInput input)
-            =>TowerStockPlanner.SearchWithCustom(common,()=>OptimizeCore(common,input,false),Better);
+        {
+            common.Trace?.Increment(BeamSearchCounter.NetworkSpacingTrials);
+            return TowerStockPlanner.SearchWithCustom(common,()=>OptimizeCore(common,input,false),Better);
+        }
         private static TransferNetworkResult IndividualTransfer(TowerInput common,TransferNetworkInput input)
         {
-            // Descend from the plywood-permitted maximum; timed/custom paths use
-            // the same nominal spacing order and every candidate retains all checks.
+            // Find a checked seed with the existing bounded descent, then recover
+            // independent maxima. Never enumerate the Cartesian product of pitches.
             TowerOptimizationException failure;
             try {return SearchSpacing(common,input);}
             catch(TowerOptimizationException ex){failure=ex;}
             var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
             var attempted=new HashSet<string>();
-            for(int step=worker.CoordinateCrossingLayouts ? 0 : 1;step<PlywoodSpacing.StandardSpacingsMm.Count;step++)
+            TransferNetworkResult best=null;
+            Func<TransferNetworkInput,string> keyOf=n=>string.Join(";",n.BeamSpacingsMm.Concat(n.SlabSpacingsMm).Concat(n.CrossingSpacingsMm));
+            if(!worker.CoordinateCrossingLayouts)attempted.Add(keyOf(input));
+            // Try a single category step before a blanket seed. Receiving-beam
+            // failure must not automatically tighten slabs or dedicated crossings.
+            var closer=input.WithSpacings(1);
+            var seeds=new List<TransferNetworkInput>();
+            if(worker.CoordinateCrossingLayouts)seeds.Add(input);
+            for(int group=0;group<3;group++)
             {
-                var candidate=step==0 ? input : input.WithSpacings(step);
-                string key=string.Join(";",candidate.BeamSpacingsMm.Concat(candidate.SlabSpacingsMm).Concat(candidate.CrossingSpacingsMm));
-                if(!attempted.Add(key))continue;
-                try {var result=SearchSpacing(worker,candidate);common.Diagnostics=worker.Diagnostics;return result;}
+                var candidate=input.WithSpacings();
+                if(group==0)candidate.BeamSpacingsMm=closer.BeamSpacingsMm;
+                if(group==1)candidate.SlabSpacingsMm=closer.SlabSpacingsMm;
+                if(group==2)candidate.CrossingSpacingsMm=closer.CrossingSpacingsMm;
+                candidate.UpperSpacingMm=candidate.BeamSpacingsMm.Min();seeds.Add(candidate);
+            }
+            seeds.AddRange(Enumerable.Range(1,PlywoodSpacing.StandardSpacingsMm.Count-1).Select(step=>input.WithSpacings(step)));
+            foreach(var candidate in seeds)
+            {
+                if(!attempted.Add(keyOf(candidate)))continue;
+                common.Trace?.CheckCancellation();
+                try {best=SearchSpacing(worker,candidate);break;}
                 catch(TowerOptimizationException ex){failure=ex;}
             }
-            throw failure;
+            if(best==null)throw failure;
+            var acceptedDiagnostics=worker.Diagnostics;
+            var maxima=input.BeamSpacingsMm.Concat(input.SlabSpacingsMm).Concat(input.CrossingSpacingsMm).ToArray();
+            Func<TransferNetworkInput,double[]> spacings=n=>n.BeamSpacingsMm.Concat(n.SlabSpacingsMm).Concat(n.CrossingSpacingsMm).ToArray();
+            Func<double[],bool> restore=values=>
+            {
+                common.Trace?.CheckCancellation();
+                string key=string.Join(";",values);
+                if(!attempted.Add(key))return false;
+                var candidate=best.Input.WithSpacings();
+                candidate.BeamSpacingsMm=values.Take(input.Beams.Length).ToArray();
+                candidate.SlabSpacingsMm=values.Skip(input.Beams.Length).Take(input.Bays.Length).ToArray();
+                candidate.CrossingSpacingsMm=values.Skip(input.Beams.Length+input.Bays.Length).ToArray();
+                candidate.UpperSpacingMm=candidate.BeamSpacingsMm.Min();
+                common.Trace?.Work("Independent secondary spacing recovery");
+                try
+                {
+                    var result=SearchSpacing(worker,candidate);
+                    best=result;acceptedDiagnostics=worker.Diagnostics;return true;
+                }
+                catch(TowerOptimizationException) {return false;}
+            };
+            Action<int[]> recover=null;
+            recover=indices=>
+            {
+                var current=spacings(best.Input);
+                indices=indices.Where(i=>current[i]<maxima[i]).ToArray();
+                if(indices.Length==0)return;
+                var values=(double[])current.Clone();foreach(int i in indices)values[i]=maxima[i];
+                if(restore(values))return;
+                if(indices.Length>1)
+                {
+                    int half=indices.Length/2;recover(indices.Take(half).ToArray());recover(indices.Skip(half).ToArray());
+                }
+                else
+                {
+                    int i=indices[0];
+                    // A rejected maximum need not mean all intermediate pitches fail.
+                    foreach(double pitch in PlywoodSpacing.StandardSpacingsMm.Where(p=>p<maxima[i] && p>current[i]))
+                    {
+                        values=spacings(best.Input);values[i]=pitch;if(restore(values))break;
+                    }
+                }
+            };
+            try
+            {
+                // Retain receiving-beam maxima first, then crossings and slab bays.
+                // Group successes cost one solve; failed groups split deterministically.
+                // At most 2N-1 group trials plus five intermediate trials per element.
+                recover(Enumerable.Range(0,input.Beams.Length).ToArray());
+                recover(Enumerable.Range(input.Beams.Length+input.Bays.Length,input.CrossingBeams.Length).ToArray());
+                recover(Enumerable.Range(input.Beams.Length,input.Bays.Length).ToArray());
+            }
+            catch(BeamSearchDeadlineException)
+            {
+                best.SearchTimeLimitReached=true;
+                foreach(var beam in best.Beams) {beam.SearchTimeLimitReached=true;beam.MinimumLegCountProven=false;}
+            }
+            common.Trace?.CheckUserCancellation();common.Diagnostics=acceptedDiagnostics;return best;
         }
         private static TransferNetworkResult LegacyTransfer(TowerInput common,TransferNetworkInput input)
         {
