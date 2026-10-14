@@ -24,13 +24,10 @@ internal static class SearchBudgetUiTests
         try
         {
             Wait(workspace.CalculateAsync());
-            if(vm.IsCalculationValid || !vm.CanSearchLonger || !workspace.Buttons["SearchLonger"].IsEnabled || workspace.Buttons["SearchLonger"].Visibility!=Visibility.Visible)
-                throw new Exception("Search longer must be available after the fast calculation times out");
-            Wait(workspace.CalculateAsync(false));
-            if(!vm.IsCalculationValid || vm.CanSearchLonger || workspace.Buttons["SearchLonger"].Visibility!=Visibility.Collapsed || !vm.BuildDiagnosticReport().Contains("Search budget seconds: Unlimited"))
-                throw new Exception("Search longer must finish the checked layout and clear the timeout action");
+            if(!vm.IsCalculationValid || vm.CanSearchLonger || workspace.Buttons.ContainsKey("SearchLonger") || !vm.BuildDiagnosticReport().Contains("Search budget seconds: Unlimited"))
+                throw new Exception("Normal workspace calculation must ignore the test deadline and finish a complete checked layout");
         }
         finally {workspace.Close();}
-        Console.WriteLine("Passed search-budget and explicit longer-search workspace UI checks.");
+        Console.WriteLine("Passed normal workspace calculation without an elapsed-time limit.");
     }
 }

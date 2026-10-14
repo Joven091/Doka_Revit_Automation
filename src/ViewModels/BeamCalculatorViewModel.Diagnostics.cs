@@ -63,7 +63,7 @@ namespace EngineeringDashboard
             if(!string.IsNullOrEmpty(TowerFailureDetails))text.AppendLine("\nCURRENT FAILURE DETAILS\n"+TowerFailureDetails);
             text.AppendLine("\nPRIMARY MATERIAL BASIS\n"+PrimaryMaterialAssumptions);
             text.AppendLine("\nSEARCH LIMITS / RANKING");
-            text.AppendLine("Interactive search budget: 25 seconds shared by catalogue, custom and fallback passes; cooperative checks stop exploration and preserve fully checked results. Final result processing/rendering has a 5-second target allowance. No feasible result is guaranteed within the budget.");
+            text.AppendLine("Normal calculation has no elapsed-time limit. The 30-second solution time is a performance target. Catalogue, custom and fallback searches run to completion within their candidate limits; user cancellation remains available.");
             text.AppendLine("Beam-only: ≤80 legs / 200000 sampled attempts; rank legs, standalone-600 count, braced bays, wider standalone braces, primary quantity, utilization. Transfer: bounded covers, geometries and cross options; rank relative economy (tower legs, upper feet and material separately), brace preference, symmetry, utilization. Network: bounded mirrored stock/group families, shared upper options and row phases, local beam-only rows and passing-plan coordination; rank relative economy, brace preference, symmetry. Custom mode compares catalogue and custom passes. Global optimality is not proven.");
             text.AppendLine("=== END BEAM FORMWORK DIAGNOSTIC REPORT ===");return text.ToString();
         }

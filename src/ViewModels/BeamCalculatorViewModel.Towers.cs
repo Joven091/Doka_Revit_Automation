@@ -45,6 +45,7 @@ namespace EngineeringDashboard
         public double StockEndSetbackMm { get => stockEndSetbackMm; set { stockEndSetbackMm = value; Changed(); } }
         public TowerLayout TowerResult { get; private set; }
         private CancellationTokenSource towerCancellation;
+        // Optional deadline for explicitly requested diagnostic runs; normal calculation is unrestricted.
         internal TimeSpan TowerSearchTimeLimit {get;set;}=TimeSpan.FromSeconds(25);
         public bool IsOptimizing { get; private set; }
         public string SearchProgressText=>towerCancellation?.IsCancellationRequested==true ? "Stopping the search…" : beamSearchTrace?.ProgressText??"Preparing the calculation";
@@ -100,7 +101,7 @@ namespace EngineeringDashboard
             return input;
         }
         internal void ValidateTowerInputs() { var common=CreateTowerInput(false);if(IndependentBeams.Count>30)throw new ArgumentException("Use at most 30 independent beams.");foreach(var b in IndependentBeams)IndependentInput(common,b); if (BeamLengthMm > 50000) throw new ArgumentException("Beam length must not exceed 50,000 mm."); }
-        public async Task OptimizeTowersAsync(bool useTimeLimit=true)
+        public async Task OptimizeTowersAsync(bool useTimeLimit=false)
         {
             if (!UseTowers || IsOptimizing) return;
             var cancellation=towerCancellation=new CancellationTokenSource();
@@ -149,7 +150,7 @@ namespace EngineeringDashboard
             catch (BeamSearchDeadlineException ex)
             {
                 trace.Complete("Time limit reached: no complete solution",ex.Message);
-                if(revision==towerRevision) {WarningMessage=ex.Message+" Select Search longer to run the full bounded search.";TowerFailureDetails=ex.Message+"\nOpen Diagnose for stage timings and checked candidate counts.";}
+                if(revision==towerRevision) {WarningMessage=ex.Message;TowerFailureDetails=ex.Message+"\nOpen Diagnose for stage timings and checked candidate counts.";}
             }
             catch (TowerOptimizationException ex) {trace.Complete("No solution",ex.ToString()+"\n"+ex.Details);if(revision==towerRevision) {WarningMessage=ex.Message;TowerFailureDetails=ex.Details;}}
             catch (ArgumentException ex) {trace.Complete("Rejected input/search",ex.ToString());if (revision == towerRevision) WarningMessage = ex.Message; }

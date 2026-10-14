@@ -38,6 +38,7 @@ namespace EngineeringDashboard
             public void Dispose() {Interlocked.Add(ref stage.Ticks,trace.timestamp()-start);Interlocked.Increment(ref stage.Calls);}
         }
         private long ended, catalogueTicks, customTicks;
+        private long firstCompleteNetworkTicks=-1;
         private string pass="Not started", work="Validating inputs", context="", outcome="Running", error="", result="", derivedInputs="";
         private string rejectedPass="";
         internal string Inputs {get;}
@@ -71,6 +72,8 @@ namespace EngineeringDashboard
         {
             if(HasTimeLimit)CheckCancellation();else CancellationToken.ThrowIfCancellationRequested();
             Interlocked.Add(ref counters[(int)counter],amount);
+            if(counter==BeamSearchCounter.CompleteNetworkCandidates && amount>0)
+                Interlocked.CompareExchange(ref firstCompleteNetworkTicks,timestamp(),-1);
         }
         internal void Work(string name) {CheckCancellation();Volatile.Write(ref work,name);}
         internal void Context(string name)=>Volatile.Write(ref context,name);
@@ -122,6 +125,8 @@ namespace EngineeringDashboard
             text.AppendLine("Search budget seconds: "+(timeLimitSeconds==0 ? "Unlimited" : timeLimitSeconds.ToString("0.###",CultureInfo.InvariantCulture)));
             text.AppendLine("Search budget reached: "+BudgetReached);
             text.AppendLine("Network workers: "+Volatile.Read(ref workers));
+            long firstComplete=Interlocked.Read(ref firstCompleteNetworkTicks);
+            text.AppendLine("First complete network candidate seconds: "+(firstComplete<0 ? "Not found" : ((firstComplete-started)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture)));
             foreach(var stage in stages.OrderBy(x=>x.Key))
                 text.AppendLine("Stage "+stage.Key+": "+(Interlocked.Read(ref stage.Value.Ticks)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture)+" seconds; calls="+Interlocked.Read(ref stage.Value.Calls));
             if(!HasTimeLimit)text.AppendLine("Per-member numerical timing is disabled for full searches; enclosing stage times and numerical counters are retained.");

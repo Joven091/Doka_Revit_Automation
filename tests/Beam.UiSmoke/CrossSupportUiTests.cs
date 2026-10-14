@@ -41,9 +41,9 @@ internal static class CrossSupportUiTests
             var c=vm.CrossingBeams[i];c.BayNumber=i+1;c.PositionMm=3450;c.WidthMm=650;c.DepthMm=1150;c.BottomElevationMm=-1150;
         }
         var task=vm.OptimizeTowersAsync(false);var timer=System.Diagnostics.Stopwatch.StartNew();
-        // Exercise Search longer: the full coordinated drawing fixture also runs on .NET Framework; allow its
-        // production-runtime Search longer operation to complete before checking rendered values.
-        // The fast-search deadline is covered separately; this large drawing fixture
+        // Exercise the unrestricted calculation: the full coordinated drawing fixture also runs on .NET Framework; allow its
+        // production-runtime calculation to complete before checking rendered values.
+        // The unrestricted default is covered separately; this large drawing fixture
         // retains every geometry/member assertion and allows slower hosted runners.
         while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>900)throw new Exception("Coordinated report UI timeout");}task.GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
