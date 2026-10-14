@@ -20,6 +20,7 @@ jobs:
           New-Item -ItemType Directory -Force tests/d3-ui-preview | Out-Null
           tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe --ws10-ui tests/d3-ui-preview/beam.png
           tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe --drawing-ui tests/d3-ui-preview/beam.png
+          tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe --equivalent-loading-ui tests/d3-ui-preview/beam.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:

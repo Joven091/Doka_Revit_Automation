@@ -19,6 +19,36 @@ internal static class EquivalentLoadingUiTests
     }
     static Point Centre(Rect b)=>new Point(b.X+b.Width/2,b.Y+b.Height/2);
     static string Preview(string path,string suffix)=>path==null ? null : Path.ChangeExtension(path,suffix+".png");
+    static System.Collections.Generic.IEnumerable<T> Controls<T>(DependencyObject root) where T:DependencyObject
+    {
+        if(root is T value)yield return value;
+        foreach(var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+            foreach(var descendant in Controls<T>(child))yield return descendant;
+    }
+    static System.Collections.Generic.IEnumerable<Drawing> Primitives(Drawing drawing)
+    {
+        if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var leaf in Primitives(child))yield return leaf;
+        else yield return drawing;
+    }
+    static void RenderWindow(TowerDiagramWindow window,double width,string path=null)
+        =>Render((FrameworkElement)((ScrollViewer)window.Content).Content,width,path);
+    static void CheckResponse(TowerDiagramWindow window,TransferMember actual)
+    {
+        RenderWindow(window,900);
+        var plots=Controls<TowerDiagramWindow.LoadedResponsePlot>((DependencyObject)window.Content).ToArray();
+        Check(plots.Length==3 && plots.Select(p=>p.DiagramIndex).SequenceEqual(new[] {0,1,2}),"all three response diagrams remain in the unified view");
+        Check(plots.All(p=>ReferenceEquals(p.Member,actual) && ReferenceEquals(p.Member.Analysis,actual.Analysis)),"shear, moment and deflection retain the actual checked member analysis");
+        foreach(var plot in plots)
+            Check(Primitives(VisualTreeHelper.GetDrawing(plot)).OfType<GeometryDrawing>().Any(d=>d.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.SteelBlue),"actual member response curve renders");
+    }
+    static double[] Snapshot(TransferMember m)=>new[] {m.Analysis.TotalLoadKn,m.Analysis.ShearKn,m.Analysis.MomentKnM,m.Analysis.DeflectionMm,m.Utilization}
+        .Concat(m.Analysis.Reactions).Concat(m.Uniform.Select(q=>q.KnPerM)).Concat(m.Points.Select(p=>p.Kn))
+        .Concat(new[] {0.0,199,425,475,900,1425,1800}.SelectMany(x=>m.Analysis.Response(x,true))).ToArray();
+    static TransferMember Primary(double q,int line)
+    {
+        var m=new TransferMember {Name=line==0 ? "P1 L" : "P1 R",LoadCase="Beam",H20Count=2,LengthMm=6900,SupportsMm=new[] {400.0,6400},Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=6900,KnPerM=q}},Points=new BeamPointLoad[0]};
+        m.Analysis=LoadedBeamAnalysis.AnalyzeSigned(m.LengthMm,m.SupportsMm,m.Uniform,m.Points,TowerOptimizer.PairEI,270);return m;
+    }
     internal static void Run(string preview=null)
     {
         var layout=EquivalentLoadingTests.Fixture();var t=layout.Transfer;var unit=t.UnitLowerCases[0];
@@ -28,12 +58,27 @@ internal static class EquivalentLoadingUiTests
         actual.Analysis=LoadedBeamAnalysis.AnalyzeSigned(actual.LengthMm,actual.SupportsMm,actual.Uniform,actual.Points,TowerOptimizer.PairEI/2,270);
         t.LowerCases=new[] {new[] {actual}};t.TributaryWidthsMm=new[] {305.0};t.SlabRowIndices=new[] {0};
         layout.StockPlan=new TowerStockPlan {Pieces=new[] {new TowerStockPiece {StockLengthMm=6900}}};
+        t.PrimaryCases[0]=t.PrimaryCases[0].Select((p,line)=>Primary(p.Uniform[0].KnPerM,line)).ToArray();
+        var beamUnit=new TransferMember {LoadCase="Beam",H20Count=1,LengthMm=unit.LengthMm,SupportsMm=unit.SupportsMm,Uniform=unit.Uniform,Points=new BeamPointLoad[0]};
+        beamUnit.Analysis=LoadedBeamAnalysis.AnalyzeSigned(beamUnit.LengthMm,beamUnit.SupportsMm,beamUnit.Uniform,beamUnit.Points,TowerOptimizer.PairEI/2,270);
+        var beamActual=new TransferMember {Name="T1",LoadCase="Beam",H20Count=1,LengthMm=actual.LengthMm,SupportsMm=actual.SupportsMm,Uniform=actual.Uniform,Points=new BeamPointLoad[0]};
+        beamActual.Analysis=LoadedBeamAnalysis.AnalyzeSigned(beamActual.LengthMm,beamActual.SupportsMm,beamActual.Uniform,beamActual.Points,TowerOptimizer.PairEI/2,270);
+        t.CaseNames=t.CaseNames.Concat(new[] {"Beam"}).ToArray();t.UnitLowerCases=new[] {unit,beamUnit};t.UnitPointLabels=t.UnitPointLabels.Concat(new[] {new string[0]}).ToArray();
+        t.LowerCases=new[] {new[] {actual},new[] {beamActual}};
+        t.PrimaryCases=t.PrimaryCases.Concat(new[] {beamUnit.Analysis.Reactions.Select((q,line)=>Primary(q,line)).ToArray()}).ToArray();
+        var originalValues=Snapshot(actual);var beamValues=Snapshot(beamActual);
         var vm=new BeamCalculatorViewModel {UseTowers=true};typeof(BeamCalculatorViewModel).GetProperty("TowerResult").SetValue(vm,layout);
         var window=new TowerDiagramWindow(vm);window.SelectMember(1,0,-1);
-        Check(window.LoadingTabs.Items.Count==2 && window.LoadingTabs.SelectedIndex==0,"equivalent and actual design checks are separate tabs");
+        RenderWindow(window,900,Preview(preview,"unified-response"));
+        Check(!Controls<TabControl>((DependencyObject)window.Content).Any() && window.EquivalentView!=null && window.LoadingDiagram==null,"one equivalent loading card replaces both loading tabs");
+        Check(window.ResponseBasis.Text.Contains("actual checked loads") && window.ResponseBasis.FontSize==12,"actual response basis stays visible in a small caption");
+        CheckResponse(window,actual);
         Check(ReferenceEquals(window.LoadedAnalysis,actual.Analysis) && ReferenceEquals(window.DisplayedTransferMember,actual),"equivalent display never replaces checked analysis");
         var view=window.EquivalentView;Render(view,900,Preview(preview,"closed"));
         Check(!view.IsDetailsOpen,"calculation panel closed initially");
+        Check(view.Plot.DrawnLabels.All(s=>!s.Contains("slab") && !s.Contains("shutter") && !s.Contains("concrete")),"diagram contains values and geometry without source identifiers");
+        var strokes=Primitives(VisualTreeHelper.GetDrawing(view.Plot)).OfType<GeometryDrawing>().Where(d=>d.Pen?.Brush is SolidColorBrush).ToArray();
+        Check(strokes.Any(d=>((SolidColorBrush)d.Pen.Brush).Color==Colors.Firebrick) && strokes.Any(d=>((SolidColorBrush)d.Pen.Brush).Color==Colors.SeaGreen),"equivalent plot uses established red load and green reaction strokes");
         var foot=view.Plot.Targets.First(x=>x.Component==1);Check(view.Plot.SelectAt(Centre(foot.Bounds)),"foot arrow/value is selectable");
         Render(view,900,Preview(preview,"foot"));
         Check(view.IsDetailsOpen && view.VisibleCalculation.Any(s=>s.Contains("3.44322")) && view.VisibleCalculation.Any(s=>s.Contains("305 / 407")) && view.VisibleCalculation.Any(s=>s.Contains("2.5803")),"compact foot panel shows source, nominal conversion and equivalent result");
@@ -41,9 +86,9 @@ internal static class EquivalentLoadingUiTests
         Check(view.VisibleCalculation.Any(s=>s.Contains("3.16345")) && view.VisibleCalculation.Any(s=>s.Contains("7.07316 / 0.305")) && view.VisibleCalculation.Any(s=>s.Contains("23.1907")),"reaction panel shows components and one final division");
         Check(ReferenceEquals(window.LoadedAnalysis,actual.Analysis),"clicks leave actual member checks intact");
         view.CloseDetailsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render(view,900);Check(!view.IsDetailsOpen,"close restores clean diagram");
-        foreach(double width in new[] {900.0,700,520})
+        foreach(double width in new[] {900.0,760,700,520,360})
         {
-            Render(view,width);view.Plot.SelectAt(Centre(view.Plot.Targets.First(x=>x.Component==1).Bounds));Render(view,width);
+            Render(view,width);view.Plot.SelectAt(Centre(view.Plot.Targets.First(x=>x.Component==1).Bounds));Render(view,width,Preview(preview,"open-"+width));
             var detailBounds=new Rect(view.DetailsPanel.TranslatePoint(new Point(),view),new Size(view.DetailsPanel.ActualWidth,view.DetailsPanel.ActualHeight));
             var plotBounds=new Rect(view.Plot.TranslatePoint(new Point(),view),new Size(view.Plot.ActualWidth,view.Plot.ActualHeight));
             Check(detailBounds.Right<=view.ActualWidth+1e-7 && detailBounds.Bottom<=view.ActualHeight+1e-7 && plotBounds.Right<=view.ActualWidth+1e-7,"open panel and plot remain within actual container bounds");
@@ -54,14 +99,38 @@ internal static class EquivalentLoadingUiTests
                 Check(!view.Plot.TextBounds[i].IntersectsWith(view.Plot.TextBounds[j]),"actual rendered value/dimension labels do not overlap");
             view.CloseDetailsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         }
-        window.LoadingTabs.SelectedIndex=1;Check(window.LoadingTabs.SelectedIndex==1 && ReferenceEquals(window.LoadingDiagram.SourceUniform,actual.Uniform) && ReferenceEquals(window.SelectedTransferMember.Points,actual.Points),"design tab retains actual higher nominal slab forces");
-        window.SelectMember(1,0,-1);Check(window.LoadingTabs.SelectedIndex==1 && !window.EquivalentView.IsDetailsOpen,"repeated selection preserves tab and clears stale calculation selection");
-        window.LoadingTabs.SelectedIndex=0;Render(window.EquivalentView,900);window.EquivalentView.Plot.SelectAt(Centre(window.EquivalentView.Plot.Targets.First(x=>x.Reaction==1).Bounds));
+        Check(ReferenceEquals(window.SelectedTransferMember.Uniform,actual.Uniform) && ReferenceEquals(window.SelectedTransferMember.Points,actual.Points),"actual higher nominal slab forces still generate the response plots");
+        CheckResponse(window,actual);
+        window.SelectMember(1,0,-1);Check(!window.EquivalentView.IsDetailsOpen,"repeated selection clears stale calculation selection");
+        Render(window.EquivalentView,900);window.EquivalentView.Plot.SelectAt(Centre(window.EquivalentView.Plot.Targets.First(x=>x.Reaction==1).Bounds));
         Check(window.EquivalentView.VisibleCalculation.Any(s=>s.StartsWith("Right reaction")),"repeated selection uses current reaction");
+        foreach(int index in Enumerable.Range(0,t.UnitLowerCases[0].Uniform.Length+t.UnitLowerCases[0].Points.Length))
+        {
+            Render(window.EquivalentView,900);
+            Check(window.EquivalentView.Plot.SelectAt(Centre(window.EquivalentView.Plot.Targets.First(x=>x.Component==index).Bounds)),"every equivalent load value is clickable");
+            string source=EquivalentTransferredLoading.Create(layout,0,0).Components[index].Name;
+            Check(window.EquivalentView.VisibleCalculation[0]==source,"arrow click reveals only the current source name");
+            Render(window.EquivalentView,900);
+            Check(window.EquivalentView.Plot.SelectAt(Centre(window.EquivalentView.Plot.Targets.Last(x=>x.Component==index).Bounds)) && window.EquivalentView.VisibleCalculation[0]==source,"every load value label also opens its own calculation");
+            CheckResponse(window,actual);
+        }
+        window.LoadCaseSelector.SelectedIndex=1;
+        Check(window.SelectedTransferMember==beamActual && window.EquivalentView!=null && !window.EquivalentView.IsDetailsOpen,"case change updates equivalent view and closes prior calculation panel");
+        Check(window.ResponseBasis.Text.EndsWith("Beam"),"response basis identifies the selected design case");CheckResponse(window,beamActual);
+        window.LoadCaseSelector.SelectedIndex=0;CheckResponse(window,actual);
+        window.SelectMember(0,0,-1);Check(window.EquivalentView==null && window.ResponseBasis==null && window.LoadingDiagram!=null,"changing to primary clears equivalent panel and basis");
+        window.SelectMember(1,0,-1);Check(window.EquivalentView!=null && !window.EquivalentView.IsDetailsOpen,"returning to lower member starts with a clean panel");
+        RenderWindow(window,520,Preview(preview,"unified-narrow"));CheckResponse(window,actual);
+        // Unavailable localized conversion must still expose one actual loading card.
+        var primary=t.PrimaryCases[0][0];double original=primary.Uniform[0].KnPerM;
+        primary.Uniform[0].KnPerM+=1;window.SelectMember(1,0,-1);
+        Check(window.EquivalentView==null && window.LoadingDiagram!=null && !Controls<TextBlock>((DependencyObject)window.Content).Any(b=>b.Text.Contains("Secondary design checks")),"localized load fallback has one actual loading view and no removed-tab instruction");
+        CheckResponse(window,actual);primary.Uniform[0].KnPerM=original;
+        Check(Snapshot(actual).SequenceEqual(originalValues) && Snapshot(beamActual).SequenceEqual(beamValues),"clicks, cases and member changes preserve numeric forces, signed reactions, moments, deflections and utilization exactly");
         window.Close();
         var both=EquivalentTransferredLoading.Create(EquivalentLoadingTests.BothFixture(),0,0);
-        var bothView=new EquivalentLoadingView(both,true,()=>{});
-        foreach(double width in new[] {900.0,700,520})
+        var bothView=new EquivalentLoadingView(both,true);
+        foreach(double width in new[] {900.0,760,700,520,360})
         {
             Render(bothView,width);bothView.Plot.SelectAt(Centre(bothView.Plot.Targets.First(x=>x.Reaction==0).Bounds));Render(bothView,width);
             Check(bothView.VisibleCalculation.Count(s=>s.Contains(" kN"))==7,"both-sided reaction panel includes every source and final division");
