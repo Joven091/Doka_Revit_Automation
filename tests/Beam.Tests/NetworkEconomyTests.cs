@@ -26,7 +26,7 @@ internal static class NetworkEconomyTests
                 Near(beam.Transfer.TributaryWidthsMm.Sum(),common.LengthMm,"actual primary coverage reaches beam end tributaries");
                 double beamLoad=network.AreaLoad(network.Beams[index].DepthMm)*network.Beams[index].WidthMm/1000*common.LengthMm/1000;
                 Check(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad-1e-7,"secondary design retains full tributaries at ends");
-                Check(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"primary UDL covers physical beam and slab load");
+                Check(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)+beam.Transfer.ColumnSupportLoadKn(beam.Transfer.CaseNames.Length-1)>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"primary UDL covers physical beam and slab load");
                 Check(beam.MaxLegKn<=70+1e-8 && beam.LeftReactions.Concat(beam.RightReactions).All(r=>r>=-1e-7 && r<=70+1e-8),"individual leg capacity and no uplift");
                 foreach(var member in beam.Transfer.LowerCases.Concat(beam.Transfer.PrimaryCases).SelectMany(c=>c).Concat(beam.Transfer.UpperMembers))
                 {

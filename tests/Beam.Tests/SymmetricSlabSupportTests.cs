@@ -39,7 +39,7 @@ internal static class SymmetricSlabSupportTests
         int runs=layout.StockPlan.Pieces.Length;
         Check(t.PrimaryCases.Skip(1).Any(c=>Math.Abs(c.Take(runs).Sum(m=>m.Analysis.TotalLoadKn)-c.Skip(runs).Sum(m=>m.Analysis.TotalLoadKn))>1e-6),"one-sided slab stages keep unequal primary-line and leg loading");
         Near(layout.MaxLegKn,t.PrimaryCases.SelectMany(c=>c).SelectMany(m=>m.Analysis.Reactions).Max(),"reported peak is the actual heaviest leg across stages");
-        Check(t.Schedule.Contains("equal foot setback") && t.Schedule.Contains("Maximum row spacing 200"),"schedule gives repeated setbacks and site spacing");
+        Check(t.Schedule.Contains("equal foot setback") && t.Schedule.Contains($"Maximum row spacing {t.SlabSpacing(false):0.###}"),"schedule gives repeated setbacks and site spacing");
     }
     public static void Run()
     {
@@ -47,12 +47,12 @@ internal static class SymmetricSlabSupportTests
         Plan().Validate(3900,common.StockLengthsMm);
         Plan().Reverse().Validate(3900,common.StockLengthsMm);
         Reject(()=>Plan(600).Validate(3900,common.StockLengthsMm),"otherwise valid asymmetric shared plan rejected");
-        var transfer=new TransferredSlabInput {BeamWidthMm=300,BeamLineLoadKnM=5.25,UpperSpacingMm=200,RightBayMm=3900,RightAreaLoadKnM2=4.4,RightPlan=Plan(600)};
+        var transfer=new TransferredSlabInput {BeamWidthMm=300,BeamLineLoadKnM=5.25,UpperSpacingMm=250,RightBayMm=3900,RightAreaLoadKnM2=4.4,RightPlan=Plan(600)};
         Reject(()=>transfer.Validate(common),"fixed-plan caller cannot bypass the symmetric arrangement");
         transfer.RightPlan=Plan();common.TransferredSlab=transfer;
         CheckLayout(TransferredSlabOptimizer.Optimize(common));
         common=Common();
-        var network=new TransferNetworkInput {UpperSpacingMm=200,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=400,DepthMm=800},new TransferBeamRow {WidthMm=350,DepthMm=700}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100},new TransferBayRow {WidthMm=3900,ThicknessMm=150}}};
+        var network=new TransferNetworkInput {UpperSpacingMm=250,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=400,DepthMm=800},new TransferBeamRow {WidthMm=350,DepthMm=700}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100},new TransferBayRow {WidthMm=3900,ThicknessMm=150}}};
         var result=TransferNetworkOptimizer.Optimize(common,network);
         for(int bay=0;bay<result.Bays.Length;bay++)
         {

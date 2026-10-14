@@ -269,8 +269,8 @@ namespace EngineeringDashboard
         internal bool PermitsSlabLength(double length) => AllowCustomSlabLengths || StockLengthsMm.Contains(length)
             || CustomH20Scope==CustomH20LengthScope.Both && TransferredSlab!=null && !TransferredSlab.IsNetwork;
 
-        // Explicit project assumption; no stabilizing deadweight or connection model is added.
-        public bool IgnoreUplift { get; set; }
+        // Fixed search policy, including legacy callers assigning false. No restraint model is added.
+        public bool IgnoreUplift { get => true; set { /* Retained for saved-file/API compatibility. */ } }
         public double StockEndSetbackMm { get; set; } = 150;
         public double MaximumConcreteEndOverhangMm { get; set; }
         public bool Exclude600Standalone { get; set; }
@@ -284,7 +284,7 @@ namespace EngineeringDashboard
         public double MinimumReactionKn => Transfer == null
             ? LeftReactions.Concat(RightReactions).Min()
             : Transfer.PrimaryCases.Concat(Transfer.LowerCases).SelectMany(c=>c).Concat(Transfer.UpperMembers).Select(m=>m.MinimumReactionKn).Concat(MinimumLeftReactions??LeftReactions).Concat(MinimumRightReactions??RightReactions).Min();
-        public const string ConnectedFormworkAssumption = "Uplift excluded from acceptance: connected plywood and stabilizing deadweight are assumed by the user. Signed reactions are retained. Deadweight adequacy and connections are not calculated; negative reactions indicate required restraint. Strength, deflection and maximum individual leg loads remain checked.";
+        public const string ConnectedFormworkAssumption = "Uplift excluded from acceptance: connected plywood and stabilizing deadweight are assumed by the user. Signed reactions are retained. Deadweight adequacy and connections are not calculated; negative reactions indicate required restraint. Any layout requiring tensile restraint is conditional on separate support/anchorage verification; bearing-only supports cannot carry tension. Strength, deflection and maximum individual leg loads remain checked.";
         public string UpliftSummary => (IgnoreUplift ? ConnectedFormworkAssumption : "Bearing-only supports: uplift is rejected.") + $" Minimum signed reaction {MinimumReactionKn:0.######} kN.";
         public double[] PositionsMm { get; internal set; }
         public double TransverseOffsetMm { get; internal set; }

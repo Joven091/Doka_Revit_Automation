@@ -22,7 +22,7 @@ internal static class TowerFrameClearanceTests
         var gap=new FormworkSolid {IsLeg=true,TowerOwner="X1",X0=1600,X1=1680,Y0=-40,Y1=40,Z0=-1e6,Z1=-2150};
         Check(main.All(m=>!m.Conflicts(gap)),"a separate tower can use a real gap between independent groups");
         var common=new TowerInput {LengthMm=3000,LegCapacityKn=70,AllowCustomH20Lengths=true,IgnoreUplift=true,StockEndSetbackMm=150,DeflectionDenominator=270,ReceiverTransverseOffsetMm=-25,
-            TransferredSlab=new TransferredSlabInput {IsNetwork=true,BeamCentreOffsetMm=25,BeamWidthMm=650,BeamLineLoadKnM=20.5725,UpperSpacingMm=200,LeftBayMm=2000,LeftAreaLoadKnM2=9.9}};
+            TransferredSlab=new TransferredSlabInput {IsNetwork=true,BeamCentreOffsetMm=25,BeamWidthMm=650,BeamLineLoadKnM=20.5725,UpperSpacingMm=250,LeftBayMm=2000,LeftAreaLoadKnM2=9.9}};
         var shifted=TransferredSlabOptimizer.Optimize(common,true);
         Check(shifted.TransverseOffsetMm==-25,"receiving tower displacement is retained in the returned layout");
         foreach(var member in shifted.Transfer.LowerCases.SelectMany(stage=>stage))

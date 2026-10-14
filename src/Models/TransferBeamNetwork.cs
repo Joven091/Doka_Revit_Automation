@@ -120,7 +120,12 @@ namespace EngineeringDashboard
         public double UpperSpacingMm, LiveKnM2, FormworkKnM2;
         public double PlywoodSheetLengthMm;
         internal double? RequestedUpperSpacingMm;
+        internal double LocalRowGapMm;
+        internal double RowGapMm=>LocalRowGapMm>0 ? LocalRowGapMm : UpperSpacingMm;
         public double[] BeamSpacingsMm, SlabSpacingsMm, CrossingSpacingsMm;
+        // Zero marks a bay whose plywood has no permitted nominal spacing. Only
+        // the explicitly reported separate-formwork fallback may exclude it.
+        internal double[] LegacyBayPlywoodLimitsMm;
         public string PlywoodProfileId;
         public int PlywoodDeflectionDenominator;
         public bool HasIndividualSpacings=>BeamSpacingsMm!=null;
@@ -136,10 +141,11 @@ namespace EngineeringDashboard
             return new TransferNetworkInput {Beams=Beams.Take(count).ToArray(),Bays=Bays.Take(count-1).ToArray(),
                 CrossingBeams=crossIndices.Select(i=>CrossingBeams[i]).ToArray(),BeamSpacingsMm=beams,
                 SlabSpacingsMm=SlabSpacingsMm?.Take(count-1).Select(closer).ToArray(),
+                LegacyBayPlywoodLimitsMm=LegacyBayPlywoodLimitsMm?.Take(count-1).ToArray(),
                 CrossingSpacingsMm=CrossingSpacingsMm==null ? null : crossIndices.Select(i=>closer(CrossingSpacingsMm[i])).ToArray(),
                 PlywoodProfileId=PlywoodProfileId,PlywoodDeflectionDenominator=PlywoodDeflectionDenominator,
                 UpperSpacingMm=beams?.Min()??UpperSpacingMm,RequestedUpperSpacingMm=RequestedUpperSpacingMm??UpperSpacingMm,
-                PlywoodSheetLengthMm=PlywoodSheetLengthMm,CustomLoads=CustomLoads,LiveKnM2=LiveKnM2,FormworkKnM2=FormworkKnM2};
+                LocalRowGapMm=LocalRowGapMm,PlywoodSheetLengthMm=PlywoodSheetLengthMm,CustomLoads=CustomLoads,LiveKnM2=LiveKnM2,FormworkKnM2=FormworkKnM2};
         }
         private readonly ConcurrentDictionary<string,Lazy<double[][]>> slabRowsCache=new ConcurrentDictionary<string,Lazy<double[][]>>();
         internal double[][] SlabRows(double length,double cover)
@@ -181,6 +187,7 @@ namespace EngineeringDashboard
         public void Validate(TowerInput common)
         {
             PrimaryBeamProfile.For(common.PrimaryMaterial);
+            if(!TowerBeamAnalysis.Finite(LocalRowGapMm) || LocalRowGapMm<0 || LocalRowGapMm>0 && (LocalRowGapMm<100 || LocalRowGapMm>UpperSpacingMm))throw new ArgumentException("Invalid actual local secondary gap.");
             if(Beams==null || Bays==null || Beams.Length<2 || Beams.Length>MaximumBeamCount || Bays.Length!=Beams.Length-1) throw new ArgumentException("Use 2–15 beams with one slab bay between each adjacent pair.");
             if(Beams.Any(b=>b==null || !TowerBeamAnalysis.Finite(b.WidthMm) || !TowerBeamAnalysis.Finite(b.DepthMm) || !TowerBeamAnalysis.Finite(b.BottomElevationMm) || b.WidthMm<=0 || b.WidthMm>10000 || b.DepthMm<=0 || b.DepthMm>10000)) throw new ArgumentException("Enter a positive width and depth for every beam (maximum 10,000 mm).");
             if(Bays.Any(b=>b==null || !TowerBeamAnalysis.Finite(b.WidthMm) || !TowerBeamAnalysis.Finite(b.ThicknessMm) || b.WidthMm<=0 || b.WidthMm>30000 || b.ThicknessMm<=0)) throw new ArgumentException("Enter a positive width and thickness for every slab bay.");
@@ -233,15 +240,15 @@ namespace EngineeringDashboard
         public double EconomyScoreMm=>LegCount*TowerOptimizer.TowerLegTimberEquivalentMm+UpperFootCount*TowerOptimizer.UpperFootTimberEquivalentMm+MaterialMm;
         public double SymmetryErrorMm=>AllTowers.Sum(b=>b.SymmetryErrorMm);
         public int H20Count=>Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.PhysicalRowCount)+Enumerable.Range(0,Bays.Length).Sum(SlabRowCount)+CrossSupports.Sum(c=>c.H20Count);
-        public string SecondarySpacingNotice=>Input.HasIndividualSpacings ? string.Join("; ",Input.BeamSpacingsMm.Select((x,i)=>$"B{i+1} beam {x:0} mm").Concat(Input.SlabSpacingsMm.Select((x,i)=>$"S{i+1} slab {x:0} mm")))+". Local receiving rows can be closer to align slab feet and sheet joints." : Input.RequestedUpperSpacingMm.HasValue ? System.FormattableString.Invariant($"Secondary spacing {Input.UpperSpacingMm:0.###} mm, within entered maximum {Input.RequestedUpperSpacingMm.Value:0.###} mm; ") + (Input.PlywoodSheetLengthMm>0 ? "closer listed sheet spacing for support/member checks." : "adjusted for junction clearance.") : "";
+        public string SecondarySpacingNotice=>Input.HasIndividualSpacings ? string.Join("; ",Input.BeamSpacingsMm.Select((x,i)=>$"B{i+1} nominal beam {x:0} mm").Concat(Input.SlabSpacingsMm.Select((x,i)=>$"S{i+1} nominal slab {x:0} mm")))+". Actual local gaps can be shorter to align slab feet and sheet joints; effective design tributary widths retain each member’s nominal minimum and local load increments." : Input.RequestedUpperSpacingMm.HasValue ? System.FormattableString.Invariant($"Secondary spacing {Input.UpperSpacingMm:0.###} mm, within entered maximum {Input.RequestedUpperSpacingMm.Value:0.###} mm; ") + (Input.PlywoodSheetLengthMm>0 ? "closer listed sheet spacing for support/member checks." : "nominal design spacing; actual local gaps can be shorter for junction clearance.") : "";
         public double PeakLegKn=>Math.Max(Beams.Max(b=>b.MaxLegKn),CrossSupports.Select(c=>c.Towers?.MaxLegKn??0).DefaultIfEmpty().Max());
-        public string Summary=>$"{Beams.Length} beams · {Bays.Length} slab bays · {LegCount} tower legs\n{H20Count} H20s{(WS10Count>0 ? $" · {WS10Count} WS10s" : "")} · {TimberMm/1000:0.00} m timber{(WS10Count>0 ? $" · {WS10LengthMm/1000:0.00} m WS10" : "")} · peak leg {PeakLegKn:0.00} kN\nSlab movement {SlabMovementMm:0.00} mm · "+(SearchTimeLimitReached ? "best checked solution found within search time limit" : "best found in bounded search")+(RequiresSeparateSlabFormwork ? "\n"+SeparateSlabNotice : "");
+        public string Summary=>(SecondarySpacingNotice.Length==0 ? "" : SecondarySpacingNotice+"\n")+$"{Beams.Length} beams · {Bays.Length} slab bays · {LegCount} tower legs\n{H20Count} H20s{(WS10Count>0 ? $" · {WS10Count} WS10s" : "")} · {TimberMm/1000:0.00} m timber{(WS10Count>0 ? $" · {WS10LengthMm/1000:0.00} m WS10" : "")} · peak leg {PeakLegKn:0.00} kN\nSlab movement {SlabMovementMm:0.00} mm · "+(SearchTimeLimitReached ? "best checked solution found within search time limit" : "best found in bounded search")+(RequiresSeparateSlabFormwork ? "\n"+SeparateSlabNotice : "")+(Beams.Any(b=>b.Transfer.ColumnSupportLoads.Length>0) ? "\nUncovered longitudinal end strips: external column-side supports; capacity requires separate verification." : "");
         public string LayoutDiagnostics=>string.Join("\n",CrossSupports.Select(c=>c.Schedule))+"\n"+System.FormattableString.Invariant($"Shared slab support coverage={SlabCoveredLengthMm:0.###} mm; physical slab length={Beams[0].LengthMm:0.###} mm; row phase={RowPhaseMm:0.###} mm; rows={SlabRowsMm.Length}; upper feet={UpperFootCount}; relative economy={EconomyScoreMm/1000:0.###} m timber equivalent; symmetry error={SymmetryErrorMm:0.###} mm")
             +(SecondarySpacingNotice.Length==0 ? "" : "\n"+SecondarySpacingNotice)
-            +System.FormattableString.Invariant($"\nEconomic preference (not supplier prices): tower leg = {TowerOptimizer.TowerLegTimberEquivalentMm/1000:0.###} m timber; upper foot = {TowerOptimizer.UpperFootTimberEquivalentMm/1000:0.###} m timber. Lower score preferred.\nBalanced stock/support patterns are protected in the bounded search; linked bays share frames. Main-beam end concrete remains included.\nPrimary design model: UDL derived from beam/slab loads per metre; crossing loads stay over their physical footprints. No secondary-row point loads on primaries.")
+            +System.FormattableString.Invariant($"\nEconomic preference (not supplier prices): tower leg = {TowerOptimizer.TowerLegTimberEquivalentMm/1000:0.###} m timber; upper foot = {TowerOptimizer.UpperFootTimberEquivalentMm/1000:0.###} m timber. Lower score preferred.\nBalanced stock/support patterns are protected in the bounded search; linked bays share frames. Uncovered longitudinal main-beam end-strip loads are assigned to external column-side supports; their capacity requires separate verification.\nPrimary design model: UDL derived from beam/slab loads per metre; crossing loads stay over their physical footprints. No secondary-row point loads on primaries.")
             +"\n"+string.Join("\n",Beams.Select((b,i)=>System.FormattableString.Invariant($"B{i+1}: legs={b.LegCount}; shared frames={b.SharedFrameCount}; beam-only secondary rows={b.Transfer.BeamOnlyRowCount}; symmetry error={b.SymmetryErrorMm:0.###} mm; primary coverage={b.StockPlan.Pieces.Sum(p=>p.StockLengthMm):0.###} mm; end allowance={b.ConcreteEndOverhangMm:0.###} mm; lower H20={b.Transfer.LowerStockLengthMm:0.###} mm; secondary midpoint={b.Transfer.LowerStockStartMm+b.Transfer.LowerStockLengthMm/2:0.###} mm; standalone 600={b.Standalone600Count}; braced bays={b.BayCount}; brace preference={b.StandaloneBracePenalty:0.###} mm; beam load={b.Transfer.BeamLoadKn:0.###} kN; slab load={b.Transfer.SlabLoadKn:0.###} kN; primary runs=")+string.Join(", ",b.StockPlan.Pieces.Select(p=>p.StockLengthMm.ToString("0.###",System.Globalization.CultureInfo.InvariantCulture)))))
             +(RequiresSeparateSlabFormwork ? "\n"+SeparateSlabExplanation : "")
-            +"\n"+string.Join("\n",Bays.Select((b,i)=>b==null ? $"S{i+1}: separate slab formwork required (not calculated)" : System.FormattableString.Invariant($"S{i+1}: H20={b.StockLengthMm:0.###} mm; edge={b.EdgeMm:0.###} mm; equal foot setback={b.NearFootMm:0.###} mm at both faces; repeat every row; maximum row spacing={Input.UpperSpacingMm:0.###} mm")));
+            +"\n"+string.Join("\n",Bays.Select((b,i)=>b==null ? $"S{i+1}: separate slab formwork required (not calculated)" : System.FormattableString.Invariant($"S{i+1}: H20={b.StockLengthMm:0.###} mm; edge={b.EdgeMm:0.###} mm; equal foot setback={b.NearFootMm:0.###} mm at both faces; repeat every row; maximum row spacing={Input.BaySpacing(i):0.###} mm")));
         public string Schedule=>(SecondarySpacingNotice.Length==0 ? "" : SecondarySpacingNotice+"\n\n")+(Bays.Any(b=>b!=null) ? UpperTransferPlan.SiteArrangement+"\n"+string.Join("\n",Bays.Select((b,i)=>b==null ? null : $"S{i+1}: equal foot setback {b.NearFootMm:0.###} mm at both concrete faces; repeat every slab row; maximum row spacing {Input.BaySpacing(i):0.###} mm").Where(x=>x!=null))+"\n\n" : "")+string.Join("\n\n",CrossSupports.Select(c=>c.Schedule))+ (CrossSupports.Length==0 ? "" : "\n"+CrossBeamSupportResult.Limitations+"\n\n")+(RequiresSeparateSlabFormwork ? SeparateSlabNotice+"\n\n"+SeparateSlabExplanation+"\n\n" : "")+(Input.CrossingBeams.Length==0 ? "" : string.Join("\n",Input.CrossingBeams.Select((c,i)=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows ? $"X{i+1}: dedicated cross-beam formwork · bottom {c.BottomElevationMm:0.###} mm · requested {c.SupportMode}" : (Bays[c.BayNumber-1]==null ? $"X{i+1}: S{c.BayNumber} · separate formwork design required (not calculated)" : $"X{i+1}: S{c.BayNumber} · centre {c.PositionMm:0.###} mm · {c.WidthMm:0.###} × {c.DepthMm:0.###} mm · extra bay load {(Input.AreaLoad(c.DepthMm)-Input.AreaLoad(Input.Bays[c.BayNumber-1].ThicknessMm))*c.WidthMm/1000*Input.Bays[c.BayNumber-1].WidthMm/1000:0.00} kN through slab H20s")))+"\n\n")+string.Join("\n\n",Beams.Select((b,i)=>$"B{i+1}: {Input.Beams[i].WidthMm:0} × {Input.Beams[i].DepthMm:0} mm · bottom {Input.Beams[i].BottomElevationMm:0.###} mm · {b.LegCount} legs\n{b.Schedule}\n{b.StockSchedule}"));
     }
     public sealed class NetworkBeamOption
@@ -328,6 +335,20 @@ namespace EngineeringDashboard
         private static TransferNetworkResult OptimizeNetwork(TowerInput common,TransferNetworkInput input)
         {
             input.Validate(common);
+            if(!input.HasIndividualSpacings)
+            {
+                var source=input;input=source.WithSpacings();
+                var profile=string.IsNullOrEmpty(source.PlywoodProfileId) ? PlywoodCatalog.Default : PlywoodCatalog.FromId(source.PlywoodProfileId);
+                int denominator=source.PlywoodDeflectionDenominator==0 ? 350 : source.PlywoodDeflectionDenominator;
+                input.LegacyBayPlywoodLimitsMm=source.Bays.Select((b,i)=>
+                {
+                    double pressure=source.AreaLoad(source.CrossingBeams.Where(c=>c.BayNumber==i+1 && c.SupportMode==CrossBeamSupportMode.LegacySlabRows).Select(c=>c.DepthMm).Concat(new[] {b.ThicknessMm}).Max());
+                    try {return PlywoodSpacing.CalculateForSheet(profile,pressure,denominator).MaximumSpacingMm;}
+                    catch(ArgumentException) {return 0.0;}
+                }).ToArray();
+                double plywoodMaximum=input.LegacyBayPlywoodLimitsMm.Where(x=>x>0).DefaultIfEmpty(source.UpperSpacingMm).Min();
+                input.UpperSpacingMm=PlywoodSpacing.ListedSpacingAtOrBelow(Math.Min(source.UpperSpacingMm,plywoodMaximum));
+            }
             try {return PreferredShutterDetail(common,input);}
             catch(TowerOptimizationException fullFailure) when (!common.AllowCustomH20Lengths && common.AllowSeparateSlabFallback)
             {
@@ -335,7 +356,7 @@ namespace EngineeringDashboard
                 common.Trace?.Work("Separate slab formwork fallback");
                 try
                 {
-                    var result=common.Trace==null ? OptimizeCore(common,input,true) : common.Trace.RunPass(false,()=>OptimizeCore(common,input,true));
+                    var result=common.Trace==null ? SeparateTransfer(common,input) : common.Trace.RunPass(false,()=>SeparateTransfer(common,input));
                     result.FullTransferFailureDetails=fullFailure.Details;
                     result.SeparateSlabReasons=result.Bays.Select((b,i)=>b==null ? fullDiagnostics.SeparateBayExplanation(i) : "").ToArray();
                     return result;
@@ -346,7 +367,7 @@ namespace EngineeringDashboard
         }
         private static TransferNetworkResult PreferredShutterDetail(TowerInput common,TransferNetworkInput input)
         {
-            try {return TowerStockPlanner.SearchWithCustom(common,()=>FullTransfer(common,input),Better);}
+            try {return FullTransfer(common,input);}
             catch(TowerOptimizationException standardFailure) when (CrossBeamSupportOptimizer.Modern(input) && !common.AllowLocalShutterExceptions)
             {
                 // Exhaust normal stock/custom, spacing and coordination searches first.
@@ -355,7 +376,7 @@ namespace EngineeringDashboard
                 common.Trace?.Work("Local 175 mm side-shutter fallback");
                 try
                 {
-                    var result=TowerStockPlanner.SearchWithCustom(worker,()=>FullTransfer(worker,input),Better);
+                    var result=FullTransfer(worker,input);
                     common.Diagnostics=worker.Diagnostics;return result;
                 }
                 catch(TowerOptimizationException reducedFailure)
@@ -379,18 +400,14 @@ namespace EngineeringDashboard
             }
             return LegacyTransfer(common,input);
         }
+        private static TransferNetworkResult SearchSpacing(TowerInput common,TransferNetworkInput input)
+            =>TowerStockPlanner.SearchWithCustom(common,()=>OptimizeCore(common,input,false),Better);
         private static TransferNetworkResult IndividualTransfer(TowerInput common,TransferNetworkInput input)
         {
-            // One closer listed spacing gives crossings more receiving rows without
-            // changing plywood limits or structural acceptance. Timed searches try it
-            // before spending their budget proving failure at the widest chart spacing.
-            if(common.Trace?.HasTimeLimit==true && CrossBeamSupportOptimizer.Modern(input))
-            {
-                try {return OptimizeCore(common,input.WithSpacings(1),false);}
-                catch(TowerOptimizationException) { }
-            }
+            // Descend from the plywood-permitted maximum; timed/custom paths use
+            // the same nominal spacing order and every candidate retains all checks.
             TowerOptimizationException failure;
-            try {return OptimizeCore(common,input,false);}
+            try {return SearchSpacing(common,input);}
             catch(TowerOptimizationException ex){failure=ex;}
             var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
             var attempted=new HashSet<string>();
@@ -399,26 +416,51 @@ namespace EngineeringDashboard
                 var candidate=step==0 ? input : input.WithSpacings(step);
                 string key=string.Join(";",candidate.BeamSpacingsMm.Concat(candidate.SlabSpacingsMm).Concat(candidate.CrossingSpacingsMm));
                 if(!attempted.Add(key))continue;
-                try {var result=OptimizeCore(worker,candidate,false);common.Diagnostics=worker.Diagnostics;return result;}
+                try {var result=SearchSpacing(worker,candidate);common.Diagnostics=worker.Diagnostics;return result;}
                 catch(TowerOptimizationException ex){failure=ex;}
             }
             throw failure;
         }
         private static TransferNetworkResult LegacyTransfer(TowerInput common,TransferNetworkInput input)
         {
-            try {return OptimizeCore(common,input,false);}
-            catch(TowerOptimizationException) when(input.PlywoodSheetLengthMm>0 || CrossBeamSupportOptimizer.Modern(input))
+            try {return SearchSpacing(common,input);}
+            catch(TowerOptimizationException)
             {
                 var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
-                foreach(double spacing in input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(x=>x<=input.UpperSpacingMm) : new[] {input.UpperSpacingMm,Math.Min(input.UpperSpacingMm,250),Math.Min(input.UpperSpacingMm,225)}.Distinct())
+                foreach(double spacing in PlywoodSpacing.StandardSpacingsMm.Where(x=>x<=input.UpperSpacingMm))
                 {
                     common.Trace?.CheckCancellation();common.Trace?.Work("Sheet spacing / crossing junction search");
-                    var network=new TransferNetworkInput {Beams=input.Beams,Bays=input.Bays,CrossingBeams=input.CrossingBeams,UpperSpacingMm=spacing,PlywoodSheetLengthMm=input.PlywoodSheetLengthMm,RequestedUpperSpacingMm=spacing==input.UpperSpacingMm ? input.RequestedUpperSpacingMm : input.UpperSpacingMm,CustomLoads=input.CustomLoads,LiveKnM2=input.LiveKnM2,FormworkKnM2=input.FormworkKnM2};
-                    try {var result=OptimizeCore(worker,network,false);common.Diagnostics=worker.Diagnostics;return result;}
-                    catch(TowerOptimizationException) { }
+                    // Preserve the existing junction-clearance gap retries without
+                    // redefining 225 mm as a nominal slab design spacing. All active
+                    // slab rows are still checked for at least the listed nominal width.
+                    var gaps=input.PlywoodSheetLengthMm==0 && CrossBeamSupportOptimizer.Modern(input)
+                        ? new[] {spacing,Math.Min(spacing,250),Math.Min(spacing,225)}.Distinct() : new[] {spacing};
+                    foreach(double gap in gaps)
+                    {
+                        var network=input.WithSpacings();network.UpperSpacingMm=spacing;network.LocalRowGapMm=gap;
+                        try {var result=SearchSpacing(worker,network);common.Diagnostics=worker.Diagnostics;return result;}
+                        catch(TowerOptimizationException) { }
+                    }
                 }
                 throw;
             }
+        }
+        private static TransferNetworkResult SeparateTransfer(TowerInput common,TransferNetworkInput input)
+        {
+            TowerOptimizationException failure=null;
+            for(int step=0;step<PlywoodSpacing.StandardSpacingsMm.Count;step++)
+            {
+                var candidate=input.WithSpacings(step);
+                if(!candidate.HasIndividualSpacings)
+                {
+                    var allowed=PlywoodSpacing.StandardSpacingsMm.Where(x=>x<=input.UpperSpacingMm).ToArray();
+                    if(step>=allowed.Length)break;
+                    candidate.UpperSpacingMm=allowed[step];
+                }
+                try {return OptimizeCore(common,candidate,true);}
+                catch(TowerOptimizationException ex){failure=ex;}
+            }
+            throw failure;
         }
         // An optimistic economic bound excludes remaining timber, so pruning cannot hide a cheaper layout.
         private sealed class Incumbent
@@ -523,11 +565,16 @@ namespace EngineeringDashboard
                 common.Trace?.Context(System.FormattableString.Invariant($"Coverage={cover:R} mm; row phase={phase:R} mm"));
                 var stations=RowStations(common,input,cover,phase);
                 int rows=stations.Length;double first=stations[0]-(common.LengthMm-cover)/2;
-                if(input.PlywoodSheetLengthMm==0 && (first<=0 || first+(rows-1)*input.UpperSpacingMm>=cover || (rows>1 && (first+input.UpperSpacingMm/2>input.UpperSpacingMm+1e-7 || cover-(first+(rows-1)*input.UpperSpacingMm)+input.UpperSpacingMm/2>input.UpperSpacingMm+1e-7))))return outcome;
+                if(input.PlywoodSheetLengthMm==0 && (first<=0 || first+(rows-1)*input.RowGapMm>=cover || (rows>1 && (first+input.RowGapMm/2>input.UpperSpacingMm+1e-7 || cover-(first+(rows-1)*input.RowGapMm)+input.RowGapMm/2>input.UpperSpacingMm+1e-7))))return outcome;
                 int upperFeet=input.HasIndividualSpacings ? input.SlabRows(common.LengthMm,cover).Sum(r=>r.Length)*2 : input.Bays.Length*2*rows;
                 if(incumbent!=null && upperFeet*TowerOptimizer.UpperFootTimberEquivalentMm+minimumLegs*input.Beams.Length*TowerOptimizer.TowerLegTimberEquivalentMm>incumbent.Score+.01) {common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);return outcome;}
                 double edge=(common.LengthMm-cover)/2;
                 var invalidBays=new HashSet<int>(input.CrossingBeams.Where(c=>c.PositionMm-c.WidthMm/2<edge-1e-7 || c.PositionMm+c.WidthMm/2>edge+cover+1e-7).Select(c=>c.BayNumber-1));
+                for(int bay=0;bay<input.Bays.Length;bay++)if(input.LegacyBayPlywoodLimitsMm?[bay]==0)
+                {
+                    diag.Geometry($"S{bay+1} plywood",$"S{bay+1}: no permitted nominal slab spacing passes the plywood checks.","Select stronger plywood, revise the load or design separate slab formwork.");
+                    invalidBays.Add(bay);
+                }
                 if(!separate && invalidBays.Count>0) {diag.Geometry("crossing coverage","Crossing footprint is outside primary coverage.","Review crossing position/width and primary stock end coverage.");return outcome;}
                 var rowLoads=input.Bays.Select((b,i)=>invalidBays.Contains(i) ? null : EffectiveWidthsMm(common,input,i,cover,phase)).ToArray();
                 var slabRows=rowLoads.Select(w=>w?.Count(x=>x>0)??0).ToArray();
@@ -623,7 +670,7 @@ namespace EngineeringDashboard
                             outcome.Tested++;var candidate=new State {Beams=previous.Beams.Concat(new[] {receiver}).ToArray(),Bays=right==null ? previous.Bays : previous.Bays.Concat(new[] {right}).ToArray(),Legs=previous.Legs+receiver.LegCount,Narrow=previous.Narrow+receiver.Standalone600Count,BaysCount=previous.BaysCount+receiver.BayCount,BracePenalty=previous.BracePenalty+receiver.StandaloneBracePenalty,Timber=previous.Timber+LowerTimber(receiver)+(right==null ? 0 : right.StockLengthMm*EffectiveWidthsMm(common,input,beam,cover,phase).Count(x=>x>0))};
                             if(beam>0)
                             {
-                                var network=input.HasIndividualSpacings ? input.WithSpacings(beamCount:beam+1) : new TransferNetworkInput {PlywoodSheetLengthMm=input.PlywoodSheetLengthMm,Beams=input.Beams.Take(beam+1).ToArray(),Bays=input.Bays.Take(beam).ToArray(),CrossingBeams=input.CrossingBeams.Where(c=>c.BayNumber<=beam).ToArray(),UpperSpacingMm=input.UpperSpacingMm,RequestedUpperSpacingMm=input.RequestedUpperSpacingMm,CustomLoads=input.CustomLoads,LiveKnM2=input.LiveKnM2,FormworkKnM2=input.FormworkKnM2};
+                                var network=input.HasIndividualSpacings ? input.WithSpacings(beamCount:beam+1) : new TransferNetworkInput {LocalRowGapMm=input.LocalRowGapMm,PlywoodSheetLengthMm=input.PlywoodSheetLengthMm,Beams=input.Beams.Take(beam+1).ToArray(),Bays=input.Bays.Take(beam).ToArray(),CrossingBeams=input.CrossingBeams.Where(c=>c.BayNumber<=beam).ToArray(),UpperSpacingMm=input.UpperSpacingMm,RequestedUpperSpacingMm=input.RequestedUpperSpacingMm,CustomLoads=input.CustomLoads,LiveKnM2=input.LiveKnM2,FormworkKnM2=input.FormworkKnM2};
                                 var centres=new double[beam+1];for(int i=1;i<centres.Length;i++)centres[i]=centres[i-1]+input.Beams[i-1].WidthMm/2+input.Bays[i-1].WidthMm+input.Beams[i].WidthMm/2;
                                 var partial=new TransferNetworkResult {Input=network,Beams=candidate.Beams,Bays=candidate.Bays.Take(beam).ToArray(),BeamCentresMm=centres,SlabCoveredLengthMm=cover,RowPhaseMm=phase,SlabLoadKn=candidate.Beams.Sum(l=>l.Transfer.SlabLoadKn)};
                                 // Cache keys include the crossing index, concrete geometry and absolute
@@ -655,9 +702,9 @@ namespace EngineeringDashboard
             double edge=(common.LengthMm-cover)/2;
             if(input.HasIndividualSpacings)return input.SlabRows(common.LengthMm,cover).SelectMany(r=>r).Distinct().OrderBy(x=>x).ToArray();
             if(input.PlywoodSheetLengthMm>0) return PlywoodSpacing.SheetSupportRows(edge,edge+cover,input.UpperSpacingMm,input.PlywoodSheetLengthMm);
-            int count=(int)Math.Ceiling(cover/input.UpperSpacingMm);
-            double first=(cover-(count-1)*input.UpperSpacingMm)/2+phase;
-            return Enumerable.Range(0,count).Select(i=>edge+first+i*input.UpperSpacingMm).ToArray();
+            int count=(int)Math.Ceiling(cover/input.RowGapMm);
+            double first=(cover-(count-1)*input.RowGapMm)/2+phase;
+            return Enumerable.Range(0,count).Select(i=>edge+first+i*input.RowGapMm).ToArray();
         }
         internal static double[] EffectiveWidthsMm(TowerInput common,TransferNetworkInput input,int bay,double cover,double phase)
         {
@@ -732,7 +779,7 @@ namespace EngineeringDashboard
             common.Trace?.CheckCancellation();
             if(ceiling<stockCovers.Min(c=>c.Length)*4) {common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);return null;}
             common.Trace?.Increment(BeamSearchCounter.NetworkSolves);common.Trace?.Context(System.FormattableString.Invariant($"B{beam+1}; coverage={cover:R} mm; row phase={phase:R} mm; beam spacing={network.BeamSpacing(beam):R} mm; crossing coordination={common.CoordinateCrossingLayouts}"));
-            var b=network.Beams[beam];var t=new TransferredSlabInput {PlywoodSheetLengthMm=network.PlywoodSheetLengthMm,IsNetwork=true,IncludeMainBeamEndLoads=true,FixedTowerWidthMm=towerWidth,BeamCentreOffsetMm=-transverseOffset,CrossFormwork=CrossBeamSupportOptimizer.Modern(network),AllowLongerPrimaryCoverage=common.IndependentNetworkPrimaryCoverage,StockCovers=stockCovers,SharedGeometryCache=geometryCache,SharedSearchWork=common.NetworkNumerics,BeamWidthMm=b.WidthMm,BeamLineLoadKnM=network.AreaLoad(b.DepthMm)*b.WidthMm/1000,UpperSpacingMm=network.BeamSpacing(beam),LeftSlabSpacingMm=network.HasIndividualSpacings && left!=null ? network.BaySpacing(beam-1) : 0,RightSlabSpacingMm=network.HasIndividualSpacings && right!=null ? network.BaySpacing(beam) : 0,SharedRowsMm=network.HasIndividualSpacings ? RowStations(common,network,cover,phase) : null,FixedCoveredLengthMm=cover,FixedRowPhaseMm=phase,
+            var b=network.Beams[beam];var t=new TransferredSlabInput {PlywoodSheetLengthMm=network.PlywoodSheetLengthMm,IsNetwork=true,IncludeMainBeamEndLoads=true,FixedTowerWidthMm=towerWidth,BeamCentreOffsetMm=-transverseOffset,CrossFormwork=CrossBeamSupportOptimizer.Modern(network),AllowLongerPrimaryCoverage=common.IndependentNetworkPrimaryCoverage,StockCovers=stockCovers,SharedGeometryCache=geometryCache,SharedSearchWork=common.NetworkNumerics,BeamWidthMm=b.WidthMm,BeamLineLoadKnM=network.AreaLoad(b.DepthMm)*b.WidthMm/1000,UpperSpacingMm=network.BeamSpacing(beam),LocalRowGapMm=network.LocalRowGapMm,LeftSlabSpacingMm=network.HasIndividualSpacings && left!=null ? network.BaySpacing(beam-1) : 0,RightSlabSpacingMm=network.HasIndividualSpacings && right!=null ? network.BaySpacing(beam) : 0,SharedRowsMm=network.HasIndividualSpacings ? RowStations(common,network,cover,phase) : null,FixedCoveredLengthMm=cover,FixedRowPhaseMm=phase,
                 LeftBayMm=left==null ? 0 : network.Bays[beam-1].WidthMm,RightBayMm=right==null ? 0 : network.Bays[beam].WidthMm,LeftAreaLoadKnM2=left==null ? 0 : network.AreaLoad(network.Bays[beam-1].ThicknessMm),RightAreaLoadKnM2=right==null ? 0 : network.AreaLoad(network.Bays[beam].ThicknessMm),LeftPlan=left?.Reverse(),RightPlan=right,
                 LeftCrossingBands=left==null ? new BeamDistributedLoad[0] : CrossingBands(network,beam-1),RightCrossingBands=right==null ? new BeamDistributedLoad[0] : CrossingBands(network,beam),
                 LeftEffectiveWidthsMm=left==null ? null : EffectiveWidthsMm(common,network,beam-1,cover,phase),RightEffectiveWidthsMm=right==null ? null : EffectiveWidthsMm(common,network,beam,cover,phase),

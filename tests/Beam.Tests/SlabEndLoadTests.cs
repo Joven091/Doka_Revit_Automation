@@ -50,18 +50,18 @@ internal static class SlabEndLoadTests
         Near(sheetAdded.Sum(),250,"sheet layout retains both concrete end strips");
         Near(sheetAdded.Zip(sheetRows,(w,x)=>w*x).Sum(),250*3450,"nonuniform sheet-joint rows retain the end-strip resultant");
         // The last 75 mm of the photographed primary must retain the slab baseline.
-        var loads=TransferredSlabOptimizer.PrimaryUniformLoads(2950,3900,9.916,14.110,0,new BeamDistributedLoad[0],new BeamDistributedLoad[0],slabBaselineFactor:6900.0/6800);
+        var loads=TransferredSlabOptimizer.PrimaryUniformLoads(2950,3900,9.916,14.110,0,new BeamDistributedLoad[0],new BeamDistributedLoad[0]);
         Check(loads.Length==1 && loads[0].StartMm==0 && loads[0].EndMm==3900,"slab load extends through the final 75 mm");
-        Near(loads[0].KnPerM,9.916+14.110*6900/6800,"full-length slab reaction on primary tail");
+        Near(loads[0].KnPerM,9.916+14.110,"full-length slab reaction on primary tail");
         var exclusion=TransferredSlabOptimizer.PrimaryUniformLoads(50,6800,0,14.110,0,
-            new[] {new BeamDistributedLoad {StartMm=2175,EndMm=2825,KnPerM=-1}},new BeamDistributedLoad[0],slabBaselineFactor:6900.0/6800);
-        Near(exclusion.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000),14.110*(6900-650)/1000,"crossing exclusion removes physical slab load exactly once");
-        Near(exclusion.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000*(50+(q.StartMm+q.EndMm)/2)/1000),14.110*(6900.0*6900/2-650*2500)/1e6,"offset crossing exclusion preserves the full physical resultant");
+            new[] {new BeamDistributedLoad {StartMm=2175,EndMm=2825,KnPerM=-1}},new BeamDistributedLoad[0]);
+        Near(exclusion.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000),14.110*(6800-650)/1000,"crossing exclusion removes physical slab load exactly once");
+        Near(exclusion.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000*(50+(q.StartMm+q.EndMm)/2)/1000),14.110*(6800.0*3450-650*2500)/1e6,"offset crossing exclusion preserves the full physical resultant");
         // Deliberately different shared and primary coverage, on both evaluation paths.
         foreach(bool sheet in new[] {false,true})
         foreach(bool deferred in new[] {false,true})
         {
-            double spacing=sheet ? 275 : 200;
+            double spacing=sheet ? 275 : 250;
             var common=new TowerInput {LengthMm=2100,LegCapacityKn=70,DeflectionDenominator=270,MaximumConcreteEndOverhangMm=150,
                 StockLengthsMm=new[] {1250.0,1800,2000,2450},DeferTransferLayout=deferred,ReuseSearchWork=deferred};
             var n=new TransferNetworkInput {UpperSpacingMm=spacing,PlywoodSheetLengthMm=sheet ? PlywoodSpacing.SheetLengthMm : 0,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100}}};
@@ -79,8 +79,8 @@ internal static class SlabEndLoadTests
             Near(t.SlabLoadKn,n.AreaLoad(100)*1.8*2.1/2,"receiver takes half the complete slab and shutter load");
             Near(t.CoveredSlabAreaM2,2.1*t.RightUpperStockMm/1000,"reported load area includes longitudinal concrete ends");
             var stage=t.PrimaryCases[Array.IndexOf(t.CaseNames,"Beam + right slab")];
-            Near(stage.Sum(m=>m.Analysis.TotalLoadKn),t.BeamLoadKn+t.SlabLoadKn,"full beam and slab force reaches primary checks");
-            Near(stage.Sum(m=>m.Analysis.Reactions.Zip(m.SupportsMm,(r,x)=>r*(x+m.StartMm)/1000).Sum()),(t.BeamLoadKn+t.SlabLoadKn)*1.05,"full primary resultant at physical midpoint");
+            Near(stage.Sum(m=>m.Analysis.TotalLoadKn)+t.ColumnSupportLoadKn(Array.IndexOf(t.CaseNames,"Beam + right slab")),t.BeamLoadKn+t.SlabLoadKn,"full beam and slab force reaches primary checks");
+            Near(stage.Sum(m=>m.Analysis.Reactions.Zip(m.SupportsMm,(r,x)=>r*(x+m.StartMm)/1000).Sum())+t.ColumnSupportLoadKn(Array.IndexOf(t.CaseNames,"Beam + right slab"))*1.05,(t.BeamLoadKn+t.SlabLoadKn)*1.05,"full primary resultant at physical midpoint");
             foreach(var m in t.PrimaryCases.Concat(t.LowerCases).SelectMany(c=>c).Concat(t.UpperMembers))Member(m);
             Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r<=70+1e-8),"each corrected tower reaction checked");
             foreach(int row in Enumerable.Range(0,t.RowsMm.Length).Except(t.SlabRowIndices))Near(t.UpperScale(false,row),0,"local beam-only rows acquire no slab feet");
@@ -99,7 +99,7 @@ internal static class SlabEndLoadTests
         foreach(var b in result.Beams)
         {
             var t=b.Transfer;string combined=ReferenceEquals(b,result.Beams[0]) ? "Beam + right slab" : ReferenceEquals(b,result.Beams.Last()) ? "Beam + left slab" : "Beam + both slabs";int stage=Array.IndexOf(t.CaseNames,combined);
-            Near(t.PrimaryCases[stage].Sum(m=>m.Analysis.TotalLoadKn),t.BeamLoadKn+t.SlabLoadKn,"complete baseline slab force reaches each primary pair");
+            Near(t.PrimaryCases[stage].Sum(m=>m.Analysis.TotalLoadKn)+t.ColumnSupportLoadKn(stage),t.BeamLoadKn+t.SlabLoadKn,"complete baseline slab force reaches each primary pair");
             foreach(var m in t.PrimaryCases.Concat(t.LowerCases).SelectMany(c=>c).Concat(t.UpperMembers))Member(m);
             Check(b.LeftReactions.Concat(b.RightReactions).All(r=>r<=70+1e-8),"reported corrected legs pass");
         }

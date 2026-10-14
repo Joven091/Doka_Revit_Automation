@@ -102,6 +102,7 @@ static class Program
     {
         try
         {
+            Check(D3SlabOptimizer.SecondarySpacingsMm.SequenceEqual(PlywoodSpacing.StandardSpacingsMm),"All six permitted nominal slab spacings, including 250 mm, are searched");
             AnalysisChecks();
             var baseline = LayoutChecks(new D3SlabInput(), "Default");
             Check(baseline.OverlapMm > 0, "Default exercises secondary overlap");

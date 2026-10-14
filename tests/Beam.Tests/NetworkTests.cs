@@ -9,7 +9,7 @@ internal static class NetworkTests
     public static void Run()
     {
         var common=new TowerInput {AllowCustomH20Lengths=true,AllowSeparateSlabFallback=false,LengthMm=6750,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350};
-        var input=new TransferNetworkInput {UpperSpacingMm=200,Beams=new[] {new TransferBeamRow {WidthMm=1100,DepthMm=1750},new TransferBeamRow {WidthMm=1100,DepthMm=1200},new TransferBeamRow {WidthMm=900,DepthMm=1500}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=300},new TransferBayRow {WidthMm=3500,ThicknessMm=250}}};
+        var input=new TransferNetworkInput {UpperSpacingMm=250,Beams=new[] {new TransferBeamRow {WidthMm=800,DepthMm=1750},new TransferBeamRow {WidthMm=800,DepthMm=1200},new TransferBeamRow {WidthMm=900,DepthMm=1500}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=300},new TransferBayRow {WidthMm=3500,ThicknessMm=250}}};
         var timer=System.Diagnostics.Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,input);
         Check(result.Beams.All(b=>b.Transfer.LowerCases.SelectMany(c=>c).All(m=>m.H20Count==1 && m.Utilization<=1+1e-8)),"single lower secondaries checked in every beam and stage");
         Check(result.Beams.Length==3 && result.Bays.Length==2,"extended slab/beam chain");
@@ -22,8 +22,8 @@ internal static class NetworkTests
             Near(beam.Transfer.BeamLoadKn,beamLoad,"each beam depth produces its own physical beam concrete load");
             Check(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad-1e-7,"lower secondary design retains full end tributaries");
             Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r>=-1e-7 && r<=common.LegCapacityKn+1e-8),"each beam's legs checked");
-            Check(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"primary UDL covers physical beam, shutter and slab load");
-            Check(beam.TotalSupportedLoadKn>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"summary includes the full beam and transferred slab load");
+            Check(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)+beam.Transfer.ColumnSupportLoadKn(beam.Transfer.CaseNames.Length-1)>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"primary UDL covers physical beam, shutter and slab load");
+            Check(beam.TotalSupportedLoadKn+beam.Transfer.ColumnSupportLoadKn(beam.Transfer.CaseNames.Length-1)>=beamLoad+beam.Transfer.SlabLoadKn-1e-7,"summary includes the full beam and transferred slab load");
             Near(beam.TotalLegCapacityKn,beam.LegCount*common.LegCapacityKn,"summary counts each tower leg once");
             Near(beam.SupportEfficiencyPercent,100*beam.TotalSupportedLoadKn/(beam.LegCount*common.LegCapacityKn),"combined design-load efficiency");
             double applied=beam.TotalSupportedLoadKn;
@@ -62,7 +62,7 @@ internal static class NetworkTests
         var braceJoins=TowerOptimizer.RemoveRedundantJoins(new[] {true,true,true,true},bracePositions,false);
         Check(braceJoins.SequenceEqual(new[] {true,false,true,true}),"five frames split into one standalone and one joined tower with three cross bays");
         Check(TowerOptimizer.RemoveRedundantJoins(new[] {true,true,true,true},new[] {150.0,750,1350,1950,2550},true).All(j=>j),"five 600 frames stay joined when standalone 600 bays are excluded");
-        var crossingInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=200,
+        var crossingInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=250,
             CrossingBeams=new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,BayNumber=1,PositionMm=3175,WidthMm=400,DepthMm=350}}};
         Near(crossingInput.AreaLoad(300),9.4,"default slab area load includes one set of allowances");
         Near(crossingInput.AreaLoad(1750),46.65,"default deep beam load clamps 10 percent surcharge to 1.75");
@@ -70,7 +70,9 @@ internal static class NetworkTests
         Near(custom.AreaLoad(300),10,"custom allowances replace the defaults");
         var widths=TransferNetworkOptimizer.EffectiveWidthsMm(common,crossingInput,0,6700,0);
         Near(widths.Sum(),common.LengthMm+400*(crossingInput.AreaLoad(350)-9.4)/9.4,"crossing footprint replaces the slab once, with force conservation");
-        Check(widths.Count(w=>w>200+1e-8)<=2,"crossing weight is local to rows beneath its footprint");
+        var noCrossing=new TransferNetworkInput {Beams=crossingInput.Beams,Bays=crossingInput.Bays,UpperSpacingMm=crossingInput.UpperSpacingMm};
+        var baselineWidths=TransferNetworkOptimizer.EffectiveWidthsMm(common,noCrossing,0,6700,0);
+        Check(widths.Zip(baselineWidths,(w,b)=>w-b).Count(w=>w>1e-8)<=2,"crossing increment is local, independently of longitudinal slab end-strip effects");
         var crossed=TransferNetworkOptimizer.Optimize(common,crossingInput);
         double crossingLength=common.LengthMm;
         double expectedCrossing=9.4*crossingInput.Bays[0].WidthMm/1000*crossingLength/1000+(crossingInput.AreaLoad(350)-9.4)*.4*crossingInput.Bays[0].WidthMm/1000;
@@ -130,14 +132,14 @@ internal static class NetworkTests
         var plan=customResult.Bays[0];plan.Reverse().Validate(2575,common.StockLengthsMm,true);
         bool invalidCustom=false;try {new UpperTransferPlan {StockLengthMm=2176,EdgeMm=199.5,NearFootMm=600,FarFootMm=350,IsCustomLength=true}.Validate(2575,common.StockLengthsMm);}catch(ArgumentException){invalidCustom=true;}
         Check(invalidCustom,"invalid custom length and edge cannot bypass shared-plan validation");
-        var overloadInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=200,CrossingBeams=new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,WidthMm=400,DepthMm=10000,PositionMm=3175}}};
+        var overloadInput=new TransferNetworkInput {Beams=input.Beams.Take(2).ToArray(),Bays=input.Bays.Take(1).ToArray(),UpperSpacingMm=250,CrossingBeams=new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,WidthMm=400,DepthMm=2000,PositionMm=3175}}};
         TowerOptimizationException failure=null;try {TransferNetworkOptimizer.Optimize(common,overloadInput);}catch(TowerOptimizationException ex){failure=ex;}
         Check(failure!=null && failure.Details.Contains("S1 slab H20") && failure.Details.Contains("moment") && failure.Details.Contains("shear") && failure.Details.Contains("deflection") && failure.Details.Contains("T") && failure.Details.Contains("L/350"),"crossing overload reports member, actual row, demand, capacity and deflection criterion");
         Check(failure.Details.Contains("examples may come from different layouts"),"diagnostic samples do not pretend to form one alternative layout");
         overloadInput.CrossingBeams=new TransferCrossingBeamRow[0];TransferNetworkOptimizer.Optimize(common,overloadInput);
         overloadInput.Bays[0]=new TransferBayRow {WidthMm=3900,ThicknessMm=300};common.StockLengthsMm=new[] {1250.0};common.AllowCustomH20Lengths=false;failure=null;try {TransferNetworkOptimizer.Optimize(common,overloadInput);}catch(TowerOptimizationException ex){failure=ex;}
         Check(failure!=null && !failure.Details.Contains("S1 slab H20 · moment") && failure.Details.Contains("Numerical checks recorded: 0"),"reusing a snapshot starts a new diagnostic run");
-        var legInput=new TowerInput {LengthMm=6750,LegCapacityKn=1,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,TransferredSlab=new TransferredSlabInput {BeamWidthMm=1100,BeamLineLoadKnM=50,UpperSpacingMm=200,LeftBayMm=3900,LeftAreaLoadKnM2=9.4}};
+        var legInput=new TowerInput {LengthMm=6750,LegCapacityKn=1,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,TransferredSlab=new TransferredSlabInput {BeamWidthMm=300,BeamLineLoadKnM=2,UpperSpacingMm=250,LeftBayMm=1800,LeftAreaLoadKnM2=2.5}};
         failure=null;try {TransferredSlabOptimizer.Optimize(legInput);}catch(TowerOptimizationException ex){failure=ex;}
         Check(failure!=null && failure.Details.Contains("leg load") && failure.Details.Contains("peak leg x=") && failure.Details.Contains("/ 1 kN"),"leg overload reports exact line, load case, support station and permissible load");
         var responseCheck=LoadedBeamAnalysis.Analyze(1000,new[] {0.0,1000},new[] {new BeamDistributedLoad {StartMm=0,EndMm=1000,KnPerM=120}},null,TowerOptimizer.PairEI/2,350);

@@ -145,10 +145,7 @@ namespace EngineeringDashboard
             else
             {
                 int encoded=SelectedRun-runs-t.RowsMm.Length,row=encoded/2,side=encoded%2;
-                var original=t.UpperMembers.Single(x=>x.Name==(side==0 ? "Upper left" : "Upper right"));
-                double scale=t.UpperScale(side==0,row)/Math.Max((side==0 ? t.LeftUpperScales : t.RightUpperScales).Max(),t.EnteredUpperSpacingMm/1000);
-                m=new TransferMember {Name=original.Name+" · T"+(row+1),LoadCase=original.LoadCase,LengthMm=original.LengthMm,SupportsMm=original.SupportsMm,Points=original.Points,
-                    H20Count=original.H20Count,Uniform=original.Uniform.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM*scale}).ToArray(),Analysis=original.Analysis.Scale(scale)};
+                m=t.UpperMemberAtRow(side==0,row);
             }
             SelectedTransferMember=m; ActualLoadedAnalysis=m.Analysis; Analysis=null;
             bool primary=SelectedRun<runs;
@@ -172,7 +169,8 @@ namespace EngineeringDashboard
             if(primary)
                 charts.Children.Add(new Border {Background=new SolidColorBrush(Color.FromRgb(255,246,219)),Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
                     Child=new TextBlock {Text="UDL design model · full secondary tributaries; crossing loads remain over their footprints.",TextWrapping=TextWrapping.Wrap}});
-            charts.Children.Add(new TextBlock {Text=$"Maximum secondary spacing {t.EnteredUpperSpacingMm:0.###} mm · full tributary design",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
+            string spacingLabel=upper ? UpperSpacingLabel(t,SelectedRun-runs-t.RowsMm.Length) : $"Nominal beam secondary spacing {t.EnteredUpperSpacingMm:0.###} mm; local receiving gaps can be shorter.";
+            charts.Children.Add(new TextBlock {Text=spacingLabel,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
             charts.Children.Add(new TextBlock {Text=CaseLabel(m.LoadCase)+(m.IsWS10 ? " · load on this WS10 " : m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN · utilization "+m.Utilization.ToString("P1")+(SelectedLoadCase==governing && !upper ? " · governing case" : ""),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
             if(!upper) {AddCheckedCases(t.CaseNames,cases,governing);CheckedCasesDetails.IsExpanded=detailsExpanded;}
             AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
@@ -181,6 +179,11 @@ namespace EngineeringDashboard
             LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);
             AddChart("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,true);
             AddResponseCharts(m,primary);
+        }
+        private static string UpperSpacingLabel(TransferredSlabResult t,int encoded)
+        {
+            int row=encoded/2;bool left=encoded%2==0;
+            return t.UpperSpacingDescription(left,row);
         }
         private string CaseLabel(string value)
         {

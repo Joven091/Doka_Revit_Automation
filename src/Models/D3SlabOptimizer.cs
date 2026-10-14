@@ -60,20 +60,20 @@ namespace EngineeringDashboard
         public double PeakLegKn => LegLoads.Cast<double>().Max();
         public double Utilization => Math.Max(PeakLegKn / LegCapacityKn, Members.Max(x => Math.Max(x.Analysis.DeflectionUtilization, Math.Max(x.Analysis.MomentKnM / (x.Primary ? 10 : 5), x.Analysis.ShearKn / (x.Primary ? 22 : 11)))));
         public double OverlapMm => SecondaryStock.Sum(x => x.LengthMm) - CoveredWidthMm;
-        public string Summary => $"{LegCount} legs · {PrimaryH20Count} primary H20s · {SecondaryH20Count} secondary H20s\nSecondary spacing {SecondarySpacingMm:0} mm · timber {H20LengthMm / 1000:0.00} m\nCovered area {CoveredAreaM2:0.00} m² · load {AreaLoadKnM2:0.00} kN/m²\nPeak leg {PeakLegKn:0.00}/{LegCapacityKn:0.00} kN · governing utilization {Utilization * 100:0.0}%";
-        public string SearchNote => "Best valid layout found in a bounded grid/stock search; global minimum is not proven.";
+        public string Summary => $"{LegCount} legs · {PrimaryH20Count} primary H20s · {SecondaryH20Count} secondary H20s\nNominal slab-secondary design spacing {SecondarySpacingMm:0} mm · timber {H20LengthMm / 1000:0.00} m\nCovered area {CoveredAreaM2:0.00} m² · load {AreaLoadKnM2:0.00} kN/m²\nPeak leg {PeakLegKn:0.00}/{LegCapacityKn:0.00} kN · governing utilization {Utilization * 100:0.0}%";
+        public string SearchNote => "Largest passing nominal secondary spacing; best valid layout at that spacing in a bounded grid/stock search. Global minimum is not proven.";
         public string Schedule => string.Join("\n", Members.Select((m, i) => $"{(m.Primary ? "P" : "S")}{i + 1}: {(m.Primary ? "2 ×" : "1 ×")} {m.Stock.LengthMm:0} mm · line {m.Line + 1} · stock {m.Stock.StartMm:0}–{m.Stock.EndMm:0} mm · M {m.Analysis.MomentKnM:0.00} kNm · V {m.Analysis.ShearKn:0.00} kN · d {m.Analysis.DeflectionMm:0.00} mm · deflection {m.Analysis.DeflectionUtilization * 100:0.0}%"));
         public string LegSchedule => string.Join("\n", Enumerable.Range(0, PrimaryLinesMm.Length).SelectMany(y => Enumerable.Range(0, StationsMm.Length).Select(x => $"Leg {y * StationsMm.Length + x + 1}: x={StationsMm[x] + EdgeXmm:0}, y={PrimaryLinesMm[y] + EdgeYmm:0} mm · {LegLoads[y, x]:0.00}/{LegCapacityKn:0.00} kN")));
     }
     public static class D3SlabOptimizer
     {
-        public static readonly double[] SecondarySpacingsMm = { 488, 407, 350, 305, 275 };
+        public static readonly double[] SecondarySpacingsMm = PlywoodSpacing.StandardSpacingsMm.ToArray();
         private sealed class Longitudinal { public D3SlabStock[] Stock; public double[] Supports; public bool[] Joined; }
         private sealed class Secondary { public D3SlabStock[] Stock; public LoadedBeamAnalysis[] Analysis; public double[] LineReactions, Lines; }
         public static D3SlabLayout Optimize(D3SlabInput input, Func<bool> cancelled = null)
         {
             input.Validate(); D3SlabLayout best = null; int tested = 0;
-            // Both slab directions, tower orientations and all five secondary spacings are tested.
+            // Both slab directions, tower orientations and all six permitted secondary spacings are tested.
             for (int axis = 0; axis < 2; axis++)
             {
                 double x = axis == 0 ? input.LengthMm : input.WidthMm, y = axis == 0 ? input.WidthMm : input.LengthMm;
@@ -107,7 +107,8 @@ namespace EngineeringDashboard
                                                     var secondary = CheckSecondary(secondaryStock, coveredY, lines, input, spacing / 1000 * input.AreaLoad);
                                                     if (secondary == null) continue;
                                                     var candidate = Evaluate(input, axis == 1, rotation == 1, width, longitudinal, secondary, rowPositions, spacing, coveredY, edge);
-                                                    if (candidate != null && (best == null || Better(candidate, best))) best = candidate;
+                                                    if (candidate != null && (best == null || candidate.SecondarySpacingMm>best.SecondarySpacingMm
+                                                        || candidate.SecondarySpacingMm==best.SecondarySpacingMm && Better(candidate, best))) best = candidate;
                                                 }
                                             }
                                         }
@@ -211,6 +212,10 @@ namespace EngineeringDashboard
         private static bool Pass(LoadedBeamAnalysis a, double moment, double shear) => a.MomentKnM <= moment + 1e-8 && a.ShearKn <= shear + 1e-8 && a.DeflectionUtilization <= 1 + 1e-8 && a.Reactions.Min() >= -1e-7;
         private static D3SlabLayout Evaluate(D3SlabInput input, bool swap, bool rotated, double width, Longitudinal plan, Secondary secondary, double[] rows, double spacing, double coveredY, double edgeY)
         {
+            // A newly admitted spacing can place a bearer at a zero-reaction boundary.
+            // Reject upward primary loads (including negative roundoff), retaining the
+            // analysis solver's strict nonnegative load contract and all bearing checks.
+            if(secondary.LineReactions.Any(q=>q<0))return null;
             var members = new List<D3SlabMember>(); var legs = new double[secondary.LineReactions.Length, plan.Supports.Length];
             double coverX = plan.Stock.Sum(s => s.LengthMm);
             if (plan.Stock.Skip(1).Any(p => rows.Any(x => Math.Abs(x - p.StartMm) < 40))) return null;

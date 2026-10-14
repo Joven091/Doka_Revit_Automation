@@ -11,7 +11,7 @@ internal static class SearchReuseTests
     static void Check(bool condition,string message) {checks++;if(!condition)throw new Exception("Search reuse: "+message);}
     static long Counter(BeamSearchTrace trace,string name) => long.Parse(trace.Snapshot().Split('\n').Single(x=>x.StartsWith(name+": ")).Substring(name.Length+2));
     static TowerInput Common(bool reuse,bool custom=false) => new TowerInput {LengthMm=2450,LegCapacityKn=70,StockLengthsMm=new[] {1250.0,1800,2450},StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=270,AllowCustomH20Lengths=custom,ReuseSearchWork=reuse,SearchByLegTier=false,PruneNetworkBounds=false,ReuseTransverseNumerics=false,LazySearchDiagnostics=false,Trace=new BeamSearchTrace("reuse regression")};
-    static TransferNetworkInput Network(bool crossing=false) => new TransferNetworkInput {UpperSpacingMm=200,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=350,DepthMm=250},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100},new TransferBayRow {WidthMm=1850,ThicknessMm=100}},CrossingBeams=crossing ? new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,BayNumber=1,PositionMm=1200,WidthMm=500,DepthMm=150}} : new TransferCrossingBeamRow[0]};
+    static TransferNetworkInput Network(bool crossing=false) => new TransferNetworkInput {UpperSpacingMm=250,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=350,DepthMm=250},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100},new TransferBayRow {WidthMm=1850,ThicknessMm=100}},CrossingBeams=crossing ? new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,BayNumber=1,PositionMm=1200,WidthMm=500,DepthMm=150}} : new TransferCrossingBeamRow[0]};
     static string Signature(TransferNetworkResult result) => string.Join("\n",result.Beams.Select(b=>b.StockSchedule+"\n"+b.Transfer.Schedule+"\n"+string.Join(";",b.PositionsMm)+"\n"+string.Join(";",b.Joined)))+"\n"+result.Summary;
     static double[] Demands(TransferNetworkResult result) => result.Beams.SelectMany(b=>b.Transfer.PrimaryCases.Concat(b.Transfer.LowerCases).SelectMany(c=>c).Concat(b.Transfer.UpperMembers)).SelectMany(m=>new[] {m.Analysis.MomentKnM,m.Analysis.ShearKn,m.Analysis.DeflectionMm,m.Analysis.DeflectionUtilization,m.Analysis.TotalLoadKn}.Concat(m.Analysis.Reactions)).ToArray();
     static void Compare(bool custom,bool crossing)
@@ -115,7 +115,7 @@ internal static class SearchReuseTests
             }
         }
         var capped=Common(true);capped.NetworkLegCeiling=2;
-        capped.TransferredSlab=new TransferredSlabInput {IsNetwork=true,BeamWidthMm=300,BeamLineLoadKnM=1.5,UpperSpacingMm=200};
+        capped.TransferredSlab=new TransferredSlabInput {IsNetwork=true,BeamWidthMm=300,BeamLineLoadKnM=1.5,UpperSpacingMm=250};
         bool failed=false;try {TransferredSlabOptimizer.Optimize(capped);}catch(TowerOptimizationException){failed=true;}
         Check(failed,"a constrained solve cannot return a layout above its leg ceiling");
         capped.NetworkLegCeiling=int.MaxValue;

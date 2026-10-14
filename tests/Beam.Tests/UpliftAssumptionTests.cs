@@ -19,8 +19,8 @@ internal static class UpliftAssumptionTests
             double applied=(m.Points??new BeamPointLoad[0]).Sum(p=>p.Kn*p.PositionMm/1000)+(m.Uniform??new BeamDistributedLoad[0]).Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000*(q.EndMm+q.StartMm)/2000);
             Near(moment,applied,"signed moment equilibrium");
         }
-        Near(b.Transfer.PrimaryCases[0].Sum(m=>m.Analysis.TotalLoadKn),b.Transfer.BeamLoadKn,"beam-only UDL preserves covered beam load");
-        Check(b.Transfer.PrimaryCases.Max(c=>c.Sum(m=>m.Analysis.TotalLoadKn))>=b.Transfer.BeamLoadKn+b.Transfer.SlabLoadKn-1e-6,"primary UDL covers physical beam and slab reference load");
+        Near(b.Transfer.PrimaryCases[0].Sum(m=>m.Analysis.TotalLoadKn)+b.Transfer.ColumnSupportLoadKn(0),b.Transfer.BeamLoadKn,"beam-only UDL preserves covered beam load");
+        Check(b.Transfer.PrimaryCases.Select((c,i)=>c.Sum(m=>m.Analysis.TotalLoadKn)+b.Transfer.ColumnSupportLoadKn(i)).Max()>=b.Transfer.BeamLoadKn+b.Transfer.SlabLoadKn-1e-6,"primary UDL covers physical beam and slab reference load");
         for(int i=0;i<b.PositionsMm.Length;i++)for(int line=0;line<2;line++)
         {
             var values=b.Transfer.PrimaryCases.SelectMany(c=>c).Where(m=>m.Name.EndsWith(line==0 ? " L" : " R"))
@@ -59,7 +59,7 @@ internal static class UpliftAssumptionTests
         var uplift=new TransferMember {Name="signed subset",H20Count=2,Analysis=LoadedBeamAnalysis.AnalyzeSigned(1000,new[] {150.0,850},null,new[] {new BeamPointLoad {PositionMm=100,Kn=-.2},new BeamPointLoad {PositionMm=900,Kn=1}},TowerOptimizer.PairEI,270)};
         var reported=new TransferMember();
         input.IgnoreUplift=false;
-        Check(!CrossBeamSupportOptimizer.Pass(uplift,input,"test") && !CrossBeamSupportOptimizer.Envelope(input,uplift,new TransferMember[0],70,reported),"cross member and subset uplift rejected by default");
+        Check(input.IgnoreUplift && CrossBeamSupportOptimizer.Pass(uplift,input,"test") && CrossBeamSupportOptimizer.Envelope(input,uplift,new TransferMember[0],70,reported),"legacy false cannot reject cross member or subset for uplift");
         input.IgnoreUplift=true;
         Check(CrossBeamSupportOptimizer.Pass(uplift,input,"test") && CrossBeamSupportOptimizer.Envelope(input,uplift,new TransferMember[0],70,reported),"cross member and subset uplift-only failures explicitly excluded");
         Near(reported.SubsetMinimumReactionsKn.Min(),uplift.Analysis.Reactions.Min(),"subset retains negative reaction bound");
@@ -77,7 +77,7 @@ internal static class UpliftAssumptionTests
         {
             var common=new TowerInput {IgnoreUplift=true,LengthMm=2450,LegCapacityKn=70,DeflectionDenominator=350,MaximumConcreteEndOverhangMm=0,AllowSeparateSlabFallback=false,NetworkSearchWorkers=1};
             if(mode==CrossBeamSupportMode.DedicatedTowers)common.MaximumConcreteEndOverhangMm=300; // Independent below-main crossing must clear the side shutters at both ends.
-            var network=new TransferNetworkInput {UpperSpacingMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=mode==CrossBeamSupportMode.DedicatedTowers ? -1400 : -400,SupportMode=mode}}};
+            var network=new TransferNetworkInput {UpperSpacingMm=250,LocalRowGapMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=mode==CrossBeamSupportMode.DedicatedTowers ? -1400 : -400,SupportMode=mode}}};
             var result=TransferNetworkOptimizer.Optimize(common,network);
             var cross=result.CrossSupports.Single();
             var layouts=result.Beams.Concat(cross.Towers==null ? new TowerLayout[0] : new[] {cross.Towers}).ToArray();
@@ -100,13 +100,16 @@ internal static class UpliftAssumptionTests
     {
         MandatoryMemberChecks();
         ModernCrossChecks();
-        Check(!new TowerInput().IgnoreUplift && new BeamCalculatorViewModel().IgnoreUplift,"core bearing checks remain available; calculator uplift exclusion is fixed on");
+        Check(new TowerInput().IgnoreUplift && new BeamCalculatorViewModel().IgnoreUplift,"search and calculator uplift exclusion are fixed on");
         var positions=new[] {150.0,750,1350};var joined=new[] {true,true};
         var input=new TowerInput {LengthMm=3000,StockLengthsMm=new[] {3000.0},TotalLineLoad=.5,LegCapacityKn=70,DeflectionDenominator=270};
-        Check(TowerOptimizer.Evaluate(input,positions,joined,1524,false)==null,"uplift-only geometry rejected by default");
+        input.IgnoreUplift=false;
+        var legacy=TowerOptimizer.Evaluate(input,positions,joined,1524,false);
+        Check(legacy!=null && legacy.MinimumReactionKn<0,"legacy false retains uplift-only geometry and signed reactions");
         input.IgnoreUplift=true;
         var layout=TowerOptimizer.Evaluate(input,positions,joined,1524,false);
-        Check(layout!=null && layout.MinimumReactionKn<0 && layout.UpliftSummary.Contains("assumed by the user"),"opt-in retains actual negative reactions and labels assumption");
+        Check(layout!=null && layout.MinimumReactionKn<0 && layout.UpliftSummary.Contains("assumed by the user"),"search retains actual negative reactions and labels assumption");
+        Check(layout.UpliftSummary.Contains("conditional on separate support/anchorage verification") && layout.UpliftSummary.Contains("bearing-only supports cannot carry tension"),"visible warning makes tensile restraint conditional");
         Near(layout.LeftReactions.Sum()+layout.RightReactions.Sum(),1.5,"signed tower reactions conserve load");
         input.LegCapacityKn=.01;Check(TowerOptimizer.Evaluate(input,positions,joined,1524,false)==null,"leg capacity still rejects");
         input.LegCapacityKn=70;input.TotalLineLoad=100;Check(TowerOptimizer.Evaluate(input,positions,joined,1524,false)==null,"strength/deflection still reject");
@@ -141,7 +144,7 @@ internal static class UpliftAssumptionTests
             try
             {
                 var result=TransferNetworkOptimizer.Optimize(common,network);
-                Check(ignore,"reported case remains rejected under default bearing-only assumptions");
+                Check(common.IgnoreUplift,"legacy input cannot enable uplift rejection");
                 Check(!result.RequiresSeparateSlabFormwork,"all entered bays calculated");
                 foreach(var b in result.Beams)Engineering(b);
                 Console.WriteLine($"Reported 6900 mm case: IgnoreUplift={ignore}; {timer.Elapsed.TotalSeconds:0.00}s; {result.Summary}");
@@ -151,8 +154,8 @@ internal static class UpliftAssumptionTests
             catch(TowerOptimizationException ex)
             {
                 Console.WriteLine($"Reported 6900 mm case: IgnoreUplift={ignore}; no solution; {timer.Elapsed.TotalSeconds:0.00}s; {ex.Message}");
-                if(ignore)Check(!ex.Details.Contains("uplift:"),"excluded uplift removed while remaining checks reject at 275 mm");
-                else Check(ex.Details.Contains("uplift:"),"reported default failure reproduced");
+                Check(!ex.Details.Contains("uplift:"),"excluded uplift removed while remaining checks reject at 275 mm");
+                throw; // This reported regression must find a fully checked solution.
             }
         }
         common.IgnoreUplift=true;
