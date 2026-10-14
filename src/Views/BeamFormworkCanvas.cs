@@ -34,6 +34,7 @@ namespace EngineeringDashboard
         internal int DrawnSpacingDimensionCount {get;private set;}
         internal int DrawnH20ProfileCount {get;private set;}
         internal readonly List<Rect> AnnotationBounds=new List<Rect>();
+        internal readonly List<Tuple<Rect,double>> HorizontalDimensionLabels=new List<Tuple<Rect,double>>();
         private readonly List<Tuple<Rect,FormworkObject,int,string>> dimensions=new List<Tuple<Rect,FormworkObject,int,string>>();
         internal event Action SelectionChanged;
         internal event Action<FormworkObject,int,string> DimensionSelected;
@@ -219,8 +220,10 @@ namespace EngineeringDashboard
                 // Preserve focused setting-out values: move crowded labels to a clear lane,
                 // with a leader linking each displaced label back to its measured segment.
                 double dx=measured.Width+16,dy=measured.Height+6;
-                foreach(var offset in new[] {new Vector(-dx,0),new Vector(dx,0),new Vector(0,-dy),new Vector(0,dy),
-                    new Vector(-dx,-dy),new Vector(-dx,dy),new Vector(dx,-dy),new Vector(dx,dy)})
+                var lanes=vertical
+                    ? new[] {new Vector(-dy,0),new Vector(0,-dx),new Vector(0,dx),new Vector(-dy,-dx),new Vector(-dy,dx)}
+                    : new[] {new Vector(-dx,0),new Vector(dx,0),new Vector(0,-dy),new Vector(-dx,-dy),new Vector(dx,-dy),new Vector(0,-2*dy),new Vector(-dx,-2*dy),new Vector(dx,-2*dy)};
+                foreach(var offset in lanes)
                 {
                     label=initial+offset;
                     if(Label(dc,text,label,colour,!vertical,vertical)){placed=true;break;}
@@ -230,12 +233,13 @@ namespace EngineeringDashboard
             if(!placed)return false;
             dc.DrawLine(new Pen(colour,1),a,b);
             foreach(var point in new[] {a,b})dc.DrawLine(new Pen(colour,1),point+(vertical ? new Vector(-4,0) : new Vector(0,-4)),point+(vertical ? new Vector(4,0) : new Vector(0,4)));
+            if(!vertical)HorizontalDimensionLabels.Add(Tuple.Create(AnnotationBounds.Last(),Math.Min(a.Y,b.Y)));
             if(field!=null)dimensions.Add(Tuple.Create(AnnotationBounds.Last(),kind,index,field));
             return true;
         }
         protected override void OnRender(DrawingContext dc)
         {
-            base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();SpacingTargets.Clear();dimensions.Clear();AnnotationLabels.Clear();AnnotationBounds.Clear();annotations.Clear();AcrossDimensions.Clear();DrawnSpacingDimensionCount=DrawnH20ProfileCount=0;CrossingSettingOut.Clear();DrawnLegCount=DrawnCrossH20Count=DrawnBracedBayCount=0;
+            base.OnRender(dc);ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();SpacingTargets.Clear();dimensions.Clear();AnnotationLabels.Clear();AnnotationBounds.Clear();HorizontalDimensionLabels.Clear();annotations.Clear();AcrossDimensions.Clear();DrawnSpacingDimensionCount=DrawnH20ProfileCount=0;CrossingSettingOut.Clear();DrawnLegCount=DrawnCrossH20Count=DrawnBracedBayCount=0;
             DrawnSecondaryH20Count=0;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if(!ValidGeometry()) {Label(dc,"Correct geometry to draw the plan.",new Point(30,30));foreach(var annotation in annotations)dc.DrawDrawing(annotation);return;}
@@ -493,10 +497,11 @@ namespace EngineeringDashboard
             if(ShowSecondaryH20s && layout.Transfer!=null)
             {
                 var t=layout.Transfer;int runs=layout.StockPlan.Pieces.Length;
-                for(int row=0;row<t.RowsMm.Length;row++)
+                for(int physical=0;physical<t.PhysicalRowCount;physical++)
                 {
+                    int row=t.PhysicalRowDesignIndex(physical);double station=t.PhysicalRowPosition(physical);
                     var m=t.LowerCases[0][row];int encoded=runs+row;
-                    var first=Screen(t.RowsMm[row],centre+m.StartMm);var last=Screen(t.RowsMm[row],centre+m.StartMm+m.LengthMm);
+                    var first=Screen(station,centre+m.StartMm);var last=Screen(station,centre+m.StartMm+m.LengthMm);
                     H20Drawing.Plan(dc,first,last,1,memberBeam==beam && memberRun==encoded);
                     MemberTargets.Insert(0,Tuple.Create(MemberHit(first,last),beam,encoded,0));DrawnSecondaryH20Count++;
                     for(int side=0;side<2;side++)

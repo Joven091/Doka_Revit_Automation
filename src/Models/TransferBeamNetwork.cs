@@ -226,13 +226,13 @@ namespace EngineeringDashboard
         public bool RequiresSeparateSlabFormwork=>SeparateSlabCount>0;
         public string SeparateSlabNotice=>!RequiresSeparateSlabFormwork ? "" : "Separate slab formwork required: "+string.Join(", ",Bays.Select((b,i)=>b==null ? "S"+(i+1) : null).Where(x=>x!=null))+". Its supports, timber and design are excluded from this result; these bays transfer no slab or shutter load to the calculated beams. Legacy crossing loads are excluded; dedicated cross-beam formwork is calculated separately.";
         public int UpperFootCount=>Enumerable.Range(0,Bays.Length).Sum(b=>SlabRowCount(b)*2);
-        public double TimberMm=>Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.RowsMm.Length*b.Transfer.LowerStockLengthMm)+Enumerable.Range(0,Bays.Length).Sum(b=>(Bays[b]?.StockLengthMm??0)*SlabRowCount(b))+CrossSupports.Sum(c=>c.TimberMm);
+        public double TimberMm=>Beams.Sum(b=>b.StockPlan.TotalStockLengthMm+b.Transfer.PhysicalRowCount*b.Transfer.LowerStockLengthMm)+Enumerable.Range(0,Bays.Length).Sum(b=>(Bays[b]?.StockLengthMm??0)*SlabRowCount(b))+CrossSupports.Sum(c=>c.TimberMm);
         public int WS10Count=>Beams.Sum(b=>b.StockPlan.WS10Count)+CrossSupports.Sum(c=>c.WS10Count);
         public double WS10LengthMm=>Beams.Where(b=>b.Primary.IsWS10).Sum(b=>b.StockPlan.PrimaryLengthMm)+CrossSupports.Sum(c=>c.WS10LengthMm);
         public double MaterialMm=>TimberMm+WS10LengthMm;
         public double EconomyScoreMm=>LegCount*TowerOptimizer.TowerLegTimberEquivalentMm+UpperFootCount*TowerOptimizer.UpperFootTimberEquivalentMm+MaterialMm;
         public double SymmetryErrorMm=>AllTowers.Sum(b=>b.SymmetryErrorMm);
-        public int H20Count=>Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.RowsMm.Length)+Enumerable.Range(0,Bays.Length).Sum(SlabRowCount)+CrossSupports.Sum(c=>c.H20Count);
+        public int H20Count=>Beams.Sum(b=>b.StockPlan.TotalH20Count+b.Transfer.PhysicalRowCount)+Enumerable.Range(0,Bays.Length).Sum(SlabRowCount)+CrossSupports.Sum(c=>c.H20Count);
         public string SecondarySpacingNotice=>Input.HasIndividualSpacings ? string.Join("; ",Input.BeamSpacingsMm.Select((x,i)=>$"B{i+1} beam {x:0} mm").Concat(Input.SlabSpacingsMm.Select((x,i)=>$"S{i+1} slab {x:0} mm")))+". Local receiving rows can be closer to align slab feet and sheet joints." : Input.RequestedUpperSpacingMm.HasValue ? System.FormattableString.Invariant($"Secondary spacing {Input.UpperSpacingMm:0.###} mm, within entered maximum {Input.RequestedUpperSpacingMm.Value:0.###} mm; ") + (Input.PlywoodSheetLengthMm>0 ? "closer listed sheet spacing for support/member checks." : "adjusted for junction clearance.") : "";
         public double PeakLegKn=>Math.Max(Beams.Max(b=>b.MaxLegKn),CrossSupports.Select(c=>c.Towers?.MaxLegKn??0).DefaultIfEmpty().Max());
         public string Summary=>$"{Beams.Length} beams · {Bays.Length} slab bays · {LegCount} tower legs\n{H20Count} H20s{(WS10Count>0 ? $" · {WS10Count} WS10s" : "")} · {TimberMm/1000:0.00} m timber{(WS10Count>0 ? $" · {WS10LengthMm/1000:0.00} m WS10" : "")} · peak leg {PeakLegKn:0.00} kN\nSlab movement {SlabMovementMm:0.00} mm · "+(SearchTimeLimitReached ? "best checked solution found within search time limit" : "best found in bounded search")+(RequiresSeparateSlabFormwork ? "\n"+SeparateSlabNotice : "");
@@ -311,6 +311,7 @@ namespace EngineeringDashboard
                     continue;
                 }
                 CalculateMovement(candidate,worker.Trace);
+                CrossBeamSupportOptimizer.BalanceSettingOut(worker,candidate);
                 double delta=(candidate.TimberMm-current.TimberMm)/1000;
                 results.Add(new NetworkBeamOption(candidate,beam,$"Option {results.Count+1} · {seed.Item2} · {candidate.Beams[beam].LegCount} beam legs · {candidate.LegCount} total legs · {delta:+0.##;-0.##;0} m H20"));
                 if(results.Count==4)break;
@@ -319,6 +320,12 @@ namespace EngineeringDashboard
         }
         private static string Pattern(TowerLayout layout)=>string.Join(";",layout.StockPlan.Pieces.Select(p=>p.StockLengthMm.ToString("R",System.Globalization.CultureInfo.InvariantCulture)))+"|"+string.Join(";",layout.PositionsMm.Select(p=>p.ToString("R",System.Globalization.CultureInfo.InvariantCulture)))+"|"+string.Join(";",layout.Joined)+"|"+layout.WidthMm.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+"|"+layout.TransverseOffsetMm.ToString("R",System.Globalization.CultureInfo.InvariantCulture);
         public static TransferNetworkResult Optimize(TowerInput common,TransferNetworkInput input)
+        {
+            var result=OptimizeNetwork(common,input);
+            CrossBeamSupportOptimizer.BalanceSettingOut(common,result);
+            return result;
+        }
+        private static TransferNetworkResult OptimizeNetwork(TowerInput common,TransferNetworkInput input)
         {
             input.Validate(common);
             try {return PreferredShutterDetail(common,input);}
