@@ -21,7 +21,7 @@ DisableDirPage=yes
 DefaultDirName={#RevitAddinPath}
 
 ; Output settings for the final .exe
-OutputDir={#RepoRoot}artifacts\installer
+OutputDir=C:\Users\jsazon\OneDrive - Umdasch Group\Documents\GitHub\Doka_Revit_Automation\src\bin\Release\net48
 OutputBaseFilename=Install_DokaRevitAutomation
 Compression=lzma
 SolidCompression=yes
