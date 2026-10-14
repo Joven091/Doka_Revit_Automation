@@ -311,6 +311,7 @@ namespace EngineeringDashboard
                     continue;
                 }
                 CalculateMovement(candidate,worker.Trace);
+                CrossBeamSupportOptimizer.BalanceSettingOut(worker,candidate);
                 double delta=(candidate.TimberMm-current.TimberMm)/1000;
                 results.Add(new NetworkBeamOption(candidate,beam,$"Option {results.Count+1} · {seed.Item2} · {candidate.Beams[beam].LegCount} beam legs · {candidate.LegCount} total legs · {delta:+0.##;-0.##;0} m H20"));
                 if(results.Count==4)break;
