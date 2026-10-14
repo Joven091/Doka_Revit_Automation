@@ -46,6 +46,11 @@ jobs:
           tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --independent-spacing-search
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --independent-spacing-controls
+      - name: Equivalent loading and external slab ends (.NET Framework 4.8)
+        run: |
+          tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --column-slab-ends
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --equivalent-loading
       - name: Beam search reuse regression (.NET Framework 4.8)
         run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --search-reuse
       - name: Beam network economy regression (.NET Framework 4.8)

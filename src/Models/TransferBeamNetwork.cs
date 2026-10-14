@@ -792,17 +792,12 @@ namespace EngineeringDashboard
             var widths=Enumerable.Range(0,count).Select(i=>(i==count-1 ? edge+cover : (stations[i]+stations[i+1])/2)-(i==0 ? edge : (stations[i-1]+stations[i])/2)).ToArray();
             widths=CrossBeamSupportOptimizer.SlabWidths(input,bay,edge,cover,stations,widths);
             if(widths==null) {common.Diagnostics?.Geometry("slab cross exclusion",$"S{bay+1}: remaining slab strips have no H20 within the entered {input.BaySpacing(bay):0.###} mm row spacing after cross-beam exclusion.","Review secondary spacing and crossing positions/widths.");return null;}
-            // Shared timber coverage is not a concrete boundary. Transfer the full
-            // longitudinal slab end strips to the outer two actual slab H20 rows.
-            // Rows removed by modern crossings must never receive these loads.
-            if(edge>1e-7)
-            {
-                var active=Enumerable.Range(0,count).Where(i=>widths[i]>1e-7).ToArray();
-                if(active.Length<2 || stations[active[0]]>input.BaySpacing(bay)+1e-7 || common.LengthMm-stations[active.Last()]>input.BaySpacing(bay)+1e-7)
-                {common.Diagnostics?.Geometry("slab end strips",$"S{bay+1}: full-length slab end strips need two slab H20 rows and end distances within {input.BaySpacing(bay):0.###} mm.","Review shared coverage, row phase and secondary spacing.");return null;}
-                var end=TransferredSlabOptimizer.ConcreteEndStripTributaries(cover,active.Select(i=>stations[i]-edge).ToArray(),edge);
-                for(int k=0;k<active.Length;k++)widths[active[k]]+=end[k];
-            }
+            // Longitudinal slab strips outside this shared coverage are assigned
+            // to assumed external column-side supports, not added to slab rows.
+            // Crossing increments below still retain their complete footprints.
+            var activeRows=Enumerable.Range(0,count).Where(i=>widths[i]>1e-7).ToArray();
+            if(activeRows.Length>0 && (stations[activeRows[0]]<edge-1e-7 || stations[activeRows.Last()]>edge+cover+1e-7 || stations[activeRows[0]]-edge>input.BaySpacing(bay)+1e-7 || edge+cover-stations[activeRows.Last()]>input.BaySpacing(bay)+1e-7))
+            {common.Diagnostics?.Geometry("slab supported end span",$"S{bay+1}: a slab end span inside shared support coverage exceeds {input.BaySpacing(bay):0.###} mm.","Review slab rows within the supported coverage.");return null;}
             foreach(var crossing in input.CrossingBeams.Where(c=>c.BayNumber==bay+1 && c.SupportMode==CrossBeamSupportMode.LegacySlabRows))
             {
                 double lo=crossing.PositionMm-crossing.WidthMm/2,hi=crossing.PositionMm+crossing.WidthMm/2;

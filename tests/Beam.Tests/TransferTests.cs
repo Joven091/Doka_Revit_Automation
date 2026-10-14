@@ -32,11 +32,11 @@ internal static class TransferTests
         Near(t.AdditionalH20Count,t.RowsMm.Length*(1+t.UpperMembers.Length),"single slab H20 quantities");
         Check(layout.LegCount==layout.PositionsMm.Length*2 && layout.MaxLegKn<=70,"individual permissible leg checks");
         Near(t.TributaryWidthsMm.Sum(),input.LengthMm-2*layout.ConcreteEndOverhangMm,"closing tributary strips");
-        Near(t.SlabLoadKn,9.4*2677/1000*t.TributaryWidthsMm.Sum()/1000/2,"covered stock plus shutter edges reach receiving beam");
+        Near(t.SlabLoadKn,9.4*2677/1000*input.LengthMm/1000/2,"physical slab reference retains externally assigned end strips");
         for(int c=0;c<t.CaseNames.Length;c++)
         {
             var primary=t.PrimaryCases[c]; var lower=t.LowerCases[c];
-            Check(primary.Sum(m=>m.Analysis.TotalLoadKn)>=t.BeamLoadKn+(c==0 ? 0 : t.SlabLoadKn)-1e-7,"full-tributary primary design covers physical reference load");
+            Near(primary.Sum(m=>m.Analysis.TotalLoadKn)+t.ColumnSupportLoadKn(c),t.BeamLoadKn+(c==0 ? 0 : t.SlabLoadKn),"primary plus external supports conserve the physical reference load");
             foreach(var m in primary.Concat(lower).Concat(t.UpperMembers))
             {
                 Check(m.SupportsMm.Length>=2,"at least two supports per stock");
@@ -69,7 +69,7 @@ internal static class TransferTests
         var mirror=TowerOptimizer.Optimize(input);
         Check(mirror.Transfer.LeftFootMm==0 && mirror.Transfer.RightFootMm>=250,"mirrored right bay");
         // Search tie-breaks may choose different phases, so check the force transfer independently rather than requiring identical geometry.
-        Near(mirror.Transfer.SlabLoadKn,9.4*2677/1000*mirror.Transfer.TributaryWidthsMm.Sum()/2000,"right covered-area reaction");
+        Near(mirror.Transfer.SlabLoadKn,9.4*2677/1000*input.LengthMm/2000,"right physical reference includes external end supports");
         input.TransferredSlab.LeftBayMm=2677;input.TransferredSlab.LeftAreaLoadKnM2=9.4;input.Exclude600Standalone=true;
         var both=TowerOptimizer.Optimize(input);Check(both.Transfer.CaseNames.Length==4,"beam, each one-sided stage and combined load");
         Check(both.Transfer.LowerCases.All(c=>c.All(m=>m.Analysis.Reactions.All(r=>r>=-1e-7))),"two-sided cases reject bearing uplift");
@@ -84,7 +84,7 @@ internal static class TransferTests
         var custom=TowerOptimizer.Optimize(customInput);
         Near(custom.Transfer.RightUpperStockMm,2175,"single-beam mode creates same 25 mm custom fallback");
         Check(custom.Transfer.RightUpperCustom && custom.Transfer.RightUpperEdgeMm==200 && custom.Transfer.Schedule.Contains("2175 mm custom"),"single-beam custom schedule and edge clearance");
-        Near(custom.Transfer.SlabLoadKn,9.4*2.575*custom.Transfer.TributaryWidthsMm.Sum()/2000,"mirrored custom slab and shutter load conservation");
+        Near(custom.Transfer.SlabLoadKn,9.4*2.575*customInput.LengthMm/2000,"mirrored custom slab and shutter load conservation");
         input.TransferredSlab.UpperSpacingMm=double.NaN;
         try {TowerOptimizer.Optimize(input);throw new Exception("accepted invalid transfer spacing");} catch(ArgumentException) {checks++;}
         Console.WriteLine($"Transfer: {checks} checks passed");
