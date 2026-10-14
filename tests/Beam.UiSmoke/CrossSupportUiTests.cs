@@ -28,6 +28,14 @@ internal static class CrossSupportUiTests
         if(element is TransferNetworkPlan plan && plan.SectionOnly)height=(int)Math.Ceiling(element.DesiredSize.Height);
         element.Arrange(new Rect(0,0,width,height));element.UpdateLayout();
         var bitmap=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);bitmap.Render(element);
+        if(element is TransferNetworkPlan section && section.SectionOnly)
+        {
+            // A section belongs to a responsive camera viewport. Capture its
+            // current drawing at the actual size, without the parent's pan/zoom
+            // transform or a bitmap height clipped by the requested viewport.
+            var snapshot=new DrawingVisual();using(var dc=snapshot.RenderOpen())dc.DrawDrawing(VisualTreeHelper.GetDrawing(element));
+            bitmap=new RenderTargetBitmap((int)Math.Ceiling(element.ActualWidth),(int)Math.Ceiling(element.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(snapshot);
+        }
         if(path!=null) {var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=System.IO.File.Create(path))encoder.Save(file);}return bitmap;
     }
     static string Preview(string path,string name)=>string.IsNullOrEmpty(path) ? null : System.IO.Path.ChangeExtension(path,name+".png");
