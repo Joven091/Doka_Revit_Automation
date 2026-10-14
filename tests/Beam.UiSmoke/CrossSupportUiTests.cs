@@ -167,6 +167,8 @@ internal static class CrossSupportUiTests
             var schedule=Descendants(window).OfType<Expander>().Single(e=>Equals(e.Header,"Crossing support schedule and details"));Check(!schedule.IsExpanded,"long crossing schedule stays collapsed initially");
             if(count==2)Check(window.DisplayedTransferMember.Points.Length==0 && window.DisplayedTransferMember.Uniform.Length>0,"primary diagram shows the checked UDL without secondary-row point loads");
             var body=(FrameworkElement)((ScrollViewer)window.Content).Content;body.Measure(new Size(900,double.PositiveInfinity));body.Arrange(new Rect(0,0,900,body.DesiredSize.Height));body.UpdateLayout();
+            if(support.NominalSecondarySpacingMm>0)
+                Check(Descendants(body).OfType<TextBlock>().Any(t=>t.Text.StartsWith($"Nominal crossing secondary spacing {support.Towers.Transfer.EnteredUpperSpacingMm:0.###} mm;")),"crossing diagram identifies its actual selected nominal pitch");
             Capture(body,900,(int)Math.Ceiling(body.ActualHeight),Preview(previewPath,count==2 ? "current-report-primary" : "current-report-secondary"));
             var next=workspace.Section.MemberTargets.First(t=>t.Item2<0 && support.Members[t.Item3].H20Count==count && t.Item3!=window.SelectedRun);
             workspace.Section.SelectAt(new Point(next.Item1.X+next.Item1.Width/2,next.Item1.Y+next.Item1.Height/2));Pump();
