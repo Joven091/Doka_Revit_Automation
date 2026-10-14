@@ -23,7 +23,8 @@ jobs:
         shell: pwsh
         run: |
           $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
-          & $compiler installer.iss
+          $installerOutput = Join-Path $env:GITHUB_WORKSPACE 'artifacts\installer'
+          & $compiler "/O$installerOutput" installer.iss
           if ($LASTEXITCODE -ne 0) { throw 'Calculator installer compilation failed' }
       # Check slab controls and spacing before the slower beam layout previews.
       - run: dotnet run --project tests/Slab.CoreTests/Slab.CoreTests.csproj -c Release
