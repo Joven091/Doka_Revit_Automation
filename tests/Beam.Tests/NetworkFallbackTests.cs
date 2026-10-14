@@ -9,7 +9,7 @@ internal static class NetworkFallbackTests
     static void Check(bool value,string message) {checks++;if(!value)throw new Exception("Network fallback: "+message);}
     static void Near(double a,double b,string message)=>Check(Math.Abs(a-b)<1e-6*Math.Max(1,Math.Abs(b)),message);
     internal static TowerInput Common()=>new TowerInput {LengthMm=3300,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,AllowCustomH20Lengths=false};
-    internal static TransferNetworkInput Network()=>new TransferNetworkInput {UpperSpacingMm=200,
+    internal static TransferNetworkInput Network()=>new TransferNetworkInput {UpperSpacingMm=250,
         Beams=Enumerable.Range(0,3).Select(i=>new TransferBeamRow {WidthMm=400,DepthMm=500}).ToArray(),
         Bays=new[] {new TransferBayRow {WidthMm=10000,ThicknessMm=300},new TransferBayRow {WidthMm=2500,ThicknessMm=300}}};
     static void Engineering(TransferNetworkResult result)

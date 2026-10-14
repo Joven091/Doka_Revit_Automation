@@ -15,7 +15,7 @@ internal static class SearchBudgetTests
         catch(BeamSearchDeadlineException) {Check(true,message);}
     }
     static TowerInput Common()=>new TowerInput {LengthMm=2500,StockLengthsMm=new[] {1250.0,1800,2500},LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350};
-    static TransferNetworkInput Network()=>new TransferNetworkInput {UpperSpacingMm=200,
+    static TransferNetworkInput Network()=>new TransferNetworkInput {UpperSpacingMm=250,
         Beams=Enumerable.Range(0,3).Select(_=>new TransferBeamRow {WidthMm=300,DepthMm=300}).ToArray(),
         Bays=Enumerable.Range(0,2).Select(_=>new TransferBayRow {WidthMm=1800,ThicknessMm=100}).ToArray()};
     static void Engineering(TransferNetworkResult result)
@@ -60,7 +60,7 @@ internal static class SearchBudgetTests
         foreach(bool tiered in new[] {false,true})
         {
             var transfer=Common();transfer.SearchByLegTier=tiered;
-            transfer.TransferredSlab=new TransferredSlabInput {BeamWidthMm=300,BeamLineLoadKnM=2,UpperSpacingMm=200,RightBayMm=1800,RightAreaLoadKnM2=2.5};
+            transfer.TransferredSlab=new TransferredSlabInput {BeamWidthMm=300,BeamLineLoadKnM=2,UpperSpacingMm=250,RightBayMm=1800,RightAreaLoadKnM2=2.5};
             BeamSearchTrace trace=null;long firstPassingAttempt=-1;
             trace=new BeamSearchTrace("transfer deadline",searchTimeLimit:TimeSpan.FromSeconds(1),timestamp:()=>
             {

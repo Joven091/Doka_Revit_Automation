@@ -23,6 +23,12 @@ internal static class CaseDiagramUiTests
     }
     static void Render(FrameworkElement element)
     {element.Measure(new Size(900,double.PositiveInfinity));element.Arrange(new Rect(0,0,900,element.DesiredSize.Height));element.UpdateLayout();new System.Windows.Media.Imaging.RenderTargetBitmap(900,(int)Math.Ceiling(element.ActualHeight),96,96,PixelFormats.Pbgra32).Render(element);}
+    static System.Collections.Generic.IEnumerable<TextBlock> Labels(DependencyObject element)
+    {
+        if(element is TextBlock text)yield return text;
+        foreach(var child in LogicalTreeHelper.GetChildren(element).OfType<DependencyObject>())
+            foreach(var label in Labels(child))yield return label;
+    }
     public static int Run()
     {
         var primary=new[] {new[] {Member(8,"P1 L"),Member(2,"P1 R")},new[] {Member(2,"P1 L"),Member(9,"P1 R")},new[] {Member(3,"P1 L"),Member(3,"P1 R")}};
@@ -41,6 +47,24 @@ internal static class CaseDiagramUiTests
         window.SelectMember(1,0,-1);Check(window.SelectedLoadCase==1 && window.SelectedTransferMember==lower[1][0],"lower secondary has its own governing case");
         primary[2][0].SubsetShearBoundKn=21;window.SelectMember(0,0,-1);Check(window.SelectedLoadCase==2,"conservative subset bounds participate in governing selection");
         Near(((TowerDiagramWindow.CheckedCaseRow)window.CheckedCasesTable.Items[2]).Shear,21.0/22,"case details retain subset bounds");window.Close();
+
+        // Input-model fixture: the slab and lower-secondary nominal pitches differ.
+        // The window must use the solver's row response and the selected slab label.
+        foreach(bool widerSlab in new[] {true,false})
+        {
+            double slabPitch=widerSlab ? 488 : 250,beamPitch=widerSlab ? 250 : 488;
+            var slabMember=Member(2.5*slabPitch/1000,"Upper right",1);
+            var t=new TransferredSlabResult {RowsMm=new[] {40.0,240,440},RightUpperScales=new[] {.15,.20,.15},LeftUpperScales=new double[3],
+                EnteredUpperSpacingMm=beamPitch,RightSlabSpacingMm=slabPitch,UpperMembers=new[] {slabMember},CaseNames=new[] {"Beam"},
+                PrimaryCases=new[] {new[] {Member(1,"P1 L"),Member(1,"P1 R")}},LowerCases=new[] {new[] {Member(1,"T1",1),Member(1,"T2",1),Member(1,"T3",1)}}};
+            layout.Transfer=t;typeof(BeamCalculatorViewModel).GetProperty("TowerResult").SetValue(vm,layout);
+            window=new TowerDiagramWindow(vm);window.SelectMember(5,0,-1); // one primary + three lower rows + right slab T1
+            var expected=t.UpperMemberAtRow(false,0);
+            Near(window.DisplayedTransferMember.Analysis.TotalLoadKn,expected.Analysis.TotalLoadKn,"upper diagram uses slab scaling denominator");
+            Near(window.LoadedAnalysis.DeflectionMm,expected.Analysis.DeflectionMm,"upper response matches checked slab width");
+            Check(Labels((DependencyObject)window.Content).Any(x=>x.Text==t.UpperSpacingDescription(false,0)),"upper label names slab pitch, local gaps and effective width");
+            window.Close();
+        }
 
         var raw=new[] {new BeamDistributedLoad {StartMm=0,EndMm=3050,KnPerM=20.97},new BeamDistributedLoad {StartMm=3050,EndMm=3700,KnPerM=10.28625},new BeamDistributedLoad {StartMm=3700,EndMm=6750,KnPerM=20.97}}
             .Concat(new[] {6.212291763,6.690160360,6.212291763,.493513048,.531475590,.493513048}.Select(q=>new BeamDistributedLoad {StartMm=3050,EndMm=3700,KnPerM=q})).ToArray();

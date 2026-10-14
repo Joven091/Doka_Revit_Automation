@@ -35,9 +35,9 @@ internal static class CoordinatedDesignerTests
                 Check(t.SlabRowIndices.Select(i=>t.RowsMm[i]).SequenceEqual(result.SlabRowsMm),"shared slab rows remain aligned despite local beam rows");
                 double concrete=input.AreaLoad(input.Beams[beam].DepthMm)*input.Beams[beam].WidthMm*common.LengthMm/1e6;
                 Near(t.BeamLoadKn,concrete,"full beam concrete including end strips retained");
-                Near(t.PrimaryCases[Array.IndexOf(t.CaseNames,"Beam")].Sum(m=>m.Analysis.TotalLoadKn),concrete,"full beam-concrete force reaches primary UDL");
+                Near(t.PrimaryCases[Array.IndexOf(t.CaseNames,"Beam")].Sum(m=>m.Analysis.TotalLoadKn)+t.ColumnSupportLoadKn(Array.IndexOf(t.CaseNames,"Beam")),concrete,"beam-concrete force is accounted for by unadjusted primary UDL and external end supports");
                 string combined=beam==0 ? "Beam + right slab" : beam==result.Beams.Length-1 ? "Beam + left slab" : "Beam + both slabs";
-                Near(t.PrimaryCases[Array.IndexOf(t.CaseNames,combined)].Sum(m=>m.Analysis.TotalLoadKn),concrete+t.SlabLoadKn,"primary slab transfer conserves physical slab force including longitudinal end strips");
+                Near(t.PrimaryCases[Array.IndexOf(t.CaseNames,combined)].Sum(m=>m.Analysis.TotalLoadKn)+t.ColumnSupportLoadKn(Array.IndexOf(t.CaseNames,combined)),concrete+t.SlabLoadKn,"primary slab transfer conserves physical slab force including longitudinal end strips");
                 foreach(int row in Enumerable.Range(0,t.RowsMm.Length).Except(t.SlabRowIndices))
                 {
                     Near(t.UpperScale(true,row),0,"beam-only row has no left slab foot");Near(t.UpperScale(false,row),0,"beam-only row has no right slab foot");

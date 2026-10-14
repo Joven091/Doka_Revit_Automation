@@ -10,7 +10,11 @@ internal static class TransferTests
     public static void Run()
     {
         var input=new TowerInput {AllowCustomH20Lengths=true,LengthMm=6750,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,
-            TransferredSlab=new TransferredSlabInput {BeamWidthMm=1100,BeamLineLoadKnM=50,UpperSpacingMm=200,LeftBayMm=3900,LeftAreaLoadKnM2=9.4}};
+            TransferredSlab=new TransferredSlabInput {BeamWidthMm=1100,BeamLineLoadKnM=50,UpperSpacingMm=250,LeftBayMm=3900,LeftAreaLoadKnM2=9.4}};
+        bool minimumFailed=false;try {TowerOptimizer.Optimize(input);}catch(TowerOptimizationException){minimumFailed=true;}
+        Check(minimumFailed,"overloaded legacy fixture cannot fall back below the 250 mm nominal minimum");
+        // Keep the same equilibrium/capacity checks on a fixture that passes at a permitted pitch.
+        input.TransferredSlab.BeamWidthMm=800;input.TransferredSlab.BeamLineLoadKnM=37.32;input.TransferredSlab.LeftBayMm=2677;
         var layout=TowerOptimizer.Optimize(input); var t=layout.Transfer;
         Check(t!=null && t.RowsMm.Length>0,"transfer result");
         Check(t.LeftFootMm>=250 && t.RightFootMm==0,"clearance measured from concrete face to foot centre");
@@ -28,7 +32,7 @@ internal static class TransferTests
         Near(t.AdditionalH20Count,t.RowsMm.Length*(1+t.UpperMembers.Length),"single slab H20 quantities");
         Check(layout.LegCount==layout.PositionsMm.Length*2 && layout.MaxLegKn<=70,"individual permissible leg checks");
         Near(t.TributaryWidthsMm.Sum(),input.LengthMm-2*layout.ConcreteEndOverhangMm,"closing tributary strips");
-        Near(t.SlabLoadKn,9.4*3900/1000*t.TributaryWidthsMm.Sum()/1000/2,"covered stock plus shutter edges reach receiving beam");
+        Near(t.SlabLoadKn,9.4*2677/1000*t.TributaryWidthsMm.Sum()/1000/2,"covered stock plus shutter edges reach receiving beam");
         for(int c=0;c<t.CaseNames.Length;c++)
         {
             var primary=t.PrimaryCases[c]; var lower=t.LowerCases[c];
@@ -61,12 +65,12 @@ internal static class TransferTests
         var vm=new BeamCalculatorViewModel {UseTowers=true,HasLeftSlab=true,Depth=1750,Width=1100,BeamLengthMm=6750,TowerLegCapacityKn=70,TransferSlabLoads=true};
         vm.ValidateTowerInputs(); Check(vm.IsTransferMode && !vm.ShowSlabStrip,"mode selection");
         vm.HasLeftSlab=false; Check(!vm.IsTransferMode,"no selected slab restores beam-only mode");
-        input.TransferredSlab=new TransferredSlabInput {BeamWidthMm=1100,BeamLineLoadKnM=50,UpperSpacingMm=200,RightBayMm=3900,RightAreaLoadKnM2=9.4};
+        input.TransferredSlab=new TransferredSlabInput {BeamWidthMm=800,BeamLineLoadKnM=37.32,UpperSpacingMm=250,RightBayMm=2677,RightAreaLoadKnM2=9.4};
         var mirror=TowerOptimizer.Optimize(input);
         Check(mirror.Transfer.LeftFootMm==0 && mirror.Transfer.RightFootMm>=250,"mirrored right bay");
         // Search tie-breaks may choose different phases, so check the force transfer independently rather than requiring identical geometry.
-        Near(mirror.Transfer.SlabLoadKn,9.4*3900/1000*mirror.Transfer.TributaryWidthsMm.Sum()/2000,"right covered-area reaction");
-        input.TransferredSlab.LeftBayMm=3900;input.TransferredSlab.LeftAreaLoadKnM2=9.4;input.Exclude600Standalone=true;
+        Near(mirror.Transfer.SlabLoadKn,9.4*2677/1000*mirror.Transfer.TributaryWidthsMm.Sum()/2000,"right covered-area reaction");
+        input.TransferredSlab.LeftBayMm=2677;input.TransferredSlab.LeftAreaLoadKnM2=9.4;input.Exclude600Standalone=true;
         var both=TowerOptimizer.Optimize(input);Check(both.Transfer.CaseNames.Length==4,"beam, each one-sided stage and combined load");
         Check(both.Transfer.LowerCases.All(c=>c.All(m=>m.Analysis.Reactions.All(r=>r>=-1e-7))),"two-sided cases reject bearing uplift");
         for(int i=0;i<both.Joined.Length;i++) if(both.Joined[i] && Math.Abs(both.PositionsMm[i+1]-both.PositionsMm[i]-600)<1e-7)
@@ -76,7 +80,7 @@ internal static class TransferTests
         bool rejected=false;try {TowerOptimizer.Optimize(widerRows);}catch(ArgumentException){rejected=true;}
         Check(rejected,"a previously paired-secondary arrangement cannot retain the pair's stiffness/capacity after conversion to single");
         var customInput=new TowerInput {LengthMm=10600,LegCapacityKn=70,MaximumConcreteEndOverhangMm=75,DeflectionDenominator=350,Exclude600Standalone=true,
-            TransferredSlab=new TransferredSlabInput {BeamWidthMm=800,BeamLineLoadKnM=46.65*.8,UpperSpacingMm=200,RightBayMm=2575,RightAreaLoadKnM2=9.4}};
+            TransferredSlab=new TransferredSlabInput {BeamWidthMm=800,BeamLineLoadKnM=46.65*.8,UpperSpacingMm=250,RightBayMm=2575,RightAreaLoadKnM2=9.4}};
         var custom=TowerOptimizer.Optimize(customInput);
         Near(custom.Transfer.RightUpperStockMm,2175,"single-beam mode creates same 25 mm custom fallback");
         Check(custom.Transfer.RightUpperCustom && custom.Transfer.RightUpperEdgeMm==200 && custom.Transfer.Schedule.Contains("2175 mm custom"),"single-beam custom schedule and edge clearance");

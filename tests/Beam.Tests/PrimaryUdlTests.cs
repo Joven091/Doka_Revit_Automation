@@ -22,10 +22,10 @@ internal static class PrimaryUdlTests
             Check(member.Analysis.DeflectionEvaluated && member.Utilization<=1+1e-8,"all displayed UDL checks pass");
             Check(member.Analysis.Reactions.All(r=>r>=-1e-7 && r<=beam.LegCapacityKn+1e-8),"UDL tower reactions pass");
         }
-        Near(beam.Transfer.PrimaryCases[0].Sum(m=>m.Analysis.TotalLoadKn),beam.Transfer.BeamLoadKn,"beam-only primary UDL preserves covered beam load");
-        Check(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)>=beam.Transfer.BeamLoadKn+beam.Transfer.SlabLoadKn-1e-7,"full-tributary primary design covers physical beam and slab reference load");
+        Near(beam.Transfer.PrimaryCases[0].Sum(m=>m.Analysis.TotalLoadKn)+beam.Transfer.ColumnSupportLoadKn(0),beam.Transfer.BeamLoadKn,"beam-only primary UDL preserves covered beam load");
+        Check(beam.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)+beam.Transfer.ColumnSupportLoadKn(beam.Transfer.CaseNames.Length-1)>=beam.Transfer.BeamLoadKn+beam.Transfer.SlabLoadKn-1e-7,"full-tributary primary design covers physical beam and slab reference load");
         for(int row=0;row<beam.Transfer.RowsMm.Length;row++)
-            Check(beam.Transfer.UpperScale(false,row)>=beam.Transfer.EnteredUpperSpacingMm/1000,"upper slab foot retains full end-row tributary");
+            Check(beam.Transfer.UpperScale(false,row)>=beam.Transfer.SlabSpacing(false)/1000,"upper slab foot retains full end-row tributary");
         foreach(var member in beam.Transfer.PrimaryCases.SelectMany(c=>c))
             Check(member.Uniform.All(q=>q.StartMm>=0 && q.EndMm<=member.LengthMm),"distributed loads clipped to independent stock");
     }
@@ -65,7 +65,7 @@ internal static class PrimaryUdlTests
                     foreach(var band in member.Uniform)
                     {
                         double station=member.StartMm+(band.StartMm+band.EndMm)/2;
-                        double fullBeamFactor=beam.LengthMm/(beam.LengthMm-2*beam.ConcreteEndOverhangMm);
+                        double fullBeamFactor=1;
                         double expected=((line==0 ? beamQ-beamR2 : beamR2)+(left ? l[line] : 0)+(right ? r[line] : 0))*fullBeamFactor;
                         foreach(var crossing in network.CrossingBeams)
                         {
@@ -137,7 +137,7 @@ internal static class PrimaryUdlTests
         foreach(bool endCrossing in new[] {false,true})
         {
             var common=new TowerInput {LengthMm=2450,LegCapacityKn=70,DeflectionDenominator=270,StockLengthsMm=new[] {1250.0,1800,2450},MaximumConcreteEndOverhangMm=75,DeferTransferLayout=deferred,AllowCustomH20Lengths=true};
-            var network=new TransferNetworkInput {UpperSpacingMm=200,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,
+            var network=new TransferNetworkInput {UpperSpacingMm=250,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,
                 Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=350,DepthMm=250}},
                 Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100}},
                 CrossingBeams=new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,BayNumber=1,PositionMm=endCrossing ? 200 : 1200,WidthMm=endCrossing ? 200 : 500,DepthMm=150}}};

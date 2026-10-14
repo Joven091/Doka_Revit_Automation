@@ -8,7 +8,7 @@ internal static class CrossSupportTests
     static void Check(bool value,string message) {checks++;if(!value)throw new Exception("Cross supports: "+message);}
     static void Near(double actual,double expected,string message)=>Check(Math.Abs(actual-expected)<1e-6*Math.Max(1,Math.Abs(expected)),message);
     static TowerInput Common()=>new TowerInput {LengthMm=2450,LegCapacityKn=70,DeflectionDenominator=350,MaximumConcreteEndOverhangMm=0,AllowSeparateSlabFallback=false,NetworkSearchWorkers=1};
-    static TransferNetworkInput Input(CrossBeamSupportMode mode=CrossBeamSupportMode.ExistingSupportsOnly,double bottom=-400)=>new TransferNetworkInput {UpperSpacingMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=bottom,SupportMode=mode}}};
+    static TransferNetworkInput Input(CrossBeamSupportMode mode=CrossBeamSupportMode.ExistingSupportsOnly,double bottom=-400)=>new TransferNetworkInput {UpperSpacingMm=250,LocalRowGapMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=bottom,SupportMode=mode}}};
     static void Failed(TowerInput common,TransferNetworkInput input,string message)
     {
         bool failed=false;try {TransferNetworkOptimizer.Optimize(common,input);}catch(TowerOptimizationException e){failed=true;Check(!string.IsNullOrEmpty(e.Details),"failure retains a structural or geometry diagnosis");}Check(failed,message);
@@ -65,14 +65,14 @@ internal static class CrossSupportTests
         Near(reported.SubsetMomentBoundKnM,1.9/8,"subset moment bound agrees with independent simply-supported UDL formula");Near(reported.SubsetShearBoundKn,.95,"subset shear and reaction bound agree with equilibrium");
         Check(!CrossBeamSupportOptimizer.Envelope(boundCommon,baseMember,increments,.949,reported),"subset leg bound rejects a capacity below the combined reaction");
         var common=Common();var input=Input();
-        // At 200 mm only the centre row fits the 400 mm footprint including the
+        // At a local 250 mm gap only the centre row fits the 400 mm footprint including the
         // 80 mm flange. Its full-length H20 fails L/350 at the stock overhang;
         // additional parallel members, rather than a relaxed limit, are needed.
-        var sparse=Input();sparse.UpperSpacingMm=200;
+        var sparse=Input();sparse.LocalRowGapMm=250;
         bool sparseFailed=false;
         try {TransferNetworkOptimizer.Optimize(common,sparse);}
         catch(TowerOptimizationException e) {sparseFailed=true;Check(e.Details.Contains("X1 H20 1 · deflection"),"single full-width H20 rejection retains the actual cross-member deflection failure");}
-        Check(sparseFailed,"one H20 at the original 200 mm row spacing cannot support the 400 mm cross beam");
+        Check(sparseFailed,"one H20 at the 250 mm local row gap cannot support the 400 mm cross beam");
         var widths=TransferNetworkOptimizer.EffectiveWidthsMm(common,input,0,2450,0);
         Near(widths.Sum(),2050,"slab footprint removed once");
         var result=TransferNetworkOptimizer.Optimize(common,input);var cross=result.CrossSupports.Single();
@@ -118,7 +118,7 @@ internal static class CrossSupportTests
         var capacityCommon=Common();capacityCommon.Exclude600Standalone=true;
         // The two checked shutter strips leave an exact 3500 mm central span.
         capacityCommon.StockLengthsMm=capacityCommon.StockLengthsMm.Concat(new[] {3500.0}).Distinct().ToArray();
-        var capacityInput=Input(CrossBeamSupportMode.Automatic,-600);foreach(var beam in capacityInput.Beams) {beam.WidthMm=1100;beam.DepthMm=1750;}
+        var capacityInput=Input(CrossBeamSupportMode.Automatic,-600);foreach(var beam in capacityInput.Beams) {beam.WidthMm=800;beam.DepthMm=1750;}
         capacityInput.CrossingBeams[0].WidthMm=600;capacityInput.CrossingBeams[0].DepthMm=600;
         var capacityFallback=TransferNetworkOptimizer.Optimize(capacityCommon,capacityInput);
         Check(capacityFallback.CrossSupports[0].Towers!=null && capacityFallback.CrossSupports[0].SharedFailure!=null && !capacityFallback.CrossSupports[0].SharedFailure.Contains("negative filler"),"Automatic tower fallback after shared structural failure with a positive gap");

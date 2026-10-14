@@ -105,6 +105,14 @@ namespace EngineeringDashboard
         public const double SheetLengthMm = 2440;
         public const double SheetWidthMm = 1220;
         public static IReadOnlyList<double> StandardSpacingsMm { get; } = Array.AsReadOnly(new[] {488.0,407,350,305,275,250});
+        public static double ListedSpacingAtOrBelow(double maximumMm)
+        {
+            if (double.IsNaN(maximumMm) || double.IsInfinity(maximumMm) || maximumMm<=0)
+                throw new ArgumentException("A finite positive nominal spacing limit is required.");
+            double spacing=StandardSpacingsMm.FirstOrDefault(x=>x<=maximumMm);
+            if(spacing==0)throw new ArgumentException("No permitted nominal slab spacing is within the limit; the minimum is 250 mm.");
+            return spacing;
+        }
         public static string SheetBasis => "2440 × 1220 mm sheets. Maximum spacings: 488, 407, 350, 305, 275 or 250 mm; the largest passing value is used. "
             + "The 2440 mm direction follows the secondary-row setting out. Each sheet joint has a support row; the final span in a sheet can be shorter.";
 

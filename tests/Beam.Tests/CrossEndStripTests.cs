@@ -44,7 +44,7 @@ internal static class CrossEndStripTests
         for(int row=0;row<rows.Length;row++)Near(influence[row]*q/2000,expected[row],"secondary end-strip influence agrees with independent two-row statics");
 
     }
-    static TransferNetworkInput Small(CrossBeamSupportMode mode=CrossBeamSupportMode.DedicatedTowers)=>new TransferNetworkInput {UpperSpacingMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=2677,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=-1400,SupportMode=mode}}};
+    static TransferNetworkInput Small(CrossBeamSupportMode mode=CrossBeamSupportMode.DedicatedTowers)=>new TransferNetworkInput {UpperSpacingMm=250,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=2677,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=-1400,SupportMode=mode}}};
     public static void Run()
     {
         var rows=new[] {100.0,350,600,850};

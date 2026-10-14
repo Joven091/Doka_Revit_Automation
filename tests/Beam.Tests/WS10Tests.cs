@@ -56,7 +56,7 @@ internal static class WS10Tests
         input.DeflectionLimitMm=100;input.LegCapacityKn=1;Check(TowerStockPlanner.Find(input,new[] {150.0,1850},10)==null,"leg capacity remains mandatory");
 
         var common=new TowerInput {PrimaryMaterial=PrimaryBeamMaterial.WS10,LengthMm=2500,LegCapacityKn=70,DeflectionDenominator=350,AllowCustomH20Lengths=true,AllowSeparateSlabFallback=false,NetworkSearchWorkers=1};
-        var network=new TransferNetworkInput {UpperSpacingMm=200,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=2900,ThicknessMm=100}}};
+        var network=new TransferNetworkInput {UpperSpacingMm=250,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=2900,ThicknessMm=100}}};
         var result=TransferNetworkOptimizer.Optimize(common,network);
         Check(result.WS10Count>0 && result.H20Count>0 && result.MaterialMm==result.TimberMm+result.WS10LengthMm,"mixed timber/steel quantities");
         foreach(var b in result.Beams)
@@ -70,14 +70,14 @@ internal static class WS10Tests
             }
             Check(b.Transfer.LowerCases.SelectMany(c=>c).Concat(b.Transfer.UpperMembers).All(m=>!m.IsWS10 && m.H20Quantity==1 && m.EI==TowerOptimizer.PairEI/2),"secondary and slab H20s keep single-H20 stiffness and limits");
         }
-        network.UpperSpacingMm=100;common.IgnoreUplift=true;common.MaximumConcreteEndOverhangMm=75;
+        network.UpperSpacingMm=250;common.IgnoreUplift=true;common.MaximumConcreteEndOverhangMm=75;
         network.CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1250,WidthMm=400,DepthMm=600,BottomElevationMm=-600,SupportMode=CrossBeamSupportMode.DedicatedTowers}};
         var crossed=TransferNetworkOptimizer.Optimize(common,network);var cross=crossed.CrossSupports.Single();
         Check(cross.Towers!=null && cross.Towers.Primary.IsWS10 && cross.Members.Where(m=>m.IsPrimary).All(m=>m.IsWS10 && PrimaryBeamProfile.WS10LengthsMm.Contains(m.LengthMm) && m.Utilization<=1+1e-8),"dedicated crossing primaries use passing catalogue WS10s");
         Check(cross.Solids.Where(s=>s.Member?.IsWS10==true).All(s=>Math.Abs(s.Z1-s.Z0-100)<1e-8),"steel crossing clash geometry uses its actual depth");
         Check(CrossBeamSupportOptimizer.PrimaryShutterClash(crossed,0,cross.Solids)==null,"steel primaries keep the 200 mm side-shutter clearance");
         foreach(var m in cross.Members.Where(m=>m.IsWS10))Near(m.Uniform.Last().KnPerM,profile.SelfWeightKnM(m.LengthMm),1e-12,"crossing self-weight retained once after projected/shifted stock search");
-        network.CrossingBeams=new TransferCrossingBeamRow[0];network.UpperSpacingMm=200;
+        network.CrossingBeams=new TransferCrossingBeamRow[0];network.UpperSpacingMm=250;
         network.Beams=Enumerable.Range(0,15).Select(i=>new TransferBeamRow {WidthMm=300,DepthMm=600}).ToArray();network.Bays=Enumerable.Range(0,14).Select(i=>new TransferBayRow {WidthMm=2900,ThicknessMm=100}).ToArray();
         network.Validate(common);Check(network.Beams.Length==15,"fifteen-beam model accepted");
         var fifteen=TransferNetworkOptimizer.Optimize(common,network);Check(fifteen.Beams.Length==15 && fifteen.Beams.All(b=>b.Primary.IsWS10 && b.Utilization<=1+1e-8),"fifteen beams solve with passing WS10 checks");

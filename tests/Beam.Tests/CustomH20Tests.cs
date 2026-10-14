@@ -23,7 +23,7 @@ internal static class CustomH20Tests
             Check(t.PrimaryCases.Concat(t.LowerCases).SelectMany(c=>c).Concat(t.UpperMembers).All(m=>m.Utilization<=1+1e-8 && m.Analysis.Reactions.All(r=>r>=-1e-7)),"all members and stages pass without bearing uplift");
         }
     }
-    static TransferNetworkInput ScopeNetwork(double bay) => new TransferNetworkInput {UpperSpacingMm=200,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,
+    static TransferNetworkInput ScopeNetwork(double bay) => new TransferNetworkInput {UpperSpacingMm=250,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,
         Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=300,DepthMm=200}},
         Bays=new[] {new TransferBayRow {WidthMm=bay,ThicknessMm=100}}};
     public static void Scope()
@@ -56,9 +56,9 @@ internal static class CustomH20Tests
         common.AllowCustomH20Lengths=false;
         Reject(()=>TransferNetworkOptimizer.Optimize(common,ScopeNetwork(2600)),"disabled master switch cannot retain slab-only custom lengths");
         var standalone=Input();standalone.AllowCustomH20Lengths=true;standalone.CustomH20Scope=CustomH20LengthScope.BeamSupports;standalone.StockLengthsMm=new[] {1250.0,2450};
-        standalone.TransferredSlab=new TransferredSlabInput {BeamWidthMm=300,BeamLineLoadKnM=2,UpperSpacingMm=200,RightBayMm=2600,RightAreaLoadKnM2=2};
+        standalone.TransferredSlab=new TransferredSlabInput {BeamWidthMm=300,BeamLineLoadKnM=2,UpperSpacingMm=250,RightBayMm=2600,RightAreaLoadKnM2=2};
         Reject(()=>TowerOptimizer.Optimize(standalone),"standalone beam-only rejects implicit custom slab fallback");
-        var crossInput=new TransferNetworkInput {UpperSpacingMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=-400,SupportMode=CrossBeamSupportMode.ExistingSupportsOnly}}};
+        var crossInput=new TransferNetworkInput {UpperSpacingMm=250,LocalRowGapMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=-400,SupportMode=CrossBeamSupportMode.ExistingSupportsOnly}}};
         var crossCommon=new TowerInput {LengthMm=2450,LegCapacityKn=70,DeflectionDenominator=350,AllowSeparateSlabFallback=false,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.BeamSupports,StockLengthsMm=new[] {1250.0,1800,2450,3300}};
         var cross=TransferNetworkOptimizer.Optimize(crossCommon,crossInput);
         Check(cross.CrossSupports.Single().Members.Any(m=>!crossCommon.StockLengthsMm.Contains(m.LengthMm)) && cross.Bays.All(b=>!b.IsCustomLength),"beam-only allows custom shared crossing H20s with catalogue slab H20s");
@@ -95,12 +95,12 @@ internal static class CustomH20Tests
         var upper=UpperTransferPlan.SlabLengths(1800,new[] {1250.0},true);
         Check(upper.Contains(1250) && upper.Contains(1100) && upper.Contains(1400) && upper.All(x=>x%25==0),"slab search includes grid even when catalogue fits");
         Check(UpperTransferPlan.SlabLengths(1800,new[] {1250.0}).SequenceEqual(new[] {1250.0}),"disabled slab behaviour retained");
-        input=Input();input.TransferredSlab=new TransferredSlabInput {BeamWidthMm=300,BeamLineLoadKnM=2,UpperSpacingMm=200,RightBayMm=1800,RightAreaLoadKnM2=2};
+        input=Input();input.TransferredSlab=new TransferredSlabInput {BeamWidthMm=300,BeamLineLoadKnM=2,UpperSpacingMm=250,RightBayMm=1800,RightAreaLoadKnM2=2};
         Reject(()=>TowerOptimizer.Optimize(input),"transfer missing primary/lower stocks rejected with option off");
         input.AllowCustomH20Lengths=true;var transfer=TowerOptimizer.Optimize(input);Members(transfer,input.StockLengthsMm);
         Check(transfer.Transfer.LowerCustom && transfer.StockPlan.Pieces.All(p=>p.IsCustomLength),"custom primary and lower members solve transfer");
         var common=Input();common.AllowCustomH20Lengths=true;
-        var network=new TransferNetworkInput {UpperSpacingMm=200,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100}}};
+        var network=new TransferNetworkInput {UpperSpacingMm=250,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100}}};
         var timer=System.Diagnostics.Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,network);
         foreach(var beam in result.Beams)Members(beam,common.StockLengthsMm);
         Check(result.Bays.All(b=>b.StockLengthMm%25==0) && result.Beams.All(b=>b.Transfer.LowerCustom),"network propagates custom mode to shared upper and every receiving beam");

@@ -19,8 +19,8 @@ internal static class UpliftAssumptionTests
             double applied=(m.Points??new BeamPointLoad[0]).Sum(p=>p.Kn*p.PositionMm/1000)+(m.Uniform??new BeamDistributedLoad[0]).Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000*(q.EndMm+q.StartMm)/2000);
             Near(moment,applied,"signed moment equilibrium");
         }
-        Near(b.Transfer.PrimaryCases[0].Sum(m=>m.Analysis.TotalLoadKn),b.Transfer.BeamLoadKn,"beam-only UDL preserves covered beam load");
-        Check(b.Transfer.PrimaryCases.Max(c=>c.Sum(m=>m.Analysis.TotalLoadKn))>=b.Transfer.BeamLoadKn+b.Transfer.SlabLoadKn-1e-6,"primary UDL covers physical beam and slab reference load");
+        Near(b.Transfer.PrimaryCases[0].Sum(m=>m.Analysis.TotalLoadKn)+b.Transfer.ColumnSupportLoadKn(0),b.Transfer.BeamLoadKn,"beam-only UDL preserves covered beam load");
+        Check(b.Transfer.PrimaryCases.Select((c,i)=>c.Sum(m=>m.Analysis.TotalLoadKn)+b.Transfer.ColumnSupportLoadKn(i)).Max()>=b.Transfer.BeamLoadKn+b.Transfer.SlabLoadKn-1e-6,"primary UDL covers physical beam and slab reference load");
         for(int i=0;i<b.PositionsMm.Length;i++)for(int line=0;line<2;line++)
         {
             var values=b.Transfer.PrimaryCases.SelectMany(c=>c).Where(m=>m.Name.EndsWith(line==0 ? " L" : " R"))
@@ -77,7 +77,7 @@ internal static class UpliftAssumptionTests
         {
             var common=new TowerInput {IgnoreUplift=true,LengthMm=2450,LegCapacityKn=70,DeflectionDenominator=350,MaximumConcreteEndOverhangMm=0,AllowSeparateSlabFallback=false,NetworkSearchWorkers=1};
             if(mode==CrossBeamSupportMode.DedicatedTowers)common.MaximumConcreteEndOverhangMm=300; // Independent below-main crossing must clear the side shutters at both ends.
-            var network=new TransferNetworkInput {UpperSpacingMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=mode==CrossBeamSupportMode.DedicatedTowers ? -1400 : -400,SupportMode=mode}}};
+            var network=new TransferNetworkInput {UpperSpacingMm=250,LocalRowGapMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=mode==CrossBeamSupportMode.DedicatedTowers ? -1400 : -400,SupportMode=mode}}};
             var result=TransferNetworkOptimizer.Optimize(common,network);
             var cross=result.CrossSupports.Single();
             var layouts=result.Beams.Concat(cross.Towers==null ? new TowerLayout[0] : new[] {cross.Towers}).ToArray();

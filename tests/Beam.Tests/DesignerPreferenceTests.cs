@@ -20,7 +20,7 @@ internal static class DesignerPreferenceTests
         var rotated=TowerOptimizer.Evaluate(Beam(2450),new[] {463.0,1987},new[] {true},600,true);
         Check(rotated!=null && rotated.Standalone600Count==1,"rotated tower classifies the 600 mm cross brace rather than its frame span");
         var oneSided=new TowerInput {LengthMm=3300,StockLengthsMm=new[] {1800.0,2450,3300,3900},LegCapacityKn=70,StockEndSetbackMm=150,DeflectionDenominator=270,
-            TransferredSlab=new TransferredSlabInput {BeamWidthMm=800,BeamLineLoadKnM=25,UpperSpacingMm=200,RightBayMm=2677,RightAreaLoadKnM2=9.4}};
+            TransferredSlab=new TransferredSlabInput {BeamWidthMm=800,BeamLineLoadKnM=25,UpperSpacingMm=250,RightBayMm=2677,RightAreaLoadKnM2=9.4}};
         var transfer=TowerOptimizer.Optimize(oneSided);
         Verify(transfer);
         var t=oneSided.TransferredSlab;
