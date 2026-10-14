@@ -14,7 +14,7 @@ internal static class EquivalentLoadingUiTests
     static void Render(FrameworkElement element,double width,string path=null)
     {
         element.Measure(new Size(width,double.PositiveInfinity));element.Arrange(new Rect(0,0,width,element.DesiredSize.Height));element.UpdateLayout();
-        var bitmap=new RenderTargetBitmap((int)Math.Ceiling(width),(int)Math.Ceiling(element.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(element);
+        var bitmap=new RenderTargetBitmap((int)Math.Ceiling(width),(int)Math.Ceiling(element.DesiredSize.Height),96,96,PixelFormats.Pbgra32);bitmap.Render(element);
         if(path!=null){var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}
     }
     static Point Centre(Rect b)=>new Point(b.X+b.Width/2,b.Y+b.Height/2);
@@ -74,7 +74,9 @@ internal static class EquivalentLoadingUiTests
         Check(window.ResponseBasis.Text.Contains("actual checked loads") && window.ResponseBasis.FontSize==12,"actual response basis stays visible in a small caption");
         CheckResponse(window,actual);
         Check(ReferenceEquals(window.LoadedAnalysis,actual.Analysis) && ReferenceEquals(window.DisplayedTransferMember,actual),"equivalent display never replaces checked analysis");
-        var view=window.EquivalentView;Render(view,900,Preview(preview,"closed"));
+        // Resize an independent copy; the window's parent layout otherwise
+        // restores its own width while a nested element is being captured.
+        var view=new EquivalentLoadingView(EquivalentTransferredLoading.Create(layout,0,0),true);Render(view,900,Preview(preview,"closed"));
         Check(!view.IsDetailsOpen,"calculation panel closed initially");
         Check(view.Plot.DrawnLabels.All(s=>!s.Contains("slab") && !s.Contains("shutter") && !s.Contains("concrete")),"diagram contains values and geometry without source identifiers");
         var strokes=Primitives(VisualTreeHelper.GetDrawing(view.Plot)).OfType<GeometryDrawing>().Where(d=>d.Pen?.Brush is SolidColorBrush).ToArray();
@@ -89,6 +91,7 @@ internal static class EquivalentLoadingUiTests
         foreach(double width in new[] {900.0,760,700,520,360})
         {
             Render(view,width);view.Plot.SelectAt(Centre(view.Plot.Targets.First(x=>x.Component==1).Bounds));Render(view,width,Preview(preview,"open-"+width));
+            Check(Math.Abs(view.ActualWidth-width)<1e-7,"narrow checks exercise the requested width");
             var detailBounds=new Rect(view.DetailsPanel.TranslatePoint(new Point(),view),new Size(view.DetailsPanel.ActualWidth,view.DetailsPanel.ActualHeight));
             var plotBounds=new Rect(view.Plot.TranslatePoint(new Point(),view),new Size(view.Plot.ActualWidth,view.Plot.ActualHeight));
             Check(detailBounds.Right<=view.ActualWidth+1e-7 && detailBounds.Bottom<=view.ActualHeight+1e-7 && plotBounds.Right<=view.ActualWidth+1e-7,"open panel and plot remain within actual container bounds");
@@ -120,7 +123,8 @@ internal static class EquivalentLoadingUiTests
         window.LoadCaseSelector.SelectedIndex=0;CheckResponse(window,actual);
         window.SelectMember(0,0,-1);Check(window.EquivalentView==null && window.ResponseBasis==null && window.LoadingDiagram!=null,"changing to primary clears equivalent panel and basis");
         window.SelectMember(1,0,-1);Check(window.EquivalentView!=null && !window.EquivalentView.IsDetailsOpen,"returning to lower member starts with a clean panel");
-        RenderWindow(window,520,Preview(preview,"unified-narrow"));CheckResponse(window,actual);
+        RenderWindow(window,520,Preview(preview,"unified-narrow"));
+        Check(window.EquivalentView.ActualWidth<=520,"unified window loading card fits the requested narrow layout");CheckResponse(window,actual);
         // Unavailable localized conversion must still expose one actual loading card.
         var primary=t.PrimaryCases[0][0];double original=primary.Uniform[0].KnPerM;
         primary.Uniform[0].KnPerM+=1;window.SelectMember(1,0,-1);
@@ -133,6 +137,7 @@ internal static class EquivalentLoadingUiTests
         foreach(double width in new[] {900.0,760,700,520,360})
         {
             Render(bothView,width);bothView.Plot.SelectAt(Centre(bothView.Plot.Targets.First(x=>x.Reaction==0).Bounds));Render(bothView,width);
+            Check(Math.Abs(bothView.ActualWidth-width)<1e-7,"both-sided checks exercise the requested width");
             Check(bothView.VisibleCalculation.Count(s=>s.Contains(" kN"))==7,"both-sided reaction panel includes every source and final division");
             foreach(var box in bothView.Plot.TextBounds)Check(box.Left>=0 && box.Right<=bothView.Plot.ActualWidth+1e-7 && box.Bottom<=bothView.Plot.ActualHeight,"both-sided labels stay inside plot");
             for(int i=0;i<bothView.Plot.TextBounds.Count;i++)for(int j=i+1;j<bothView.Plot.TextBounds.Count;j++)
