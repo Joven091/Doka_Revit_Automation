@@ -19,7 +19,7 @@ internal static class DiagnosticBudgetBenchmark
         double[] widths={2278,2272,2252};
         for(int i=0;i<3;i++) {vm.NetworkBays[i].WidthMm=widths[i];vm.NetworkBays[i].ThicknessMm=300;}
         foreach(int bay in new[] {2,3})vm.CrossingBeams.Add(new TransferCrossingBeamRow {BayNumber=bay,PositionMm=3450,WidthMm=650,DepthMm=1150,SupportMode=CrossBeamSupportMode.Automatic});
-        var timer=Stopwatch.StartNew();vm.OptimizeTowersAsync().GetAwaiter().GetResult();timer.Stop();
+        var timer=Stopwatch.StartNew();vm.OptimizeTowersAsync(true).GetAwaiter().GetResult();timer.Stop();
         if(vm.IsCalculationValid)
         {
             var result=vm.NetworkResult;

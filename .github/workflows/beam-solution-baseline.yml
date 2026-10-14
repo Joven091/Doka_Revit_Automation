@@ -1,0 +1,48 @@
+name: Reported beam solution baseline
+on:
+  pull_request:
+    paths:
+      - 'tests/Beam.Tests/DiagnosticFullBenchmark.cs'
+      - '.github/workflows/beam-solution-baseline.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [net10, net48]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build benchmark
+        shell: pwsh
+        run: |
+          if ('${{ matrix.runtime }}' -eq 'net48') {
+            dotnet build tests/Beam.Net48/Beam.Net48.csproj -c Release --warnaserror
+          } else {
+            dotnet build tests/Beam.Tests/Beam.Tests.csproj -c Release --warnaserror
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Measure full reported search
+        shell: pwsh
+        run: |
+          if ('${{ matrix.runtime }}' -eq 'net48') {
+            & tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --diagnostic-full-benchmark 2>&1 | Tee-Object -FilePath baseline-${{ matrix.runtime }}.txt
+          } else {
+            dotnet tests/Beam.Tests/bin/Release/net10.0/Beam.Tests.dll --diagnostic-full-benchmark 2>&1 | Tee-Object -FilePath baseline-${{ matrix.runtime }}.txt
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reported-baseline-${{ matrix.runtime }}
+          path: baseline-${{ matrix.runtime }}.txt

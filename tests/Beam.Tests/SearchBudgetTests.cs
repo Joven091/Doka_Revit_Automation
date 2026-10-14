@@ -116,14 +116,20 @@ internal static class SearchBudgetTests
         Check(ReferenceEquals(retained,stock) && retained.SearchTimeLimitReached && !retained.MinimumLegCountProven && passes==2,"a better catalogue layout discloses an interrupted custom comparison");
         var vm=new BeamCalculatorViewModel {UseTowers=true,Depth=200,Width=300,BeamLengthMm=2500,StockLengthsText="2500",MaximumConcreteEndOverhangMm=0};
         vm.OptimizeTowersAsync().GetAwaiter().GetResult();
-        Check(vm.IsCalculationValid && vm.BuildDiagnosticReport().Contains("Search budget seconds: 25") && vm.BuildDiagnosticReport().Contains("Search configuration:"),"interactive search applies the shared 25-second exploration budget");
+        Check(vm.IsCalculationValid && vm.BuildDiagnosticReport().Contains("Search budget seconds: Unlimited") && vm.BuildDiagnosticReport().Contains("Search configuration:"),"normal calculation runs without an elapsed-time limit");
         typeof(BeamCalculatorViewModel).GetField("beamSearchTrace",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(vm,new BeamSearchTrace("later alternatives"));
         Check(vm.BuildDiagnosticReport().Contains("LAST COMPLETED FULL SEARCH") && vm.BuildDiagnosticReport().Contains("Search outcome: Succeeded"),"a later operation cannot erase the completed full-search trace");
-        vm.TowerSearchTimeLimit=TimeSpan.FromTicks(1);vm.OptimizeTowersAsync().GetAwaiter().GetResult();
+        vm.TowerSearchTimeLimit=TimeSpan.FromTicks(1);vm.OptimizeTowersAsync(true).GetAwaiter().GetResult();
         Check(!vm.IsOptimizing && !vm.IsCalculationValid && vm.TowerResult==null && vm.BuildDiagnosticReport().Contains("Time limit reached: no complete solution"),"interactive timeout clears old results and explains absence of a complete solution");
         Check(vm.CanSearchLonger,"deadline exposes an explicit full-search action");
         vm.OptimizeTowersAsync(false).GetAwaiter().GetResult();
         Check(vm.IsCalculationValid && !vm.CanSearchLonger && vm.BuildDiagnosticReport().Contains("Search budget seconds: Unlimited"),"explicit longer search can finish a layout and reports its unlimited budget");
+        long candidateClock=0;
+        var candidateTrace=new BeamSearchTrace("candidate timing",timestamp:()=>candidateClock);
+        Check(candidateTrace.Snapshot().Contains("First complete network candidate seconds: Not found"),"first-candidate timing does not imply an unchecked result exists");
+        candidateTrace.Increment(BeamSearchCounter.CompleteNetworkCandidates);
+        candidateClock=3*Stopwatch.Frequency;candidateTrace.Increment(BeamSearchCounter.CompleteNetworkCandidates);
+        Check(candidateTrace.Snapshot().Contains("First complete network candidate seconds: 0.000"),"first-candidate timing retains the earliest completion, including a zero-time test clock");
         vm.StartNewSession();Check(!vm.BuildDiagnosticReport().Contains("LAST COMPLETED FULL SEARCH"),"new session clears retained diagnostics");
         Console.WriteLine($"Passed {checks} search budget and completed-result checks.");
     }
