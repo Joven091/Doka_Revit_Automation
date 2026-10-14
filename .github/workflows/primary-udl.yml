@@ -24,6 +24,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe --equivalent-loading-ui tests/d3-ui-preview/beam.png
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Emit inspectable loading previews
+        if: always()
+        run: ./scripts/emit-ui-previews.ps1 -Directory tests/d3-ui-preview -Names beam.unified-response.png,beam.open-520.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:

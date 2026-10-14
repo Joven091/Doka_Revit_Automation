@@ -83,6 +83,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force artifacts | Out-Null
           dotnet run --project tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release -- artifacts/beam.png
+      - name: Emit inspectable section previews
+        if: always()
+        run: ./scripts/emit-ui-previews.ps1 -Directory artifacts -Names beam.workspace-section.png,beam.section-520.png,beam.current-report-section.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
