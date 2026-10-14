@@ -7,9 +7,10 @@ using EngineeringDashboard;
 // Exact committed inputs in the uploaded 2026-10-14 diagnostic, through the normal UI model.
 internal static class DiagnosticFullBenchmark
 {
-    internal static void Run()
+    internal static BeamCalculatorViewModel CreateModel(bool optimize=true)
     {
         var vm=new BeamCalculatorViewModel {
+            OptimizeCrossingJunctions=optimize,
             UseTowers=true,HasSelectedSupportSystem=true,TransferSlabLoads=true,UseBeamNetwork=true,
             Depth=1450,Width=800,BeamLengthMm=6900,FloorHeight=3000,TowerLegCapacityKn=70,
             HasRightSlab=true,RightSlabThickness=300,
@@ -30,6 +31,11 @@ internal static class DiagnosticFullBenchmark
         foreach(int bay in new[] {1,2})vm.CrossingBeams.Add(new TransferCrossingBeamRow {
             BayNumber=bay,PositionMm=3450,WidthMm=650,DepthMm=1150,SupportMode=CrossBeamSupportMode.Automatic
         });
+        return vm;
+    }
+    internal static void Run()
+    {
+        var vm=CreateModel();
         Console.WriteLine($"BASELINE start runtime={Environment.Version} processors={Environment.ProcessorCount}; 2026-10-14 inputs; no elapsed-time limit");
         var timer=Stopwatch.StartNew();var task=vm.OptimizeTowersAsync();
         double nextProgress=30;
