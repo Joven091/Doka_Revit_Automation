@@ -10,8 +10,10 @@ internal static class CrossingOptimizationTests
     private static TransferMember[] Members(TransferNetworkResult r)=>r.Beams.Concat(r.CrossSupports.Where(s=>s.Towers!=null).Select(s=>s.Towers))
         .SelectMany(b=>b.Transfer.PrimaryCases.Concat(b.Transfer.LowerCases).SelectMany(c=>c).Concat(b.Transfer.UpperMembers)).ToArray();
     private static double[] Demands(TransferNetworkResult r)=>Members(r).SelectMany(m=>new[] {
-        m.Analysis.MomentKnM,m.Analysis.ShearKn,m.Analysis.DeflectionMm,m.Analysis.DeflectionUtilization,m.Analysis.TotalLoadKn
-    }.Concat(m.Analysis.Reactions)).ToArray();
+        m.Analysis.MomentKnM,m.Analysis.ShearKn,m.Analysis.DeflectionMm,m.Analysis.DeflectionUtilization,m.Analysis.TotalLoadKn,m.StartMm,m.LengthMm
+    }.Concat(m.Analysis.Reactions).Concat(m.SupportsMm)
+        .Concat(m.Uniform.SelectMany(q=>new[] {q.StartMm,q.EndMm,q.KnPerM}))
+        .Concat(m.Points.SelectMany(p=>new[] {p.PositionMm,p.Kn}))).ToArray();
     private static void Validate(TransferNetworkResult r)
     {
         if(r.Beams.Length!=3 || r.Bays.Length!=2 || r.CrossSupports.Length!=2 || r.Bays.Any(b=>b==null))throw new Exception("Crossing benchmark requires the entire reported network");
@@ -31,7 +33,7 @@ internal static class CrossingOptimizationTests
     }
     private static BeamCalculatorViewModel Solve(bool optimize)
     {
-        var vm=DiagnosticFullBenchmark.CreateModel(optimize);var timer=Stopwatch.StartNew();
+        var vm=DiagnosticFullBenchmark.CreateModel();vm.PrecheckCrossingFootprints=optimize;var timer=Stopwatch.StartNew();
         vm.OptimizeTowersAsync().GetAwaiter().GetResult();timer.Stop();
         string label=optimize ? "OPTIMIZED" : "REFERENCE";
         Console.WriteLine(FormattableString.Invariant($"CROSSING-{label} seconds={timer.Elapsed.TotalSeconds:0.000} runtime={Environment.Version} processors={Environment.ProcessorCount} valid={vm.IsCalculationValid}"));
@@ -41,7 +43,7 @@ internal static class CrossingOptimizationTests
     }
     internal static void Benchmark()
     {
-        ObstacleIndexTests.Run();
+        ObstacleIndexTests.Run();CrossingFootprintTests.Run();
         // Optimized goes first: the reference gets the warmer JIT, avoiding a
         // second-run warmup advantage for the proposed optimization.
         var optimized=Solve(true);var reference=Solve(false);
@@ -49,8 +51,8 @@ internal static class CrossingOptimizationTests
         var a=Demands(reference.NetworkResult);var b=Demands(optimized.NetworkResult);
         if(a.Length!=b.Length || !a.Zip(b,(x,y)=>Math.Abs(x-y)<=1e-12*Math.Max(1,Math.Abs(x))).All(x=>x))throw new Exception("Crossing optimization changed unrounded forces, deflections or reactions");
         if(reference.NetworkResult.Tested!=optimized.NetworkResult.Tested
-            || Counter(reference,"Complete network candidates")!=Counter(optimized,"Complete network candidates")
-            || Counter(reference,"Numerical checks")!=Counter(optimized,"Numerical checks"))throw new Exception("Crossing optimization changed checked candidates or numerical-check traversal");
-        Console.WriteLine("CROSSING-PARITY passed: selected geometry, stocks, complete candidates, numerical checks, unrounded demands, physical clashes, member limits and leg capacities.");
+            || Counter(reference,"Complete network candidates")!=Counter(optimized,"Complete network candidates"))throw new Exception("Crossing optimization changed checked network candidates");
+        if(Counter(optimized,"Numerical checks")>=Counter(reference,"Numerical checks") || Counter(optimized,"Crossing leg clashes rejected before member checks")<=0)throw new Exception("Early exact leg clash rejection did not reduce numerical work");
+        Console.WriteLine("CROSSING-PARITY passed: selected geometry, stocks, complete candidates, reduced numerical work, unrounded demands, physical clashes, member limits and leg capacities.");
     }
 }
