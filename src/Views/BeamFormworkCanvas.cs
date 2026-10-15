@@ -439,7 +439,7 @@ namespace EngineeringDashboard
                 }
                 foreach(var group in timber.Where(g=>g.Key.H20Count==2 || ShowSecondaryH20s))draw(group);
                 if(support.Towers!=null && (AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex))DrawCrossDimensions(dc,support,timber.SelectMany(g=>g).Where(s=>s.Member.H20Count==2).ToArray());
-                foreach(var solid in support.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope && s.Member==null))dc.DrawRectangle(solid.IsSideShutter ? Brushes.LightSteelBlue : Brushes.SandyBrown,new Pen(solid.IsSideShutter ? Brushes.SteelBlue : Brushes.SaddleBrown,1),new Rect(SolverScreen(solid.X0,solid.Y0),SolverScreen(solid.X1,solid.Y1)));
+                foreach(var solid in support.Solids.Where(s=>!s.IsLeg && !s.IsTowerEnvelope && s.Member==null && s.IsSideShutter))dc.DrawRectangle(Brushes.LightSteelBlue,new Pen(Brushes.SteelBlue,1),new Rect(SolverScreen(solid.X0,solid.Y0),SolverScreen(solid.X1,solid.Y1)));
                 if(support.HasReducedShutterClearance)
                 {
                     // Keep the exception visible even when general dimensions are hidden.
@@ -461,7 +461,6 @@ namespace EngineeringDashboard
                         bool reduced=bearing.IsShutterEndZone && width<200;
                         if(AllDimensions || reduced || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex)Label(dc,$"End zone on B{bearing.Beam+1}: {width:0.###} mm"+(bearing.IsShutterEndZone ? " · side shutter" : "")+(reduced ? " (exception)" : ""),new Point(zone.Right+5,zone.Top+5),Brushes.DarkRed);
                     }
-                    else if(!bearing.IsConcreteEndZone && bearing.FillerHeightMm>1e-7 && (AllDimensions || SelectedKind==FormworkObject.Crossing && SelectedIndex==support.CrossingIndex))Label(dc,$"Filler {bearing.FillerHeightMm:0.###} mm",point+new Vector(5,5),Brushes.SaddleBrown);
                 }
             }
         }
