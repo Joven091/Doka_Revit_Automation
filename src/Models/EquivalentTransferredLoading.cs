@@ -44,6 +44,7 @@ namespace EngineeringDashboard
                 components.Add(new EquivalentLoadingComponent {Name=name,PositionMm=p.PositionMm,NominalSpacingMm=pitch,
                     ReferenceSpacingMm=view.ReferenceSpacingMm,SourceValue=p.Kn*pitch/1000,EquivalentValue=p.Kn*reference});
             }
+            components.RemoveAll(c=>Math.Abs(c.EquivalentValue)<=1e-10);
             var uniform=components.Where(c=>c.IsUniform).Select(c=>new BeamDistributedLoad {StartMm=c.PositionMm,EndMm=c.EndMm,KnPerM=c.EquivalentValue}).ToArray();
             var points=components.Where(c=>!c.IsUniform).Select(c=>new BeamPointLoad {PositionMm=c.PositionMm,Kn=c.EquivalentValue}).ToArray();
             var analysis=LoadedBeamAnalysis.AnalyzeSigned(unit.LengthMm,unit.SupportsMm,uniform,points,TowerOptimizer.PairEI/2,layout.DeflectionDenominator);

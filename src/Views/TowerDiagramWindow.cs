@@ -13,7 +13,7 @@ namespace EngineeringDashboard
         internal int SelectedRun { get; private set; } = -1;
         internal int SelectedLine { get; private set; }
         public void SelectMember(int run, int line, int member)
-        { if(SelectedRun!=run || SelectedLine!=line) {SelectedLoadCase=-1;if(CheckedCasesDetails!=null)CheckedCasesDetails.IsExpanded=false;}SelectedRun = run; SelectedLine = line; Refresh(); }
+        { if(SelectedRun!=run || SelectedLine!=line) {SelectedLoadCase=-1;}SelectedRun = run; SelectedLine = line; Refresh(); }
         internal TowerBeamAnalysis Analysis { get; private set; }
         internal LoadedBeamAnalysis LoadedAnalysis { get; private set; }
         internal TransferMember SelectedTransferMember { get; private set; }
@@ -22,8 +22,6 @@ namespace EngineeringDashboard
         internal MemberLoadingPlot LoadingDiagram {get;private set;}
         internal int SelectedLoadCase { get; private set; } = -1;
         internal ComboBox LoadCaseSelector {get;private set;}
-        internal Expander CheckedCasesDetails {get;private set;}
-        internal DataGrid CheckedCasesTable {get;private set;}
         internal EquivalentLoadingView EquivalentView {get;private set;}
         internal TextBlock ResponseBasis {get;private set;}
         private readonly TowerLayout layout;
@@ -45,7 +43,6 @@ namespace EngineeringDashboard
             else layout = model.TowerResult ?? throw new ArgumentException("Optimize the tower layout first.");
             Title = "Select member — shear, moment and deflection"; Width = 960; Height = 850; MinWidth=760;MinHeight=550;WindowStartupLocation=WindowStartupLocation.CenterOwner;FontFamily=new FontFamily("Segoe UI");FontSize=13;
             var panel = new StackPanel { Margin = new Thickness(16), Background=Brushes.WhiteSmoke };
-            if (propModel == null) panel.Children.Add(new Expander { Header = "How to read the diagrams", Content = new TextBlock { Text = layout.Primary.Assumptions+"\n"+(layout.Transfer != null ? "Primary members use the selected material. Slab and lower secondary members are single H20s: M=5 kNm, V=11 kN. The load case selector defaults to the highest shear, moment or deflection utilization for the selected member. Checked cases are loading patterns; a pouring sequence has not been specified. Lower plots include upper-foot and shutter point reactions; slab plots use the marked row. Total slab movement is reported separately. " : "Each plot represents one primary line. ") + "Positive moment = sagging; negative deflection = downward. Deflection uses each support span or overhang. Dashed lines show permissible limits; vertical lines mark supports; the loading diagram shows applied loads and supports. Overlapping distributed loads are combined, and distributed-load arrow heights share one intensity scale. Individual load components remain available in the collapsed details. Primaries use UDL design loads derived from beam and slab reactions per metre, without assumed secondary row point loads. Crossing-beam increments remain distributed over their physical footprints. The optimizer, diagrams and reported utilization use the same distributed loads. Curves are sampled; peaks use exact extrema.", TextWrapping = TextWrapping.Wrap } });
             if (propModel != null)
             {
                 panel.Children.Add(new TextBlock { Text = "Single primary H20 · positive moment = sagging; negative deflection = downward. Curves use the calculated uniform line load and equal prop spans. Support reactions are exact for this displayed layout; the spacing calculation retains its conservative reaction coefficients.", TextWrapping = TextWrapping.Wrap });
@@ -59,6 +56,7 @@ namespace EngineeringDashboard
                 }
             }
             panel.Children.Add(charts);
+            Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("pack://application:,,,/MyRevitAddin;component/Views/CalculatorStyles.xaml",UriKind.Absolute)});
             Background=Brushes.WhiteSmoke;
             Content = new ScrollViewer { Content = panel, Background = Brushes.WhiteSmoke, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
                 }
@@ -71,14 +69,8 @@ namespace EngineeringDashboard
             if(SelectedRun<0 || SelectedRun>=crossSupport.Members.Length)return;
             var m=crossSupport.Members[SelectedRun];SelectedTransferMember=DisplayedTransferMember=m;ActualLoadedAnalysis=LoadedAnalysis=m.Analysis;Analysis=null;
             bool primary=m.H20Count==2;
-            Title=$"X{crossSupport.CrossingIndex+1} · {m.Name}"+" · "+m.MaterialDescription+" — response diagrams";charts.Children.Clear();
-            if(primary)charts.Children.Add(new Border {Background=new SolidColorBrush(Color.FromRgb(255,246,219)),Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
-                Child=new TextBlock {Text=crossSupport.PrimaryNearExtensionMm+crossSupport.PrimaryFarExtensionMm>0 ? "UDL design model · the central-span concrete load remains over its footprint. Projecting tails carry member self-weight only when WS10 is selected. These loads govern layout checks and diagrams." : "UDL design model · full crossing concrete load, including end strips, distributed over centred primary stock coverage. These loads govern layout checks and diagrams.",TextWrapping=TextWrapping.Wrap}});
-            if(crossSupport.NominalSecondarySpacingMm>0)
-                charts.Children.Add(new TextBlock {Text=$"Nominal crossing secondary spacing {crossSupport.NominalSecondarySpacingMm:0.###} mm; local receiving gaps can be shorter.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
-            charts.Children.Add(new TextBlock {Text=m.LoadCase+" · "+m.LengthMm.ToString("0.###")+" mm · load "+m.Analysis.TotalLoadKn.ToString("0.00")+" kN",TextWrapping=TextWrapping.Wrap});
-            AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN")),primary ? "UDL support reactions" : "Support reactions");
-            charts.Children.Add(new Expander {Header="Crossing support schedule and details",IsExpanded=false,Margin=new Thickness(0,4,0,4),Content=new TextBlock {Text=crossSupport.Schedule+"\n"+CrossBeamSupportResult.Limitations,TextWrapping=TextWrapping.Wrap}});
+            Title=$"X{crossSupport.CrossingIndex+1} · {m.Name}"+" · "+m.MaterialDescription;charts.Children.Clear();
+            AddMemberSummary(crossSupport.NominalSecondarySpacingMm,m.Utilization);
             LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);AddChart("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,true);
             AddResponseCharts(m,primary);
 
@@ -93,12 +85,11 @@ namespace EngineeringDashboard
             var piece = layout.StockPlan.Pieces[SelectedRun];
             var supports = layout.PositionsMm.Skip(piece.FirstSupport).Take(piece.LastSupport - piece.FirstSupport + 1).Select(x => (x - piece.StartMm) / 1000).ToArray();
             double q = (SelectedLine == 0 ? layout.LeftLineLoad : layout.RightLineLoad)+layout.Primary.SelfWeightKnM(piece.StockLengthMm);
-            Title = beamLabel+$"P{SelectedRun + 1} · {(SelectedLine == 0 ? "Left" : "Right")} · {layout.Primary.Description} — response diagrams";
+            Title = beamLabel+$"P{SelectedRun + 1} · {(SelectedLine == 0 ? "Left" : "Right")} · {layout.Primary.Description}";
             Analysis = TowerBeamAnalysis.Analyze(piece.StockLengthMm / 1000, supports, q, layout.Primary.EI);
             charts.Children.Clear();
             if(layout.Primary.IsWS10)charts.Children.Add(new TextBlock {Text=layout.Primary.Assumptions+$"\nM/V interaction utilization {layout.Primary.Strength(Analysis)*100:0.0}% (10 kNm end zones included).",TextWrapping=TextWrapping.Wrap});
             charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · loaded length: {piece.StockLengthMm:0.###} mm", TextWrapping = TextWrapping.Wrap,Margin=new Thickness(0,8,0,4) });
-            AddLoadDetails(string.Join("   ",Analysis.Reactions.Select((v,i)=>$"Support {piece.FirstSupport+i+1}: leg load {v:0.00} kN")));
             LoadingDiagram=new MemberLoadingPlot(piece.StockLengthMm,supports.Select(x=>x*1000).ToArray(),Analysis.Reactions,new[] {new BeamDistributedLoad {StartMm=0,EndMm=piece.StockLengthMm,KnPerM=q}},new BeamPointLoad[0]);
             AddChart("Loading diagram",LoadingDiagram,true);
             string[] names = { "Shear (kN)", "Moment (kNm)", "Deflection (mm)" };
@@ -119,10 +110,9 @@ namespace EngineeringDashboard
             double length = (count - 1) * span + 2 * end;
             var supports = Enumerable.Range(0,count).Select(i => end + i * span).ToArray();
             double q = SelectedLine == 0 ? propModel.LeftLineLoad : propModel.RightLineLoad;
-            Title = $"Dokaflex · {(SelectedLine == 0 ? "Left" : "Right")} primary · single H20 — response diagrams";
+            Title = $"Dokaflex · {(SelectedLine == 0 ? "Left" : "Right")} primary · single H20";
             charts.Children.Clear();
             charts.Children.Add(new TextBlock { Text = $"UDL: {q:0.000} kN/m · {count} props · span: {span*1000:0} mm · overhang at each end: {end*1000:0} mm · modeled length: {length*1000:0} mm", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,8,0,4) });
-            AddLoadDetails(string.Join("   ",Analysis.Reactions.Select((v,i) => $"Prop {i+1}: {v:0.00} kN")));
             LoadingDiagram = new MemberLoadingPlot(length*1000,supports.Select(x=>x*1000).ToArray(),Analysis.Reactions,
                 new[] {new BeamDistributedLoad {StartMm=0,EndMm=length*1000,KnPerM=q}},new BeamPointLoad[0]);
             AddChart("Loading diagram",LoadingDiagram,true);
@@ -156,10 +146,9 @@ namespace EngineeringDashboard
             SelectedTransferMember=m; ActualLoadedAnalysis=m.Analysis; Analysis=null;
             bool primary=SelectedRun<runs;
             DisplayedTransferMember=m;LoadedAnalysis=m.Analysis;
-            Title=beamLabel+m.Name+" · "+m.MaterialDescription+" — response diagrams";
-            bool detailsExpanded=CheckedCasesDetails?.IsExpanded??false;
+            Title=beamLabel+m.Name+" · "+m.MaterialDescription;
             charts.Children.Clear();
-            LoadCaseSelector=null;CheckedCasesDetails=null;CheckedCasesTable=null;
+            LoadCaseSelector=null;
             if(!upper)
             {
                 var choices=new DockPanel {Margin=new Thickness(0,8,0,8)};
@@ -172,13 +161,8 @@ namespace EngineeringDashboard
                 LoadCaseSelector=selector;choices.Children.Add(selector);
                 charts.Children.Add(choices);
             }
-            if(primary)
-                charts.Children.Add(new Border {Background=new SolidColorBrush(Color.FromRgb(255,246,219)),Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
-                    Child=new TextBlock {Text="UDL design model · full secondary tributaries; crossing loads remain over their footprints.",TextWrapping=TextWrapping.Wrap}});
-            string spacingLabel=upper ? UpperSpacingLabel(t,SelectedRun-runs-t.RowsMm.Length) : $"Nominal beam secondary spacing {t.EnteredUpperSpacingMm:0.###} mm; local receiving gaps can be shorter.";
-            charts.Children.Add(new TextBlock {Text=spacingLabel,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
-            charts.Children.Add(new TextBlock {Text="Member design · "+CaseLabel(m.LoadCase)+(m.IsWS10 ? " · load on this WS10 " : m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN · utilization "+m.Utilization.ToString("P1")+(SelectedLoadCase==governing && !upper ? " · governing case" : ""),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
-            if(!upper) {AddCheckedCases(t.CaseNames,cases,governing);CheckedCasesDetails.IsExpanded=detailsExpanded;}
+            double spacing=upper ? t.SlabSpacing((SelectedRun-runs-t.RowsMm.Length)%2==0) : t.EnteredUpperSpacingMm;
+            AddMemberSummary(spacing,m.Utilization);
             var equivalent=!primary && !upper && t.UnitLowerCases.Length>0
                 ? EquivalentTransferredLoading.Create(layout,SelectedRun-runs,SelectedLoadCase) : null;
             LoadingDiagram=null;
@@ -189,10 +173,6 @@ namespace EngineeringDashboard
             }
             else
             {
-                if(equivalent!=null)charts.Children.Add(new TextBlock {Text=equivalent.UnavailableReason.Replace("use Secondary design checks.","actual member design loads shown below."),Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap});
-                AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
-                +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))),
-                primary ? "UDL support reactions" : "Support reactions and point loads");
                 LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);
                 AddChart("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,true);
             }
@@ -204,33 +184,10 @@ namespace EngineeringDashboard
             }
             AddResponseCharts(m,primary);
         }
-        private static string UpperSpacingLabel(TransferredSlabResult t,int encoded)
-        {
-            int row=encoded/2;bool left=encoded%2==0;
-            return t.UpperSpacingDescription(left,row);
-        }
         private string CaseLabel(string value)
         {
             if(networkBeam==0 || !value.StartsWith("Beam",StringComparison.Ordinal))return value;
             return ("B"+networkBeam+value.Substring(4)).Replace("both slabs",$"S{networkBeam-1} + S{networkBeam}").Replace("left slab","S"+(networkBeam-1)).Replace("right slab","S"+networkBeam);
-        }
-        internal sealed class CheckedCaseRow
-        {
-            public string LoadCase {get;set;}
-            public double Shear {get;set;}
-            public double Moment {get;set;}
-            public double Deflection {get;set;}
-            public double Utilization {get;set;}
-        }
-        private void AddCheckedCases(string[] names,TransferMember[] cases,int governing)
-        {
-            var table=new DataGrid {IsReadOnly=true,AutoGenerateColumns=false,CanUserAddRows=false,CanUserDeleteRows=false,CanUserReorderColumns=false,HeadersVisibility=DataGridHeadersVisibility.Column,MaxHeight=280,Margin=new Thickness(0,6,0,4)};
-            table.Columns.Add(new DataGridTextColumn {Header="Load case",Binding=new System.Windows.Data.Binding(nameof(CheckedCaseRow.LoadCase)),Width=new DataGridLength(3,DataGridLengthUnitType.Star)});
-            foreach(string field in new[] {"Shear","Moment","Deflection","Utilization"})
-                table.Columns.Add(new DataGridTextColumn {Header=field,Binding=new System.Windows.Data.Binding(field) {StringFormat="{0:P1}"},Width=new DataGridLength(1,DataGridLengthUnitType.Star)});
-            table.ItemsSource=cases.Select((m,c)=>new CheckedCaseRow {LoadCase=CaseLabel(names[c])+(c==governing ? " · governing" : ""),Shear=Math.Max(m.Analysis.ShearKn,m.SubsetShearBoundKn)/m.ShearLimitKn,Moment=Math.Max(m.Analysis.MomentKnM,m.SubsetMomentBoundKnM)/m.MomentLimitKnM,Deflection=Math.Max(m.Analysis.DeflectionUtilization,m.SubsetDeflectionBound),Utilization=m.Utilization}).ToArray();
-            var body=new StackPanel();body.Children.Add(new TextBlock {Text="Percentages of permissible shear, moment and deflection for this H20. These are checked loading patterns; pouring groups are not configured.",TextWrapping=TextWrapping.Wrap});body.Children.Add(table);
-            CheckedCasesTable=table;CheckedCasesDetails=new Expander {Header=$"Details · all checked cases ({cases.Length})",IsExpanded=false,Margin=new Thickness(0,4,0,4),Content=body};charts.Children.Add(CheckedCasesDetails);
         }
         private void AddResponseCharts(TransferMember m,bool primary)
         {
@@ -243,17 +200,18 @@ namespace EngineeringDashboard
                 AddChart((primary ? "UDL design · " : "")+caption,new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
             }
         }
-        private void AddLoadDetails(string text,string header="Support reactions and point loads")
-        {charts.Children.Add(new Expander {Header=header,Margin=new Thickness(0,4,0,4),Content=new TextBlock {Text=text,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(4,6,4,8)}});}
+        private void AddMemberSummary(double spacing,double utilization)
+        {
+            charts.Children.Add(new TextBlock {Text=$"Secondary beam spacing: {spacing:0.###} mm",Margin=new Thickness(0,6,0,4)});
+            charts.Children.Add(new TextBlock {Text=$"Utilization rate: {utilization*100:0.0}%",Margin=new Thickness(0,0,0,4)});
+        }
         private void AddChart(string caption,FrameworkElement plot,bool loading=false)
         {
-            if(loading && plot is MemberLoadingPlot loads && (loads.SourceUniform.Length!=loads.CombinedUniform.Length || loads.SourceUniform.Zip(loads.CombinedUniform,(a,b)=>a.StartMm!=b.StartMm || a.EndMm!=b.EndMm || a.KnPerM!=b.KnPerM).Any(changed=>changed)))
-                AddLoadDetails(string.Join("\n",loads.SourceUniform.Select(q=>$"{q.StartMm:0.###}–{q.EndMm:0.###} mm from stock start: {q.KnPerM:0.###} kN/m")),"Applied load components");
             var panel=new StackPanel();
-            panel.Children.Add(new TextBlock {Text=caption,FontSize=16,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(51,51,51)),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,6)});
+            panel.Children.Add(new TextBlock {Text=caption,FontSize=16,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(51,51,51)),Margin=new Thickness(0,0,0,6)});
             panel.Children.Add(plot);
-            panel.Children.Add(new TextBlock {Text=loading ? plot is EquivalentLoadingView ? "Red: equivalent load · green: support reactions · dimensions in mm. Click a load or reaction for details." : "Red: applied load · green: support reactions · dimensions in mm. Full values are available under support reactions above." : "Distance from the left stock end (mm). Dashed verticals: supports · red dashed lines: permissible limits.",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,6,0,0)});
-            charts.Children.Add(new Border {Background=Brushes.White,BorderBrush=new SolidColorBrush(Color.FromRgb(224,224,224)),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8),Padding=new Thickness(12),Margin=new Thickness(0,12,0,4),Child=panel});
+            panel.Children.Add(new TextBlock {Text=loading ? plot is EquivalentLoadingView ? "Red: equivalent load · green: support reactions · mm. Click a load or reaction for details." : "Red: applied load · green: support reactions · dimensions in mm." : "Distance from the left stock end (mm). Dashed verticals: supports · red dashed lines: permissible limits.",FontSize=12,Foreground=Brushes.DimGray,Margin=new Thickness(0,6,0,0)});
+            var card=new Border {Child=panel};card.SetResourceReference(StyleProperty,"Card");charts.Children.Add(card);
         }
         private static Brush PlotBackground(int index)=>new SolidColorBrush(index==0 ? Color.FromRgb(255,255,217) : index==1 ? Color.FromRgb(220,250,220) : Color.FromRgb(218,255,255));
         private static void Axes(DrawingContext dc,double left,double right,double top,double bottom,double range,int index,Action<string,double,double> label)
@@ -282,7 +240,7 @@ namespace EngineeringDashboard
             internal int DrawnUniformCount {get;private set;}
             internal readonly System.Collections.Generic.List<Rect> LabelBounds=new System.Collections.Generic.List<Rect>();
             internal MemberLoadingPlot(double l,double[] s,double[] r,BeamDistributedLoad[] u,BeamPointLoad[] p)
-            {length=l;supports=s;reactions=r;SourceUniform=u??new BeamDistributedLoad[0];uniform=Combine(SourceUniform);points=p??new BeamPointLoad[0];MinHeight=270;}
+            {length=l;supports=s;reactions=r;SourceUniform=u??new BeamDistributedLoad[0];uniform=Combine(SourceUniform);points=(p??new BeamPointLoad[0]).Where(load=>Math.Abs(load.Kn)>1e-10).ToArray();MinHeight=270;}
             internal static BeamDistributedLoad[] Combine(BeamDistributedLoad[] loads)
             {
                 var cuts=loads.SelectMany(q=>new[] {q.StartMm,q.EndMm}).Distinct().OrderBy(x=>x).ToArray();
@@ -350,7 +308,7 @@ namespace EngineeringDashboard
                 foreach(var p in points)
                 {
                     double x=xx(p.PositionMm),sign=Math.Sign(p.Kn),tip=beamY-sign*5,from=tip-sign*52;
-                    arrow(x,from,tip,Brushes.Firebrick);label($"{p.Kn:0.##} kN",x,from+(sign>=0 ? -19 : 5));DrawnPointCount++;
+                    arrow(x,from,tip,Brushes.Firebrick);string value=Math.Abs(p.Kn)<.005 ? (p.Kn>0 ? "<0.01" : "−<0.01") : p.Kn.ToString("0.##",CultureInfo.CurrentCulture);label(value+" kN",x,from+(sign>=0 ? -19 : 5));DrawnPointCount++;
                 }
                 var reactionBoxes=PlaceReactionLabels(ActualWidth);
                 for(int i=0;i<supports.Length;i++)

@@ -91,4 +91,26 @@
             <DataTrigger Binding="{Binding WarningMessage}" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
         </Style.Triggers>
     </Style>
+    <Style x:Key="ViewTab" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Padding" Value="12,6"/>
+        <Setter Property="MinHeight" Value="32"/>
+        <Setter Property="BorderBrush" Value="#DFE3E6"/>
+    </Style>
+    <Style x:Key="StockChip" TargetType="ToggleButton">
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="BorderBrush" Value="#ADB5BD"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="#202A33"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
+            <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" CornerRadius="2">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsChecked" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#FFF2BF"/><Setter TargetName="Chrome" Property="BorderBrush" Value="#D4AA00"/></Trigger>
+                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="#806500"/></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Chrome" Property="Opacity" Value="0.45"/></Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+    </Style>
 </ResourceDictionary>

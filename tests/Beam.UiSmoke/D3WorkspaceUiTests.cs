@@ -14,7 +14,7 @@ internal static class D3WorkspaceUiTests
     static int checks;
     static void Check(bool value,string message){checks++;if(!value)throw new Exception("D3 workspace: "+message);}
     static void Pump()=>Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));
-    static void Click(BeamFormworkWorkspace view,string key){view.Buttons[key].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();}
+    static void Click(BeamFormworkWorkspace view,string key){var control=view.Buttons[key];if(control is CheckBox toggle)toggle.IsChecked=toggle.IsChecked!=true;control.RaiseEvent(new RoutedEventArgs(control is MenuItem ? MenuItem.ClickEvent : Button.ClickEvent));Pump();}
     public static int Run(string output)
     {
         var model=new BeamCalculatorViewModel {BeamLengthMm=6750,TowerLegCapacityKn=70,MaximumConcreteEndOverhangMm=75,AllowCustomH20Lengths=true,IgnoreUplift=true};

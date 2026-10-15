@@ -40,6 +40,8 @@ internal static class SecondarySettingOutTests
         var n=new TransferNetworkInput {UpperSpacingMm=275,PlywoodSheetLengthMm=2440,PlywoodProfileId="doka-18mm-9732-103",PlywoodDeflectionDenominator=350,BeamSpacingsMm=new double[] {275,305,275,305},SlabSpacingsMm=new double[] {407,407,407},CrossingSpacingsMm=new double[] {305,305},Beams=Enumerable.Range(0,4).Select(i=>new TransferBeamRow {WidthMm=i%2==0 ? 800 : 650,DepthMm=i%2==0 ? 1750 : 1150,BottomElevationMm=i%2==0 ? -1750 : -1150}).ToArray(),Bays=new[] {new TransferBayRow {WidthMm=2278,ThicknessMm=300},new TransferBayRow {WidthMm=2272,ThicknessMm=300},new TransferBayRow {WidthMm=2252,ThicknessMm=300}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=2,PositionMm=3450,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150},new TransferCrossingBeamRow {BayNumber=3,PositionMm=3450,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150}}};
         // Restrict only the shared coverage/phase to the reported selection; member and
         // crossing checks still run through the production solver before coordination.
+        // Keep this historical setting-out fixture independent of the new default shared-coverage policy.
+        c.IndependentNetworkPrimaryCoverage=true;
         var covers=TransferredSlabOptimizer.StockCovers(c);
         var scenario=typeof(TransferNetworkOptimizer).GetMethod("SearchScenario",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,new object[] {c,n,covers,new TransferredSlabOptimizer.GeometryCache(),null,8,6750.0,0.0,false});
         var candidates=(System.Collections.Generic.List<TransferNetworkResult>)scenario.GetType().GetField("Improvements",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(scenario);

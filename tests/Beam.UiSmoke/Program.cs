@@ -36,7 +36,7 @@ internal static class Program
   var reference=LoadedBeamAnalysis.Analyze(shown.LengthMm,shown.SupportsMm,shown.Uniform,null,TowerOptimizer.PairEI,denominator);
   Check(Math.Abs(shown.Analysis.MomentKnM-reference.MomentKnM)<1e-8 && Math.Abs(shown.Analysis.ShearKn-reference.ShearKn)<1e-8 && Math.Abs(shown.Analysis.DeflectionMm-reference.DeflectionMm)<1e-8,"plotted UDL demands agree with an independent calculation");
   Check(shown.Utilization<=1+1e-8,"displayed primary passes design limits");
-  Check(Find<TextBlock>(diagrams).Any(t=>t.Text.StartsWith("UDL design model")) && Find<TextBlock>(diagrams).Count(t=>t.Text.StartsWith("UDL design · "))==3,"UDL design is labelled in all response plots");
+  Check(Find<TextBlock>(diagrams).Any(t=>t.Text.StartsWith("Secondary beam spacing:")) && Find<TextBlock>(diagrams).Count(t=>t.Text.StartsWith("UDL design · "))==3,"compact summary retains labelled UDL response plots");
   Check(!Find<CheckBox>(diagrams).Any(),"no primary point-load or approximate-UDL switch remains");
   Check(Find<TextBlock>(diagrams).Any(t=>t.Text.StartsWith("Loading diagram")) && diagrams.LoadingDiagram!=null,"primary loading diagram remains available");
  }
@@ -46,6 +46,9 @@ internal static class Program
   {
    System.Windows.Media.RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;
    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+   if(args.Contains("--preview-smoke"))return StandalonePreview.Run(true);
+   if(args.Contains("--preview"))return StandalonePreview.Run();
+   WorkspacePresentationTests.Run();
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));
    if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    if(args.Contains("--drawing-ui")){D3WorkspaceUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));PresentationUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));DimensionLaneUiTests.Run();return 0;}
@@ -294,7 +297,7 @@ internal static class Program
    Render();var networkPlan=(TransferNetworkPlan)window.FindName("NetworkPlan");
    Check(networkPlan.DrawnTowerLegCount==vm.NetworkResult.LegCount && networkPlan.DrawnTransversePlanCount==0,"full network plan shows all towers and no transverse pairs");
    Check(networkPlan.DrawnPrimaryLengthCount==vm.NetworkResult.Beams.Sum(b=>b.StockPlan.Pieces.Length),"each paired primary stock length labelled once in plan");
-   Check(networkPlan.DrawnSecondaryLengthCount==3,"secondary stock length shown below each beam in section");
+   Check(networkPlan.SectionRows.All(r=>Math.Abs(r.Item3-networkPlan.ActualSectionPositionMm)<=40+1e-7),"section uses a single shared cut position");
    var networkSaved=window.CaptureCalculation();var networkReport=window.BuildReport();Check(networkReport.Contains("Network") && networkReport.Contains("1200") && networkReport.Contains("shutter"),"report includes complete network and distinct beam depths");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
    var networkHit=networkPlan.MemberTargets.First(h=>h.Item2==1 && h.Item3==0 && h.Item4==0);
@@ -312,6 +315,7 @@ internal static class Program
     Check(window.TowerDiagrams.SelectedLoadCase==0 && window.TowerDiagrams.ActualLoadedAnalysis==layout.Transfer.PrimaryCases[0][runs].Analysis,"beam-only load-case selector changes the retained actual analysis");
     CheckUniformPrimary(window.TowerDiagrams,vm.DeflectionLimit.Denominator);
     window.TowerDiagrams.LoadCaseSelector.SelectedIndex=layout.Transfer.CaseNames.Length-1;Pump();
+    networkPlan.SectionPositionMm=layout.Transfer.RowsMm[0];networkPlan.InvalidateVisual();Render();
     var secondaryHit=networkPlan.MemberTargets.First(h=>h.Item2==selectedBeam && h.Item3>=runs && h.Item3<runs+layout.Transfer.RowsMm.Length);
     Check(networkPlan.SelectAt(new Point(secondaryHit.Item1.X+secondaryHit.Item1.Width/2,secondaryHit.Item1.Y+secondaryHit.Item1.Height/2)),"select each single lower secondary from section");Pump();
     Check(window.TowerDiagrams.LoadedAnalysis==layout.Transfer.LowerCases[window.TowerDiagrams.SelectedLoadCase][secondaryHit.Item3-runs].Analysis && window.TowerDiagrams.SelectedTransferMember.H20Count==1 && window.TowerDiagrams.SelectedTransferMember.ShearLimitKn==11 && window.TowerDiagrams.SelectedTransferMember.MomentLimitKnM==5,"lower secondary diagrams use their point loads and single capacity");
@@ -319,6 +323,7 @@ internal static class Program
    for(int bay=0;bay<vm.NetworkResult.Bays.Length;bay++)
    {
     var layout=vm.NetworkResult.Beams[bay];int firstUpper=layout.StockPlan.Pieces.Length+layout.Transfer.RowsMm.Length;
+    networkPlan.SectionPositionMm=layout.Transfer.RowsMm[Array.IndexOf(layout.Transfer.RightUpperScales,layout.Transfer.RightUpperScales.Max())];networkPlan.InvalidateVisual();Render();
     var slabHit=networkPlan.MemberTargets.First(h=>h.Item2==bay && h.Item3>=firstUpper);
     Check(networkPlan.SelectAt(new Point(slabHit.Item1.X+slabHit.Item1.Width/2,slabHit.Item1.Y+slabHit.Item1.Height/2)),"select single slab H20 directly from main section");Pump();
     var original=layout.Transfer.UpperMembers.Single(m=>m.Name=="Upper right");var selected=window.TowerDiagrams.SelectedTransferMember;
@@ -337,6 +342,7 @@ internal static class Program
    Check(vm.IsCalculationValid && networkPlan.DrawnCrossingBeamCount==1 && window.BuildReport().Contains("extra bay load"),"crossing beam shown in plan and load schedule");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
    var tCross=vm.NetworkResult.Beams[0].Transfer;int crossRow=Array.IndexOf(tCross.RightUpperScales,tCross.RightUpperScales.Max());
+   networkPlan.SectionPositionMm=tCross.RowsMm[crossRow];networkPlan.InvalidateVisual();Render();
    int crossEncoded=vm.NetworkResult.Beams[0].StockPlan.Pieces.Length+tCross.RowsMm.Length+crossRow*2+1;
    var crossingHit=networkPlan.MemberTargets.Single(h=>h.Item2==0 && h.Item3==crossEncoded);
    Check(networkPlan.SelectAt(new Point(crossingHit.Item1.X+crossingHit.Item1.Width/2,crossingHit.Item1.Y+crossingHit.Item1.Height/2)),"select governing crossing-loaded slab H20 in main section");Pump();
@@ -362,6 +368,7 @@ internal static class Program
    Check(vm.NetworkResult.Bays[0].StockLengthMm%25==0 && vm.NetworkResult.Bays[0].IsCustomLength && window.BuildReport().Contains(vm.NetworkResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"custom length is labelled in calculation report");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
    var customTransfer=vm.NetworkResult.Beams[0].Transfer;int customRow=Array.IndexOf(customTransfer.RightUpperScales,customTransfer.RightUpperScales.Max());
+   networkPlan.SectionPositionMm=customTransfer.RowsMm[customRow];networkPlan.InvalidateVisual();Render();
    int customEncoded=vm.NetworkResult.Beams[0].StockPlan.Pieces.Length+customTransfer.RowsMm.Length+customRow*2+1;
    var customHit=networkPlan.MemberTargets.Single(h=>h.Item2==0 && h.Item3==customEncoded);
    Check(networkPlan.SelectAt(new Point(customHit.Item1.X+customHit.Item1.Width/2,customHit.Item1.Y+customHit.Item1.Height/2)),"custom slab H20 can be selected directly for diagrams");Pump();

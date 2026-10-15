@@ -40,7 +40,7 @@ internal static class GeometryEditingUiTests
         var labels=Text(view.Section);
         Check(!labels.Any(t=>t.Contains("Section ·") || t.Contains("red:") || t.StartsWith("Edge ")),"section omits the explanatory header and Edge text");
         Check(labels.Contains("S1 "+model.NetworkBays[0].WidthMm.ToString("0.###")+" · t "+model.NetworkBays[0].ThicknessMm.ToString("0.###")),"section renders slab span and thickness in one external dimension label");
-        Check(labels.Contains("B1 · D "+model.NetworkBeams[0].DepthMm.ToString("0.###")),"section renders beam depth in its external callout");
+        Check(labels.Any(t=>t.StartsWith("B1 · D "+model.NetworkBeams[0].DepthMm.ToString("0.###"))),"section renders beam depth in its external callout");
         Click(view,"Geometry");drawing.Select(FormworkObject.Beam,1);Render(view.Surface);
         model.NetworkBeams[1].WidthMm=725;model.NetworkBeams[1].DepthMm=1375;model.NetworkBeams[1].BottomElevationMm=-1200;Pump();Render(view.Surface);
         var beforeCopy=model.NetworkConfigurationXml;

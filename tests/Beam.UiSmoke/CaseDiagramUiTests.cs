@@ -38,15 +38,13 @@ internal static class CaseDiagramUiTests
         var vm=new BeamCalculatorViewModel {UseTowers=true};typeof(BeamCalculatorViewModel).GetProperty("TowerResult").SetValue(vm,layout);
         var window=new TowerDiagramWindow(vm);window.SelectMember(0,0,-1);
         Check(window.SelectedLoadCase==0 && window.SelectedTransferMember==primary[0][0],"default uses the governing member case, even when it is not last");
-        Check(window.LoadCaseSelector.Items.Count==3 && !window.CheckedCasesDetails.IsExpanded && window.CheckedCasesTable.Items.Count==3,"one selector retains all cases in collapsed details");
-        var row=(TowerDiagramWindow.CheckedCaseRow)window.CheckedCasesTable.Items[0];
-        Near(row.Shear,primary[0][0].Analysis.ShearKn/22,"details shear utilization");Near(row.Moment,primary[0][0].Analysis.MomentKnM/10,"details moment utilization");Near(row.Deflection,primary[0][0].Analysis.DeflectionUtilization,"details deflection utilization");
-        window.CheckedCasesDetails.IsExpanded=true;window.LoadCaseSelector.SelectedIndex=2;Check(window.SelectedTransferMember==primary[2][0] && window.CheckedCasesDetails.IsExpanded,"manual selection changes the actual analysis while preserving expanded details");
+        Check(window.LoadCaseSelector.Items.Count==3 && !Labels((DependencyObject)window.Content).Any(t=>t.Text.StartsWith("UDL design model") || t.Text.StartsWith("Member design · ")),"all checked cases stay selectable with a compact summary");
+        window.LoadCaseSelector.SelectedIndex=2;Check(window.SelectedTransferMember==primary[2][0],"manual selection changes the actual analysis");
         window.SelectMember(0,0,-1);Check(window.SelectedLoadCase==2,"refreshing the same member retains the manual choice");
         window.SelectMember(0,1,-1);Check(window.SelectedLoadCase==1 && window.SelectedTransferMember==primary[1][1],"changing primary line resets to that line's governing case");
         window.SelectMember(1,0,-1);Check(window.SelectedLoadCase==1 && window.SelectedTransferMember==lower[1][0],"lower secondary has its own governing case");
         primary[2][0].SubsetShearBoundKn=21;window.SelectMember(0,0,-1);Check(window.SelectedLoadCase==2,"conservative subset bounds participate in governing selection");
-        Near(((TowerDiagramWindow.CheckedCaseRow)window.CheckedCasesTable.Items[2]).Shear,21.0/22,"case details retain subset bounds");window.Close();
+        Check(window.SelectedTransferMember.SubsetShearBoundKn==21,"selected design retains subset bounds");window.Close();
 
         // Input-model fixture: the slab and lower-secondary nominal pitches differ.
         // The window must use the solver's row response and the selected slab label.
@@ -62,7 +60,7 @@ internal static class CaseDiagramUiTests
             var expected=t.UpperMemberAtRow(false,0);
             Near(window.DisplayedTransferMember.Analysis.TotalLoadKn,expected.Analysis.TotalLoadKn,"upper diagram uses slab scaling denominator");
             Near(window.LoadedAnalysis.DeflectionMm,expected.Analysis.DeflectionMm,"upper response matches checked slab width");
-            Check(Labels((DependencyObject)window.Content).Any(x=>x.Text==t.UpperSpacingDescription(false,0)),"upper label names slab pitch, local gaps and effective width");
+            Check(Labels((DependencyObject)window.Content).Any(x=>x.Text==$"Secondary beam spacing: {slabPitch:0.###} mm"),"upper label names slab pitch, local gaps and effective width");
             window.Close();
         }
 

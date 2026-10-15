@@ -9,7 +9,8 @@ internal static class CoordinatedDesignerTests
     static int checks;
     static void Check(bool value,string message){checks++;if(!value)throw new Exception("Coordinated designer: "+message);}
     static void Near(double a,double b,string message)=>Check(Math.Abs(a-b)<1e-7*Math.Max(1,Math.Abs(b)),message+$" ({a:G12} vs {b:G12})");
-    static TowerInput Common(double length=6900)=>new TowerInput {LengthMm=length,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=200,DeflectionDenominator=270,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,IgnoreUplift=true,NetworkSearchWorkers=1};
+    // Preserve historical economy comparisons; default shared coverage is verified in NetworkTests.
+    static TowerInput Common(double length=6900)=>new TowerInput {IndependentNetworkPrimaryCoverage=true,LengthMm=length,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=200,DeflectionDenominator=270,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,IgnoreUplift=true,NetworkSearchWorkers=1};
     static TransferNetworkInput Network(double first=2677,double second=1875,double length=6900)=>new TransferNetworkInput {UpperSpacingMm=275,
         Beams=new[] {new TransferBeamRow {WidthMm=800,DepthMm=1750},new TransferBeamRow {WidthMm=650,DepthMm=1150},new TransferBeamRow {WidthMm=800,DepthMm=1750}},
         Bays=new[] {new TransferBayRow {WidthMm=first,ThicknessMm=300},new TransferBayRow {WidthMm=second,ThicknessMm=300}},

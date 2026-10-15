@@ -69,7 +69,7 @@ namespace EngineeringDashboard
             else
             {
                 Line(reaction==0 ? "Left reaction" : "Right reaction",true,Brushes.SeaGreen);
-                foreach(var c in model.Components)Line($"{c.Name}: {c.ReactionsKn[reaction]:0.#####} kN",color:EquivalentLoadingPlot.Color(c));
+                foreach(var c in model.Components.Where(c=>Math.Abs(c.ReactionsKn[reaction])>1e-10))Line($"{c.Name}: {c.ReactionsKn[reaction]:0.#####} kN",color:EquivalentLoadingPlot.Color(c));
                 double r=model.Member.Analysis.Reactions[reaction],reference=model.ReferenceSpacingMm/1000;
                 Line($"R = {r:0.#####} kN",true,Brushes.SeaGreen);
                 Line($"{r:0.#####} / {reference:0.###} = {model.PrimaryTransferKnM[reaction]:0.#####} kN/m",true,Brushes.SeaGreen);

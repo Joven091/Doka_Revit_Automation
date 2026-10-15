@@ -18,6 +18,9 @@ internal static class NetworkTests
         for(int b=0;b<result.Beams.Length;b++)
         {
             var beam=result.Beams[b];Check(beam.Transfer.SlabRowIndices.Select(i=>beam.Transfer.RowsMm[i]).SequenceEqual(result.SlabRowsMm),"shared upper rows align across all lower beams");
+            Near(beam.StockPlan.Pieces.Sum(p=>p.StockLengthMm),result.SlabCoveredLengthMm,"primary and slab coverage share the same stock total");
+            Near(beam.StockPlan.Pieces.Min(p=>p.StartMm),(common.LengthMm-result.SlabCoveredLengthMm)/2,"primary and slab start at the same station");
+            Near(beam.StockPlan.Pieces.Max(p=>p.EndMm),(common.LengthMm+result.SlabCoveredLengthMm)/2,"primary and slab end at the same station");
             double beamLoad=input.AreaLoad(input.Beams[b].DepthMm)*input.Beams[b].WidthMm/1000*common.LengthMm/1000;
             Near(beam.Transfer.BeamLoadKn,beamLoad,"each beam depth produces its own physical beam concrete load");
             Check(beam.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn)>=beamLoad-1e-7,"lower secondary design retains full end tributaries");

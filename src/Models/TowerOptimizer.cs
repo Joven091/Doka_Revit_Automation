@@ -221,7 +221,8 @@ namespace EngineeringDashboard
         internal bool OptimizeCrossingJunctions = true;
         internal bool PrecheckCrossingFootprints = true;
         // Regression tests can replay the former common-primary-coverage restriction.
-        internal bool IndependentNetworkPrimaryCoverage = true;
+        // Production networks share slab/primary extents. Retained internally for historical regression fixtures.
+        internal bool IndependentNetworkPrimaryCoverage = false;
         internal bool CoordinateCrossingLayouts;
         internal int NetworkSearchWorkers = Math.Min(4,Environment.ProcessorCount);
         internal bool PruneUneconomicCandidates = true;
