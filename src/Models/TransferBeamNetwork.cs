@@ -444,13 +444,20 @@ namespace EngineeringDashboard
             // Find a checked seed with the existing bounded descent, then recover
             // independent maxima. Never enumerate the Cartesian product of pitches.
             TowerOptimizationException failure;
-            try {return SearchSpacing(common,input);}
+            var first=common;
+            if(common.EngineerSearch && CrossBeamSupportOptimizer.Modern(input))
+            {
+                // Start with the whole junction. A cheapest provisional receiver
+                // can obstruct its crossing and adds no useful uncoordinated pass.
+                first=common.CopyForSearch();first.CoordinateCrossingLayouts=true;
+            }
+            try {return SearchSpacing(first,input);}
             catch(TowerOptimizationException ex){failure=ex;}
             var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
             var attempted=new HashSet<string>();
             TransferNetworkResult best=null;
             Func<TransferNetworkInput,string> keyOf=n=>string.Join(";",n.BeamSpacingsMm.Concat(n.SlabSpacingsMm).Concat(n.CrossingSpacingsMm));
-            if(!worker.CoordinateCrossingLayouts)attempted.Add(keyOf(input));
+            if(!worker.CoordinateCrossingLayouts || first.CoordinateCrossingLayouts)attempted.Add(keyOf(input));
             // Try a single category step before a blanket seed. Receiving-beam
             // failure must not automatically tighten slabs or dedicated crossings.
             var closer=input.WithSpacings(1);
