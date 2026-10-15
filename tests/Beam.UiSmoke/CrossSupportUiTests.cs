@@ -222,6 +222,19 @@ internal static class CrossSupportUiTests
         var canvas=new BeamFormworkCanvas(vm) {Width=1200,Height=600,Formwork=true};canvas.Measure(new Size(1200,600));canvas.Arrange(new Rect(0,0,1200,600));canvas.Fit();canvas.UpdateLayout();
         var planBitmap=new RenderTargetBitmap(1200,600,96,96,System.Windows.Media.PixelFormats.Pbgra32);planBitmap.Render(canvas);
         Check(!canvas.MemberTargets.Any(t=>t.Item2<0) && canvas.DrawnLegCount==vm.NetworkResult.LegCount && canvas.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"workspace cross H20 targets and calculated tower legs drawn");
+        Check(vm.NetworkResult.CrossSupports.SelectMany(c=>c.Solids).Any(s=>s.Member==null && !s.IsLeg && !s.IsTowerEnvelope && !s.IsSideShutter),"shared crossing fixture retains filler geometry for clearance checks");
+        canvas.Select(FormworkObject.Crossing,0);canvas.AllDimensions=true;
+        foreach(bool showSecondary in new[] {false,true})
+        {
+            canvas.ShowSecondaryH20s=showSecondary;canvas.InvalidateVisual();
+            Capture(canvas,1200,600,showSecondary ? null : Preview(previewPath,"shared-crossing-plan-no-fillers"));
+            var primitives=Primitives(VisualTreeHelper.GetDrawing(canvas)).ToArray();
+            Check(!primitives.OfType<GeometryDrawing>().Any(d=>d.Brush is SolidColorBrush brush && brush.Color==Colors.SandyBrown),"interactive floor plan hides orange filler blocks with secondary display "+showSecondary);
+            Check(!canvas.AnnotationLabels.Any(label=>label.StartsWith("Filler ",StringComparison.Ordinal)),"selected crossing and all dimensions do not restore filler labels");
+            Check(canvas.DrawnLegCount==vm.NetworkResult.LegCount,"hiding fillers preserves actual tower legs");
+        }
+        var sectionPrimitives=Primitives(VisualTreeHelper.GetDrawing(section)).OfType<GeometryDrawing>().ToArray();
+        Check(!sectionPrimitives.Any(d=>d.Brush is SolidColorBrush brush && brush.Color==Colors.SandyBrown) && sectionPrimitives.Any(d=>d.Geometry is LineGeometry && d.Pen?.Brush is SolidColorBrush brush && brush.Color==Colors.DarkRed),"section represents shared crossing filler gaps with load-transfer arrows");
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Drawing.Select(FormworkObject.Crossing,0);workspace.Show();Pump();
         Check(workspace.Fields.ContainsKey("BottomElevationMm"),"cross bottom elevation exposed in workspace");
         workspace.Drawing.Select(FormworkObject.Slab,0);Pump();
