@@ -96,7 +96,7 @@ namespace EngineeringDashboard
                 }
             }
             else {governingResult=null;GoverningMembers.Children.Clear();}
-            GoverningMembers.Visibility=sectionMode && governingResult!=null ? Visibility.Visible : Visibility.Collapsed;
+            GoverningMembers.Visibility=sectionMode && governingResult!=null && InspectorTabs.SelectedIndex==0 ? Visibility.Visible : Visibility.Collapsed;
         }
         private void SettingsGroup(string title,string summary,bool expanded,Action build)
         {

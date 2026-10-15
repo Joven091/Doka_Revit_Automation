@@ -152,6 +152,7 @@ internal static class WorkspaceTests
             workspace.WindowState=WindowState.Normal;workspace.Width=1280;workspace.Height=860;Render();
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-geometry.png"));
             workspace.InspectorTabs.SelectedIndex=1;Render(output==null ? null : Path.ChangeExtension(output,"workspace-settings.png"));
+            Check(!workspace.IsResultCardVisible,"shared settings give the full inspector height to shared inputs");
             workspace.Width=980;workspace.Height=620;Render(output==null ? null : Path.ChangeExtension(output,"workspace-compact.png"),980,620);
             workspace.Width=1280;workspace.Height=860;workspace.InspectorTabs.SelectedIndex=0;Render();
             Check(workspace.Buttons["Save"] is MenuItem && workspace.Buttons["Load"] is MenuItem && workspace.Buttons["AddAbove"] is MenuItem,"file and add actions use compact menus");
@@ -343,7 +344,7 @@ internal static class WorkspaceTests
             var secondCancel=workspace.CalculateAsync();workspace.Buttons["Cancel"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             cancelTimer.Restart();while(!secondCancel.IsCompleted){Pump();Thread.Sleep(1);if(cancelTimer.Elapsed.TotalSeconds>10)throw new Exception("Workspace second cancellation timeout");}
             secondCancel.GetAwaiter().GetResult();Pump();Check(!model.IsOptimizing && model.BuildDiagnosticReport().Contains("Search outcome: Cancelled"),"drawing toolbar cancel also stops the shared analysis");
-            var liveSearch=workspace.CalculateAsync();workspace.Buttons["Diagnose"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var liveSearch=workspace.CalculateAsync();workspace.Buttons["Diagnose"].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Check(workspace.Diagnostics.ReportBox.Text.Contains("Search running: True") && workspace.Buttons["Diagnose"].IsEnabled,"diagnose remains available during an actual search");
             var searchTimer=System.Diagnostics.Stopwatch.StartNew();while(!liveSearch.IsCompleted){Pump();Thread.Sleep(1);if(searchTimer.Elapsed.TotalSeconds>45)throw new Exception("Workspace diagnostic search timeout");}
             liveSearch.GetAwaiter().GetResult();Pump();Render();workspace.Diagnostics.RefreshReport();
@@ -372,7 +373,7 @@ internal static class WorkspaceTests
             Click("Geometry");drawing.Select(FormworkObject.Beam,0);workspace.Fields["DepthMm"].Text="bad";Pump();Render();
             Check(!workspace.Buttons["Calculate"].IsEnabled && !model.CanOptimizeTowers && !parent.TryGetValidCalculation(out var ignored),"workspace conversion errors also block calculator and export guards");
             var exclusion=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow standalone 600 mm towers"));exclusion.IsChecked=true;exclusion.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
-            Check(exclusion.IsChecked==model.Exclude600Standalone && model.Exclude600Standalone,"invalid text cannot leave a tower-exclusion checkbox inconsistent with solver");
+            Check(exclusion.IsChecked==!model.Exclude600Standalone && model.Exclude600Standalone,"invalid text cannot leave a tower-exclusion checkbox inconsistent with solver");
             var criterion=Controls<ComboBox>(workspace).Single(c=>c.SelectedItem is BeamDeflectionOption);var previousCriterion=model.DeflectionLimit;criterion.SelectedItem=model.DeflectionOptions.Last();Pump();
             Check(criterion.SelectedItem==previousCriterion && model.DeflectionLimit==previousCriterion,"invalid text cannot leave displayed deflection criterion inconsistent with solver");
             var next=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Beam && h.Item3==1);Check(!drawing.SelectAt(Centre(next.Item1)) && workspace.Fields["DepthMm"].Text=="bad","selection cannot discard invalid text");

@@ -106,6 +106,7 @@ namespace EngineeringDashboard
             InspectorTabs.Items.Add(new TabItem {Header="Selection",Content=new ScrollViewer {Content=properties,VerticalScrollBarVisibility=ScrollBarVisibility.Auto}});
             InspectorTabs.Items.Add(new TabItem {Header="Shared settings",Content=new ScrollViewer {Content=SharedProperties,VerticalScrollBarVisibility=ScrollBarVisibility.Auto}});
             Grid.SetRow(InspectorTabs,1);inspector.Children.Add(InspectorTabs);
+            InspectorTabs.SelectionChanged+=(s,e)=> {if(ReferenceEquals(e.Source,InspectorTabs) && !changing)Refresh();};
             var governingScroll=new ScrollViewer {Content=GoverningMembers,MaxHeight=200,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Margin=new Thickness(12,0,12,8)};Grid.SetRow(governingScroll,2);inspector.Children.Add(governingScroll);
             Grid.SetRow(status,2);root.Children.Add(status);Content=root;
             Drawing.CanInteract=()=>!Model.IsOptimizing && CommitFields();
@@ -600,7 +601,7 @@ namespace EngineeringDashboard
         private void RefreshResults(bool pending)
         {
             bool valid=Model.IsCalculationValid && !pending;
-            resultCard.Visibility=valid && Drawing.SelectedObjects.Length>0 ? Visibility.Visible : Visibility.Collapsed;
+            resultCard.Visibility=valid && Drawing.SelectedObjects.Length>0 && InspectorTabs.SelectedIndex==0 ? Visibility.Visible : Visibility.Collapsed;
             SeparateSlabNotice.SetResult(valid ? Model.NetworkResult : null);
             networkSummary.Text=selectedSummary.Text="";if(!valid || Drawing.SelectedObjects.Length==0)return;
             resultCard.ToolTip="Efficiency = combined design load ÷ total leg capacity. Individual legs are checked separately. Load includes concrete, working and formwork allowances over the calculated coverage.";
