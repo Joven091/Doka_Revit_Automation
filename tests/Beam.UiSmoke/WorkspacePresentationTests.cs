@@ -42,13 +42,29 @@ internal static class WorkspacePresentationTests
         Check(section.SectionRows.Count==1 && section.SectionRows[0].Item1==1,"section follows moved physical H20 positions rather than the retained design rows");
         section.SectionPositionMm=500;section.InvalidateVisual();Render(section);
         Check(section.SectionRows.Count==0 && section.MemberTargets.All(t=>t.Item3==0),"a cut between H20 rows does not invent or substitute a secondary");
-        var model=new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true};var workspace=new BeamFormworkWorkspace(model,null,null,null);
+        Check(section.DrawnSectionSupportCount==2 && section.SectionLabels.Any(s=>s.Contains("supports projected")),"support context stays visible between tower stations");
+        Check(section.SectionHorizontalScale==section.SectionVerticalScale,"section geometry has one scale in both directions");
+        var model=new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true,TransferSlabLoads=true,UseBeamNetwork=true};var workspace=new BeamFormworkWorkspace(model,null,null,null);
         Check(workspace.Buttons["NewSession"] is MenuItem && workspace.Buttons["Diagnose"] is MenuItem && !workspace.Buttons.ContainsKey("Close"),"file/tools menus remove redundant commands");
         Check(workspace.Buttons["SecondaryH20s"] is CheckBox,"secondary visibility has an explicit toggle state");
         var groups=Controls<Expander>(workspace.SharedProperties).ToArray();Check(groups.Length==4 && groups.Select(e=>e.Tag).SequenceEqual(new[] {"Materials and design limits","Available lengths","Support layout","Loads"}),"settings are grouped in the agreed order");
         Check(!Controls<TextBlock>(workspace.SharedProperties).Any(t=>t.Text.Contains("spacing limit") || t.Text=="Parallel beam length (mm)"),"geometry and calculated spacing limits are outside shared settings");
         var loads=Controls<ComboBox>(workspace.SharedProperties).Single(c=>c.Name=="LoadAllowanceSelector");loads.SelectedItem="Custom";
         Check(model.UseCustomLoads && workspace.Fields["CustomLiveLoad"].IsEnabled,"custom load mode exposes active fields");
+        Check(workspace.TryEditDimension("BeamLengthMm","7000",out var error) && model.BeamLengthMm==7000,"canvas length edits the shared parallel length");
+        workspace.Drawing.Select(FormworkObject.Slab,0);
+        Check(workspace.TryEditDimension("WidthMm","2250",out error) && model.NetworkBays[0].WidthMm==2250,"canvas slab dimension changes the bay width");
+        model.AddCrossingBeam();workspace.Drawing.Select(FormworkObject.Crossing,0);
+        Check(workspace.TryEditDimension("PositionMm","3350",out error) && model.CrossingBeams[0].PositionMm==3350,"canvas position moves the crossing");
+        Check(!workspace.TryEditDimension("PositionMm","-1",out error) && model.CrossingBeams[0].PositionMm==3350,"invalid canvas position cannot mutate geometry");
+        Check(!Controls<TextBlock>(workspace).Any(t=>t.Text==CrossBeamSupportResult.Limitations),"crossing inspector omits the design assumptions paragraph");
+        var centres=workspace.Drawing.Centres();double y=(centres[0]+centres[1])/2;
+        workspace.BeginDrafting("MV");workspace.Drawing.SelectAt(workspace.Drawing.Screen(3350,y));workspace.Drawing.UpdateDraftPointer(workspace.Drawing.Screen(4350,y));
+        Check(workspace.AppendDraftDistance("137") && workspace.CommitDraftDistance() && model.CrossingBeams[0].PositionMm==3487,"typed move distance is exact and is not rounded to the snap grid");
+        workspace.Buttons["Undo"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Check(model.CrossingBeams[0].PositionMm==3350,"one undo restores the typed move");
+        workspace.Drawing.Select(FormworkObject.Crossing,0);workspace.BeginDrafting("CO");workspace.Drawing.SelectAt(workspace.Drawing.Screen(3350,y));workspace.Drawing.UpdateDraftPointer(workspace.Drawing.Screen(4350,y));
+        Check(workspace.AppendDraftDistance("637") && workspace.CommitDraftDistance() && model.CrossingBeams.Count==2 && model.CrossingBeams[1].PositionMm==3987,"typed copy retains the source and places the new beam at the exact offset");
         workspace.Close();Console.WriteLine("Workspace presentation regressions passed.");
     }
 }

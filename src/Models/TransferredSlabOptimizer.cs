@@ -11,6 +11,9 @@ namespace EngineeringDashboard
     {
         internal TransferredSlabInput Copy()=>(TransferredSlabInput)MemberwiseClone();
         public double BeamWidthMm, BeamLineLoadKnM, UpperSpacingMm;
+        // Point reactions from slab-bearing ledgers, per metre along the crossing span.
+        internal BeamPointLoad[] BeamEdgeLoadsKnM=new BeamPointLoad[0];
+        internal double TotalBeamLineLoadKnM=>BeamLineLoadKnM+BeamEdgeLoadsKnM.Sum(p=>p.Kn);
         internal double LocalRowGapMm;
         internal double RowGapMm=>LocalRowGapMm>0 ? LocalRowGapMm : UpperSpacingMm;
         public double PlywoodSheetLengthMm;
@@ -907,7 +910,7 @@ namespace EngineeringDashboard
                         for(int mask=0;mask<4;mask++)
                         {
                             if ((mask&1)!=0 && left==null || (mask&2)!=0 && right==null) continue;
-                            var points=new List<BeamPointLoad>(); if ((mask&1)!=0) points.Add(new BeamPointLoad {PositionMm=lx-start,Kn=left.Analysis.Reactions[0]});
+                            var points=t.BeamEdgeLoadsKnM.Select(p=>new BeamPointLoad {PositionMm=t.BeamCentreOffsetMm+p.PositionMm-start,Kn=p.Kn}).ToList(); if ((mask&1)!=0) points.Add(new BeamPointLoad {PositionMm=lx-start,Kn=left.Analysis.Reactions[0]});
                             if ((mask&2)!=0) points.Add(new BeamPointLoad {PositionMm=rx-start,Kn=right.Analysis.Reactions[0]});
                             if ((mask&1)!=0) points.Add(new BeamPointLoad {PositionMm=t.BeamCentreOffsetMm-t.BeamWidthMm/2-100-start,Kn=left.Load*left.Edge/1000});
                             if ((mask&2)!=0) points.Add(new BeamPointLoad {PositionMm=t.BeamCentreOffsetMm+t.BeamWidthMm/2+100-start,Kn=right.Load*right.Edge/1000});
@@ -959,7 +962,7 @@ namespace EngineeringDashboard
                 // Design every row for at least the entered spacing; end strips receive no load reduction.
                 double beamWidth=Math.Max(trib[row],input.TransferredSlab.UpperSpacingMm);
                 double leftScale=ls[row]==0 ? 0 : Math.Max(ls[row],input.TransferredSlab.SlabSpacing(true)/1000),rightScale=rs[row]==0 ? 0 : Math.Max(rs[row],input.TransferredSlab.SlabSpacing(false)/1000);
-                var points=new List<BeamPointLoad>();
+                var points=input.TransferredSlab.BeamEdgeLoadsKnM.Select(p=>new BeamPointLoad {PositionMm=input.TransferredSlab.BeamCentreOffsetMm+p.PositionMm-cross.Start,Kn=p.Kn*beamWidth/1000}).ToList();
                 if(hasLeft) points.Add(new BeamPointLoad {PositionMm=input.TransferredSlab.BeamCentreOffsetMm-input.TransferredSlab.BeamWidthMm/2-cross.Left.Foot-cross.Start,Kn=cross.Left.Analysis.Reactions[0]*leftScale});
                 if(hasRight) points.Add(new BeamPointLoad {PositionMm=input.TransferredSlab.BeamCentreOffsetMm+input.TransferredSlab.BeamWidthMm/2+cross.Right.Foot-cross.Start,Kn=cross.Right.Analysis.Reactions[0]*rightScale});
                 if(hasLeft) points.Add(new BeamPointLoad {PositionMm=input.TransferredSlab.BeamCentreOffsetMm-input.TransferredSlab.BeamWidthMm/2-TransferredSlabInput.SideShutterReactionOffsetMm-cross.Start,Kn=cross.Left.Load*cross.Left.Edge/1000*leftScale});
@@ -992,7 +995,7 @@ namespace EngineeringDashboard
             for(int c=0;c<cross.Names.Length;c++)
             {
                 bool left=cross.Names[c].Contains("left") || cross.Names[c].Contains("both"),right=cross.Names[c].Contains("right") || cross.Names[c].Contains("both");
-                var points=new List<BeamPointLoad>();var labels=new List<string>();
+                var points=t.BeamEdgeLoadsKnM.Select(p=>new BeamPointLoad {PositionMm=t.BeamCentreOffsetMm+p.PositionMm-cross.Start,Kn=p.Kn}).ToList();var labels=t.BeamEdgeLoadsKnM.Select(p=>"Slab edge ledger").ToList();
                 Action<bool,bool> add=(isLeft,shutter)=>
                 {
                     var upper=isLeft ? cross.Left : cross.Right;double sign=isLeft ? -1 : 1;
@@ -1207,7 +1210,7 @@ namespace EngineeringDashboard
             var transfer=new TransferredSlabResult {UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=ColumnSupportLoads(input,cross,edge),CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
                 LeftUpperStockMm=cross.Left?.Stock??0,RightUpperStockMm=cross.Right?.Stock??0,LeftUpperCustom=cross.Left?.Custom??false,RightUpperCustom=cross.Right?.Custom??false,LeftUpperEdgeMm=cross.Left?.Edge??0,RightUpperEdgeMm=cross.Right?.Edge??0,
                 LeftFootReactionKn=(cross.Left?.Analysis.Reactions[0]??0)*ls.Max(),RightFootReactionKn=(cross.Right?.Analysis.Reactions[0]??0)*rs.Max(),
-                BeamLoadKn=input.TransferredSlab.BeamLineLoadKnM*input.LengthMm/1000,
+                BeamLoadKn=input.TransferredSlab.TotalBeamLineLoadKnM*input.LengthMm/1000,
                 CoveredSlabAreaM2=(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge))*((cross.Left?.Stock??0)+(cross.Right?.Stock??0))/1e6,
                 ShutterLoadKn=PhysicalShutterLoadKn(input,cross),
                 SlabLoadKn=PhysicalSlabLoadKn(input,cross),PrimaryCases=primaryCases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=upper.ToArray(),CaseNames=cross.Names};
@@ -1295,7 +1298,7 @@ namespace EngineeringDashboard
             var transfer=new TransferredSlabResult {UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=ColumnSupportLoads(input,cross,edge),CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
                 LeftUpperStockMm=cross.Left?.Stock??0,RightUpperStockMm=cross.Right?.Stock??0,LeftUpperCustom=cross.Left?.Custom??false,RightUpperCustom=cross.Right?.Custom??false,LeftUpperEdgeMm=cross.Left?.Edge??0,RightUpperEdgeMm=cross.Right?.Edge??0,
                 LeftFootReactionKn=(cross.Left?.Analysis.Reactions[0]??0)*ls.Max(),RightFootReactionKn=(cross.Right?.Analysis.Reactions[0]??0)*rs.Max(),
-                BeamLoadKn=input.TransferredSlab.BeamLineLoadKnM*input.LengthMm/1000,
+                BeamLoadKn=input.TransferredSlab.TotalBeamLineLoadKnM*input.LengthMm/1000,
                 CoveredSlabAreaM2=(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge))*((cross.Left?.Stock??0)+(cross.Right?.Stock??0))/1e6,
                 ShutterLoadKn=PhysicalShutterLoadKn(input,cross),
                 SlabLoadKn=PhysicalSlabLoadKn(input,cross),PrimaryCases=primaryCases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=upper.ToArray(),CaseNames=cross.Names};

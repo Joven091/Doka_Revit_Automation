@@ -112,7 +112,7 @@ namespace EngineeringDashboard
             Drawing.CanInteract=()=>!Model.IsOptimizing && CommitFields();
             Drawing.SelectionChanged+=()=> {InspectorTabs.SelectedIndex=0;BuildProperties();Refresh();
                 if(Drawing.SelectedKind==FormworkObject.Slab && Drawing.SelectedObjects.Length==1)SeparateSlabNotice.ShowBay(Drawing.SelectedIndex);};
-            Drawing.DimensionSelected+=(kind,index,field)=> {if(Fields.TryGetValue(field,out var box)){InspectorTabs.SelectedIndex=sharedFields.Contains(field) ? 1 : 0;box.Focus();box.SelectAll();}};
+            Drawing.DimensionSelected+=OpenDimensionEditor;
             Drawing.BeamOptionsRequested+=async beam=>await NetworkBeamOptionsMenu.OpenAsync(Model,beam,Drawing,()=> {ClearDiagrams();Drawing.RefitIfNeeded();Refresh();});
             Drawing.GeometryContextRequested+=OpenGeometryMenu;
             Drawing.DraftPointRequested+=AcceptDraftPoint;Drawing.DraftPointerChanged+=PreviewDraftPoint;
@@ -121,9 +121,10 @@ namespace EngineeringDashboard
             Drawing.CrossingRequested+=(bay,x)=> {if(!CommitFields())return;Mutate(()=> {Model.AddCrossingBeam();var c=Model.CrossingBeams.Last();c.BayNumber=bay+1;c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,x));Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});Drawing.Cursor=Cursors.Arrow;};
             Drawing.MoveRequested+=(kind,index,delta)=> {if(!CommitFields())return;Mutate(()=> {if(kind==FormworkObject.Crossing) {var c=Model.CrossingBeams[index];c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,c.PositionMm+delta));}else if(!Model.TryMoveParallelBeam(index,delta))status.Text="Move needs at least 500 mm of clear slab bay on each side.";});};
             Model.PropertyChanged+=ModelChanged;
-            root.Loaded+=(s,e)=>Drawing.Fit();Closed+=(s,e)=> {closed=true;Diagnostics?.Close();Model.PropertyChanged-=ModelChanged;Model.SetAdditionalTextInputErrors(this,false);ClearDiagrams();};
+            InitializeDrawingEditors(root);root.Loaded+=(s,e)=>Drawing.Fit();Closed+=(s,e)=> {closed=true;Diagnostics?.Close();Model.PropertyChanged-=ModelChanged;Model.SetAdditionalTextInputErrors(this,false);ClearDiagrams();};
             root.PreviewKeyDown+=(s,e)=>
             {
+                if(DimensionPopup.IsOpen)return;
                 if(e.Key==Key.Escape){HandleGeometryKey(e.Key,Keyboard.Modifiers);e.Handled=true;return;}
                 if(Keyboard.FocusedElement is TextBox)return;
                 if(HandleGeometryKey(e.Key,Keyboard.Modifiers,!Drawing.IsKeyboardFocusWithin)){e.Handled=true;return;}
@@ -274,7 +275,7 @@ namespace EngineeringDashboard
             using(var text=new System.IO.StringWriter(CultureInfo.InvariantCulture)){new System.Xml.Serialization.XmlSerializer(typeof(TransferNetworkConfiguration)).Serialize(text,config);return text.ToString();}
         }
         private void CancelDrafting()
-        {draftCommand=null;draftBase=null;draftFree=false;draftIndependent=null;shortcutPrefix=null;Drawing.CancelDrafting();}
+        {draftDistance="";DimensionPopup.IsOpen=false;draftCommand=null;draftBase=null;draftFree=false;draftIndependent=null;shortcutPrefix=null;Drawing.CancelDrafting();}
         internal bool BeginDrafting(string command)
         {
             if(sectionMode || Drawing.Formwork || Model.IsOptimizing || !CommitFields() || Drawing.SelectedObjects.Length!=1 || Drawing.SelectedKind==FormworkObject.Slab || command!="MV" && command!="CO" && command!="CS")return false;
@@ -439,6 +440,11 @@ namespace EngineeringDashboard
                 ClearDiagrams();Drawing.ClearSelection();return true;
             }
             if(editingText || sectionMode || Drawing.Formwork || modifiers!=ModifierKeys.None)return false;
+            if(draftCommand!=null && draftBase.HasValue)
+            {
+                if(key==Key.Enter && draftDistance.Length>0){CommitDraftDistance();return true;}
+                if(key==Key.Back && draftDistance.Length>0){draftDistance=draftDistance.Substring(0,draftDistance.Length-1);ShowDraftDistance();return true;}
+            }
             if(key==Key.Space && draftCommand=="CS")return RotateDraft();
             if(key==Key.Delete){CancelDrafting();RemoveSelected();return true;}
             string letter=key==Key.M ? "M" : key==Key.V ? "V" : key==Key.C ? "C" : key==Key.O ? "O" : key==Key.S ? "S" : null;
@@ -508,8 +514,8 @@ namespace EngineeringDashboard
                 if(Drawing.SelectedObjects.Length==0)Text("Select a beam or slab in the drawing to edit it.",true);
                 else if(Drawing.SelectedKind==FormworkObject.Independent)
                 {
-                    var b=Model.IndependentBeams[index];Text("I"+(index+1)+" · independent beam",true);Text("Own endpoints and length. Carries this beam's load; slab loads remain on the connected bays.");
-                    Number("StartXmm","Start X (mm)",()=>b.StartXmm,v=>b.StartXmm=v,-1000000);Number("StartYmm","Start Y (mm)",()=>b.StartYmm,v=>b.StartYmm=v,-1000000);Number("LengthMm","Length (mm)",()=>b.LengthMm,v=>b.LengthMm=v);
+                    var b=Model.IndependentBeams[index];Text("I"+(index+1)+" · independent beam",true);
+                    Number("LengthMm","Beam length (mm)",()=>b.LengthMm,v=>b.LengthMm=v);
                     Number("WidthMm","Width (mm)",()=>b.WidthMm,v=>b.WidthMm=v);Number("DepthMm","Depth (mm)",()=>b.DepthMm,b.SetDepthKeepingTopMm);Number("BottomElevationMm","Bottom / soffit elevation (mm)",()=>b.BottomElevationMm,v=>b.BottomElevationMm=v,-1000000);ConcreteTop(()=>b.BottomElevationMm,()=>b.DepthMm);
                     var endpoint=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,4,0,8)};Action syncEndpoint=()=>endpoint.Text=$"End: X {b.EndXmm:0.###}, Y {b.EndYmm:0.###} mm";syncEndpoint();syncControls.Add(syncEndpoint);properties.Children.Add(endpoint);
                     var rotate=new Button {Content="Rotate 90°",Margin=new Thickness(0,0,0,8)};rotate.Click+=(sender,args)=> {if(CommitFields())Mutate(()=>b.IsVertical=!b.IsVertical);};properties.Children.Add(rotate);
@@ -523,7 +529,7 @@ namespace EngineeringDashboard
                 else if(Drawing.SelectedKind==FormworkObject.Slab)
                 {var s=Model.NetworkBays[index];Text("S"+(index+1)+" · slab",true);Number("WidthMm","Clear span (mm)",()=>s.WidthMm,v=>s.WidthMm=v);Number("ThicknessMm","Thickness (mm)",()=>s.ThicknessMm,v=>s.ThicknessMm=v);}
                 else
-                {var c=Model.CrossingBeams[index];Text("X"+(index+1)+" · crossing beam",true);Number("PositionMm","Position along beam (mm)",()=>c.PositionMm,v=>c.PositionMm=v,0);Number("WidthMm","Width (mm)",()=>c.WidthMm,v=>c.WidthMm=v);Number("DepthMm","Total depth (mm)",()=>c.DepthMm,c.SetDepthKeepingTopMm);Number("BottomElevationMm","Bottom / soffit elevation (mm)",()=>c.BottomElevationMm,v=>c.BottomElevationMm=v,-1000000);ConcreteTop(()=>c.BottomElevationMm,()=>c.DepthMm);Text("Cross-beam supports");var mode=new ComboBox {ItemsSource=c.SupportModes,DisplayMemberPath="Label",SelectedValuePath="Value",SelectedValue=c.SupportMode,Margin=new Thickness(0,0,0,12)};mode.SelectionChanged+=(sender,args)=> {if(changing || !(mode.SelectedValue is CrossBeamSupportMode value))return;if(CommitFields())Mutate(()=>c.SupportMode=value);else Refresh();};syncControls.Add(()=>mode.SelectedValue=c.SupportMode);properties.Children.Add(mode);Text(CrossBeamSupportResult.Limitations);Text("Slab bay");var bay=new ComboBox {ItemsSource=Model.NetworkBays.Select(s=>s.Label).ToArray(),SelectedIndex=c.BayNumber-1,Margin=new Thickness(0,0,0,12)};bay.SelectionChanged+=(s,e)=> {if(changing || bay.SelectedIndex<0)return;int choice=bay.SelectedIndex;if(CommitFields())Mutate(()=>c.BayNumber=choice+1);else Refresh();};syncControls.Add(()=>bay.SelectedIndex=c.BayNumber-1);properties.Children.Add(bay);}
+                {var c=Model.CrossingBeams[index];Text("X"+(index+1)+" · crossing beam",true);Number("PositionMm","Position along beam (mm)",()=>c.PositionMm,v=>c.PositionMm=v,0);Number("WidthMm","Width (mm)",()=>c.WidthMm,v=>c.WidthMm=v);Number("DepthMm","Total depth (mm)",()=>c.DepthMm,c.SetDepthKeepingTopMm);Number("BottomElevationMm","Bottom / soffit elevation (mm)",()=>c.BottomElevationMm,v=>c.BottomElevationMm=v,-1000000);ConcreteTop(()=>c.BottomElevationMm,()=>c.DepthMm);Text("Cross-beam supports");var mode=new ComboBox {ItemsSource=c.SupportModes,DisplayMemberPath="Label",SelectedValuePath="Value",SelectedValue=c.SupportMode,Margin=new Thickness(0,0,0,12)};mode.SelectionChanged+=(sender,args)=> {if(changing || !(mode.SelectedValue is CrossBeamSupportMode value))return;if(CommitFields())Mutate(()=>c.SupportMode=value);else Refresh();};syncControls.Add(()=>mode.SelectedValue=c.SupportMode);properties.Children.Add(mode);Text("Slab bay");var bay=new ComboBox {ItemsSource=Model.NetworkBays.Select(s=>s.Label).ToArray(),SelectedIndex=c.BayNumber-1,Margin=new Thickness(0,0,0,12)};bay.SelectionChanged+=(s,e)=> {if(changing || bay.SelectedIndex<0)return;int choice=bay.SelectedIndex;if(CommitFields())Mutate(()=>c.BayNumber=choice+1);else Refresh();};syncControls.Add(()=>bay.SelectedIndex=c.BayNumber-1);properties.Children.Add(bay);}
                 if(Drawing.SelectedObjects.Length>1)Text(Drawing.SelectedObjects.Length+" objects selected. Shift-click toggles selection; Delete removes the selected areas.");
                 if(!Drawing.Formwork && !sectionMode)Text("Geometry commands: MV move · CO copy · CS create similar. Pick a beam, then type the two-letter command.");
                 if(Drawing.SelectedObjects.Length==1)CalculatedNumber(nameof(TransferBeamRow.MaximumSecondarySpacingMm),"Plywood spacing limit (mm)",SelectedObject());
@@ -535,7 +541,6 @@ namespace EngineeringDashboard
                 BuildSharedSettings();
                 foreach(var key in Fields.Keys.Where(k=>!objectFields.Contains(k)))sharedFields.Add(key);
                 while(properties.Children.Count>selectionControls){var child=properties.Children[selectionControls];properties.Children.RemoveAt(selectionControls);SharedProperties.Children.Add(child);}
-                properties.Children.Add(removalInfo);
                 failures.Children.Clear();failureExpander.Content=failures;properties.Children.Add(failureExpander);
             }
             finally {changing=false;}

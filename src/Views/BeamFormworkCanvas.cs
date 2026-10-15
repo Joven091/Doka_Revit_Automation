@@ -45,6 +45,8 @@ namespace EngineeringDashboard
         private readonly List<Tuple<Rect,FormworkObject,int,string>> dimensions=new List<Tuple<Rect,FormworkObject,int,string>>();
         internal event Action SelectionChanged;
         internal event Action<FormworkObject,int,string> DimensionSelected;
+        internal Rect LastDimensionBounds;
+        internal string DraftInputText;
         internal event Action<int,int,int> MemberSelected;
         internal event Action<int,double> CrossingRequested;
         internal event Action<int> BeamOptionsRequested;
@@ -59,7 +61,7 @@ namespace EngineeringDashboard
         internal event Action<Point> DraftPointRequested,DraftPointerChanged;
         internal bool IsDrafting=>DraftCommand!=null;
         internal void CancelDrafting()
-        {DraftCommand=null;DraftPreview=null;DraftBasePoint=null;SnappedPoint=null;SnapName=null;DraftPointerWorld=null;Cursor=Cursors.Arrow;InvalidateVisual();}
+        {DraftInputText=null;DraftCommand=null;DraftPreview=null;DraftBasePoint=null;SnappedPoint=null;SnapName=null;DraftPointerWorld=null;Cursor=Cursors.Arrow;InvalidateVisual();}
         internal Point SnapAt(Point screen)
         {
             var ys=Centres();var beams=Beams();var candidates=new List<Tuple<Point,string>>();
@@ -279,7 +281,7 @@ namespace EngineeringDashboard
                 ObjectTargets.Insert(0,Tuple.Create(rect,FormworkObject.Crossing,i));
                 crossingLabels.Add(Tuple.Create(rect,$"X{i+1} · {c.WidthMm:0}×{c.DepthMm:0}"));
                 if(!Formwork && (AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Crossing && SelectedIndex==i))
-                    Dimension(dc,Screen(0,ys[bay]+beams[bay].WidthMm/2+200),Screen(c.PositionMm,ys[bay]+beams[bay].WidthMm/2+200),$"x {c.PositionMm:0.###}",FormworkObject.Crossing,i,"PositionMm");
+                    Dimension(dc,Screen(0,ys[bay]+beams[bay].WidthMm/2+200),Screen(c.PositionMm,ys[bay]+beams[bay].WidthMm/2+200),$"{c.PositionMm:0.###}",FormworkObject.Crossing,i,"PositionMm");
             }
             for(int i=0;i<beams.Length;i++)
             {
@@ -310,6 +312,7 @@ namespace EngineeringDashboard
                     if(DraftBasePoint.HasValue)dc.DrawLine(new Pen(Brushes.DodgerBlue,1){DashStyle=DashStyles.Dash},Screen(DraftBasePoint.Value.X,DraftBasePoint.Value.Y),point);
                 }
             }
+            if(IsDrafting && DraftInputText!=null && DraftPointerWorld.HasValue)Label(dc,DraftInputText,Screen(DraftPointerWorld.Value.X,DraftPointerWorld.Value.Y)+new Vector(14,-25),Brushes.DodgerBlue);
             if(dragging && Math.Abs(dragDelta)>2)Label(dc,$"Move {Math.Round(dragDelta/Zoom/25)*25:0} mm",mouseStart+new Vector(15,15),Brushes.DodgerBlue);
             if(selecting && (windowEnd-mouseStart).Length>4)
             {
@@ -359,7 +362,7 @@ namespace EngineeringDashboard
             ObjectTargets.Insert(0,Tuple.Create(rect,FormworkObject.Independent,index));
             Label(dc,$"I{index+1} · {beam.WidthMm:0}×{beam.DepthMm:0}",new Point(rect.Left+8,rect.Top+5));
             if(AllDimensions || selection.Contains(Tuple.Create(FormworkObject.Independent,index)))
-                Dimension(dc,IndependentScreen(beam,0,beam.IsVertical ? beam.WidthMm/2 : -beam.WidthMm/2)+new Vector(beam.IsVertical ? -24 : 0,beam.IsVertical ? 0 : -24),IndependentScreen(beam,beam.LengthMm,beam.IsVertical ? beam.WidthMm/2 : -beam.WidthMm/2)+new Vector(beam.IsVertical ? -24 : 0,beam.IsVertical ? 0 : -24),$"Length {beam.LengthMm:0.###} mm",FormworkObject.Independent,index,"LengthMm");
+                Dimension(dc,IndependentScreen(beam,0,beam.IsVertical ? beam.WidthMm/2 : -beam.WidthMm/2)+new Vector(beam.IsVertical ? -24 : 0,beam.IsVertical ? 0 : -24),IndependentScreen(beam,beam.LengthMm,beam.IsVertical ? beam.WidthMm/2 : -beam.WidthMm/2)+new Vector(beam.IsVertical ? -24 : 0,beam.IsVertical ? 0 : -24),$"Beam length {beam.LengthMm:0.###} mm",FormworkObject.Independent,index,"LengthMm");
             var layout=Model.IsCalculationValid ? Model.IndependentBeamResults.ElementAtOrDefault(index) : null;if(!Formwork || layout==null)return;
             int encoded=IndependentMemberId(index);
             DrawTowerFrames(dc,layout,$"I{index+1}",(along,across)=>IndependentScreen(beam,along,across));
@@ -570,7 +573,7 @@ namespace EngineeringDashboard
                 if(slab==null)return false;AddCrossing=false;CrossingRequested?.Invoke(slab.Item3,Math.Round(World(point).X/25)*25);InvalidateVisual();return true;
             }
             if(Formwork)foreach(var hit in MemberTargets)if(hit.Item1.Contains(point)) {SelectMember(hit.Item2,hit.Item3,hit.Item4);MemberSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}
-            foreach(var hit in dimensions)if(hit.Item1.Contains(point)){Select(hit.Item2,hit.Item3);DimensionSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}
+            foreach(var hit in dimensions)if(hit.Item1.Contains(point)){LastDimensionBounds=hit.Item1;Select(hit.Item2,hit.Item3);DimensionSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4);return true;}
             foreach(var hit in ObjectTargets)if(hit.Item1.Contains(point))
             {
                 if(Formwork && hit.Item2==FormworkObject.Independent && Model.IndependentBeamResults.ElementAtOrDefault(hit.Item3)!=null)
