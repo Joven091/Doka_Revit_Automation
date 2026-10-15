@@ -9,7 +9,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release -- --engineer-search
+      - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release -- --engineer-junction
+      - run: dotnet run --project tests/Beam.Tests/Beam.Tests.csproj -c Release --no-build -- --engineer-search
       - run: dotnet build tests/Beam.Net48/Beam.Net48.csproj -c Release --warnaserror
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --engineer-search
   d3-drawing-workspace:

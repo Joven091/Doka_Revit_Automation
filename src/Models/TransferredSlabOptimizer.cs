@@ -458,12 +458,13 @@ namespace EngineeringDashboard
             var widths=t.FixedTowerWidthMm.HasValue ? new[] {t.FixedTowerWidthMm.Value} : new[] {1524.0,1000,1500,2000};
             var seeds=widths.SelectMany(width=>CrossOptions(input,width,t.UpperSpacingMm)).Select(c=>EngineerTowerSearch.InitialLegs(input,c.DesignCases.Max(stage=>c.Cases[stage].Reactions.Max())*input.LengthMm/1000)).ToArray();
             if(seeds.Length==0)return OptimizeCoreByLegTier(input,shareDiagnostics);
-            int limit=Math.Min(40,Math.Max(4,seeds.Min()+2));
+            int maximum=Math.Min(40,input.NetworkLegCeiling/2);
+            int limit=Math.Min(maximum,Math.Max(4,seeds.Min()+2));
             while(true)
             {
                 var worker=input.CopyForSearch();worker.EngineerStationLimit=limit;
                 try{return OptimizeCoreByLegTier(worker,shareDiagnostics);}
-                catch(TowerOptimizationException) when(limit<40){limit=Math.Min(40,limit+4);}
+                catch(TowerOptimizationException) when(limit<maximum){limit=Math.Min(maximum,limit+4);}
             }
         }
         private static TowerLayout OptimizeCoreReference(TowerInput input,bool shareDiagnostics)
