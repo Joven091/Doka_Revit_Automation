@@ -91,6 +91,12 @@ namespace EngineeringDashboard
         internal static readonly CrossShutterAllowance[] StandardOnly={Standard};
         internal static readonly CrossShutterAllowance[] Candidates={Standard,new CrossShutterAllowance(175,200),new CrossShutterAllowance(200,175),new CrossShutterAllowance(175,175)};
     }
+    internal sealed class CrossLowerCaseCheck
+    {
+        internal TransferMember[] Members;
+        internal bool Passed;
+        internal TowerSearchDiagnostics Diagnostics;
+    }
     internal sealed class DedicatedCrossSearch
     {
         internal CrossBeamSupportResult Result;
@@ -654,7 +660,7 @@ namespace EngineeringDashboard
         // Do not mutate the DP's shared tower layouts while evaluating a cross arrangement.
         private static TowerLayout Copy(TowerLayout l)
         {
-            return new TowerLayout {PrimaryMaterial=l.PrimaryMaterial,IgnoreUplift=l.IgnoreUplift,MinimumLeftReactions=l.MinimumLeftReactions,MinimumRightReactions=l.MinimumRightReactions,Transfer=l.Transfer,PositionsMm=l.PositionsMm,Joined=l.Joined,WidthMm=l.WidthMm,TransverseOffsetMm=l.TransverseOffsetMm,Rotated=l.Rotated,LengthMm=l.LengthMm,ConcreteEndOverhangMm=l.ConcreteEndOverhangMm,LeftReactions=l.LeftReactions,RightReactions=l.RightReactions,LeftLineLoad=l.LeftLineLoad,RightLineLoad=l.RightLineLoad,LegCapacityKn=l.LegCapacityKn,MaxLegKn=l.MaxLegKn,StockPlan=l.StockPlan,DeflectionDenominator=l.DeflectionDenominator,DeflectionLimitMm=l.DeflectionLimitMm,MomentKnM=l.MomentKnM,ShearKn=l.ShearKn,DeflectionMm=l.DeflectionMm,Utilization=l.Utilization,Governing=l.Governing};
+            return new TowerLayout {EngineerSearch=l.EngineerSearch,SearchAssumedLegKn=l.SearchAssumedLegKn,SearchInitialLegsPerLine=l.SearchInitialLegsPerLine,PrimaryMaterial=l.PrimaryMaterial,IgnoreUplift=l.IgnoreUplift,MinimumLeftReactions=l.MinimumLeftReactions,MinimumRightReactions=l.MinimumRightReactions,Transfer=l.Transfer,PositionsMm=l.PositionsMm,Joined=l.Joined,WidthMm=l.WidthMm,TransverseOffsetMm=l.TransverseOffsetMm,Rotated=l.Rotated,LengthMm=l.LengthMm,ConcreteEndOverhangMm=l.ConcreteEndOverhangMm,LeftReactions=l.LeftReactions,RightReactions=l.RightReactions,LeftLineLoad=l.LeftLineLoad,RightLineLoad=l.RightLineLoad,LegCapacityKn=l.LegCapacityKn,MaxLegKn=l.MaxLegKn,StockPlan=l.StockPlan,DeflectionDenominator=l.DeflectionDenominator,DeflectionLimitMm=l.DeflectionLimitMm,MomentKnM=l.MomentKnM,ShearKn=l.ShearKn,DeflectionMm=l.DeflectionMm,Utilization=l.Utilization,Governing=l.Governing};
         }
         internal static bool Complete(TowerInput common,TransferNetworkResult r,bool partial=false)
         {
@@ -817,7 +823,9 @@ namespace EngineeringDashboard
         // of the same tower width when the end-zone loads are added later.
         internal static bool CheckJunctionReceiver(TowerInput common,TransferNetworkInput network,int beam,TowerLayout layout)
             =>CheckJunctionReceiver(common,network,beam,layout,200) || common.AllowLocalShutterExceptions && CheckJunctionReceiver(common,network,beam,layout,175);
-        private static bool CheckJunctionReceiver(TowerInput common,TransferNetworkInput network,int beam,TowerLayout layout,double shutterWidth)
+        internal static bool CheckJunctionLowerReceiver(TowerInput common,TransferNetworkInput network,int beam,TowerLayout layout)
+            =>CheckJunctionReceiver(common,network,beam,layout,200,true) || common.AllowLocalShutterExceptions && CheckJunctionReceiver(common,network,beam,layout,175,true);
+        private static bool CheckJunctionReceiver(TowerInput common,TransferNetworkInput network,int beam,TowerLayout layout,double shutterWidth,bool lowerOnly=false)
         {
             var supports=new List<CrossBeamSupportResult>();var input=network.Beams[beam];var t=layout.Transfer;
             for(int index=0;index<network.CrossingBeams.Length;index++)
@@ -838,9 +846,9 @@ namespace EngineeringDashboard
             }
             if(supports.Count==0)return true;
             var local=new TransferNetworkResult {Input=new TransferNetworkInput {Beams=new[] {input}},Beams=new[] {layout},BeamCentresMm=new[] {0.0}};
-            return Recheck(common,local,new[] {layout},supports.ToArray());
+            return Recheck(common,local,new[] {layout},supports.ToArray(),lowerOnly);
         }
-        private static bool Recheck(TowerInput common,TransferNetworkResult r,TowerLayout[] originals,CrossBeamSupportResult[] supports)
+        private static bool Recheck(TowerInput common,TransferNetworkResult r,TowerLayout[] originals,CrossBeamSupportResult[] supports,bool lowerOnly=false)
         {
             var shared=supports.Where(s=>s.Bearings.Any(b=>b.Beam>=0)).ToArray();
             r.Beams=originals.Select(Copy).ToArray();
@@ -857,20 +865,45 @@ namespace EngineeringDashboard
                     common.Trace?.CheckCancellation();
                     var active=relevant.Where((s,i)=>conservative ? mask==1 : (mask&(1<<i))!=0).ToArray();
                     string name=t.CaseNames[stage]+(mask==0 ? "" : " + "+string.Join(" + ",active.Select(s=>"X"+(s.CrossingIndex+1))));
-                    var lower=new TransferMember[t.RowsMm.Length];
-                    for(int row=0;row<lower.Length;row++)
+                    Tuple<TransferMember[],string> lowerKey=null;
+                    System.Collections.Concurrent.ConcurrentDictionary<Tuple<TransferMember[],string>,CrossLowerCaseCheck> lowerCache=null;
+                    if(common.EngineerSearch && common.ReuseSearchWork && !conservative)
                     {
-                        var original=t.LowerCases[stage][row];
-                        var rowBearings=active.SelectMany(s=>s.Bearings).Where(b=>b.Beam==beam && b.Row==row).ToArray();
-                        if(rowBearings.Length==0)lower[row]=StageCopy(original,name);
-                        else
-                        {
-                            var increment=BearingIncrement(r,beam,original,rowBearings,common);
-                            lower[row]=Analyze(original,original.Points.Concat(increment.Points).ToArray(),original.Uniform.Concat(increment.Uniform).ToArray(),common,name);
-                        }
-                        if(!Pass(lower[row],common,name))return false;
-                        if(conservative && mask==1 && !Envelope(common,original,active.Select(s=>BearingIncrement(r,beam,original,s.Bearings.Where(b=>b.Beam==beam && b.Row==row),common)).ToArray(),null,lower[row]))return false;
+                        lowerCache=common.CrossLowerCases??(common.CrossLowerCases=new System.Collections.Concurrent.ConcurrentDictionary<Tuple<TransferMember[],string>,CrossLowerCaseCheck>());
+                        string signature=FormattableString.Invariant($"{r.BeamCentresMm[beam]:R}|{common.DeflectionDenominator}|{name}|")
+                            +string.Join(";",active.SelectMany(s=>s.Bearings).Where(b=>b.Beam==beam).Select(b=>FormattableString.Invariant($"{b.Row},{b.Ymm:R},{b.ReactionKn:R},{b.IsConcreteEndZone},{b.IsShutterEndZone},{b.EndZoneStartMm:R},{b.EndZoneEndMm:R}")));
+                        lowerKey=Tuple.Create(t.LowerCases[stage],signature);
                     }
+                    TransferMember[] lower;
+                    if(lowerCache!=null && lowerCache.TryGetValue(lowerKey,out var saved) && (saved.Passed || ReferenceEquals(saved.Diagnostics,common.Diagnostics)))
+                    {
+                        if(!saved.Passed)return false;
+                        lower=saved.Members;
+                    }
+                    else
+                    {
+                        lower=new TransferMember[t.RowsMm.Length];bool lowerPassed=true;
+                        for(int row=0;row<lower.Length;row++)
+                        {
+                            var original=t.LowerCases[stage][row];
+                            var rowBearings=active.SelectMany(s=>s.Bearings).Where(b=>b.Beam==beam && b.Row==row).ToArray();
+                            if(rowBearings.Length==0)lower[row]=StageCopy(original,name);
+                            else
+                            {
+                                var increment=BearingIncrement(r,beam,original,rowBearings,common);
+                                lower[row]=Analyze(original,original.Points.Concat(increment.Points).ToArray(),original.Uniform.Concat(increment.Uniform).ToArray(),common,name);
+                            }
+                            if(!Pass(lower[row],common,name)){lowerPassed=false;break;}
+                            if(conservative && mask==1 && !Envelope(common,original,active.Select(s=>BearingIncrement(r,beam,original,s.Bearings.Where(b=>b.Beam==beam && b.Row==row),common)).ToArray(),null,lower[row])){lowerPassed=false;break;}
+                        }
+                        if(lowerCache!=null)
+                        {
+                            if(lowerCache.Count>=128)lowerCache.Clear();
+                            lowerCache[lowerKey]=new CrossLowerCaseCheck {Members=lower,Passed=lowerPassed,Diagnostics=common.Diagnostics};
+                        }
+                        if(!lowerPassed)return false;
+                    }
+                    if(lowerOnly)continue;
                     var primary=new TransferMember[runs*2];
                     for(int line=0;line<2;line++)for(int run=0;run<runs;run++)
                     {
@@ -901,6 +934,7 @@ namespace EngineeringDashboard
                     names.Add(name);cases.Add(primary);lowerCases.Add(lower);
                     if(t.ColumnSupportLoads.Length>0)columnLoads.Add(t.ColumnSupportLoads[stage].Select(x=>new ColumnEndStripLoad {LoadCase=name,End=x.End,StartMm=x.StartMm,EndMm=x.EndMm,LeftLineKn=x.LeftLineKn,RightLineKn=x.RightLineKn,LeftLineMomentKnM=x.LeftLineMomentKnM,RightLineMomentKnM=x.RightLineMomentKnM}).ToArray());
                 }
+                if(lowerOnly)continue;
                 l.Transfer=new TransferredSlabResult {UnitLowerCases=t.UnitLowerCases,UnitPointLabels=t.UnitPointLabels,SlabSupportStartMm=t.SlabSupportStartMm,SlabSupportEndMm=t.SlabSupportEndMm,ColumnSupportLoads=columnLoads.ToArray(),FullLoadingOnly=t.FullLoadingOnly,RowsMm=t.RowsMm,SlabRowIndices=t.SlabRowIndices,TributaryWidthsMm=t.TributaryWidthsMm,LeftUpperScales=t.LeftUpperScales,RightUpperScales=t.RightUpperScales,EnteredUpperSpacingMm=t.EnteredUpperSpacingMm,LeftSlabSpacingMm=t.LeftSlabSpacingMm,RightSlabSpacingMm=t.RightSlabSpacingMm,HasIndividualSpacings=t.HasIndividualSpacings,CrossFormwork=t.CrossFormwork,BeamLoadKn=t.BeamLoadKn,LowerStockStartMm=t.LowerStockStartMm,LowerStockLengthMm=t.LowerStockLengthMm,LeftFootMm=t.LeftFootMm,RightFootMm=t.RightFootMm,LeftUpperStockMm=t.LeftUpperStockMm,RightUpperStockMm=t.RightUpperStockMm,LeftUpperEdgeMm=t.LeftUpperEdgeMm,RightUpperEdgeMm=t.RightUpperEdgeMm,LeftUpperCustom=t.LeftUpperCustom,RightUpperCustom=t.RightUpperCustom,LowerCustom=t.LowerCustom,LeftFootReactionKn=t.LeftFootReactionKn,RightFootReactionKn=t.RightFootReactionKn,SlabMovementMm=t.SlabMovementMm,CoveredSlabAreaM2=t.CoveredSlabAreaM2,SlabLoadKn=t.SlabLoadKn,ShutterLoadKn=t.ShutterLoadKn,PrimaryCases=cases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=t.UpperMembers,CaseNames=names.ToArray()};
                 l.LeftReactions=left;l.RightReactions=right;l.MinimumLeftReactions=minLeft;l.MinimumRightReactions=minRight;l.MaxLegKn=Math.Max(left.Max(),right.Max());
                 var all=cases.Concat(lowerCases).SelectMany(c=>c).Concat(t.UpperMembers).ToArray();
