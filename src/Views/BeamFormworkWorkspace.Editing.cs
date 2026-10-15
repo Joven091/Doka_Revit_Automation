@@ -57,7 +57,7 @@ namespace EngineeringDashboard
                 if(value<c.WidthMm/2 || value>Model.BeamLengthMm-c.WidthMm/2){error="Keep the crossing beam within the beam length.";return false;}
                 if(Model.CrossingBeams.Where((c2,i)=>i!=Drawing.SelectedIndex && c2.BayNumber==c.BayNumber).Any(c2=>Math.Abs(c2.PositionMm-value)<(c2.WidthMm+c.WidthMm)/2)){error="Crossing beams cannot overlap.";return false;}
             }
-            if(field=="BeamLengthMm" && (value>30000 || Model.CrossingBeams.Any(c=>c.PositionMm+c.WidthMm/2>value))) {error="Keep every crossing within a beam length of at most 30000 mm.";return false;}
+            if(field=="BeamLengthMm" && (value<300 || value>30000 || Model.CrossingBeams.Any(c=>c.PositionMm+c.WidthMm/2>value))) {error="Use 300–30000 mm and keep every crossing within the beam length.";return false;}
             if(field=="LengthMm" && (value<300 || value>30000)){error="Beam length must be between 300 and 30000 mm.";return false;}
             if(field=="WidthMm" && Drawing.SelectedKind==FormworkObject.Slab && (value<500 || value>20000)){error="Slab clear width must be between 500 and 20000 mm.";return false;}
             Mutate(()=>editor.Set(value));error="";return true;

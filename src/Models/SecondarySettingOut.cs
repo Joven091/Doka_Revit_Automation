@@ -35,7 +35,7 @@ namespace EngineeringDashboard
                 if(balanced==null)continue;
                 balanced.Solids=balanced.Solids.Concat(original.Solids.Where(s=>s.Member==null && !s.IsLeg && !s.IsTowerEnvelope)).ToArray();
                 balanced.Bearings=balanced.Bearings.Concat(original.Bearings.Where(b=>!b.IsDedicated)).ToArray();
-                balanced.LoadKn=original.LoadKn;balanced.SharedFailure=original.SharedFailure;
+                balanced.LoadKn=original.LoadKn;balanced.SlabEdgeLoadKn=original.SlabEdgeLoadKn;balanced.SharedFailure=original.SharedFailure;
                 // Only receiving secondaries may change. Frames, slab feet, concrete,
                 // other crossings and plywood-joint rows remain fixed.
                 var otherCrossings=result.CrossSupports.Where((s,i)=>i!=index).SelectMany(s=>s.Solids).ToArray();

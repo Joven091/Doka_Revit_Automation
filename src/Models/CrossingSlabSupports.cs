@@ -45,7 +45,8 @@ namespace EngineeringDashboard
                 for(int k=1;k<anchors.Count;k++)
                 {
                     double p=anchors[k-1],q=anchors[k];int count=(int)Math.Ceiling((q-p)/maximum-1e-10);
-                    for(int j=1;j<count;j++)local.Add(r && !l ? q-(count-j)*maximum : p+j*maximum);
+                    bool shortClosing=q-p-(count-1)*maximum<80-1e-7;
+                    for(int j=1;j<count;j++)local.Add(shortClosing ? p+(q-p)*j/count : r && !l ? q-(count-j)*maximum : p+j*maximum);
                     local.Add(q);
                 }
                 // A short closing interval is shared with its neighbour rather than placing timber in a shutter.
