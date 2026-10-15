@@ -6,7 +6,7 @@ internal static class CrossSupportTests
 {
     static int checks;
     static void Check(bool value,string message) {checks++;if(!value)throw new Exception("Cross supports: "+message);}
-    static void Near(double actual,double expected,string message)=>Check(Math.Abs(actual-expected)<1e-6*Math.Max(1,Math.Abs(expected)),message);
+    static void Near(double actual,double expected,string message)=>Check(Math.Abs(actual-expected)<1e-6*Math.Max(1,Math.Abs(expected)),message+": actual "+actual+", expected "+expected);
     static TowerInput Common()=>new TowerInput {LengthMm=2450,LegCapacityKn=70,DeflectionDenominator=350,MaximumConcreteEndOverhangMm=0,AllowSeparateSlabFallback=false,NetworkSearchWorkers=1};
     static TransferNetworkInput Input(CrossBeamSupportMode mode=CrossBeamSupportMode.ExistingSupportsOnly,double bottom=-400)=>new TransferNetworkInput {UpperSpacingMm=250,LocalRowGapMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=bottom,SupportMode=mode}}};
     static void Failed(TowerInput common,TransferNetworkInput input,string message)
@@ -49,6 +49,7 @@ internal static class CrossSupportTests
                 var cuts=loaded.Uniform.Concat(original.Uniform).Concat(expectedBands).SelectMany(q=>new[] {q.StartMm,q.EndMm}).Distinct().OrderBy(x=>x).ToArray();
                 for(int i=1;i<cuts.Length;i++)
                 {
+                    if(cuts[i]-cuts[i-1]<1e-6)continue; // Independent statics and stiffness arithmetic can differ at the same boundary by round-off.
                     double x=(cuts[i-1]+cuts[i])/2;
                     Near(loaded.Uniform.Where(q=>x>q.StartMm && x<q.EndMm).Sum(q=>q.KnPerM),original.Uniform.Concat(expectedBands).Where(q=>x>q.StartMm && x<q.EndMm).Sum(q=>q.KnPerM),"flat primary crossing UDL agrees with independent force and moment statics");
                 }
