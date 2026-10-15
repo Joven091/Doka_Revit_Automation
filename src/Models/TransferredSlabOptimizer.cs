@@ -288,7 +288,8 @@ namespace EngineeringDashboard
             }
             double[] absolute;
             try {absolute=PlywoodSpacing.FillRequiredRows(edge,edge+covered,t.UpperSpacingMm,shared);}
-            catch(ArgumentException){return null;}
+            catch(ArgumentException ex)
+            {input.Diagnostics?.Geometry(input.DiagnosticScope+"receiving row setting-out",input.DiagnosticScope+ex.Message,"Review required slab/crossing rows and plywood joints.");return null;}
             var rows=absolute.Select(x=>x-edge).ToArray();
             var indices=shared.Select(x=>Array.IndexOf(absolute,x)).ToArray();
             var widthsBeam=PlywoodSpacing.RowTributaries(0,covered,rows);

@@ -30,6 +30,20 @@ internal static class CrossingSlabSupportTests
         var input=Input();input.CrossingBeams=new[] {input.CrossingBeams[0],new TransferCrossingBeamRow {BayNumber=1,PositionMm=5200,WidthMm=500,DepthMm=600,BottomElevationMm=-600}};
         var two=input.CrossSlabLayout(7000,6750,0);Check(two.Valid,"two crossings share a checked intermediate slab strip");
         Near(two.Widths.Sum()+two.Edges.Sum(e=>e.WidthMm),6750-650-500,"multiple crossings count each slab strip once");
+        var shortInput=Input();shortInput.CrossingBeams[0].PositionMm=1225;shortInput.CrossingBeams[0].WidthMm=400;
+        var shortMap=shortInput.CrossSlabLayout(2450,2450,0);
+        Check(shortMap.Valid && shortMap.Rows.Contains(2440) && !shortMap.Rows.Contains(2410),"a sheet joint near the stock end replaces the nearby end row");
+        var receiving=PlywoodSpacing.SheetSupportRows(1025,1425,350);
+        Check(PlywoodSpacing.FillRequiredRows(0,2450,488,shortMap.Rows.Concat(receiving).ToArray()).Length>=shortMap.Rows.Length+2,"short shared crossing rows fit without clashing with the required end joint");
+        var narrow=Input();narrow.PlywoodDeflectionDenominator=270;narrow.CustomLoads=true;narrow.LiveKnM2=narrow.FormworkKnM2=0;
+        foreach(var beam in narrow.Beams){beam.WidthMm=300;beam.DepthMm=600;beam.BottomElevationMm=-600;}
+        narrow.Bays[0].WidthMm=3900;narrow.Bays[0].ThicknessMm=100;
+        var cross=narrow.CrossingBeams[0];cross.PositionMm=1225;cross.WidthMm=400;cross.DepthMm=50;cross.BottomElevationMm=-250;cross.SupportMode=CrossBeamSupportMode.ExistingSupportsOnly;
+        var profile=PlywoodCatalog.FromId(narrow.PlywoodProfileId);
+        narrow.BeamSpacingsMm=narrow.Beams.Select(b=>PlywoodSpacing.CalculateForSheet(profile,narrow.AreaLoad(b.DepthMm),270).MaximumSpacingMm).ToArray();
+        narrow.SlabSpacingsMm=new[] {PlywoodSpacing.CalculateForSheet(profile,narrow.AreaLoad(100),270).MaximumSpacingMm};narrow.CrossingSpacingsMm=new[] {PlywoodSpacing.CalculateForSheet(profile,narrow.AreaLoad(50),270).MaximumSpacingMm};narrow.UpperSpacingMm=narrow.BeamSpacingsMm.Min();
+        var shared=TransferNetworkOptimizer.Optimize(new TowerInput {LengthMm=2450,LegCapacityKn=70,DeflectionDenominator=270,MaximumConcreteEndOverhangMm=0,IgnoreUplift=true},narrow);
+        Check(shared.Bays[0]!=null && shared.CrossSupports.Single().Towers==null && shared.CrossSupports[0].SlabEdgeLoadKn>0,"short crossing has a complete checked shared ledger load path");
         Console.WriteLine("Passed "+checks+" slab-edge ledger equilibrium and setting-out checks.");
     }
     internal static void Reported()

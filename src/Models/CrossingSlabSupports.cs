@@ -22,6 +22,7 @@ namespace EngineeringDashboard
             var layout=new CrossingSlabSupportLayout();double maximum=input.BaySpacing(bay);
             var cuts=input.CrossingBeams.Select((c,i)=>new {C=c,I=i}).Where(x=>x.C.BayNumber==bay+1 && x.C.SupportMode!=CrossBeamSupportMode.LegacySlabRows).OrderBy(x=>x.C.PositionMm).ToArray();
             var strips=new List<Tuple<double,double,int,int>>();double a=start;int left=-1;
+            var coverageAnchors=PlywoodSpacing.SheetSupportRows(start,end,50000);
             foreach(var cut in cuts)
             {
                 double lo=cut.C.PositionMm-cut.C.WidthMm/2,hi=cut.C.PositionMm+cut.C.WidthMm/2;
@@ -33,7 +34,7 @@ namespace EngineeringDashboard
             foreach(var strip in strips)
             {
                 bool l=strip.Item3>=0,r=strip.Item4>=0;
-                double lo=l ? strip.Item1 : strip.Item1+40,hi=r ? strip.Item2 : strip.Item2-40;
+                double lo=l ? strip.Item1 : coverageAnchors.First(),hi=r ? strip.Item2 : coverageAnchors.Last();
                 if(hi<=lo){layout.Valid=false;return layout;}
                 // Keep every required 2440 mm sheet joint outside the crossing footprint.
                 // Crossing bearings and coverage ends are additional setting-out anchors.
