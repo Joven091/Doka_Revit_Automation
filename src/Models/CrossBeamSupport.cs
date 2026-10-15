@@ -48,6 +48,7 @@ namespace EngineeringDashboard
         public double LoadKn,MovementMm;
         public double SlabEdgeLoadKn;
         public string SharedFailure;
+        public bool UsesSpreader;
         public string JunctionNotice;
         public double NearShutterClearanceMm=200,FarShutterClearanceMm=200;
         public bool HasReducedShutterClearance=>NearShutterClearanceMm<200 || FarShutterClearanceMm<200;
@@ -242,13 +243,15 @@ namespace EngineeringDashboard
             if(!ValidFillerGap(c.BottomElevationMm,r.Input.Beams[bay].BottomElevationMm,out lf) || !ValidFillerGap(c.BottomElevationMm,r.Input.Beams[bay+1].BottomElevationMm,out rf))
             {failure=$"X{index+1}: cross H20 underside {c.BottomElevationMm-200:0.###} mm is below a receiving secondary top (negative filler gap).";return null;}
             var rows=Enumerable.Range(0,left.RowsMm.Length).Where(i=>Math.Abs(left.RowsMm[i]-c.PositionMm)<=c.WidthMm/2-40+1e-7 && right.RowsMm.Any(x=>Math.Abs(x-left.RowsMm[i])<1e-7)).ToArray();
-            if(rows.Length==0) {failure=$"X{index+1}: no receiving secondary within the cross-beam width including the 80 mm H20 flange.";return null;}
-            if(rows.Length<2 && SlabEdgeLoads(r,index).Length>0){failure=$"X{index+1}: slab-edge ledgers need two receiving rows for their load transfer.";return null;}
+            bool spreader=common.EngineerWorkflow && EngineerPrimaryPlan.Eligible(r.Input,c);
+            if(!spreader && rows.Length==0) {failure=$"X{index+1}: no receiving secondary within the cross-beam width including the 80 mm H20 flange.";return null;}
+            if(!spreader && rows.Length<2 && SlabEdgeLoads(r,index).Length>0){failure=$"X{index+1}: slab-edge ledgers need two receiving rows for their load transfer.";return null;}
             double maximum=r.Input.CrossSpacing(index);
-            if(left.RowsMm[rows[0]]-(c.PositionMm-c.WidthMm/2)>maximum+1e-7
+            if(!spreader && (left.RowsMm[rows[0]]-(c.PositionMm-c.WidthMm/2)>maximum+1e-7
                 || c.PositionMm+c.WidthMm/2-left.RowsMm[rows.Last()]>maximum+1e-7
-                || rows.Select(i=>left.RowsMm[i]).Zip(rows.Skip(1).Select(i=>left.RowsMm[i]),(a,b)=>b-a).Any(g=>g>maximum+1e-7))
+                || rows.Select(i=>left.RowsMm[i]).Zip(rows.Skip(1).Select(i=>left.RowsMm[i]),(a,b)=>b-a).Any(g=>g>maximum+1e-7)))
             {failure=$"X{index+1}: aligned receiving rows exceed this crossing's plywood spacing limit.";return null;}
+            var positions=spreader ? PlywoodSpacing.SheetSupportRows(c.PositionMm-c.WidthMm/2,c.PositionMm+c.WidthMm/2,maximum) : rows.Select(i=>left.RowsMm[i]).ToArray();
             double near=left.LowerStockStartMm+left.LowerStockLengthMm-r.Input.Beams[bay].WidthMm/2-BearingInsetMm;
             double far=-right.LowerStockStartMm-r.Input.Beams[bay+1].WidthMm/2-BearingInsetMm;
             near=Math.Min(r.Beams[bay].TransverseOffsetMm+r.Beams[bay].WidthMm/2-r.Input.Beams[bay].WidthMm/2,Math.Min(350,Math.Min(near,span/2-150)));far=Math.Min(r.Beams[bay+1].WidthMm/2-r.Beams[bay+1].TransverseOffsetMm-r.Input.Beams[bay+1].WidthMm/2,Math.Min(350,Math.Min(far,span/2-150)));
@@ -263,24 +266,24 @@ namespace EngineeringDashboard
                 double edge=(span-stock)/2;
                 if(near-edge<150 || far-edge<150)continue;
                 var members=new List<TransferMember>();var bearings=new List<CrossBeamBearing>();var solids=new List<FormworkSolid>();bool valid=true;
-                var ledgerRows=LedgerRowLineLoads(r,index,rows.Select(i=>left.RowsMm[i]).ToArray());var ledgerBearings=new List<CrossBeamBearing>();var endBearings=new List<CrossBeamBearing>();
-                for(int k=0;k<rows.Length;k++)
+                var ledgerRows=LedgerRowLineLoads(r,index,positions);var ledgerBearings=new List<CrossBeamBearing>();var endBearings=new List<CrossBeamBearing>();
+                for(int k=0;k<positions.Length;k++)
                 {
-                    double lo=k==0 ? c.PositionMm-c.WidthMm/2 : (left.RowsMm[rows[k-1]]+left.RowsMm[rows[k]])/2;
-                    double hi=k==rows.Length-1 ? c.PositionMm+c.WidthMm/2 : (left.RowsMm[rows[k]]+left.RowsMm[rows[k+1]])/2;
+                    double lo=k==0 ? c.PositionMm-c.WidthMm/2 : (positions[k-1]+positions[k])/2;
+                    double hi=k==positions.Length-1 ? c.PositionMm+c.WidthMm/2 : (positions[k]+positions[k+1])/2;
                     // As for slab H20s, only the area above the stock loads the H20.
                     // The remaining strip loads its own shutter on the receiving secondary.
                     var q=new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock,KnPerM=r.Input.AreaLoad(c.DepthMm)*(hi-lo)/1000+ledgerRows[k]}};
                     var points=new BeamPointLoad[0];
                     var m=new TransferMember {Name=$"X{index+1} H20 {k+1}",LoadCase="Cross concrete + construction/formwork",H20Count=1,StartMm=face+edge,LengthMm=stock,SupportsMm=new[] {near-edge,span-far-edge},Uniform=q,Points=points};
                     m.Analysis=LoadedBeamAnalysis.Analyze(stock,m.SupportsMm,q,points,TowerOptimizer.PairEI/2,common.DeflectionDenominator);
-                    if(!Pass(m,common,$"Cross X{index+1}; receiving T{rows[k]+1}")) {valid=false;break;}
-                    members.Add(m);double x=left.RowsMm[rows[k]];
+                    if(!Pass(m,common,$"Cross X{index+1}; H20 {k+1}")) {valid=false;break;}
+                    members.Add(m);double x=positions[k];
                     solids.Add(Timber(m.Name,x,face+edge,stock,false,c.BottomElevationMm,m));
                     for(int side=0;side<2;side++)
                     {
                         int beam=bay+side;double y=face+(side==0 ? near : span-far);
-                        var bearing=new CrossBeamBearing {Beam=beam,Row=side==0 ? rows[k] : Array.FindIndex(right.RowsMm,v=>Math.Abs(v-x)<1e-7),Xmm=x,Ymm=y,ReceivingTopMm=r.Input.Beams[beam].BottomElevationMm,H20UndersideMm=c.BottomElevationMm-200,ReactionKn=m.Analysis.Reactions[side],FootprintStartMm=lo,FootprintEndMm=hi};
+                        var bearing=new CrossBeamBearing {Beam=beam,Row=spreader ? 0 : side==0 ? rows[k] : Array.FindIndex(right.RowsMm,v=>Math.Abs(v-x)<1e-7),Xmm=x,Ymm=y,ReceivingTopMm=r.Input.Beams[beam].BottomElevationMm,H20UndersideMm=c.BottomElevationMm-200,ReactionKn=m.Analysis.Reactions[side],FootprintStartMm=lo,FootprintEndMm=hi};
                         if(Math.Abs(ledgerRows[k])>1e-10)
                         {
                             double ledgerForce=bearing.ReactionKn*ledgerRows[k]/q[0].KnPerM;bearing.ReactionKn-=ledgerForce;
@@ -298,10 +301,26 @@ namespace EngineeringDashboard
                             if(Math.Abs(ledgerRows[k])>1e-10)
                             {var extra=strip.Copy();extra.Label="Slab edge ledger";extra.ReactionKn=ledgerRows[k]*edge/1000;extra.FootprintStartMm=x-40;extra.FootprintEndMm=x+40;endBearings.Add(extra);}
                         }
-                        if(bearing.FillerHeightMm>1e-7)solids.Add(new FormworkSolid {Name=$"X{index+1} filler B{beam+1}/T{rows[k]+1}",X0=x-40,X1=x+40,Y0=y-40,Y1=y+40,Z0=bearing.ReceivingTopMm,Z1=bearing.H20UndersideMm});
+                        if(!spreader && bearing.FillerHeightMm>1e-7)solids.Add(new FormworkSolid {Name=$"X{index+1} filler B{beam+1}/T{rows[k]+1}",X0=x-40,X1=x+40,Y0=y-40,Y1=y+40,Z0=bearing.ReceivingTopMm,Z1=bearing.H20UndersideMm});
                     }
                 }
-                if(valid)return new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.ExistingSupportsOnly,Members=members.ToArray(),Bearings=bearings.Concat(ledgerBearings).Concat(endBearings).ToArray(),SecondaryStationsMm=rows.Select(i=>left.RowsMm[i]).ToArray(),Solids=solids.ToArray(),LoadKn=members.Sum(m=>m.Analysis.TotalLoadKn)+endBearings.Sum(b=>b.ReactionKn),SlabEdgeLoadKn=SlabEdgeLoads(r,index).Sum(p=>p.Kn)*span/1000};
+                if(valid)
+                {
+                    var support=new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.ExistingSupportsOnly,Members=members.ToArray(),Bearings=bearings.Concat(ledgerBearings).Concat(endBearings).ToArray(),SecondaryStationsMm=positions,Solids=solids.ToArray(),LoadKn=members.Sum(m=>m.Analysis.TotalLoadKn)+endBearings.Sum(b=>b.ReactionKn),SlabEdgeLoadKn=SlabEdgeLoads(r,index).Sum(p=>p.Kn)*span/1000};
+                    if(spreader)
+                    {
+                        if(!SpreadShared(common,r,support,out failure))continue;
+                        // Reserve the transfer zone; plan and section keep the existing
+                        // load arrows rather than drawing or designing the spreader.
+                        foreach(var group in support.Bearings.Where(b=>!b.IsConcreteEndZone).GroupBy(b=>b.Beam))
+                        {
+                            var b=group.First();if(b.FillerHeightMm<=1e-7)continue;
+                            solids.Add(new FormworkSolid {Name=$"X{index+1} filler load transfer",X0=c.PositionMm-c.WidthMm/2,X1=c.PositionMm+c.WidthMm/2,Y0=b.Ymm-40,Y1=b.Ymm+40,Z0=b.ReceivingTopMm,Z1=b.H20UndersideMm});
+                        }
+                        support.Solids=solids.ToArray();
+                    }
+                    return support;
+                }
             }
             failure=$"X{index+1}: no permitted shared H20 stock passes moment, shear, deflection{(common.IgnoreUplift ? "" : ", uplift")} and bearing/end geometry.";return null;
         }
@@ -834,6 +853,7 @@ namespace EngineeringDashboard
             for(int index=0;index<network.CrossingBeams.Length;index++)
             {
                 var c=network.CrossingBeams[index];bool right=c.BayNumber==beam+1,left=c.BayNumber==beam;
+                if(common.EngineerWorkflow && EngineerPrimaryPlan.Eligible(network,c))continue;
                 if((!left && !right) || c.SupportMode==CrossBeamSupportMode.ExistingSupportsOnly || c.SupportMode==CrossBeamSupportMode.LegacySlabRows || input.BottomElevationMm>c.BottomElevationMm+1e-7)continue;
                 bool shutter=input.BottomElevationMm<c.BottomElevationMm-1e-7;
                 double start=right ? input.WidthMm/2 : shutter ? -input.WidthMm/2-shutterWidth : t.LowerStockStartMm;

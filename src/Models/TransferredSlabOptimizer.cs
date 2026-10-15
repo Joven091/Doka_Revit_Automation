@@ -25,6 +25,8 @@ namespace EngineeringDashboard
         public UpperTransferPlan LeftPlan, RightPlan;
         internal double[] LeftEffectiveWidthsMm, RightEffectiveWidthsMm;
         internal bool CrossFormwork;
+        internal TransferNetworkInput EngineerNetwork;
+        internal int EngineerBeam,EngineerReceiverCount=3;
         // Extra crossing concrete remains distributed only over its physical footprint.
         // These dimensionless factors multiply the corresponding per-metre slab reaction.
         internal BeamDistributedLoad[] LeftCrossingBands=new BeamDistributedLoad[0], RightCrossingBands=new BeamDistributedLoad[0];
@@ -292,7 +294,7 @@ namespace EngineeringDashboard
                 left=leftBase=map(l);right=rightBase=map(r);
             }
             double[] absolute;
-            try {absolute=PlywoodSpacing.FillRequiredRows(edge,edge+covered,t.UpperSpacingMm,shared);}
+            try {absolute=PlywoodSpacing.FillRequiredRows(edge,edge+covered,t.UpperSpacingMm,shared.Concat(EngineerPrimaryPlan.Rows(t,shared)).Distinct().OrderBy(x=>x).ToArray());}
             catch(ArgumentException ex)
             {input.Diagnostics?.Geometry(input.DiagnosticScope+"receiving row setting-out",input.DiagnosticScope+ex.Message,"Review required slab/crossing rows and plywood joints.");return null;}
             var rows=absolute.Select(x=>x-edge).ToArray();
@@ -460,14 +462,16 @@ namespace EngineeringDashboard
             var seeds=widths.SelectMany(width=>CrossOptions(input,width,t.UpperSpacingMm)).Select(c=>EngineerTowerSearch.InitialLegs(input,c.DesignCases.Max(stage=>c.Cases[stage].Reactions.Max())*input.LengthMm/1000)).ToArray();
             if(seeds.Length==0)return OptimizeCoreByLegTier(input,shareDiagnostics);
             int maximum=Math.Min(EngineerTowerSearch.MaximumStations(input),input.NetworkLegCeiling/2);
-            int limit=Math.Min(maximum,Math.Max(input.EngineerMinimumStations,Math.Max(4,seeds.Min()+2)));
+            int limit=Math.Min(maximum,Math.Max(input.EngineerMinimumStations,Math.Max(4,(input.EngineerPlan?.InitialLegs??seeds.Min())+2)));
             var cache=t.SharedGeometryCache??new GeometryCache();
+            int receiverCount=3;
             while(true)
             {
                 var worker=input.CopyForSearch();worker.EngineerStationLimit=limit;
-                worker.TransferredSlab=t.Copy();worker.TransferredSlab.SharedGeometryCache=cache;
+                worker.TransferredSlab=t.Copy();worker.TransferredSlab.SharedGeometryCache=cache;worker.TransferredSlab.EngineerReceiverCount=receiverCount;
                 try{return OptimizeCoreByLegTier(worker,shareDiagnostics);}
-                catch(TowerOptimizationException) when(limit<maximum){limit=Math.Min(maximum,limit+4);}
+                catch(TowerOptimizationException) when(t.EngineerNetwork!=null && receiverCount<8){receiverCount++;}
+                catch(TowerOptimizationException) when(limit<maximum){limit=Math.Min(maximum,limit+4);receiverCount=3;}
             }
         }
         private static TowerLayout OptimizeCoreReference(TowerInput input,bool shareDiagnostics)
@@ -723,7 +727,7 @@ namespace EngineeringDashboard
                 }
                 force=Math.Max(force,carried*input.LengthMm/stocks.Sum(s=>s.StockLengthMm));
             }
-            return EngineerTowerSearch.InitialLegs(input,force);
+            return input.EngineerPlan?.InitialLegs??EngineerTowerSearch.InitialLegs(input,force);
         }
         private static double Timber(TowerLayout l) => l.StockPlan.PrimaryLengthMm+l.Transfer.AdditionalTimberMm;
         internal static double Economy(TowerLayout l)=>l.LegCount*TowerOptimizer.TowerLegTimberEquivalentMm+l.Transfer.UpperFootCount*TowerOptimizer.UpperFootTimberEquivalentMm+Timber(l);
@@ -1016,7 +1020,7 @@ namespace EngineeringDashboard
             {
                 input.Trace?.CheckCancellation();
                 // Design every row for at least the entered spacing; end strips receive no load reduction.
-                double beamWidth=Math.Max(trib[row],input.TransferredSlab.UpperSpacingMm);
+                double beamWidth=EngineerPrimaryPlan.Local(input.TransferredSlab,rows[row]+edge) ? Math.Max(0,trib[row]) : Math.Max(trib[row],input.TransferredSlab.UpperSpacingMm);
                 double leftScale=ls[row]==0 ? 0 : Math.Max(ls[row],input.TransferredSlab.SlabSpacing(true)/1000),rightScale=rs[row]==0 ? 0 : Math.Max(rs[row],input.TransferredSlab.SlabSpacing(false)/1000);
                 var points=input.TransferredSlab.BeamEdgeLoadsKnM.Select(p=>new BeamPointLoad {PositionMm=input.TransferredSlab.BeamCentreOffsetMm+p.PositionMm-cross.Start,Kn=p.Kn*beamWidth/1000}).ToList();
                 if(hasLeft) points.Add(new BeamPointLoad {PositionMm=input.TransferredSlab.BeamCentreOffsetMm-input.TransferredSlab.BeamWidthMm/2-cross.Left.Foot-cross.Start,Kn=cross.Left.Analysis.Reactions[0]*leftScale});

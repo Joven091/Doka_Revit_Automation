@@ -218,6 +218,8 @@ namespace EngineeringDashboard
         internal bool FullLoadingOnly,DeferCrossingChecks;
         // Production uses the engineer search; old numerical fixtures can replay stock-first enumeration.
         internal bool EngineerSearch;
+        internal bool EngineerWorkflow=>EngineerSearch && FullLoadingOnly;
+        internal EngineerPrimaryPlan EngineerPlan;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
         internal double ReceiverTransverseOffsetMm;
