@@ -91,6 +91,12 @@ namespace EngineeringDashboard
         internal static readonly CrossShutterAllowance[] StandardOnly={Standard};
         internal static readonly CrossShutterAllowance[] Candidates={Standard,new CrossShutterAllowance(175,200),new CrossShutterAllowance(200,175),new CrossShutterAllowance(175,175)};
     }
+    internal sealed class CrossLowerCaseCheck
+    {
+        internal TransferMember[] Members;
+        internal bool Passed;
+        internal TowerSearchDiagnostics Diagnostics;
+    }
     internal sealed class DedicatedCrossSearch
     {
         internal CrossBeamSupportResult Result;
@@ -857,19 +863,43 @@ namespace EngineeringDashboard
                     common.Trace?.CheckCancellation();
                     var active=relevant.Where((s,i)=>conservative ? mask==1 : (mask&(1<<i))!=0).ToArray();
                     string name=t.CaseNames[stage]+(mask==0 ? "" : " + "+string.Join(" + ",active.Select(s=>"X"+(s.CrossingIndex+1))));
-                    var lower=new TransferMember[t.RowsMm.Length];
-                    for(int row=0;row<lower.Length;row++)
+                    Tuple<TransferMember[],string> lowerKey=null;
+                    System.Collections.Concurrent.ConcurrentDictionary<Tuple<TransferMember[],string>,CrossLowerCaseCheck> lowerCache=null;
+                    if(common.EngineerSearch && common.ReuseSearchWork && !conservative)
                     {
-                        var original=t.LowerCases[stage][row];
-                        var rowBearings=active.SelectMany(s=>s.Bearings).Where(b=>b.Beam==beam && b.Row==row).ToArray();
-                        if(rowBearings.Length==0)lower[row]=StageCopy(original,name);
-                        else
+                        lowerCache=common.CrossLowerCases??(common.CrossLowerCases=new System.Collections.Concurrent.ConcurrentDictionary<Tuple<TransferMember[],string>,CrossLowerCaseCheck>());
+                        string signature=FormattableString.Invariant($"{r.BeamCentresMm[beam]:R}|{common.DeflectionDenominator}|{name}|")
+                            +string.Join(";",active.SelectMany(s=>s.Bearings).Where(b=>b.Beam==beam).Select(b=>FormattableString.Invariant($"{b.Row},{b.Ymm:R},{b.ReactionKn:R},{b.IsConcreteEndZone},{b.IsShutterEndZone},{b.EndZoneStartMm:R},{b.EndZoneEndMm:R}")));
+                        lowerKey=Tuple.Create(t.LowerCases[stage],signature);
+                    }
+                    TransferMember[] lower;
+                    if(lowerCache!=null && lowerCache.TryGetValue(lowerKey,out var saved) && (saved.Passed || ReferenceEquals(saved.Diagnostics,common.Diagnostics)))
+                    {
+                        if(!saved.Passed)return false;
+                        lower=saved.Members;
+                    }
+                    else
+                    {
+                        lower=new TransferMember[t.RowsMm.Length];bool lowerPassed=true;
+                        for(int row=0;row<lower.Length;row++)
                         {
-                            var increment=BearingIncrement(r,beam,original,rowBearings,common);
-                            lower[row]=Analyze(original,original.Points.Concat(increment.Points).ToArray(),original.Uniform.Concat(increment.Uniform).ToArray(),common,name);
+                            var original=t.LowerCases[stage][row];
+                            var rowBearings=active.SelectMany(s=>s.Bearings).Where(b=>b.Beam==beam && b.Row==row).ToArray();
+                            if(rowBearings.Length==0)lower[row]=StageCopy(original,name);
+                            else
+                            {
+                                var increment=BearingIncrement(r,beam,original,rowBearings,common);
+                                lower[row]=Analyze(original,original.Points.Concat(increment.Points).ToArray(),original.Uniform.Concat(increment.Uniform).ToArray(),common,name);
+                            }
+                            if(!Pass(lower[row],common,name)){lowerPassed=false;break;}
+                            if(conservative && mask==1 && !Envelope(common,original,active.Select(s=>BearingIncrement(r,beam,original,s.Bearings.Where(b=>b.Beam==beam && b.Row==row),common)).ToArray(),null,lower[row])){lowerPassed=false;break;}
                         }
-                        if(!Pass(lower[row],common,name))return false;
-                        if(conservative && mask==1 && !Envelope(common,original,active.Select(s=>BearingIncrement(r,beam,original,s.Bearings.Where(b=>b.Beam==beam && b.Row==row),common)).ToArray(),null,lower[row]))return false;
+                        if(lowerCache!=null)
+                        {
+                            if(lowerCache.Count>=128)lowerCache.Clear();
+                            lowerCache[lowerKey]=new CrossLowerCaseCheck {Members=lower,Passed=lowerPassed,Diagnostics=common.Diagnostics};
+                        }
+                        if(!lowerPassed)return false;
                     }
                     var primary=new TransferMember[runs*2];
                     for(int line=0;line<2;line++)for(int run=0;run<runs;run++)

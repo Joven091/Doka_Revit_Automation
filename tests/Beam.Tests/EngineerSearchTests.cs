@@ -73,6 +73,20 @@ internal static class EngineerSearchTests
         common.NetworkSearchWorkers=Math.Min(4,Environment.ProcessorCount);common.ReuseSearchWork=false;
         var repeat=TransferNetworkOptimizer.Optimize(common,network);Verify(repeat);
         Check(result.Schedule==repeat.Schedule && result.LayoutDiagnostics==repeat.LayoutDiagnostics,"serial/reused and parallel/uncached searches agree exactly");
+        // The same receiver lower rows recur under many longitudinal primary layouts.
+        // Compare reuse with a fresh calculation and invalidate on changed crossing load.
+        var junction=network.WithSpacings();junction.CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3300,WidthMm=650,DepthMm=200,BottomElevationMm=-200}};
+        common.ReuseSearchWork=true;common.CrossLowerCases=null;
+        bool original=CrossBeamSupportOptimizer.CheckJunctionReceiver(common,junction,0,result.Beams[0]);
+        Check(common.CrossLowerCases!=null && common.CrossLowerCases.Count>0,"crossing lower case is cached");
+        Func<double[]> demands=()=>common.CrossLowerCases.Values.SelectMany(v=>v.Members.Where(m=>m!=null)).SelectMany(m=>new[] {m.Analysis.TotalLoadKn,m.Analysis.MomentKnM,m.Analysis.ShearKn,m.Analysis.DeflectionMm}.Concat(m.Analysis.Reactions)).ToArray();
+        var checkedDemands=demands();
+        Check(CrossBeamSupportOptimizer.CheckJunctionReceiver(common,junction,0,result.Beams[0])==original && demands().SequenceEqual(checkedDemands),"identical junction reuses identical demands");
+        common.CrossLowerCases.Clear();
+        Check(CrossBeamSupportOptimizer.CheckJunctionReceiver(common,junction,0,result.Beams[0])==original && demands().SequenceEqual(checkedDemands),"fresh and cached crossing lower cases agree exactly");
+        junction.CrossingBeams[0].DepthMm=300;junction.CrossingBeams[0].BottomElevationMm=-300;
+        CrossBeamSupportOptimizer.CheckJunctionReceiver(common,junction,0,result.Beams[0]);
+        Check(common.CrossLowerCases.Count>=2,"changing crossing load does not reuse a stale lower case");
         Console.WriteLine("Engineer search checks passed.");
     }
 }

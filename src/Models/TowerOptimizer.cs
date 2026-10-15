@@ -212,6 +212,7 @@ namespace EngineeringDashboard
     {
         internal TowerSearchDiagnostics Diagnostics;
         internal Dictionary<string,DedicatedCrossSearch> DedicatedCrossCache;
+        internal System.Collections.Concurrent.ConcurrentDictionary<Tuple<TransferMember[],string>,CrossLowerCaseCheck> CrossLowerCases;
         internal bool AllowLocalShutterExceptions;
         // Production checks one fully loaded configuration. Historical test replays keep their staged inputs.
         internal bool FullLoadingOnly,DeferCrossingChecks;
