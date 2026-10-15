@@ -185,7 +185,7 @@ namespace EngineeringDashboard
             {
                 int encoded=-support.CrossingIndex-1;
                 if(support.HasReducedShutterClearance)Label(dc,$"X{support.CrossingIndex+1} shutter allowance: {support.NearShutterClearanceMm:0}/{support.FarShutterClearanceMm:0} mm (exception)",xx(support.Input.PositionMm+support.Input.WidthMm/2)+8,yy(result.BeamCentresMm[support.Input.BayNumber-1]+result.Input.Beams[support.Input.BayNumber-1].WidthMm/2));
-                foreach(var solid in support.Solids.Where(s=>s.Member==null && !s.IsTowerEnvelope))
+                foreach(var solid in support.Solids.Where(s=>s.Member==null && !s.IsTowerEnvelope && (s.IsLeg || s.IsSideShutter)))
                 {
                     var rect=new Rect(new Point(xx(solid.X0),yy(solid.Y0)),new Point(xx(solid.X1),yy(solid.Y1)));
                     if(solid.IsLeg) {TowerPlanDrawing.Leg(dc,new Point(xx((solid.X0+solid.X1)/2),yy((solid.Y0+solid.Y1)/2)),support.Towers?.Rotated==true);DrawnTowerLegCount++;}
@@ -391,7 +391,7 @@ namespace EngineeringDashboard
             int bay=support.Input.BayNumber-1;double face=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2;
             if(Math.Abs(ActualSectionPositionMm-support.Input.PositionMm)<=support.Input.WidthMm/2+1e-7)dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(new Point(xx(face),zz(support.Input.BottomElevationMm+support.Input.DepthMm)),new Point(xx(face+result.Input.Bays[bay].WidthMm),zz(support.Input.BottomElevationMm))));
             SectionNote($"X{support.CrossingIndex+1} · x {support.Input.PositionMm:0.###} · bottom {support.Input.BottomElevationMm:0.###} mm",xx(face+result.Input.Bays[bay].WidthMm/2),sectionBottom+100,false);
-            foreach(var solid in support.Solids.Where(s=>!s.IsTowerEnvelope && ActualSectionPositionMm>=s.X0-1e-7 && ActualSectionPositionMm<=s.X1+1e-7))
+            foreach(var solid in support.Solids.Where(s=>!s.IsTowerEnvelope && (s.Member!=null || s.IsLeg || s.IsSideShutter) && ActualSectionPositionMm>=s.X0-1e-7 && ActualSectionPositionMm<=s.X1+1e-7))
             {
                 if(solid.IsLeg) {dc.DrawLine(new Pen(Steel,2),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)+35));continue;}
                 var rect=new Rect(new Point(xx(solid.Y0),zz(solid.Z1)),new Point(xx(solid.Y1),zz(solid.Z0)));int member=Array.IndexOf(support.Members,solid.Member);
@@ -413,7 +413,8 @@ namespace EngineeringDashboard
                     dc.DrawLine(new Pen(Brushes.DarkRed,3),new Point(xx(bearing.EndZoneStartMm),zz(bearing.ReceivingTopMm)),new Point(xx(bearing.EndZoneEndMm),zz(bearing.ReceivingTopMm)));
                     SectionDimension(xx(bearing.EndZoneStartMm),xx(bearing.EndZoneEndMm),sectionBottom+80,$"B{bearing.Beam+1} end {bearing.EndZoneEndMm-bearing.EndZoneStartMm:0.###} mm"+(bearing.IsShutterEndZone ? " · shutter"+(bearing.EndZoneEndMm-bearing.EndZoneStartMm<200 ? " (exception)" : "") : ""),false,Brushes.DarkRed);continue;
                 }
-                if(bearing.FillerHeightMm>1e-7)SectionNote($"Filler {bearing.FillerHeightMm:0.###} mm",xx(bearing.Ymm),sectionBottom+100,false);
+                if(bearing.FillerHeightMm>1e-7)
+                {double x=xx(bearing.Ymm),y=zz(bearing.ReceivingTopMm);dc.DrawLine(new Pen(Brushes.DarkRed,1.5),new Point(x,zz(bearing.H20UndersideMm)),new Point(x,y));Arrow(dc,x,y,Brushes.DarkRed);}
             }
         }
         }

@@ -25,6 +25,7 @@ namespace EngineeringDashboard
         internal EquivalentLoadingView EquivalentView {get;private set;}
         internal TextBlock ResponseBasis {get;private set;}
         private readonly TowerLayout layout;
+        private readonly TransferNetworkResult network;
         private readonly CrossBeamSupportResult crossSupport;
         private readonly BeamCalculatorViewModel propModel;
         private readonly ComboBox propCount = new ComboBox { Width = 100, Margin = new Thickness(8,0,0,0) };
@@ -33,6 +34,7 @@ namespace EngineeringDashboard
         private readonly StackPanel charts = new StackPanel();
         public TowerDiagramWindow(BeamCalculatorViewModel model)
         {
+            network=model.NetworkResult;
             networkBeam=model.IsNetworkMode ? model.SelectedNetworkBeam+1 : 0;
             beamLabel=networkBeam>0 ? $"B{networkBeam} · " : "";
             if (!model.UseTowers)
@@ -70,7 +72,10 @@ namespace EngineeringDashboard
             var m=crossSupport.Members[SelectedRun];SelectedTransferMember=DisplayedTransferMember=m;ActualLoadedAnalysis=LoadedAnalysis=m.Analysis;Analysis=null;
             bool primary=m.H20Count==2;
             Title=$"X{crossSupport.CrossingIndex+1} · {m.Name}"+" · "+m.MaterialDescription;charts.Children.Clear();
-            AddMemberSummary(crossSupport.NominalSecondarySpacingMm,m.Utilization);
+            if(network!=null && !network.DisplayStage.Crossings.Contains(crossSupport.CrossingIndex))m=ScaleDisplay(m,0);
+            SelectedTransferMember=DisplayedTransferMember=m;ActualLoadedAnalysis=LoadedAnalysis=m.Analysis;
+            if(network!=null)AddSystemStage();
+            AddMemberSummary(crossSupport.SecondarySpacingDescription,m.Utilization);
             LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);AddChart("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,true);
             AddResponseCharts(m,primary);
 
@@ -133,8 +138,10 @@ namespace EngineeringDashboard
             var t=layout.Transfer; int runs=layout.StockPlan.Pieces.Length;
             bool upper=SelectedRun>=runs+t.RowsMm.Length;
             var cases=upper ? null : Enumerable.Range(0,t.CaseNames.Length).Select(c=>SelectedRun<runs ? t.PrimaryCases[c][SelectedRun+SelectedLine*runs] : t.LowerCases[c][SelectedRun-runs]).ToArray();
-            int governing=upper ? -1 : Enumerable.Range(0,cases.Length).OrderByDescending(c=>cases[c].Utilization).First();
-            if(!upper && (SelectedLoadCase<0 || SelectedLoadCase>=cases.Length))SelectedLoadCase=governing;
+            bool networkLayout=network!=null && networkBeam>0 && ReferenceEquals(layout,network.Beams[networkBeam-1]);
+            int governing=upper ? -1 : networkLayout ? network.SystemGoverningStage.BeamCases[networkBeam-1] : SystemLoadingStage.Governing(layout);
+            if(!upper && networkLayout)SelectedLoadCase=network.DisplayStage.BeamCases[networkBeam-1];
+            else if(!upper && (SelectedLoadCase<0 || SelectedLoadCase>=cases.Length))SelectedLoadCase=governing;
             TransferMember m;
             if(SelectedRun<runs) m=t.PrimaryCases[SelectedLoadCase][SelectedRun+SelectedLine*runs];
             else if(!upper) m=t.LowerCases[SelectedLoadCase][SelectedRun-runs];
@@ -142,6 +149,8 @@ namespace EngineeringDashboard
             {
                 int encoded=SelectedRun-runs-t.RowsMm.Length,row=encoded/2,side=encoded%2;
                 m=t.UpperMemberAtRow(side==0,row);
+                if(networkLayout)
+                {int bay=side==0 ? networkBeam-2 : networkBeam-1;if(bay<0 || bay>=network.DisplayStage.Slabs.Length || !network.DisplayStage.Slabs[bay])m=ScaleDisplay(m,0);}
             }
             SelectedTransferMember=m; ActualLoadedAnalysis=m.Analysis; Analysis=null;
             bool primary=SelectedRun<runs;
@@ -149,15 +158,16 @@ namespace EngineeringDashboard
             Title=beamLabel+m.Name+" · "+m.MaterialDescription;
             charts.Children.Clear();
             LoadCaseSelector=null;
+            if(networkLayout)AddSystemStage();
             if(!upper)
             {
                 var choices=new DockPanel {Margin=new Thickness(0,8,0,8)};
                 var label=new TextBlock {Text="Load case",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)};DockPanel.SetDock(label,Dock.Left);choices.Children.Add(label);
-                var selector=new ComboBox {MinWidth=250,HorizontalAlignment=HorizontalAlignment.Stretch,ToolTip="Choose a checked loading pattern. The governing case has the highest utilization for this H20."};
+                var selector=new ComboBox {MinWidth=250,HorizontalAlignment=HorizontalAlignment.Stretch,ToolTip="Choose a checked system loading stage. The system governing stage has the highest average of bending, shear, deflection and leg-load category maxima."};
                 for(int c=0;c<t.CaseNames.Length;c++)
-                    selector.Items.Add(new ComboBoxItem {Content=CaseLabel(t.CaseNames[c])+(c==governing ? " · governing" : ""),Tag=c});
+                    selector.Items.Add(new ComboBoxItem {Content=CaseLabel(t.CaseNames[c])+(c==governing ? " · system governing" : ""),Tag=c});
                 selector.SelectedIndex=SelectedLoadCase;
-                selector.SelectionChanged+=(s,e)=> {if(selector.SelectedIndex<0 || selector.SelectedIndex==SelectedLoadCase)return;bool focused=selector.IsKeyboardFocusWithin;SelectedLoadCase=selector.SelectedIndex;RefreshTransfer();if(focused)Dispatcher.BeginInvoke(new Action(()=>LoadCaseSelector?.Focus()));};
+                selector.SelectionChanged+=(s,e)=> {if(selector.SelectedIndex<0 || selector.SelectedIndex==SelectedLoadCase)return;bool focused=selector.IsKeyboardFocusWithin;SelectedLoadCase=selector.SelectedIndex;if(networkLayout)network.DisplayStage=SystemLoadingStage.Select(network,network.DisplayStage,networkBeam-1,SelectedLoadCase);RefreshTransfer();if(focused)Dispatcher.BeginInvoke(new Action(()=>LoadCaseSelector?.Focus()));};
                 LoadCaseSelector=selector;choices.Children.Add(selector);
                 charts.Children.Add(choices);
             }
@@ -200,9 +210,17 @@ namespace EngineeringDashboard
                 AddChart((primary ? "UDL design · " : "")+caption,new LoadedResponsePlot(m,i,layout.DeflectionDenominator));
             }
         }
-        private void AddMemberSummary(double spacing,double utilization)
+        private void AddSystemStage()
         {
-            charts.Children.Add(new TextBlock {Text=$"Secondary beam spacing: {spacing:0.###} mm",Margin=new Thickness(0,6,0,4)});
+            var stage=network.DisplayStage;
+            charts.Children.Add(new TextBlock {Text=$"System stage: {stage.Name} · score {stage.Score*100:0.0}%",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,4,0,4)});
+        }
+        private static TransferMember ScaleDisplay(TransferMember m,double scale)=>new TransferMember {Name=m.Name,LoadCase=m.LoadCase,H20Count=m.H20Count,PrimaryMaterial=m.PrimaryMaterial,StartMm=m.StartMm,LengthMm=m.LengthMm,SupportsMm=m.SupportsMm,
+            Uniform=m.Uniform.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM*scale}).ToArray(),Points=m.Points.Select(p=>new BeamPointLoad {PositionMm=p.PositionMm,Kn=p.Kn*scale}).ToArray(),Analysis=m.Analysis.Scale(scale)};
+        private void AddMemberSummary(double spacing,double utilization)=>AddMemberSummary($"{spacing:0.###} mm",utilization);
+        private void AddMemberSummary(string spacing,double utilization)
+        {
+            charts.Children.Add(new TextBlock {Text=$"Secondary beam spacing: {spacing}",Margin=new Thickness(0,6,0,4)});
             charts.Children.Add(new TextBlock {Text=$"Utilization rate: {utilization*100:0.0}%",Margin=new Thickness(0,0,0,4)});
         }
         private void AddChart(string caption,FrameworkElement plot,bool loading=false)

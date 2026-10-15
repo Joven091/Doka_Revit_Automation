@@ -211,3 +211,13 @@ Section geometry uses one scale in both directions. D3 support context stays vis
 In Geometry, click a dimension value to edit it on the drawing; Enter commits and Esc cancels. Crossing position, common parallel beam length, independent beam length and slab clear width use the existing model and undo history. For MV/CO, pick the base point, point in the permitted direction, type a distance in mm and press Enter. Typed distances retain their exact value independently of the 25 mm mouse snap grid. Invalid edits retain the previous geometry, and accepted geometry changes invalidate calculations. Crossing assumptions, independent start-coordinate fields and the permanent deletion explanation are omitted from the Selection panel.
 
 Run `--slab-edge-ledgers` in Beam.Tests or Beam.Net48 for independent force/moment, shutter-clearance and reported-input checks. The original slab-only custom-stock scope may still fail a receiving H20 check; the passing regression also tests fitted beam-support stock without changing production inputs automatically. The historical secondary setting-out fixture explicitly replays the former load path so it continues testing the same physical clearance/balancing case.
+
+## System stage and crossing UDL review (October 2026)
+
+The default network display uses one consistent loading stage. Its score is the mean of the highest bending, shear, relative deflection and leg-load utilization in that stage, including active main, crossing and slab H20s. Compatible neighbouring slab stages and existing checked crossing subsets are compared with a dominance frontier. The score selects presentation; all individual capacity and uplift checks remain enforced for every stage.
+
+Crossing increments on each receiving-primary line use one flat UDL preserving total force and longitudinal first moment. A centred resultant uses the complete crossing footprint; an eccentric resultant uses the largest rectangle centred on it inside that footprint. Flattening happens before clipping at stock joints. A pure couple or resultant outside the footprint is rejected. The same UDL drives primary responses, utilization and leg checks.
+
+Shared crossing H20s carry only the loading over their stock. Transverse end-strip loads transfer through the side shutters at strip midpoints to receiving secondaries. Full load and moment remain included, with ledgers counted once. Stud/filler design is outside scope: plan omits their blocks, section shows load-transfer arrows, and geometry reservations remain in clash checking.
+
+Dimension editing opens after mouse release and focuses the input. Enter applies and Escape cancels. Shared crossing spacing labels use actual secondary stations, rather than a missing dedicated tower layout.
