@@ -217,7 +217,7 @@ namespace EngineeringDashboard
         internal bool FullLoadingOnly,DeferCrossingChecks;
         // Production uses the engineer search; old numerical fixtures can replay stock-first enumeration.
         internal bool EngineerSearch;
-        internal int EngineerStationLimit=40;
+        internal int EngineerStationLimit=40,EngineerMinimumStations=2;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance;
         internal double ReceiverTransverseOffsetMm;
         internal BeamSearchTrace Trace;
@@ -679,6 +679,19 @@ namespace EngineeringDashboard
     internal static class EngineerTowerSearch
     {
         internal static double AssumedLegKn(TowerInput input)=>Math.Min(input.Primary.IsWS10 ? 70 : 35,input.LegCapacityKn);
+        internal static int MaximumStations(TowerInput input)
+        {
+            // Necessary physical bound: every group has >=2 frames; braces use
+            // catalogue sizes and independent groups need at least a 25 mm gap.
+            var span=Enumerable.Repeat(double.PositiveInfinity,41).ToArray();span[0]=-25;
+            for(int count=2;count<=40;count++)for(int size=2;size<=Math.Min(6,count);size++)
+            {
+                double braces=(size-1)*600.0;
+                if(size==2 && input.Exclude600Standalone)braces=1000;
+                span[count]=Math.Min(span[count],span[count-size]+25+braces);
+            }
+            return Enumerable.Range(2,39).Where(n=>span[n]<=input.LengthMm-2*input.StockEndSetbackMm+1e-7).DefaultIfEmpty(2).Max();
+        }
         internal static int InitialLegs(TowerInput input,double lineForceKn)=>Math.Max(2,(int)Math.Ceiling(lineForceKn/AssumedLegKn(input)-1e-10));
         internal static int Compare(int narrow,int bays,double penalty,int oldNarrow,int oldBays,double oldPenalty)
         {

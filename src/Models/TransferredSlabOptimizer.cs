@@ -458,11 +458,13 @@ namespace EngineeringDashboard
             var widths=t.FixedTowerWidthMm.HasValue ? new[] {t.FixedTowerWidthMm.Value} : new[] {1524.0,1000,1500,2000};
             var seeds=widths.SelectMany(width=>CrossOptions(input,width,t.UpperSpacingMm)).Select(c=>EngineerTowerSearch.InitialLegs(input,c.DesignCases.Max(stage=>c.Cases[stage].Reactions.Max())*input.LengthMm/1000)).ToArray();
             if(seeds.Length==0)return OptimizeCoreByLegTier(input,shareDiagnostics);
-            int maximum=Math.Min(40,input.NetworkLegCeiling/2);
-            int limit=Math.Min(maximum,Math.Max(4,seeds.Min()+2));
+            int maximum=Math.Min(EngineerTowerSearch.MaximumStations(input),input.NetworkLegCeiling/2);
+            int limit=Math.Min(maximum,Math.Max(input.EngineerMinimumStations,Math.Max(4,seeds.Min()+2)));
+            var cache=t.SharedGeometryCache??new GeometryCache();
             while(true)
             {
                 var worker=input.CopyForSearch();worker.EngineerStationLimit=limit;
+                worker.TransferredSlab=t.Copy();worker.TransferredSlab.SharedGeometryCache=cache;
                 try{return OptimizeCoreByLegTier(worker,shareDiagnostics);}
                 catch(TowerOptimizationException) when(limit<maximum){limit=Math.Min(maximum,limit+4);}
             }
@@ -639,7 +641,7 @@ namespace EngineeringDashboard
                         if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
                         foreach (var geometry in geometries)
                         {
-                            if(geometry.Positions.Length*2>input.NetworkLegCeiling || input.EngineerSearch && geometry.Positions.Length>input.EngineerStationLimit)continue;
+                            if(geometry.Positions.Length*2>input.NetworkLegCeiling || input.EngineerSearch && (geometry.Positions.Length>input.EngineerStationLimit || geometry.Positions.Length<input.EngineerMinimumStations))continue;
                             // Try centred rows and phase shifts. Independent primary coverage adds beam load
                             // at the end rows without increasing the shared slab tributaries.
                             foreach (double phase in t.PlywoodSheetLengthMm>0 ? new[] {0.0} : t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })

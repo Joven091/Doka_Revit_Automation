@@ -27,6 +27,7 @@ internal static class EngineerSearchTests
         foreach(var material in new[] {PrimaryBeamMaterial.DoubleH20,PrimaryBeamMaterial.WS10})
         {input.PrimaryMaterial=material;input.LegCapacityKn=20;Check(EngineerTowerSearch.AssumedLegKn(input)==20 && EngineerTowerSearch.InitialLegs(input,200)==10,"configured lower leg capacity wins");}
         input=new TowerInput {LengthMm=7000,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=150,Exclude600Standalone=true,EngineerSearch=true};
+        Check(EngineerTowerSearch.MaximumStations(new TowerInput {LengthMm=2450,StockEndSetbackMm=150,Exclude600Standalone=true})==4,"short crossing searches stop at the manufactured support-span bound");
         var candidates=EngineerTowerSearch.Geometries(new[] {4500.0,2450},false,input).ToArray();
         Check(candidates.Any(g=>g.Positions.Length==6 && g.Joined.Count(j=>j)==3 && g.Joined.Select((j,i)=>!j || Math.Abs(g.Positions[i+1]-g.Positions[i]-1500)<1e-7).All(v=>v)),"three 1500 mm separate towers survive stock-joint enumeration");
         Check(candidates.Any(g=>g.Positions.Length==6 && g.Joined.Count(j=>j)==4),"two combined three-frame towers are considered");
