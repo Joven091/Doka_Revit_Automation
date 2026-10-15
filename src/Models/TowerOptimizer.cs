@@ -215,6 +215,8 @@ namespace EngineeringDashboard
         internal bool AllowLocalShutterExceptions;
         // Production checks one fully loaded configuration. Historical test replays keep their staged inputs.
         internal bool FullLoadingOnly,DeferCrossingChecks;
+        // Production uses the engineer search; old numerical fixtures can replay stock-first enumeration.
+        internal bool EngineerSearch;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance;
         internal double ReceiverTransverseOffsetMm;
         internal BeamSearchTrace Trace;
@@ -280,6 +282,9 @@ namespace EngineeringDashboard
     }
     public sealed class TowerLayout
     {
+        internal bool EngineerSearch;
+        public double SearchAssumedLegKn {get;internal set;}
+        public int SearchInitialLegsPerLine {get;internal set;}
         public PrimaryBeamMaterial PrimaryMaterial {get;internal set;}
         public PrimaryBeamProfile Primary=>PrimaryBeamProfile.For(PrimaryMaterial);
         public TransferredSlabResult Transfer { get; internal set; }
@@ -322,7 +327,7 @@ namespace EngineeringDashboard
         public int BayCount => Joined.Count(x => x);
         public int SharedFrameCount=>Math.Max(0,2*BayCount-PositionsMm.Length);
         public int Standalone600Count => TowerOptimizer.Standalone600Count(PositionsMm,Joined,WidthMm,Rotated);
-        public double StandaloneBracePenalty => TowerOptimizer.StandaloneBracePenalty(PositionsMm,Joined,WidthMm,Rotated);
+        public double StandaloneBracePenalty => EngineerSearch ? EngineerTowerSearch.BracePenalty(PositionsMm,Joined,WidthMm,Rotated) : TowerOptimizer.StandaloneBracePenalty(PositionsMm,Joined,WidthMm,Rotated);
         public string BracePreferenceSummary => $"Standalone 600 mm towers: {Standalone600Count}; braced bays: {BayCount}; standalone brace preference: {StandaloneBracePenalty:0.###} mm (lower preferred). Width preference is a layout heuristic; tower height/stability requires separate verification.";
         public double MaxLegKn { get; internal set; }
         public double LegCapacityKn { get; internal set; }
@@ -409,7 +414,7 @@ namespace EngineeringDashboard
         internal static int CompareBracePreference(double[] positions,bool[] joined,double width,bool rotated,TowerLayout old)
             => CompareBracePreference(Standalone600Count(positions,joined,width,rotated),joined.Count(x=>x),StandaloneBracePenalty(positions,joined,width,rotated),old.Standalone600Count,old.BayCount,old.StandaloneBracePenalty);
         internal static int CompareBracePreference(TowerLayout a,TowerLayout b)
-            => CompareBracePreference(a.PositionsMm,a.Joined,a.WidthMm,a.Rotated,b);
+            => CompareBracePreference(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty);
         private static bool Better(TowerLayout a,TowerLayout b)
             => a.LegCount<b.LegCount || a.LegCount==b.LegCount && (CompareBracePreference(a,b)<0
                 || CompareBracePreference(a,b)==0 && (a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
@@ -425,6 +430,7 @@ namespace EngineeringDashboard
         {
             Validate(input);
             input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,input.DeflectionLimitMm,input.Trace,input.IgnoreUplift);
+            if(input.EngineerSearch)return OptimizeEngineer(input);
             if (input.MaximumConcreteEndOverhangMm == 0) return OptimizeCovered(input);
             input.Trace?.Work("Beam-only primary coverage DP");
             // Reachable stock totals; allow only symmetric concrete end overhang, never internal stock gaps.
@@ -462,6 +468,35 @@ namespace EngineeringDashboard
             best.SearchTimeLimitReached=input.Trace?.BudgetReached==true;
             best.MinimumLegCountProven = !best.SearchTimeLimitReached && best.LegCount == Math.Max(capacityBound, covers.Min(x => counts[x]) * 4);
             best.Tested = tested; return best;
+        }
+        private static TowerLayout OptimizeEngineer(TowerInput input)
+        {
+            TowerLayout best=null;int tested=0;
+            var covers=TransferredSlabOptimizer.StockCovers(input);
+            double heavy=input.TotalLineLoad/2+Math.Abs(input.TransverseLoadMoment)/1.0;
+            int initial=EngineerTowerSearch.InitialLegs(input,heavy*input.LengthMm/1000);
+            var work=covers.SelectMany(c=>new[] {false,true}.SelectMany(rotated=>EngineerTowerSearch.Geometries(c,rotated,input).Select(g=>Tuple.Create(c,rotated,g))));
+            foreach(var item in work.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Item3.Positions.Length,initial)).ThenBy(w=>w.Item3.Joined.Count(j=>j)))
+            {
+                input.Trace?.CheckCancellation();var g=item.Item3;
+                if(best!=null && g.Positions.Length>best.PositionsMm.Length)continue;
+                double edge=(input.LengthMm-item.Item1.Sum())/2;
+                var worker=input.CopyForSearch();worker.EngineerSearch=false;worker.LengthMm=item.Item1.Sum();
+                // Reuse the existing exact member/stock checker at the proposed positions.
+                var positions=g.Positions;
+                foreach(double width in item.Item2 ? BaysMm : new[] {1524.0})
+                {
+                    if(item.Item2 && input.Exclude600Standalone && width==600)continue;
+                    var candidate=Evaluate(worker,positions,g.Joined,width,item.Item2);tested++;
+                    if(candidate==null)continue;
+                    candidate.PositionsMm=candidate.PositionsMm.Select(x=>x+edge).ToArray();foreach(var piece in candidate.StockPlan.Pieces)piece.StartMm+=edge;candidate.LengthMm=input.LengthMm;candidate.ConcreteEndOverhangMm=edge;
+                    candidate.EngineerSearch=true;candidate.SearchAssumedLegKn=EngineerTowerSearch.AssumedLegKn(input);
+                    candidate.SearchInitialLegsPerLine=EngineerTowerSearch.InitialLegs(input,Math.Max(candidate.LeftLineLoad,candidate.RightLineLoad)*input.LengthMm/1000);
+                    if(best==null || Better(candidate,best))best=candidate;
+                }
+            }
+            if(best==null){var replay=input.CopyForSearch();replay.EngineerSearch=false;best=OptimizeCore(replay);best.EngineerSearch=true;best.SearchAssumedLegKn=EngineerTowerSearch.AssumedLegKn(input);best.SearchInitialLegsPerLine=initial;}
+            best.Tested=tested;return best;
         }
         private static TowerLayout OptimizeCovered(TowerInput input)
         {
@@ -589,7 +624,7 @@ namespace EngineeringDashboard
             if (!input.IgnoreUplift && response.Reactions.Min() < -1e-9 * maxLeg) return null;
             var utilization = new[] { maxLeg / input.LegCapacityKn, response.MomentKnM / input.Primary.MomentLimitKnM, response.ShearKn / input.Primary.ShearLimitKn, response.DeflectionUtilization, response.StrengthUtilization };
             if (utilization.Any(x => !TowerBeamAnalysis.Finite(x)) || utilization.Max() > 1 + 1e-10) return null;
-            return new TowerLayout { PrimaryMaterial=input.PrimaryMaterial, IgnoreUplift = input.IgnoreUplift, PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
+            return new TowerLayout { EngineerSearch=input.EngineerSearch, PrimaryMaterial=input.PrimaryMaterial, IgnoreUplift = input.IgnoreUplift, PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
                 LeftLineLoad = left, RightLineLoad = right, LeftReactions = response.Reactions.Select((x,i) => x * (left+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm)) / (Math.Max(left,right)+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm))).ToArray(), RightReactions = response.Reactions.Select((x,i) => x * (right+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm)) / (Math.Max(left,right)+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm))).ToArray(),
                 MaxLegKn = maxLeg, LegCapacityKn = input.LegCapacityKn, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator, MomentKnM = response.MomentKnM, ShearKn = response.ShearKn, DeflectionMm = response.DeflectionMm,
                 Utilization = utilization.Max(), Governing = new[] { "Leg capacity", "Primary moment", "Primary shear", "Primary deflection", "Primary strength / M–V interaction" }[Array.IndexOf(utilization, utilization.Max())] };
@@ -638,6 +673,90 @@ namespace EngineeringDashboard
                 throw new ArgumentException("Provide 1–30 positive whole-millimetre H20 stock lengths up to 50,000 mm.");
             if (!TowerBeamAnalysis.Finite(input.StockEndSetbackMm) || input.StockEndSetbackMm <= 0)
                 throw new ArgumentException("Primary support-centre setback from each member end must be finite and greater than zero.");
+        }
+    }
+    /// <summary>Load estimates guide enumeration only. Actual member and leg checks decide acceptance.</summary>
+    internal static class EngineerTowerSearch
+    {
+        internal static double AssumedLegKn(TowerInput input)=>Math.Min(input.Primary.IsWS10 ? 70 : 35,input.LegCapacityKn);
+        internal static int InitialLegs(TowerInput input,double lineForceKn)=>Math.Max(2,(int)Math.Ceiling(lineForceKn/AssumedLegKn(input)-1e-10));
+        internal static int TierOrder(int count,int initial)=>count<=initial ? initial-count : initial+count;
+        internal static double BracePenalty(double[] positions,bool[] joined,double width,bool rotated)
+        {
+            double penalty=0,centre=(positions.First()+positions.Last())/2;
+            for(int i=0;i<joined.Length;i++)if(joined[i])
+            {
+                double brace=rotated ? width : positions[i+1]-positions[i];
+                // 1.50 m first, then 1.00 m, then other manufactured braces.
+                penalty+=Math.Abs(brace-1500)<1e-6 ? 0 : Math.Abs(brace-1000)<1e-6 ? 500+Math.Abs((positions[i]+positions[i+1])/2-centre)/100 : Math.Abs(brace-2000)<1e-6 ? 1500 : 2000;
+            }
+            return penalty;
+        }
+        private static IEnumerable<int[]> Groups(int count,bool rotated)
+        {
+            if(rotated) {if(count%2==0)yield return Enumerable.Repeat(2,count/2).ToArray();yield break;}
+            // Separate pairs first, followed by balanced combined towers and their mirrors.
+            for(int groups=count/2;groups>=Math.Max(1,(int)Math.Ceiling(count/6.0));groups--)
+            {
+                var balanced=Enumerable.Range(0,groups).Select(i=>count/groups+(i<count%groups ? 1 : 0)).ToArray();
+                for(int shift=0;shift<Math.Min(groups,3);shift++)yield return balanced.Skip(shift).Concat(balanced.Take(shift)).ToArray();
+                yield return balanced.Reverse().ToArray();
+            }
+        }
+        private static IEnumerable<double[]> Braces(int count,bool rotated)
+        {
+            if(rotated) {yield return Enumerable.Repeat(1524.0,count).ToArray();yield break;}
+            yield return Enumerable.Repeat(1500.0,count).ToArray();
+            foreach(int at in Enumerable.Range(0,count).OrderBy(i=>Math.Abs(i-(count-1)/2.0)))
+            {var mixed=Enumerable.Repeat(1500.0,count).ToArray();mixed[at]=1000;yield return mixed;}
+            yield return Enumerable.Repeat(1000.0,count).ToArray();
+            yield return Enumerable.Repeat(2000.0,count).ToArray();
+            yield return Enumerable.Repeat(600.0,count).ToArray();
+        }
+        internal static IEnumerable<TransferredSlabOptimizer.Geometry> Geometries(double[] stocks,bool rotated,TowerInput input)
+        {
+            double length=stocks.Sum(),setback=input.StockEndSetbackMm;
+            int maximum=Math.Min(40,(int)(length/600)+2);
+            var seen=new HashSet<string>();
+            for(int count=stocks.Length*2;count<=maximum;count++)foreach(var groups in Groups(count,rotated))
+            {
+                input.Trace?.CheckCancellation();
+                int joins=count-groups.Length;
+                foreach(var braces in Braces(joins,rotated))
+                {
+                    if(input.Exclude600Standalone && !rotated)
+                    {
+                        int at=0;bool invalid=false;foreach(int group in groups){if(group==2 && braces[at]==600)invalid=true;at+=group-1;}if(invalid)continue;
+                    }
+                    double used=braces.Sum();
+                    foreach(double inset in groups.Length==1 ? new[] {(length-used)/2} : Enumerable.Range(0,9).Select(i=>setback+100*i))
+                    foreach(double bias in groups.Length>2 ? new[] {0.0,-100,100} : new[] {0.0})
+                    {
+                        input.Trace?.CheckCancellation();
+                        if(inset<setback-1e-7)continue;
+                        double gap=groups.Length==1 ? 0 : (length-2*inset-used)/(groups.Length-1);
+                        if(groups.Length>1 && gap-Math.Abs(bias)<25)continue;
+                        var positions=new List<double>();var joined=new List<bool>();double x=inset;int brace=0;
+                        for(int g=0;g<groups.Length;g++)
+                        {
+                            if(g>0){x+=gap+(g==1 ? bias : g==groups.Length-1 ? -bias : 0);joined.Add(false);}
+                            positions.Add(x);
+                            for(int i=1;i<groups[g];i++){x+=braces[brace++];joined.Add(true);positions.Add(x);}
+                        }
+                        var p=positions.ToArray();var pieces=new List<TowerStockPiece>();double start=0;bool valid=true;
+                        foreach(double stock in stocks)
+                        {
+                            int first=Array.FindIndex(p,v=>v>=start-1e-7),last=Array.FindLastIndex(p,v=>v<start+stock-1e-7);
+                            if(first<0 || last<=first || p[first]<start+setback-1e-7 || p[last]>start+stock-setback+1e-7){valid=false;break;}
+                            pieces.Add(new TowerStockPiece {StartMm=start,StockLengthMm=stock,FirstSupport=first,LastSupport=last,IsCustomLength=!input.PrimaryStockLengthsMm.Contains(stock)});start+=stock;
+                        }
+                        if(!valid || p.Last()>length-setback+1e-7)continue;
+                        string key=string.Join(",",p.Select(v=>v.ToString("R",CultureInfo.InvariantCulture)))+"|"+string.Join(",",joined);
+                        if(!seen.Add(key))continue;
+                        yield return new TransferredSlabOptimizer.Geometry {Stock=pieces.ToArray(),Positions=p,Joined=joined.ToArray(),MemberSupports=pieces.Select(s=>p.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(v=>v-s.StartMm).ToArray()).ToArray()};
+                    }
+                }
+            }
         }
     }
 }

@@ -221,3 +221,12 @@ Crossing increments on each receiving-primary line use one flat UDL preserving t
 Shared crossing H20s carry only the loading over their stock. Transverse end-strip loads transfer through the side shutters at strip midpoints to receiving secondaries. Full load and moment remain included, with ledgers counted once. Stud/filler design is outside scope: plan omits their blocks, section shows load-transfer arrows, and geometry reservations remain in clash checking.
 
 Dimension editing opens after mouse release and focuses the input. Enter applies and Escape cancels. Shared crossing spacing labels use actual secondary stations, rather than a missing dedicated tower layout.
+
+
+## Engineer-led production search
+
+Production estimates the initial number of legs on each primary line from its full loaded line force. The assumed reaction is the smaller of the configured leg capacity and 35 kN for double H20 or 70 kN for WS10. It is a search seed, never a member capacity or approval criterion. The search checks this tier, explores fewer legs, and adds legs if required. Per-line counts refer to one side of the two-line tower arrangement.
+
+Explicit candidates distribute separate towers across the full coverage before assigning their bearings to stock runs. Each independent stock has at least two actual supports with the entered stock-end setbacks. One stock across several towers, separate stock per tower, and mixed stock arrangements remain available within the stock catalogue/custom scope. Balanced combined groups are explored as well. Separate towers and 1500 mm braces rank ahead of combined groups and other braces at equal leg count; 1000 mm braces provide the first narrower option, preferentially near the middle. This preference does not verify erection stability or ties.
+
+Passing production networks rank by leg count, tower grouping, brace preference, material/support economy and symmetry. Old cost-only pruning does not discard fewer-leg or preferred-group alternatives. The full member, actual individual leg, stock/joint, secondary/slab and crossing checks retain their existing capacities and load paths. Historical stock-first fixtures remain available internally; the production workspace uses the new search. Enumeration remains bounded and does not prove global optimality.
