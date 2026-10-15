@@ -60,6 +60,23 @@ namespace EngineeringDashboard
                     if(!virtualNode){if(l && local[k]-lo<clearance-1e-7 || r && hi-local[k]<clearance-1e-7){layout.Valid=false;return layout;}rows.Add(local[k]);}
                 }
             }
+            // A closing slab sheet can end at a shifted support beside a shutter, while
+            // the receiving beam still needs its own sheet joint. Keep their H20 flanges clear.
+            foreach(double row in rows.ToArray())
+            {
+                foreach(double joint in coverageAnchors.Where(x=>Math.Abs(x/PlywoodSpacing.SheetLengthMm-Math.Round(x/PlywoodSpacing.SheetLengthMm))<1e-7 && Math.Abs(x-row)>1e-7 && Math.Abs(x-row)<80-1e-7))
+                {
+                    var strip=strips.First(s=>row>=s.Item1 && row<=s.Item2);
+                    foreach(double candidate in new[] {joint-80,joint+80}.OrderBy(x=>Math.Abs(x-row)))
+                    {
+                        if(candidate<coverageAnchors.First() || candidate>coverageAnchors.Last() || cuts.Any(c=>Math.Abs(candidate-c.C.PositionMm)<c.C.WidthMm/2+ShutterZoneMm+40-1e-7))continue;
+                        var nodes=rows.Where(x=>x!=row && x>=strip.Item1 && x<=strip.Item2).Concat(new[] {candidate}).OrderBy(x=>x).ToList();
+                        if(strip.Item3>=0)nodes.Insert(0,strip.Item1);if(strip.Item4>=0)nodes.Add(strip.Item2);
+                        if(nodes.Zip(nodes.Skip(1),(x,y)=>y-x).Any(g=>g<80-1e-7 || g>maximum+1e-7))continue;
+                        rows.Remove(row);rows.Add(candidate);break;
+                    }
+                }
+            }
             if(adjacent!=null && adjacent.Length>0)
             {
                 foreach(double row in rows.ToArray())

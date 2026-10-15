@@ -35,6 +35,10 @@ internal static class CrossingSlabSupportTests
         Check(shortMap.Valid && shortMap.Rows.Contains(2440) && !shortMap.Rows.Contains(2410),"a sheet joint near the stock end replaces the nearby end row");
         var receiving=PlywoodSpacing.SheetSupportRows(1025,1425,350);
         Check(PlywoodSpacing.FillRequiredRows(0,2450,488,shortMap.Rows.Concat(receiving).ToArray()).Length>=shortMap.Rows.Length+2,"short shared crossing rows fit without clashing with the required end joint");
+        var junctionInput=Input(407);junctionInput.CrossingBeams[0].PositionMm=5375;
+        var junctionMap=junctionInput.CrossSlabLayout(10800,10650,0);
+        Check(junctionMap.Valid && junctionMap.Rows.Contains(4800),"closing slab support clears both the crossing shutter and the beam's 4880 mm joint");
+        Check(PlywoodSpacing.FillRequiredRows(75,10725,250,junctionMap.Rows.Concat(PlywoodSpacing.SheetSupportRows(5050,5700,350)).ToArray()).Contains(4880),"receiving joint remains supported alongside the closing slab panel");
         var narrow=Input();narrow.PlywoodDeflectionDenominator=270;narrow.CustomLoads=true;narrow.LiveKnM2=narrow.FormworkKnM2=0;
         foreach(var beam in narrow.Beams){beam.WidthMm=300;beam.DepthMm=600;beam.BottomElevationMm=-600;}
         narrow.Bays[0].WidthMm=3900;narrow.Bays[0].ThicknessMm=100;
