@@ -251,14 +251,13 @@ internal static class WorkspaceTests
             double planHeight=drawing.ActualHeight;var hit=drawing.MemberTargets.First();Check(drawing.SelectAt(Centre(hit.Item1)),"primary H20 is selected directly from plan");Pump();Render();
             Check(workspace.Diagrams!=null && workspace.Diagrams.IsVisible && workspace.Diagrams.Owner==parent && workspace.Diagrams.SelectedTransferMember.H20Count==2,"primary pair opens a diagram owned by the main D3 calculator");
             Check(Math.Abs(workspace.Diagrams.LoadedAnalysis.TotalLoadKn-model.NetworkResult.Beams[hit.Item2].Transfer.PrimaryCases[workspace.Diagrams.SelectedLoadCase][hit.Item3].Analysis.TotalLoadKn)<1e-8,"plan selection displays actual member load");
-            Check(Controls<Border>(workspace.Diagrams).Count(b=>b.CornerRadius.TopLeft==8)==4 && !Controls<Border>(workspace).Any(b=>b.CornerRadius.TopLeft==8),"loading and response cards are outside the workspace");
+            Check(Controls<TowerDiagramWindow.MemberLoadingPlot>(workspace.Diagrams).Count()==1 && Controls<FrameworkElement>(workspace.Diagrams).Count(b=>b.GetType().Name=="LoadedResponsePlot")==3 && !Controls<TowerDiagramWindow.MemberLoadingPlot>(workspace).Any(),"loading and response cards are outside the workspace");
             Check(Math.Abs(drawing.ActualHeight-planHeight)<.01,"opening diagrams does not shrink the drawing canvas");
             RenderDiagrams();Check(workspace.Diagrams.LoadingDiagram.DrawnSupportCount==workspace.Diagrams.SelectedTransferMember.SupportsMm.Length && workspace.Diagrams.LoadingDiagram.DrawnUniformCount==workspace.Diagrams.LoadingDiagram.CombinedUniform.Length,"loading schematic renders every support and combined distributed design interval");
             Check(workspace.Diagrams.LoadingDiagram.DrawnReactionLabelCount==workspace.Diagrams.SelectedTransferMember.SupportsMm.Length,"loading diagram displays every reaction value");
             Check(workspace.Diagrams.DisplayedTransferMember==workspace.Diagrams.SelectedTransferMember && workspace.Diagrams.DisplayedTransferMember.Points.Length==0,"primary shows the optimizer UDL model directly");
             Check(!Controls<CheckBox>(workspace.Diagrams).Any(),"primary has no point-load approximation switch");
-            var udlDetails=Controls<Expander>(workspace.Diagrams).Single(e=>Equals(e.Header,"UDL support reactions"));
-            Check(!udlDetails.IsExpanded,"UDL support details remain collapsed above plots");
+            Check(!Controls<Expander>(workspace.Diagrams).Any(),"response window omits removed explanation and breakdown sections");
             Check(workspace.SelectedResultText.Contains("Selected beam · B"+(hit.Item2+1)),"member picking updates selected results");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-diagrams.png"));
             RenderDiagrams(output==null ? null : Path.ChangeExtension(output,"workspace-diagram-window.png"));
@@ -366,7 +365,7 @@ internal static class WorkspaceTests
             model.NetworkBeams[0].DepthMm=900;model.NetworkBeams[1].DepthMm=900;Pump();Calculate();
             Check(model.IsCalculationValid && drawing.DrawnLegCount==model.NetworkResult.LegCount && model.NetworkResult.Bays[0].IsCustomLength,"custom setup calculates at the automatic spacing and draws every selected leg");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-custom.png"));
-            Click("Section");Render(output==null ? null : Path.ChangeExtension(output,"workspace-section.png"));
+            Click("Section");workspace.SectionPosition.Value=model.NetworkResult.Beams[0].Transfer.RowsMm[Array.IndexOf(model.NetworkResult.Beams[0].Transfer.RightUpperScales,model.NetworkResult.Beams[0].Transfer.RightUpperScales.Max())];Render(output==null ? null : Path.ChangeExtension(output,"workspace-section.png"));
             var customHit=workspace.Section.MemberTargets.Last();workspace.Section.SelectAt(Centre(customHit.Item1));Pump();
             Check(workspace.Diagrams.SelectedTransferMember.LengthMm==model.NetworkResult.Bays[0].StockLengthMm && workspace.Diagrams.SelectedTransferMember.H20Count==1,"custom member is selectable in dedicated section");
             Click("Geometry");drawing.Select(FormworkObject.Slab,0);Render();Check(workspace.SelectedResultText.Contains("Selected slab · S1") && workspace.SelectedResultText.Contains(model.NetworkResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"slab selection reports its own H20 stock and receiving beams");
@@ -399,7 +398,7 @@ internal static class WorkspaceTests
             Check(workspace.SeparateSlabNotice.Explanation.IsExpanded && workspace.SeparateSlabNotice.EvidenceText==model.NetworkResult.SeparateSlabExplanationForBay(0),"selecting the amber slab opens its specific explanation");
             Check(workspace.SelectedResultText.Contains("Separate slab formwork required") && workspace.SelectedResultText.Contains("No slab load transfers"),"selected independent slab displays its actual scope");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-separate-slab.png"));
-            Click("Section");Render();
+            Click("Section");workspace.SectionPosition.Value=model.NetworkResult.Beams[1].Transfer.RowsMm[Array.IndexOf(model.NetworkResult.Beams[1].Transfer.RightUpperScales,model.NetworkResult.Beams[1].Transfer.RightUpperScales.Max())];Render();
             int upperStart=model.NetworkResult.Beams[0].StockPlan.Pieces.Length+model.NetworkResult.Beams[0].Transfer.RowsMm.Length;
             Check(!workspace.Section.MemberTargets.Any(h=>h.Item2==0 && h.Item3>=upperStart),"separate slab creates no fabricated upper member targets");
             var retainedUpper=workspace.Section.MemberTargets.First(h=>h.Item2==1 && h.Item3>=model.NetworkResult.Beams[1].StockPlan.Pieces.Length+model.NetworkResult.Beams[1].Transfer.RowsMm.Length);

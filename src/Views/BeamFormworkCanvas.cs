@@ -331,7 +331,8 @@ namespace EngineeringDashboard
         {
             var ft=new FormattedText(text,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,Brushes.DarkSlateGray,VisualTreeHelper.GetDpi(this).PixelsPerDip);
             var centre=new Point(member.Left+member.Width/2,member.Top+member.Height/2);
-            if(member.Width>=ft.Width+12 && Label(dc,text,new Point(centre.X,centre.Y-7),centre:true))return;
+            var inside=new Rect(centre.X-ft.Width/2-2,centre.Y-8,ft.Width+4,ft.Height+2);
+            if(member.Width>=ft.Width+12 && !dimensionLines.Any(r=>r.IntersectsWith(inside)) && Label(dc,text,new Point(centre.X,centre.Y-7),centre:true))return;
             for(int row=0;row<16;row++)foreach(int side in new[] {1,-1})foreach(int direction in new[] {1,-1})
             {
                 double x=side>0 ? member.Right+14 : member.Left-ft.Width-14,y=centre.Y-7+direction*row*22;
@@ -344,7 +345,10 @@ namespace EngineeringDashboard
                 var drawing=new DrawingGroup();using(var overlay=drawing.Open()){var pen=new Pen(Brushes.SlateGray,.8);overlay.DrawLine(pen,anchor,elbow);overlay.DrawLine(pen,elbow,end);overlay.DrawLine(pen,end,new Point(side>0 ? box.Left : box.Right,end.Y));}annotations.Insert(0,drawing);return;
             }
             // At distant zoom levels keep the short identifier visible when the full callout cannot fit.
-            Label(dc,text.Split('·')[0].Trim(),new Point(centre.X,centre.Y-7),centre:true);
+            string shortName=text.Split('·')[0].Trim();
+            var shortText=new FormattedText(shortName,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,Brushes.DarkSlateGray,VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            var shortBox=new Rect(centre.X-shortText.Width/2-2,centre.Y-8,shortText.Width+4,shortText.Height+2);
+            if(!dimensionLines.Any(r=>r.IntersectsWith(shortBox)))Label(dc,shortName,new Point(centre.X,centre.Y-7),centre:true);
         }
         internal static int IndependentMemberId(int index)=>-1000-index;
         private Point IndependentScreen(IndependentBeamRow beam,double along,double across)=>beam.IsVertical ? Screen(beam.StartXmm-across,beam.StartYmm+along) : Screen(beam.StartXmm+along,beam.StartYmm+across);

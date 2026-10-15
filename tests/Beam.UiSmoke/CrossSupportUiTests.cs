@@ -88,7 +88,7 @@ internal static class CrossSupportUiTests
         for(int i=0;i<vm.NetworkResult.CrossSupports.Length;i++)
         {
             workspace.Section.SectionPositionMm=vm.NetworkResult.CrossSupports[i].Input.PositionMm;workspace.Section.SelectMember(-i-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,$"coordinated-report-X{i+1}-section"));
-            Check(workspace.Section.DrawnConcreteEndZoneCount==vm.NetworkResult.CrossSupports[i].Bearings.Where(b=>b.IsConcreteEndZone).Select(b=>b.Beam).Distinct().Count(),$"X{i+1} section draws each direct or shutter-supported junction end zone");
+            Check(workspace.Section.DrawnConcreteEndZoneCount==vm.NetworkResult.CrossSupports.Where(c=>Math.Abs(c.Input.PositionMm-workspace.Section.ActualSectionPositionMm)<=c.Input.WidthMm/2+1e-7).Sum(c=>c.Bearings.Where(b=>b.IsConcreteEndZone).Select(b=>b.Beam).Distinct().Count()),$"X{i+1} section draws each direct or shutter-supported junction end zone");
         }
         int crossing=Array.FindIndex(vm.NetworkResult.CrossSupports,c=>Math.Abs(c.TowerSpanOffsetMm)>0);var support=vm.NetworkResult.CrossSupports[crossing];
         workspace.Section.SectionPositionMm=support.Solids.Where(s=>s.Member?.H20Count==2).Select(s=>(s.X0+s.X1)/2).First();workspace.Section.SelectMember(-crossing-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,"coordinated-report-section"));
@@ -212,7 +212,7 @@ internal static class CrossSupportUiTests
         var task=vm.OptimizeTowersAsync(false);var timer=System.Diagnostics.Stopwatch.StartNew();while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>90)throw new Exception("Cross UI search timeout");}task.GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
         Check(vm.NetworkResult.CrossSupports.Where(c=>c.Towers?.Transfer!=null).All(c=>PlywoodSpacing.StandardSpacingsMm.Contains(c.Towers.Transfer.EnteredUpperSpacingMm)),"crossing formwork uses only permitted sheet spacings");
-        var section=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true};section.SetResult(vm.NetworkResult);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,section.DesiredSize.Height));section.UpdateLayout();
+        var section=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true,SectionPositionMm=vm.NetworkResult.CrossSupports[0].Solids.Where(s=>s.Member!=null).Select(s=>(s.X0+s.X1)/2).First()};section.SetResult(vm.NetworkResult);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,section.DesiredSize.Height));section.UpdateLayout();
         var bitmap=new RenderTargetBitmap(1200,(int)Math.Ceiling(section.ActualHeight),96,96,System.Windows.Media.PixelFormats.Pbgra32);bitmap.Render(section);
         Check(section.DrawnH20ProfileCount>=vm.NetworkResult.Beams.Length*4 && section.DrawnPrimarySectionCount==vm.NetworkResult.Beams.Length*4,"section shows real flange/web profiles and both paired primary members");
         Check(section.MemberTargets.Any(t=>t.Item2<0),"cross members selectable in section");
