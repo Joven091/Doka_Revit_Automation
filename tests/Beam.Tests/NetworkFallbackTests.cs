@@ -103,8 +103,13 @@ internal static class NetworkFallbackTests
         Check(result.RequiresSeparateSlabFormwork && result.Bays[0]==null,"reported slab is explicitly excluded from beam-supported formwork");
         Check(result.SeparateSlabExplanationForBay(0).Contains("2125 mm") && result.SeparateSlabExplanationForBay(0).Contains("no permitted slab H20 length"),"copied failed search preserves the actual slab span and stock rejection");
         Check(result.FullTransferFailureDetails.Contains("no permitted slab H20 length"),"original rejected full-transfer evidence remains available");
-        Check(result.Schedule.Contains("X1: S1 · separate formwork design required (not calculated)"),"X1 in the excluded bay remains expressly outside the returned beam design");
-        foreach(var beam in result.Beams)
+        var crossing=result.CrossSupports.Single(c=>c.CrossingIndex==0);
+        Check(crossing.Members.Length>0,"modern X1 support remains calculated when S1 needs separate formwork");
+        Near(result.SlabLoadKn,0,"separate S1 contributes no slab load to the returned design");
+        Near(crossing.SlabEdgeLoadKn,0,"separate S1 contributes no slab-edge ledger loads to X1");
+        Near(crossing.LoadKn,result.Input.AreaLoad(1150)*.65*2.125,"X1 retains its complete concrete and construction load");
+        var layouts=result.Beams.Concat(result.CrossSupports.Where(c=>c.Towers!=null).Select(c=>c.Towers)).ToArray();
+        foreach(var beam in layouts)
         {
             Check(beam.MaxLegKn<=30+1e-8,"reported 30 kN leg limit is retained");
             foreach(var member in beam.Transfer.PrimaryCases.Concat(beam.Transfer.LowerCases).SelectMany(c=>c).Concat(beam.Transfer.UpperMembers))
@@ -113,6 +118,14 @@ internal static class NetworkFallbackTests
                 Near(member.Analysis.Reactions.Sum(),member.Analysis.TotalLoadKn,"reported fallback member equilibrium");
             }
         }
-        Console.WriteLine("Reported 6100 mm engineer fallback passed; S1/X1 require separate formwork.");
+        foreach(var member in crossing.Members)
+        {
+            Check(member.Analysis.DeflectionEvaluated && member.Utilization<=1+1e-8,"X1 members retain full passing checks");
+            Near(member.Analysis.Reactions.Sum(),member.Analysis.TotalLoadKn,"X1 member equilibrium");
+        }
+        double carried=layouts.Sum(b=>b.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn));
+        double external=layouts.Sum(b=>b.Transfer.ColumnSupportLoadKn(b.Transfer.CaseNames.Length-1));
+        Near(carried+external,2*result.Input.AreaLoad(1750)*.8*6.1+crossing.LoadKn,"full beam and X1 load included once; separate slab load excluded");
+        Console.WriteLine("Reported 6100 mm engineer fallback passed; S1 requires separate formwork and X1 remains calculated.");
     }
 }
