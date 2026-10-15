@@ -146,7 +146,13 @@ namespace EngineeringDashboard
                 supports.Add(new CrossBeamSupportResult {CrossingIndex=index,Input=c,Bearings=own,UsesSpreader=true});
             }
             var local=new TransferNetworkResult {Input=new TransferNetworkInput {Beams=new[] {network.Beams[beam]}},Beams=new[] {layout},BeamCentresMm=new[] {0.0}};
-            return Recheck(common,local,new[] {layout},supports.ToArray(),lowerOnly);
+            if(Recheck(common,local,new[] {layout},supports.ToArray(),lowerOnly))return true;
+            // Automatic support can try the separately supported detail only after
+            // exhausting local spreader refinement. The final network validates the
+            // actual crossing detail and all receiver/primary/leg demands again.
+            if(layout.Transfer.EngineerReceiverCount<8 || eligible.Any(c=>c.SupportMode!=CrossBeamSupportMode.Automatic))return false;
+            var fallback=common.CopyForSearch();fallback.EngineerDedicatedFallback=true;
+            return lowerOnly ? CheckJunctionLowerReceiver(fallback,network,beam,layout) : CheckJunctionReceiver(fallback,network,beam,layout);
         }
     }
 }

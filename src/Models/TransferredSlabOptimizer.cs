@@ -463,7 +463,7 @@ namespace EngineeringDashboard
             var seeds=widths.SelectMany(width=>CrossOptions(input,width,t.UpperSpacingMm)).Select(c=>EngineerTowerSearch.InitialLegs(input,c.DesignCases.Max(stage=>c.Cases[stage].Reactions.Max())*input.LengthMm/1000)).ToArray();
             if(seeds.Length==0)return OptimizeCoreByLegTier(input,shareDiagnostics);
             int maximum=Math.Min(EngineerTowerSearch.MaximumStations(input),input.NetworkLegCeiling/2);
-            int limit=Math.Min(maximum,Math.Max(input.EngineerMinimumStations,Math.Max(4,(input.EngineerPlan?.InitialLegs??seeds.Min())+2)));
+            int limit=Math.Min(maximum,Math.Max(input.EngineerMinimumStations,Math.Max(4,input.EngineerPlan?.InitialLegs??(seeds.Min()+2))));
             var cache=t.SharedGeometryCache??new GeometryCache();
             int receiverCount=3;
             while(true)
@@ -472,7 +472,7 @@ namespace EngineeringDashboard
                 worker.TransferredSlab=t.Copy();worker.TransferredSlab.SharedGeometryCache=cache;worker.TransferredSlab.EngineerReceiverCount=receiverCount;
                 try{return OptimizeCoreByLegTier(worker,shareDiagnostics);}
                 catch(TowerOptimizationException) when(t.EngineerNetwork!=null && receiverCount<8){receiverCount++;}
-                catch(TowerOptimizationException) when(limit<maximum){limit=Math.Min(maximum,limit+4);receiverCount=3;}
+                catch(TowerOptimizationException) when(limit<maximum){limit=Math.Min(maximum,limit+(input.EngineerPlan==null ? 4 : 2));receiverCount=3;}
             }
         }
         private static TowerLayout OptimizeCoreReference(TowerInput input,bool shareDiagnostics)
@@ -631,6 +631,21 @@ namespace EngineeringDashboard
                         }
                         else input.Trace?.Increment(BeamSearchCounter.CrossCacheHits);
                         if (crosses.Length == 0) continue;
+                        // Check the receiving H20s before generating primary tower geometry.
+                        // Sheet-controlled rows have one fixed phase, independent of the towers.
+                        // Refining a failing crossing must not enumerate thousands of primaries first.
+                        if(input.EngineerSearch && t.PlywoodSheetLengthMm>0)
+                        {
+                            var rowKey=Tuple.Create(covered,0.0);
+                            if(!rowCache.TryGetValue(rowKey,out var fixedGrid))
+                            {
+                                fixedGrid=BuildRowGrid(input,covered,rowCoverage,first,count,0,edge);
+                                rowCache[rowKey]=fixedGrid;
+                            }
+                            if(fixedGrid==null)continue;
+                            crosses=crosses.Where(c=>AcceptTransverseCases(input,c,width,fixedGrid,edge)).ToArray();
+                            if(crosses.Length==0)continue;
+                        }
                         input.Trace?.Work("Transfer tower/support geometry");
                         string geometryKey = (input.EngineerSearch ? "E"+input.EngineerStationLimit+":"+(input.EngineerPlan?.InitialLegs??0)+":" : "")+(rotated ? "R:" : "N:") + Values(cover);
                         input.Trace?.CheckCancellation();

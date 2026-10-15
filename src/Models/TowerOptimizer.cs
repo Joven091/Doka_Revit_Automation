@@ -743,8 +743,8 @@ namespace EngineeringDashboard
         {
             if(stocks.Length>3 || input.EngineerPlan==null)yield break;
             int maximum=Math.Min(input.EngineerStationLimit,stocks.Length*6);
-            foreach(int target in Enumerable.Range(stocks.Length*2,Math.Max(0,maximum-stocks.Length*2+1)).OrderBy(n=>TierOrder(n,input.EngineerPlan.InitialLegs)))
-                foreach(var geometry in StockRunStep(stocks,input,0,0,target,new double[0],new bool[0],new TowerStockPiece[0]).Take(256))yield return geometry;
+            foreach(int target in Enumerable.Range(stocks.Length*2,Math.Max(0,maximum-stocks.Length*2+1)).Where(n=>Math.Abs(n-input.EngineerPlan.InitialLegs)<=1).OrderBy(n=>TierOrder(n,input.EngineerPlan.InitialLegs)))
+                foreach(var geometry in StockRunStep(stocks,input,0,0,target,new double[0],new bool[0],new TowerStockPiece[0]).Take(64))yield return geometry;
         }
         private static IEnumerable<TransferredSlabOptimizer.Geometry> StockRunStep(double[] stocks,TowerInput input,int run,double start,int remaining,double[] positions,bool[] joins,TowerStockPiece[] pieces)
         {
