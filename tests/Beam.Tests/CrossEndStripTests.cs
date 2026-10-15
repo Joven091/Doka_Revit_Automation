@@ -100,6 +100,50 @@ internal static class CrossEndStripTests
         Console.WriteLine($"CURRENT DRAWING REPORT: {current.LegCount} legs; peak {current.PeakLegKn:0.000} kN; X1 primary load model UDL.");
         Console.WriteLine($"Cross end strips: {checks} checks passed.");
     }
+    public static void ShutterSupported()
+    {
+        // Exact 2026-10-15 13:53 report: a catalogue 1800 mm shared H20 leaves
+        // 162.5 mm shutter-supported strips in the 2125 mm bay. Beam custom
+        // lengths are deliberately forbidden and the main end limit stays 150.
+        var common=new TowerInput {FullLoadingOnly=true,EngineerSearch=true,LengthMm=7000,LegCapacityKn=70,
+            StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=150,Exclude600Standalone=false,
+            DeflectionDenominator=270,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,
+            StockLengthsMm=new[] {1250.0,1800,2450,2650,2900,3300,3600,3900,4500,4900}};
+        var input=new TransferNetworkInput {PlywoodProfileId=PlywoodCatalog.Default.Id,PlywoodDeflectionDenominator=350,
+            PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm,UpperSpacingMm=305,
+            BeamSpacingsMm=new[] {305.0,305},SlabSpacingsMm=new[] {488.0},CrossingSpacingsMm=new[] {350.0},
+            Beams=Enumerable.Range(0,2).Select(i=>new TransferBeamRow {WidthMm=800,DepthMm=1750,BottomElevationMm=-1750}).ToArray(),
+            Bays=new[] {new TransferBayRow {WidthMm=2125,ThicknessMm=300}},
+            CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3375,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150,SupportMode=CrossBeamSupportMode.Automatic}}};
+        var timer=System.Diagnostics.Stopwatch.StartNew();
+        var result=TransferNetworkOptimizer.Optimize(common,input);var cross=result.CrossSupports.Single();
+        Check(cross.Towers==null && cross.Members.All(m=>m.LengthMm==1800),"reported crossing uses shared catalogue 1800 mm H20s without a dedicated tower");
+        Check(!common.AllowCustomBeamLengths && common.MaximumConcreteEndOverhangMm==150,"beam custom scope and main end allowance unchanged");
+        var strips=cross.Bearings.Where(b=>b.IsConcreteEndZone && b.Label=="Crossing end strip").ToArray();
+        Check(strips.Length>0 && strips.All(b=>b.IsShutterEndZone),"crossing concrete end strips use existing side shutters");
+        foreach(var strip in strips)Near(strip.EndZoneEndMm-strip.EndZoneStartMm,162.5,"actual supported strip exceeds the unrelated 150 mm limit");
+        Near(strips.Sum(b=>b.ReactionKn),input.AreaLoad(1150)*.65*.325,"both concrete end strips counted once");
+        Near(cross.Bearings.Sum(b=>b.ReactionKn),cross.LoadKn,"all crossing and ledger force reaches the receivers");
+        double face=result.BeamCentresMm[0]+400;
+        Near(cross.Bearings.Sum(b=>b.ReactionKn*(b.Ymm-face)/1000),cross.LoadKn*2.125/2,"shutter strips and H20 bearings retain transverse moment");
+        foreach(var member in cross.Members)
+        {
+            Check(member.SupportsMm[0]>=150-1e-7 && member.LengthMm-member.SupportsMm.Last()>=150-1e-7,"real bearing-to-stock-end allowances retained");
+            MemberChecks(member,270);
+        }
+        foreach(var beam in result.Beams)
+        {
+            Check(beam.EngineerSearch && beam.Transfer.FullLoadingOnly,"production search and fully loaded member checks retained");
+            Check(beam.ConcreteEndOverhangMm<=150+1e-7,"main-beam concrete end allowance still enforced");
+            Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r<=70+1e-8),"every leg passes with X1 and shutter reactions included");
+            foreach(var member in Members(beam))MemberChecks(member,270);
+        }
+        var obstacles=CrossBeamSupportOptimizer.NetworkSolids(result).Concat(CrossBeamSupportOptimizer.Concrete(result)).ToArray();
+        foreach(var solid in cross.Solids)foreach(var obstacle in obstacles)Check(!solid.Conflicts(obstacle),"shared crossing retains physical clash checks");
+        Console.WriteLine("SHUTTER-SUPPORTED REPORT seconds="+timer.Elapsed.TotalSeconds+" legs="+string.Join(",",result.Beams.Select(b=>b.LegCount))+" peak="+result.PeakLegKn);
+        Console.WriteLine(result.LayoutDiagnostics);
+        Console.WriteLine("Shutter-supported crossing checks passed: "+checks);
+    }
     public static void Reported()
     {
         TowerFrameClearanceTests.Run();

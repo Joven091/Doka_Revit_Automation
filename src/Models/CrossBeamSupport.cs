@@ -253,8 +253,11 @@ namespace EngineeringDashboard
             double far=-right.LowerStockStartMm-r.Input.Beams[bay+1].WidthMm/2-BearingInsetMm;
             near=Math.Min(r.Beams[bay].TransverseOffsetMm+r.Beams[bay].WidthMm/2-r.Input.Beams[bay].WidthMm/2,Math.Min(350,Math.Min(near,span/2-150)));far=Math.Min(r.Beams[bay+1].WidthMm/2-r.Beams[bay+1].TransverseOffsetMm-r.Input.Beams[bay+1].WidthMm/2,Math.Min(350,Math.Min(far,span/2-150)));
             if(near<150 || far<150) {failure=$"X{index+1}: receiving stock tails cannot provide 150 mm bearing/end allowances.";return null;}
-            var lengths=common.StockLengthsMm.Where(s=>s<=span+1e-7 && s>=span-2*common.MaximumConcreteEndOverhangMm-1e-7);
-            if(common.AllowCustomBeamLengths)lengths=lengths.Concat(new[] {Math.Floor(span/25)*25}).Where(s=>s>=span-2*common.MaximumConcreteEndOverhangMm-1e-7).Distinct();
+            // These end strips bear through the parallel-beam side shutters below.
+            // They are not unsupported concrete ends governed by the main-primary
+            // end allowance. Actual receiving bearings and stock tails limit fit.
+            var lengths=common.StockLengthsMm.Where(s=>s<=span+1e-7);
+            if(common.AllowCustomBeamLengths)lengths=lengths.Concat(new[] {Math.Floor(span/25)*25}).Distinct();
             foreach(double stock in lengths.OrderBy(x=>x))
             {
                 double edge=(span-stock)/2;
