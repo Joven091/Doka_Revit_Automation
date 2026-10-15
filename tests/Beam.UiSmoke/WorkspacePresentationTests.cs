@@ -38,6 +38,8 @@ internal static class WorkspacePresentationTests
             Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=400},new TransferBeamRow {WidthMm=300,DepthMm=400}},Bays=new[] {new TransferBayRow {WidthMm=2000,ThicknessMm=100}}}};
         var section=new TransferNetworkPlan {SectionOnly=true,SectionPositionMm=1000,IsSelectionEnabled=true};section.SetResult(result);Render(section);
         Check(section.SectionRows.Count==2 && section.SectionRows.All(r=>r.Item2==1 && r.Item3==1000),"one cut shows T2 on both beams although their governing rows differ");
+        result.Beams[0].Transfer.SettingOutRowsMm=new[] {100.0,1100,1900};result.Beams[0].Transfer.SettingOutDesignRows=new[] {0,1,2};section.InvalidateVisual();Render(section);
+        Check(section.SectionRows.Count==1 && section.SectionRows[0].Item1==1,"section follows moved physical H20 positions rather than the retained design rows");
         section.SectionPositionMm=500;section.InvalidateVisual();Render(section);
         Check(section.SectionRows.Count==0 && section.MemberTargets.All(t=>t.Item3==0),"a cut between H20 rows does not invent or substitute a secondary");
         var model=new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true};var workspace=new BeamFormworkWorkspace(model,null,null,null);

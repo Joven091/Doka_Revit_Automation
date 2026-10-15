@@ -46,6 +46,7 @@ internal static class Program
   {
    System.Windows.Media.RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;
    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+   if(args.Contains("--preview-smoke"))return StandalonePreview.Run(true);
    if(args.Contains("--preview"))return StandalonePreview.Run();
    WorkspacePresentationTests.Run();
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));
@@ -341,6 +342,7 @@ internal static class Program
    Check(vm.IsCalculationValid && networkPlan.DrawnCrossingBeamCount==1 && window.BuildReport().Contains("extra bay load"),"crossing beam shown in plan and load schedule");
    ((Button)window.FindName("TowerDiagramsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
    var tCross=vm.NetworkResult.Beams[0].Transfer;int crossRow=Array.IndexOf(tCross.RightUpperScales,tCross.RightUpperScales.Max());
+   networkPlan.SectionPositionMm=tCross.RowsMm[crossRow];networkPlan.InvalidateVisual();Render();
    int crossEncoded=vm.NetworkResult.Beams[0].StockPlan.Pieces.Length+tCross.RowsMm.Length+crossRow*2+1;
    var crossingHit=networkPlan.MemberTargets.Single(h=>h.Item2==0 && h.Item3==crossEncoded);
    Check(networkPlan.SelectAt(new Point(crossingHit.Item1.X+crossingHit.Item1.Width/2,crossingHit.Item1.Y+crossingHit.Item1.Height/2)),"select governing crossing-loaded slab H20 in main section");Pump();

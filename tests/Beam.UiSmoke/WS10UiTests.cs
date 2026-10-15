@@ -62,7 +62,7 @@ internal static class WS10UiTests
             Check(Math.Abs(independent.DeflectionMm-member.Analysis.DeflectionMm)<1e-8,"steel diagrams use WS10 stiffness");
             Check(Find<TextBlock>(view.Diagrams).Any(t=>t.Text.Contains("WS10 M/V interaction utilization")),"steel interaction and reduced end-zone capacities are explained");
             Preview((FrameworkElement)view.Diagrams.Content,output==null ? null : Path.ChangeExtension(output,"ws10-diagrams.png"));view.Diagrams.Close();
-            Click(view,"Section");view.Section.UpdateLayout();Pump();
+            Click(view,"Section");view.SectionPosition.Value=model.NetworkResult.Beams[0].Transfer.RowsMm[0];view.Section.UpdateLayout();Pump();
             Check(view.Section.DrawnWS10ProfileCount>0 && view.Section.DrawnH20ProfileCount>0,"section draws steel channels and timber secondaries separately");
             Preview(view.Surface,output==null ? null : Path.ChangeExtension(output,"ws10-section.png"));
             Click(view,"Geometry");var record=host.CaptureDrawingInputs();Check(record.Inputs.Single(f=>f.Name=="PrimaryMaterial").Value=="WS10","saved drawing records the material");

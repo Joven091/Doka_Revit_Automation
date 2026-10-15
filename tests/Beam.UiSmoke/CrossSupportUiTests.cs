@@ -91,7 +91,7 @@ internal static class CrossSupportUiTests
             Check(workspace.Section.DrawnConcreteEndZoneCount==vm.NetworkResult.CrossSupports[i].Bearings.Where(b=>b.IsConcreteEndZone).Select(b=>b.Beam).Distinct().Count(),$"X{i+1} section draws each direct or shutter-supported junction end zone");
         }
         int crossing=Array.FindIndex(vm.NetworkResult.CrossSupports,c=>Math.Abs(c.TowerSpanOffsetMm)>0);var support=vm.NetworkResult.CrossSupports[crossing];
-        workspace.Section.SectionPositionMm=support.Input.PositionMm;workspace.Section.SelectMember(-crossing-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,"coordinated-report-section"));
+        workspace.Section.SectionPositionMm=support.Solids.Where(s=>s.Member?.H20Count==2).Select(s=>(s.X0+s.X1)/2).First();workspace.Section.SelectMember(-crossing-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,"coordinated-report-section"));
         var target=workspace.Section.MemberTargets.First(t=>t.Item2==-crossing-1 && support.Members[t.Item3].H20Count==2);
         workspace.Section.SelectAt(new Point(target.Item1.X+target.Item1.Width/2,target.Item1.Y+target.Item1.Height/2));Pump();
         Check(workspace.Diagrams!=null && Descendants(workspace.Diagrams).Count(c=>c.GetType().Name=="LoadedResponsePlot")==3,"translated crossing supports retain all three response diagrams");
@@ -172,6 +172,8 @@ internal static class CrossSupportUiTests
         var support=vm.NetworkResult.CrossSupports.Single();
         foreach(int count in new[] {2,1})
         {
+            var physical=support.Solids.First(s=>s.Member!=null && s.Member.H20Count==count);
+            workspace.SectionPosition.Value=(physical.X0+physical.X1)/2;workspace.Section.InvalidateVisual();Capture(workspace.Section,1200,420,null);
             var target=workspace.Section.MemberTargets.First(t=>t.Item2<0 && support.Members[t.Item3].H20Count==count);
             Check(workspace.Section.SelectAt(new Point(target.Item1.X+target.Item1.Width/2,target.Item1.Y+target.Item1.Height/2)),"section member click opens crossing diagrams");Pump();
             var window=workspace.Diagrams;Check(window!=null && window.IsVisible && window.SelectedTransferMember.H20Count==count,"selected crossing member displayed in the standard diagram window");
@@ -183,6 +185,8 @@ internal static class CrossSupportUiTests
             if(support.NominalSecondarySpacingMm>0)
                 Check(Descendants(body).OfType<TextBlock>().Any(t=>t.Text==$"Secondary beam spacing: {support.Towers.Transfer.EnteredUpperSpacingMm:0.###} mm"),"crossing diagram identifies its actual selected nominal pitch");
             Capture(body,900,(int)Math.Ceiling(body.ActualHeight),Preview(previewPath,count==2 ? "current-report-primary" : "current-report-secondary"));
+            var other=support.Solids.First(s=>s.Member!=null && s.Member.H20Count==count && Array.IndexOf(support.Members,s.Member)!=window.SelectedRun);
+            workspace.SectionPosition.Value=(other.X0+other.X1)/2;workspace.Section.InvalidateVisual();Capture(workspace.Section,1200,420,null);
             var next=workspace.Section.MemberTargets.First(t=>t.Item2<0 && support.Members[t.Item3].H20Count==count && t.Item3!=window.SelectedRun);
             workspace.Section.SelectAt(new Point(next.Item1.X+next.Item1.Width/2,next.Item1.Y+next.Item1.Height/2));Pump();
             Check(ReferenceEquals(workspace.Diagrams,window),"picking another crossing H20 reuses its diagram window");

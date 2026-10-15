@@ -18,7 +18,7 @@ internal static class WorkspaceTests
     static BeamFormworkWorkspace workspace;
     static void Check(bool value,string label){checks++;if(!value)throw new Exception("Workspace: "+label);}
     static void Pump()=>Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));
-    static void Click(string key){var control=workspace.Buttons[key];control.RaiseEvent(new RoutedEventArgs(control is MenuItem ? MenuItem.ClickEvent : Button.ClickEvent));Pump();}
+    static void Click(string key){var control=workspace.Buttons[key];if(control is CheckBox toggle)toggle.IsChecked=toggle.IsChecked!=true;control.RaiseEvent(new RoutedEventArgs(control is MenuItem ? MenuItem.ClickEvent : Button.ClickEvent));Pump();}
     static void Render(string path=null,int width=1280,int height=860)
     {
         Pump();var root=workspace.Surface;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();

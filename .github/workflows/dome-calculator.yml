@@ -102,6 +102,8 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - run: dotnet build tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release --warnaserror
+      - name: Launch standalone calculator without Revit
+        run: dotnet run --project tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release --no-build -- --preview-smoke
       - name: Package standalone calculator preview
         shell: pwsh
         run: |

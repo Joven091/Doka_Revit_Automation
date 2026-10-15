@@ -279,14 +279,15 @@ namespace EngineeringDashboard
             {
                 var b=result.Beams[beam];var input=result.Input.Beams[beam];var t=b.Transfer;double centre=result.BeamCentresMm[beam],bottom=top+(highest-input.BottomElevationMm)*depthScale,beamTop=top+(highest-input.BottomElevationMm-input.DepthMm)*depthScale;
                 dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(xx(centre-input.WidthMm/2),beamTop,input.WidthMm*scale,bottom-beamTop));
-                int row=IntersectingRow(t.RowsMm,cut),encoded=b.StockPlan.Pieces.Length+row;
+                int physical=IntersectingRow(Enumerable.Range(0,t.PhysicalRowCount).Select(t.PhysicalRowPosition).ToArray(),cut);
+                int row=physical<0 ? -1 : t.PhysicalRowDesignIndex(physical),encoded=b.StockPlan.Pieces.Length+row;
                 double start=xx(centre+t.LowerStockStartMm),end=xx(centre+t.LowerStockStartMm+t.LowerStockLengthMm);
                 if(row>=0)
                 {
                     var lowerRect=new Rect(start,bottom,end-start,200*depthScale);
                     H20Drawing.Longitudinal(dc,lowerRect,beam==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;
                     MemberTargets.Add(Tuple.Create(lowerRect,beam,encoded,0));
-                    SectionRows.Add(Tuple.Create(beam,row,t.RowsMm[row]));
+                    SectionRows.Add(Tuple.Create(beam,row,t.PhysicalRowPosition(physical)));
                     SectionNote($"B{beam+1} · D {input.DepthMm:0.###} · T{row+1}",xx(centre),top-26,true);
                     SectionDimension(start,end,sectionBottom+24,$"H20 {t.LowerStockLengthMm:0}",false);DrawnSecondaryLengthCount++;
                 }
@@ -353,10 +354,10 @@ namespace EngineeringDashboard
         }
         private void DrawCrossSection(DrawingContext dc,Func<double,double> xx,Func<double,double> zz)
         {
-            foreach(var support in result.CrossSupports.Where(c=>ActualSectionPositionMm>=c.Input.PositionMm-c.Input.WidthMm/2-1e-7 && ActualSectionPositionMm<=c.Input.PositionMm+c.Input.WidthMm/2+1e-7))
+            foreach(var support in result.CrossSupports.Where(c=>c.Solids.Any(s=>!s.IsTowerEnvelope && ActualSectionPositionMm>=s.X0-1e-7 && ActualSectionPositionMm<=s.X1+1e-7) || ActualSectionPositionMm>=c.Input.PositionMm-c.Input.WidthMm/2-1e-7 && ActualSectionPositionMm<=c.Input.PositionMm+c.Input.WidthMm/2+1e-7))
             {
             int bay=support.Input.BayNumber-1;double face=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2;
-            dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(new Point(xx(face),zz(support.Input.BottomElevationMm+support.Input.DepthMm)),new Point(xx(face+result.Input.Bays[bay].WidthMm),zz(support.Input.BottomElevationMm))));
+            if(Math.Abs(ActualSectionPositionMm-support.Input.PositionMm)<=support.Input.WidthMm/2+1e-7)dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(new Point(xx(face),zz(support.Input.BottomElevationMm+support.Input.DepthMm)),new Point(xx(face+result.Input.Bays[bay].WidthMm),zz(support.Input.BottomElevationMm))));
             SectionNote($"X{support.CrossingIndex+1} · x {support.Input.PositionMm:0.###} · bottom {support.Input.BottomElevationMm:0.###} mm",xx(face+result.Input.Bays[bay].WidthMm/2),sectionBottom+100,false);
             foreach(var solid in support.Solids.Where(s=>!s.IsTowerEnvelope && ActualSectionPositionMm>=s.X0-1e-7 && ActualSectionPositionMm<=s.X1+1e-7))
             {
@@ -372,7 +373,7 @@ namespace EngineeringDashboard
                 }
                 if(member>=0)MemberTargets.Insert(0,Tuple.Create(rect,-support.CrossingIndex-1,member,0));
             }
-            foreach(var bearing in support.Bearings.Where(b=>ActualSectionPositionMm>=b.FootprintStartMm-1e-7 && ActualSectionPositionMm<=b.FootprintEndMm+1e-7).GroupBy(b=>new {b.Ymm,b.FillerHeightMm,b.IsConcreteEndZone}).Select(g=>g.First()))
+            foreach(var bearing in support.Bearings.Where(b=>b.FootprintEndMm>b.FootprintStartMm ? ActualSectionPositionMm>=b.FootprintStartMm-1e-7 && ActualSectionPositionMm<=b.FootprintEndMm+1e-7 : Math.Abs(ActualSectionPositionMm-b.Xmm)<=40+1e-7).GroupBy(b=>new {b.Ymm,b.FillerHeightMm,b.IsConcreteEndZone}).Select(g=>g.First()))
             {
                 if(bearing.IsConcreteEndZone)
                 {
