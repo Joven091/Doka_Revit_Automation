@@ -340,6 +340,7 @@ namespace EngineeringDashboard
         }
         private void PreviewDraftPoint(Point point)
         {
+            if(draftDistance.Length>0 && TryDraftDistancePoint(point,out var exact))point=exact;
             if(draftCommand==null || draftCommand!="CS" && !draftBase.HasValue)return;
             if(draftFree) {var beam=FreeDraftBeam(point);Drawing.DraftPreview=IndependentRect(beam);return;}
             if(draftKind==FormworkObject.Independent)
@@ -380,7 +381,8 @@ namespace EngineeringDashboard
                     else {applied=Model.TryInsertParallelBeam(draftBeam,destination.Item3,out int index);if(applied)Drawing.Select(FormworkObject.Beam,index,false);}
                 },false);
             }
-            else if(destination.Item1>=0 && destination.Item2>=draftCrossing.WidthMm/2 && destination.Item2<=Model.BeamLengthMm-draftCrossing.WidthMm/2 && (draftCommand=="MV" || Model.CrossingBeams.Count<30))
+            else if(destination.Item1>=0 && destination.Item2>=draftCrossing.WidthMm/2 && destination.Item2<=Model.BeamLengthMm-draftCrossing.WidthMm/2 && (draftCommand=="MV" || Model.CrossingBeams.Count<30)
+                && !Model.CrossingBeams.Where((c,i)=>draftCommand!="MV" || i!=draftIndex).Any(c=>c.BayNumber==destination.Item1+1 && Math.Abs(c.PositionMm-destination.Item2)<(c.WidthMm+draftCrossing.WidthMm)/2))
             {
                 Mutate(()=> {
                     if(draftCommand!="MV")Model.AddCrossingBeam();

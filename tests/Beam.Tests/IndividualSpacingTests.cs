@@ -19,7 +19,7 @@ internal static class IndividualSpacingTests
         foreach(var m in layout.Transfer.LowerCases.SelectMany(x=>x).Concat(layout.Transfer.UpperMembers))
         {
             Check(m.H20Count==1 && m.Analysis.MomentKnM<=5+1e-8 && m.Analysis.ShearKn<=11+1e-8 && m.Analysis.DeflectionUtilization<=1+1e-8,"single H20 passes M=5 kNm, V=11 kN and selected deflection criterion");
-            var reference=LoadedBeamAnalysis.Analyze(m.LengthMm,m.SupportsMm,m.Uniform,m.Points,449.8756,layout.DeflectionDenominator);
+            var reference=LoadedBeamAnalysis.AnalyzeSigned(m.LengthMm,m.SupportsMm,m.Uniform,m.Points,449.8756,layout.DeflectionDenominator);
             Near(m.Analysis.MomentKnM,reference.MomentKnM,"reported H20 moment agrees with its actual loading");
             Near(m.Analysis.ShearKn,reference.ShearKn,"reported H20 shear agrees with its actual loading");
             Near(m.Analysis.Reactions.Sum(),m.Analysis.TotalLoadKn,"H20 reactions balance applied loads");
@@ -83,7 +83,7 @@ internal static class IndividualSpacingTests
         Check(vm.NetworkResult.CrossSupports.All(c=>c.Input.BayNumber==vm.NetworkResult.Input.CrossingBeams[c.CrossingIndex].BayNumber),"cache reuse preserves each crossing's own bay and label");
         foreach(var c in vm.NetworkResult.CrossSupports)
         {
-            Near(c.LoadKn,vm.NetworkResult.Input.AreaLoad(c.Input.DepthMm)*c.Input.WidthMm/1000*vm.NetworkBays[c.Input.BayNumber-1].WidthMm/1000,"reordered crossing retains its own complete concrete load");
+            Near(c.LoadKn,vm.NetworkResult.Input.AreaLoad(c.Input.DepthMm)*c.Input.WidthMm/1000*vm.NetworkBays[c.Input.BayNumber-1].WidthMm/1000+c.SlabEdgeLoadKn,"reordered crossing retains its concrete and slab-edge loads once");
             Check(c.Members.All(m=>m.Utilization<=1+1e-8),"reordered crossing H20s pass all checks");
         }
         CompareReceiverReuse(vm);

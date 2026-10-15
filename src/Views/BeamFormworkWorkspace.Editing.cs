@@ -71,25 +71,33 @@ namespace EngineeringDashboard
         {
             status.Text=$"{draftCommand} · distance {draftDistance} mm · point in the direction, then Enter · Esc cancels";
             Drawing.DraftInputText=draftDistance.Length==0 ? null : draftDistance+" mm";Drawing.InvalidateVisual();
+            if(Drawing.DraftPointerWorld.HasValue)PreviewDraftPoint(Drawing.DraftPointerWorld.Value);
         }
-        internal bool CommitDraftDistance()
+        private bool TryDraftDistancePoint(Point pointer,out Point point)
         {
+            point=pointer;
             if(!draftBase.HasValue || !double.TryParse(draftDistance,NumberStyles.Float,CultureInfo.CurrentCulture,out var distance) || !TowerBeamAnalysis.Finite(distance) || Math.Abs(distance)>1000000 || distance==0)
-            {status.Text="Enter a nonzero distance in mm, up to 1000000 mm.";return false;}
-            var direction=(Drawing.DraftPointerWorld??draftBase.Value)-draftBase.Value;
+                return false;
+            var direction=pointer-draftBase.Value;
             if(draftIndependent!=null && !draftFree)
             {
-                if(direction.Length<1e-7){status.Text="Point in the move/copy direction before pressing Enter.";return false;}
+                if(direction.Length<1e-7)return false;
                 direction.Normalize();
             }
             else
             {
                 bool alongX=draftFree ? !draftVertical : draftKind==FormworkObject.Crossing;
                 double component=alongX ? direction.X : direction.Y;
-                if(Math.Abs(component)<1e-7){status.Text="Point in the move/copy direction before pressing Enter.";return false;}
+                if(Math.Abs(component)<1e-7)return false;
                 direction=alongX ? new Vector(Math.Sign(component),0) : new Vector(0,Math.Sign(component));
             }
-            AcceptDraftPoint(draftBase.Value+direction*distance);
+            point=draftBase.Value+direction*distance;return true;
+        }
+        internal bool CommitDraftDistance()
+        {
+            if(!TryDraftDistancePoint(Drawing.DraftPointerWorld??draftBase??new Point(),out var point))
+            {status.Text="Enter a nonzero distance up to 1000000 mm and point in the move/copy direction.";return false;}
+            AcceptDraftPoint(point);
             return draftCommand==null;
         }
     }
