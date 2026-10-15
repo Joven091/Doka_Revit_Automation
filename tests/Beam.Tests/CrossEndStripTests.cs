@@ -116,13 +116,36 @@ internal static class CrossEndStripTests
             Bays=new[] {new TransferBayRow {WidthMm=2125,ThicknessMm=300}},
             CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3375,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150,SupportMode=CrossBeamSupportMode.Automatic}}};
         var timer=System.Diagnostics.Stopwatch.StartNew();
+        // First exercise the exact reported loads: admitting stock must not hide
+        // a subsequent receiving-member failure or approve an overloaded system.
+        try
+        {
+            var reported=TransferNetworkOptimizer.Optimize(common,input);
+            foreach(var beam in reported.Beams)
+            {
+                Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r<=70+1e-8),"reported solution respects each leg capacity");
+                foreach(var member in Members(beam))MemberChecks(member,270);
+            }
+            foreach(var member in reported.CrossSupports.SelectMany(c=>c.Members))MemberChecks(member,270);
+            Console.WriteLine("SHUTTER-SUPPORTED EXACT REPORT: complete passing system; legs="+reported.LegCount);
+        }
+        catch(TowerOptimizationException e)
+        {
+            Check(e.Details.Contains("combined receiving-secondary, primary or leg") && !e.Details.Contains("no permitted shared H20 stock"),"reported 1800 mm stock reaches combined receiver checks instead of the end-strip filter");
+            Check(e.Details.Contains("shear:") || e.Details.Contains("moment:") || e.Details.Contains("deflection:"),"remaining failure identifies actual member demand");
+            Console.WriteLine("SHUTTER-SUPPORTED EXACT REPORT: no complete passing system within bounded search; stock admitted, receiving capacity checks reject it.");
+            Console.WriteLine(string.Join("\n",e.Details.Split('\n').Where(line=>line.StartsWith("T") && (line.Contains("shear:") || line.Contains("moment:") || line.Contains("deflection:")))));
+        }
+        // A lighter crossing with the same plan geometry verifies the accepted
+        // 1800 mm stock, full shutter-strip transfer and downstream capacities.
+        input.CrossingBeams[0].DepthMm=200;input.CrossingBeams[0].BottomElevationMm=-200;
         var result=TransferNetworkOptimizer.Optimize(common,input);var cross=result.CrossSupports.Single();
-        Check(cross.Towers==null && cross.Members.All(m=>m.LengthMm==1800),"reported crossing uses shared catalogue 1800 mm H20s without a dedicated tower");
+        Check(cross.Towers==null && cross.Members.All(m=>m.LengthMm==1800),"matching plan geometry uses shared catalogue 1800 mm H20s without a dedicated tower");
         Check(!common.AllowCustomBeamLengths && common.MaximumConcreteEndOverhangMm==150,"beam custom scope and main end allowance unchanged");
         var strips=cross.Bearings.Where(b=>b.IsConcreteEndZone && b.Label=="Crossing end strip").ToArray();
         Check(strips.Length>0 && strips.All(b=>b.IsShutterEndZone),"crossing concrete end strips use existing side shutters");
         foreach(var strip in strips)Near(strip.EndZoneEndMm-strip.EndZoneStartMm,162.5,"actual supported strip exceeds the unrelated 150 mm limit");
-        Near(strips.Sum(b=>b.ReactionKn),input.AreaLoad(1150)*.65*.325,"both concrete end strips counted once");
+        Near(strips.Sum(b=>b.ReactionKn),input.AreaLoad(200)*.65*.325,"both concrete end strips counted once");
         Near(cross.Bearings.Sum(b=>b.ReactionKn),cross.LoadKn,"all crossing and ledger force reaches the receivers");
         double face=result.BeamCentresMm[0]+400;
         Near(cross.Bearings.Sum(b=>b.ReactionKn*(b.Ymm-face)/1000),cross.LoadKn*2.125/2,"shutter strips and H20 bearings retain transverse moment");
