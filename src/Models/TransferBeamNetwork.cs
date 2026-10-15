@@ -453,6 +453,8 @@ namespace EngineeringDashboard
             }
             try {return SearchSpacing(first,input);}
             catch(TowerOptimizationException ex){failure=ex;}
+            // The caller needs failed coordinated-search evidence for separate-formwork reasons.
+            finally {common.Diagnostics=first.Diagnostics;}
             var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
             var attempted=new HashSet<string>();
             TransferNetworkResult best=null;
@@ -479,7 +481,7 @@ namespace EngineeringDashboard
                 try {best=SearchSpacing(worker,candidate);break;}
                 catch(TowerOptimizationException ex){failure=ex;}
             }
-            if(best==null)throw failure;
+            if(best==null){common.Diagnostics=worker.Diagnostics;throw failure;}
             var acceptedDiagnostics=worker.Diagnostics;
             var maxima=input.BeamSpacingsMm.Concat(input.SlabSpacingsMm).Concat(input.CrossingSpacingsMm).ToArray();
             Func<TransferNetworkInput,double[]> spacings=n=>n.BeamSpacingsMm.Concat(n.SlabSpacingsMm).Concat(n.CrossingSpacingsMm).ToArray();
