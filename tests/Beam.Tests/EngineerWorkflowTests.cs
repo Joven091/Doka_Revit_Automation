@@ -57,5 +57,68 @@ internal static class EngineerWorkflowTests
         var obstacles=CrossBeamSupportOptimizer.NetworkSolids(result).Concat(CrossBeamSupportOptimizer.Concrete(result)).ToArray();
         foreach(var solid in crossing.Solids)foreach(var obstacle in obstacles)Check(!solid.Conflicts(obstacle),"complete selected arrangement clears actual timber and concrete");
         Console.WriteLine("Complete engineer workflow passed.");
+        ReportedPrimaryZones();
+    }
+
+    private static void ReportedPrimaryZones()
+    {
+        var common=new TowerInput {EngineerSearch=true,FullLoadingOnly=true,LengthMm=6100,LegCapacityKn=30,StockEndSetbackMm=150,
+            MaximumConcreteEndOverhangMm=150,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,IgnoreUplift=true,DeflectionDenominator=270};
+        var network=new TransferNetworkInput {PlywoodProfileId=PlywoodCatalog.Default.Id,PlywoodDeflectionDenominator=350,PlywoodSheetLengthMm=2440,
+            UpperSpacingMm=305,BeamSpacingsMm=new[] {305.0,305},SlabSpacingsMm=new[] {488.0},CrossingSpacingsMm=new[] {350.0},
+            Beams=Enumerable.Range(0,2).Select(i=>new TransferBeamRow {WidthMm=800,DepthMm=1750,BottomElevationMm=-1750}).ToArray(),
+            Bays=new[] {new TransferBayRow {WidthMm=2125,ThicknessMm=200}},
+            CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3350,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150}}};
+        var plan=EngineerPrimaryPlan.Create(common,network,1);
+        var loads=plan.Loads(75,3300,0);
+        Check(loads.Length==2,"reported 3300 mm member has exactly two UDL zones");
+        Near(loads[0].StartMm,0,"normal zone starts at stock end");Near(loads[0].EndMm,2950,"normal zone ends at the physical X1 face");
+        Near(loads[0].KnPerM,25.99125,"beam plus 200 mm slab UDL");
+        Near(loads[1].StartMm,2950,"crossing starts at the same boundary");Near(loads[1].EndMm,3300,"crossing continues to this stock end");
+        Near(loads[1].KnPerM,52.288125,"beam plus crossing UDL");
+        var a=LoadedBeamAnalysis.AnalyzeSigned(3300,new[] {450.0,1450,2075,3075},loads,new BeamPointLoad[0],TowerOptimizer.PairEI,270);
+        // Independent Python Euler-Bernoulli FEM reference, including both free tails.
+        double[] reactions={26.009082253282962,18.878950606650072,22.811522161825874,27.27547622824104};
+        for(int i=0;i<reactions.Length;i++)Near(a.Reactions[i],reactions[i],"reported two-zone reaction "+(i+1));
+        Near(a.TotalLoadKn,94.97503125,"reported two-zone member force");Near(a.MomentKnM,2.6316140625,"reported two-zone bending");
+        Near(a.ShearKn,15.51064810324112,"reported two-zone shear");Near(a.DeflectionMm,.16734319666955558,"reported two-zone deflection");
+        var result=TransferNetworkOptimizer.Optimize(common,network);
+        Check(result.CrossSupports.Single().UsesSpreader && result.Bays.All(b=>b!=null),"exact reported model retains complete beam/slab/shared-X1 support");
+        for(int beam=0;beam<2;beam++)
+        {
+            var layout=result.Beams[beam];Check(layout.Transfer.PrimaryPlan!=null,"final primary retains the agreed zone model");
+            int runs=layout.StockPlan.Pieces.Length;
+            for(int line=0;line<2;line++)for(int run=0;run<runs;run++)
+            {
+                var m=layout.Transfer.PrimaryCases.Last()[run+line*runs];
+                bool inner=beam==0 ? line==1 : line==0;
+                var cuts=new[] {m.StartMm,m.StartMm+m.LengthMm,3025.0,3675}.Where(x=>x>=m.StartMm && x<=m.StartMm+m.LengthMm).Distinct().OrderBy(x=>x).ToArray();
+                Check(m.Points.Length==0,"primary uses UDLs only");
+                for(int j=1;j<cuts.Length;j++)
+                {
+                    double x=(cuts[j-1]+cuts[j])/2,q=18.66+(inner ? (x>=3025 && x<=3675 ? 33.628125 : 7.33125) : 0);
+                    Near(m.Uniform.Where(u=>x-m.StartMm>=u.StartMm && x-m.StartMm<=u.EndMm).Sum(u=>u.KnPerM),q,"actual selected primary intensity matches the concrete tributary zone");
+                }
+                Check(m.Uniform.All(u=>Math.Abs(u.StartMm)<1e-7 || Math.Abs(u.StartMm+m.StartMm-3025)<1e-7 || Math.Abs(u.StartMm+m.StartMm-3675)<1e-7),"no sheet-joint/ledger/flange steps on the primary");
+                var manual=LoadedBeamAnalysis.AnalyzeSigned(m.LengthMm,m.SupportsMm,m.Uniform,new BeamPointLoad[0],TowerOptimizer.PairEI,270);
+                Near(m.Analysis.MomentKnM,manual.MomentKnM,"displayed load model drives bending");Near(m.Analysis.ShearKn,manual.ShearKn,"displayed load model drives shear");
+                Near(m.Analysis.DeflectionMm,manual.DeflectionMm,"displayed load model drives deflection");
+                Near(m.Utilization,Math.Max(manual.DeflectionUtilization,Math.Max(manual.MomentKnM/10,manual.ShearKn/22)),"displayed load model drives primary utilization");
+                for(int j=0;j<manual.Reactions.Length;j++)
+                {
+                    Near(m.Analysis.Reactions[j],manual.Reactions[j],"displayed load model drives support reaction");
+                    Near((line==0 ? layout.LeftReactions : layout.RightReactions)[layout.StockPlan.Pieces[run].FirstSupport+j],manual.Reactions[j],"tower leg demand uses the same primary reaction");
+                }
+                Check(m.Utilization<=1+1e-8 && m.Analysis.Reactions.Max()<=30+1e-8,"final member and leg capacities pass the same load model");
+            }
+        }
+        double carried=result.Beams.Sum(b=>b.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn));
+        double external=result.Beams.Sum(b=>b.Transfer.ColumnSupportLoadKn(b.Transfer.CaseNames.Length-1));
+        Near(carried+external,2*37.32*6.1+6.9*2.125*5.45+31.65*2.125*.65,"complete concrete force retained without double-counted ledgers");
+        double firstMoment=result.Beams.Sum(b=>b.Transfer.PrimaryCases.Last().Sum(m=>m.Uniform.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000*(m.StartMm+(q.StartMm+q.EndMm)/2)/1000)))
+            +result.Beams.Sum(b=>b.Transfer.ColumnSupportLoads.SelectMany(c=>c).Sum(c=>c.LeftLineMomentKnM+c.RightLineMomentKnM));
+        Near(firstMoment,(2*37.32+6.9*2.125)*6.1*6.1/2+(31.65-6.9)*2.125*.65*3.35,"primary and end-support loads preserve the concrete longitudinal first moment");
+        Console.WriteLine("Reported primary zones passed: 25.99125 / 52.288125 kN/m; complete 6100 mm network.");
+        Console.WriteLine(result.LayoutDiagnostics);
     }
 }
