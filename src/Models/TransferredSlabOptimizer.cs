@@ -1215,6 +1215,20 @@ namespace EngineeringDashboard
                 var loads=PrimaryUniformLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,stage,edge);
                 if(loads==null)continue;
                 var supports=geometry.MemberSupports[Array.IndexOf(geometry.Stock,stock)];
+                foreach(bool far in new[] {false,true})
+                {
+                    double a=far ? supports.Last() : 0,b=far ? stock.StockLengthMm : supports.First(),support=far ? a : b;
+                    if(unknown.Any(q=>q.EndMm>stock.StartMm+edge+a && q.StartMm<stock.StartMm+edge+b))continue;
+                    double force=0,moment=0;
+                    foreach(var q in loads)
+                    {
+                        double lo=Math.Max(a,q.StartMm),hi=Math.Min(b,q.EndMm);if(hi<=lo)continue;
+                        double load=q.KnPerM*(hi-lo)/1000;force+=load;moment+=load*Math.Abs((lo+hi)/2-support)/1000;
+                    }
+                    // A free stock end has zero shear and moment. The exact known
+                    // tail resultant therefore gives necessary support-face demands.
+                    if(Math.Abs(force)>input.Primary.ShearLimitKn+1e-7 || Math.Abs(moment)>input.Primary.MomentLimitKnM+1e-7)return false;
+                }
                 var limits=new[] {0.0}.Concat(supports).Concat(new[] {stock.StockLengthMm}).ToArray();
                 for(int span=1;span<limits.Length;span++)
                 {
