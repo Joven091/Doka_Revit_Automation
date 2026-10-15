@@ -133,7 +133,12 @@ namespace EngineeringDashboard
             {
                 int index=Array.IndexOf(network.CrossingBeams,c);
                 var shared=Shared(common,mirror,index,out string failure);
-                if(shared==null)return false;
+                if(shared==null)
+                {
+                    if(c.SupportMode!=CrossBeamSupportMode.Automatic || layout.Transfer.EngineerReceiverCount<8)return false;
+                    var dedicated=common.CopyForSearch();dedicated.EngineerDedicatedFallback=true;
+                    return lowerOnly ? CheckJunctionLowerReceiver(dedicated,network,beam,layout) : CheckJunctionReceiver(dedicated,network,beam,layout);
+                }
                 var own=shared.Bearings.Where(b=>b.Beam==beam).Select(b=>
                 {
                     var copy=b.Copy();copy.Beam=0;copy.Ymm-=centres[beam];copy.EndZoneStartMm-=centres[beam];copy.EndZoneEndMm-=centres[beam];return copy;

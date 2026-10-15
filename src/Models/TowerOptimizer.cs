@@ -220,6 +220,7 @@ namespace EngineeringDashboard
         internal bool EngineerSearch;
         internal bool EngineerWorkflow=>EngineerSearch && FullLoadingOnly;
         internal EngineerPrimaryPlan EngineerPlan;
+        internal bool EngineerDedicatedFallback;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
         internal double ReceiverTransverseOffsetMm;
@@ -733,6 +734,41 @@ namespace EngineeringDashboard
             yield return Enumerable.Repeat(1000.0,count).ToArray();
             yield return Enumerable.Repeat(2000.0,count).ToArray();
             yield return Enumerable.Repeat(600.0,count).ToArray();
+        }
+        // Each stock run can have its own combined group and brace sequence.
+        // In particular 3300 mm can use 400/1000/1500/400 while the adjacent
+        // 3600 mm run uses 300/1000/1000/1000/300. Do not impose one brace
+        // family or equal outside cantilevers on the complete primary line.
+        internal static IEnumerable<TransferredSlabOptimizer.Geometry> StockRunGeometries(double[] stocks,TowerInput input)
+        {
+            if(stocks.Length>3 || input.EngineerPlan==null)yield break;
+            int maximum=Math.Min(input.EngineerStationLimit,stocks.Length*6);
+            foreach(int target in Enumerable.Range(stocks.Length*2,Math.Max(0,maximum-stocks.Length*2+1)).OrderBy(n=>TierOrder(n,input.EngineerPlan.InitialLegs)))
+                foreach(var geometry in StockRunStep(stocks,input,0,0,target,new double[0],new bool[0],new TowerStockPiece[0]).Take(256))yield return geometry;
+        }
+        private static IEnumerable<TransferredSlabOptimizer.Geometry> StockRunStep(double[] stocks,TowerInput input,int run,double start,int remaining,double[] positions,bool[] joins,TowerStockPiece[] pieces)
+        {
+            input.Trace?.CheckCancellation();
+            if(run==stocks.Length)
+            {
+                if(remaining==0)yield return new TransferredSlabOptimizer.Geometry {Stock=pieces,Positions=positions,Joined=joins,
+                    MemberSupports=pieces.Select(p=>positions.Skip(p.FirstSupport).Take(p.LastSupport-p.FirstSupport+1).Select(x=>x-p.StartMm).ToArray()).ToArray()};
+                yield break;
+            }
+            int after=stocks.Length-run-1;
+            for(int count=2;count<=Math.Min(6,remaining-2*after);count++)
+            {
+                if(remaining-count>6*after)continue;
+                foreach(var braces in Braces(count-1,false).GroupBy(b=>string.Join(",",b)).Select(g=>g.First()))
+                {
+                    if(input.Exclude600Standalone && count==2 && braces[0]==600)continue;
+                    double inset=(stocks[run]-braces.Sum())/2;if(inset<input.StockEndSetbackMm-1e-7)continue;
+                    var added=new List<double> {start+inset};foreach(double brace in braces)added.Add(added.Last()+brace);
+                    if(positions.Length>0 && added[0]-positions.Last()<25-1e-7)continue;
+                    var piece=new TowerStockPiece {StartMm=start,StockLengthMm=stocks[run],FirstSupport=positions.Length,LastSupport=positions.Length+count-1,IsCustomLength=!input.PrimaryStockLengthsMm.Contains(stocks[run])};
+                    foreach(var geometry in StockRunStep(stocks,input,run+1,start+stocks[run],remaining-count,positions.Concat(added).ToArray(),joins.Concat(positions.Length==0 ? new bool[0] : new[] {false}).Concat(Enumerable.Repeat(true,count-1)).ToArray(),pieces.Concat(new[] {piece}).ToArray()))yield return geometry;
+                }
+            }
         }
         internal static IEnumerable<TransferredSlabOptimizer.Geometry> Geometries(double[] stocks,bool rotated,TowerInput input)
         {

@@ -252,6 +252,12 @@ namespace EngineeringDashboard
                 || rows.Select(i=>left.RowsMm[i]).Zip(rows.Skip(1).Select(i=>left.RowsMm[i]),(a,b)=>b-a).Any(g=>g>maximum+1e-7)))
             {failure=$"X{index+1}: aligned receiving rows exceed this crossing's plywood spacing limit.";return null;}
             var positions=spreader ? PlywoodSpacing.SheetSupportRows(c.PositionMm-c.WidthMm/2,c.PositionMm+c.WidthMm/2,maximum) : rows.Select(i=>left.RowsMm[i]).ToArray();
+            if(spreader)
+            {
+                int requested=Math.Max(left.EngineerReceiverCount,right.EngineerReceiverCount);
+                int count=Math.Max(positions.Length,Math.Min(requested,1+(int)Math.Floor((c.WidthMm-80)/80)));
+                positions=Enumerable.Range(0,count).Select(k=>c.PositionMm-c.WidthMm/2+40+(c.WidthMm-80)*k/(count-1)).ToArray();
+            }
             double near=left.LowerStockStartMm+left.LowerStockLengthMm-r.Input.Beams[bay].WidthMm/2-BearingInsetMm;
             double far=-right.LowerStockStartMm-r.Input.Beams[bay+1].WidthMm/2-BearingInsetMm;
             near=Math.Min(r.Beams[bay].TransverseOffsetMm+r.Beams[bay].WidthMm/2-r.Input.Beams[bay].WidthMm/2,Math.Min(350,Math.Min(near,span/2-150)));far=Math.Min(r.Beams[bay+1].WidthMm/2-r.Beams[bay+1].TransverseOffsetMm-r.Input.Beams[bay+1].WidthMm/2,Math.Min(350,Math.Min(far,span/2-150)));
@@ -853,7 +859,7 @@ namespace EngineeringDashboard
             for(int index=0;index<network.CrossingBeams.Length;index++)
             {
                 var c=network.CrossingBeams[index];bool right=c.BayNumber==beam+1,left=c.BayNumber==beam;
-                if(common.EngineerWorkflow && EngineerPrimaryPlan.Eligible(network,c))continue;
+                if(common.EngineerWorkflow && !common.EngineerDedicatedFallback && EngineerPrimaryPlan.Eligible(network,c))continue;
                 if((!left && !right) || c.SupportMode==CrossBeamSupportMode.ExistingSupportsOnly || c.SupportMode==CrossBeamSupportMode.LegacySlabRows || input.BottomElevationMm>c.BottomElevationMm+1e-7)continue;
                 bool shutter=input.BottomElevationMm<c.BottomElevationMm-1e-7;
                 double start=right ? input.WidthMm/2 : shutter ? -input.WidthMm/2-shutterWidth : t.LowerStockStartMm;
@@ -958,7 +964,7 @@ namespace EngineeringDashboard
                     if(t.ColumnSupportLoads.Length>0)columnLoads.Add(t.ColumnSupportLoads[stage].Select(x=>new ColumnEndStripLoad {LoadCase=name,End=x.End,StartMm=x.StartMm,EndMm=x.EndMm,LeftLineKn=x.LeftLineKn,RightLineKn=x.RightLineKn,LeftLineMomentKnM=x.LeftLineMomentKnM,RightLineMomentKnM=x.RightLineMomentKnM}).ToArray());
                 }
                 if(lowerOnly)continue;
-                l.Transfer=new TransferredSlabResult {UnitLowerCases=t.UnitLowerCases,UnitPointLabels=t.UnitPointLabels,SlabSupportStartMm=t.SlabSupportStartMm,SlabSupportEndMm=t.SlabSupportEndMm,ColumnSupportLoads=columnLoads.ToArray(),FullLoadingOnly=t.FullLoadingOnly,RowsMm=t.RowsMm,SlabRowIndices=t.SlabRowIndices,TributaryWidthsMm=t.TributaryWidthsMm,LeftUpperScales=t.LeftUpperScales,RightUpperScales=t.RightUpperScales,EnteredUpperSpacingMm=t.EnteredUpperSpacingMm,LeftSlabSpacingMm=t.LeftSlabSpacingMm,RightSlabSpacingMm=t.RightSlabSpacingMm,HasIndividualSpacings=t.HasIndividualSpacings,CrossFormwork=t.CrossFormwork,BeamLoadKn=t.BeamLoadKn,LowerStockStartMm=t.LowerStockStartMm,LowerStockLengthMm=t.LowerStockLengthMm,LeftFootMm=t.LeftFootMm,RightFootMm=t.RightFootMm,LeftUpperStockMm=t.LeftUpperStockMm,RightUpperStockMm=t.RightUpperStockMm,LeftUpperEdgeMm=t.LeftUpperEdgeMm,RightUpperEdgeMm=t.RightUpperEdgeMm,LeftUpperCustom=t.LeftUpperCustom,RightUpperCustom=t.RightUpperCustom,LowerCustom=t.LowerCustom,LeftFootReactionKn=t.LeftFootReactionKn,RightFootReactionKn=t.RightFootReactionKn,SlabMovementMm=t.SlabMovementMm,CoveredSlabAreaM2=t.CoveredSlabAreaM2,SlabLoadKn=t.SlabLoadKn,ShutterLoadKn=t.ShutterLoadKn,PrimaryCases=cases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=t.UpperMembers,CaseNames=names.ToArray()};
+                l.Transfer=new TransferredSlabResult {EngineerReceiverCount=t.EngineerReceiverCount,UnitLowerCases=t.UnitLowerCases,UnitPointLabels=t.UnitPointLabels,SlabSupportStartMm=t.SlabSupportStartMm,SlabSupportEndMm=t.SlabSupportEndMm,ColumnSupportLoads=columnLoads.ToArray(),FullLoadingOnly=t.FullLoadingOnly,RowsMm=t.RowsMm,SlabRowIndices=t.SlabRowIndices,TributaryWidthsMm=t.TributaryWidthsMm,LeftUpperScales=t.LeftUpperScales,RightUpperScales=t.RightUpperScales,EnteredUpperSpacingMm=t.EnteredUpperSpacingMm,LeftSlabSpacingMm=t.LeftSlabSpacingMm,RightSlabSpacingMm=t.RightSlabSpacingMm,HasIndividualSpacings=t.HasIndividualSpacings,CrossFormwork=t.CrossFormwork,BeamLoadKn=t.BeamLoadKn,LowerStockStartMm=t.LowerStockStartMm,LowerStockLengthMm=t.LowerStockLengthMm,LeftFootMm=t.LeftFootMm,RightFootMm=t.RightFootMm,LeftUpperStockMm=t.LeftUpperStockMm,RightUpperStockMm=t.RightUpperStockMm,LeftUpperEdgeMm=t.LeftUpperEdgeMm,RightUpperEdgeMm=t.RightUpperEdgeMm,LeftUpperCustom=t.LeftUpperCustom,RightUpperCustom=t.RightUpperCustom,LowerCustom=t.LowerCustom,LeftFootReactionKn=t.LeftFootReactionKn,RightFootReactionKn=t.RightFootReactionKn,SlabMovementMm=t.SlabMovementMm,CoveredSlabAreaM2=t.CoveredSlabAreaM2,SlabLoadKn=t.SlabLoadKn,ShutterLoadKn=t.ShutterLoadKn,PrimaryCases=cases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=t.UpperMembers,CaseNames=names.ToArray()};
                 l.LeftReactions=left;l.RightReactions=right;l.MinimumLeftReactions=minLeft;l.MinimumRightReactions=minRight;l.MaxLegKn=Math.Max(left.Max(),right.Max());
                 var all=cases.Concat(lowerCases).SelectMany(c=>c).Concat(t.UpperMembers).ToArray();
                 l.MomentKnM=all.Max(m=>m.Analysis.MomentKnM);l.ShearKn=all.Max(m=>m.Analysis.ShearKn);l.DeflectionMm=all.Max(m=>m.Analysis.DeflectionMm);l.Utilization=Math.Max(l.MaxLegKn/l.LegCapacityKn,all.Max(m=>m.Utilization));l.Governing=l.MaxLegKn/l.LegCapacityKn>=all.Max(m=>m.Utilization) ? "Leg capacity" : all.OrderByDescending(m=>m.Utilization).First().Name;

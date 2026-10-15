@@ -24,17 +24,24 @@ internal static class EngineerWorkflowTests
         Near(primary.Reactions[0],23.501281015625,"engineer 3300 mm left reaction");Near(primary.Reactions[1],38.3952196614583,"engineer 3300 mm middle reaction");Near(primary.Reactions[2],40.3240618229167,"engineer 3300 mm right reaction");
         Near(primary.MomentKnM,4.573268984375,"engineer 3300 mm bending");Near(primary.ShearKn,21.7900006770833,"engineer 3300 mm shear");
         Check(primary.DeflectionUtilization<=1 && primary.Reactions.Max()<70,"reference member deflection and legs pass");
+        var next=LoadedBeamAnalysis.AnalyzeSigned(3600,new[] {300.0,1300,2300,3300},new[] {new BeamDistributedLoad {StartMm=0,EndMm=325,KnPerM=52.29},new BeamDistributedLoad {StartMm=325,EndMm=3600,KnPerM=28.6475}},new BeamPointLoad[0],TowerOptimizer.PairEI,270);
+        Near(next.MomentKnM,2.67735760183919,"engineer 3600 mm bending");Near(next.ShearKn,15.7119701018392,"engineer 3600 mm shear");Check(next.DeflectionUtilization<=1 && next.Reactions.Max()<70,"reference 3600 mm member passes");
+        var geometryInput=common.CopyForSearch();geometryInput.EngineerPlan=plan;geometryInput.EngineerStationLimit=7;
+        Check(EngineerTowerSearch.StockRunGeometries(new[] {3300.0,3600},geometryInput).Any(g=>g.Positions.SequenceEqual(new[] {400.0,1400,2900,3600,4600,5600,6600}) && g.Joined.SequenceEqual(new[] {true,true,false,true,true,true})),"engineer's complete mixed-brace 3300 + 3600 arrangement is generated");
         var timer=System.Diagnostics.Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,network);
         Console.WriteLine("COMPLETE ENGINEER WORKFLOW seconds="+timer.Elapsed.TotalSeconds);Console.WriteLine(result.LayoutDiagnostics);
         Check(result.CrossSupports.Single().UsesSpreader,"reported model uses the defined spreader load path");
         Check(result.Beams.All(b=>b.SearchInitialLegsPerLine==7),"full-load seed retained in results");
         var crossing=result.CrossSupports.Single();
+        Check(crossing.SecondaryStationsMm.Zip(crossing.SecondaryStationsMm.Skip(1),(a,b)=>b-a).All(g=>g<=350+1e-7 && g>=80-1e-7),"independently refined X1 H20 rows retain plywood/flange limits");
         foreach(var side in crossing.Bearings.GroupBy(b=>b.Beam))
         {
             Check(side.Select(b=>b.Row).Distinct().Count()>=3,"multiple receiver rows participate");
             Check(side.All(b=>b.Xmm>=3025+40-1e-7 && b.Xmm<=3675-40+1e-7 && b.FootprintStartMm>=3025-1e-7 && b.FootprintEndMm<=3675+1e-7),"all spreader transfer stays within 650 mm");
         }
         Near(crossing.Bearings.Sum(b=>b.ReactionKn),crossing.LoadKn,"spreader force conserved");
+        double ledgerMoment=CrossBeamSupportOptimizer.SlabEdgeLoads(result,0).Sum(p=>p.Kn*p.PositionMm)*2.125;
+        Near(crossing.Bearings.Sum(b=>b.ReactionKn*(b.Xmm-3350)),ledgerMoment,"spreader preserves crossing and ledger longitudinal first moment");
         foreach(var beam in result.Beams)
         {
             Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r<=70+1e-8),"all final leg reactions pass");
