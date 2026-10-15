@@ -823,7 +823,9 @@ namespace EngineeringDashboard
         // of the same tower width when the end-zone loads are added later.
         internal static bool CheckJunctionReceiver(TowerInput common,TransferNetworkInput network,int beam,TowerLayout layout)
             =>CheckJunctionReceiver(common,network,beam,layout,200) || common.AllowLocalShutterExceptions && CheckJunctionReceiver(common,network,beam,layout,175);
-        private static bool CheckJunctionReceiver(TowerInput common,TransferNetworkInput network,int beam,TowerLayout layout,double shutterWidth)
+        internal static bool CheckJunctionLowerReceiver(TowerInput common,TransferNetworkInput network,int beam,TowerLayout layout)
+            =>CheckJunctionReceiver(common,network,beam,layout,200,true) || common.AllowLocalShutterExceptions && CheckJunctionReceiver(common,network,beam,layout,175,true);
+        private static bool CheckJunctionReceiver(TowerInput common,TransferNetworkInput network,int beam,TowerLayout layout,double shutterWidth,bool lowerOnly=false)
         {
             var supports=new List<CrossBeamSupportResult>();var input=network.Beams[beam];var t=layout.Transfer;
             for(int index=0;index<network.CrossingBeams.Length;index++)
@@ -844,9 +846,9 @@ namespace EngineeringDashboard
             }
             if(supports.Count==0)return true;
             var local=new TransferNetworkResult {Input=new TransferNetworkInput {Beams=new[] {input}},Beams=new[] {layout},BeamCentresMm=new[] {0.0}};
-            return Recheck(common,local,new[] {layout},supports.ToArray());
+            return Recheck(common,local,new[] {layout},supports.ToArray(),lowerOnly);
         }
-        private static bool Recheck(TowerInput common,TransferNetworkResult r,TowerLayout[] originals,CrossBeamSupportResult[] supports)
+        private static bool Recheck(TowerInput common,TransferNetworkResult r,TowerLayout[] originals,CrossBeamSupportResult[] supports,bool lowerOnly=false)
         {
             var shared=supports.Where(s=>s.Bearings.Any(b=>b.Beam>=0)).ToArray();
             r.Beams=originals.Select(Copy).ToArray();
@@ -901,6 +903,7 @@ namespace EngineeringDashboard
                         }
                         if(!lowerPassed)return false;
                     }
+                    if(lowerOnly)continue;
                     var primary=new TransferMember[runs*2];
                     for(int line=0;line<2;line++)for(int run=0;run<runs;run++)
                     {
@@ -931,6 +934,7 @@ namespace EngineeringDashboard
                     names.Add(name);cases.Add(primary);lowerCases.Add(lower);
                     if(t.ColumnSupportLoads.Length>0)columnLoads.Add(t.ColumnSupportLoads[stage].Select(x=>new ColumnEndStripLoad {LoadCase=name,End=x.End,StartMm=x.StartMm,EndMm=x.EndMm,LeftLineKn=x.LeftLineKn,RightLineKn=x.RightLineKn,LeftLineMomentKnM=x.LeftLineMomentKnM,RightLineMomentKnM=x.RightLineMomentKnM}).ToArray());
                 }
+                if(lowerOnly)continue;
                 l.Transfer=new TransferredSlabResult {UnitLowerCases=t.UnitLowerCases,UnitPointLabels=t.UnitPointLabels,SlabSupportStartMm=t.SlabSupportStartMm,SlabSupportEndMm=t.SlabSupportEndMm,ColumnSupportLoads=columnLoads.ToArray(),FullLoadingOnly=t.FullLoadingOnly,RowsMm=t.RowsMm,SlabRowIndices=t.SlabRowIndices,TributaryWidthsMm=t.TributaryWidthsMm,LeftUpperScales=t.LeftUpperScales,RightUpperScales=t.RightUpperScales,EnteredUpperSpacingMm=t.EnteredUpperSpacingMm,LeftSlabSpacingMm=t.LeftSlabSpacingMm,RightSlabSpacingMm=t.RightSlabSpacingMm,HasIndividualSpacings=t.HasIndividualSpacings,CrossFormwork=t.CrossFormwork,BeamLoadKn=t.BeamLoadKn,LowerStockStartMm=t.LowerStockStartMm,LowerStockLengthMm=t.LowerStockLengthMm,LeftFootMm=t.LeftFootMm,RightFootMm=t.RightFootMm,LeftUpperStockMm=t.LeftUpperStockMm,RightUpperStockMm=t.RightUpperStockMm,LeftUpperEdgeMm=t.LeftUpperEdgeMm,RightUpperEdgeMm=t.RightUpperEdgeMm,LeftUpperCustom=t.LeftUpperCustom,RightUpperCustom=t.RightUpperCustom,LowerCustom=t.LowerCustom,LeftFootReactionKn=t.LeftFootReactionKn,RightFootReactionKn=t.RightFootReactionKn,SlabMovementMm=t.SlabMovementMm,CoveredSlabAreaM2=t.CoveredSlabAreaM2,SlabLoadKn=t.SlabLoadKn,ShutterLoadKn=t.ShutterLoadKn,PrimaryCases=cases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=t.UpperMembers,CaseNames=names.ToArray()};
                 l.LeftReactions=left;l.RightReactions=right;l.MinimumLeftReactions=minLeft;l.MinimumRightReactions=minRight;l.MaxLegKn=Math.Max(left.Max(),right.Max());
                 var all=cases.Concat(lowerCases).SelectMany(c=>c).Concat(t.UpperMembers).ToArray();

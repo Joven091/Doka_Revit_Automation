@@ -219,7 +219,7 @@ namespace EngineeringDashboard
         // Production uses the engineer search; old numerical fixtures can replay stock-first enumeration.
         internal bool EngineerSearch;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
-        internal Func<TowerLayout,bool> TransferLayoutAcceptance;
+        internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
         internal double ReceiverTransverseOffsetMm;
         internal BeamSearchTrace Trace;
         // Tests can replay the original search without reuse; production searches reuse work.

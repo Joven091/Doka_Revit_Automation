@@ -208,7 +208,8 @@ namespace EngineeringDashboard
             public double Start, Stock; public Upper Left, Right; public LoadedBeamAnalysis[] Cases; public string[] Names;
             public TransferMember[] UnitMembers;public string[][] UnitPointLabels;
             // Only the latest grid is retained, keeping memory bounded in single-beam searches.
-            public string RowKey;
+            public string RowKey,JunctionLowerKey;
+            public bool JunctionLowerPassed;
             public int[] DesignCases;
             public TransferMember[][] LowerByCase;
             public bool[] LowerCaseComputed;
@@ -1187,6 +1188,18 @@ namespace EngineeringDashboard
             widths[last-1]+=edge-rightLast;widths[last]+=rightLast;
             return widths;
         }
+        private static bool AcceptJunctionLower(TowerInput input,CrossOption cross,double width,RowGrid grid,double edge)
+        {
+            if(input.TransferLowerAcceptance==null)return true;
+            if(cross.JunctionLowerKey==grid.Key)return cross.JunctionLowerPassed;
+            cross.JunctionLowerKey=grid.Key;cross.JunctionLowerPassed=false;
+            var lower=cross.DesignCases.Select(c=>LowerCase(input,cross,width,grid,edge,c)).ToArray();
+            if(lower.Any(c=>c==null))return false;
+            var probe=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,WidthMm=width,LengthMm=input.LengthMm,
+                StockPlan=new TowerStockPlan {Pieces=new TowerStockPiece[0]},
+                Transfer=new TransferredSlabResult {RowsMm=grid.Rows.Select(x=>x+edge).ToArray(),LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,CaseNames=cross.DesignCases.Select(c=>cross.Names[c]).ToArray(),LowerCases=lower}};
+            return cross.JunctionLowerPassed=input.TransferLowerAcceptance(OffsetReceiver(input,probe));
+        }
         private static bool NecessaryPrimarySpans(TowerInput input,Geometry geometry,CrossOption cross,double edge,int stage)
         {
             // Between supports, a constant UDL changes shear by qL and needs a
@@ -1219,6 +1232,7 @@ namespace EngineeringDashboard
         private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,Dictionary<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent)
         {
             if(!input.DeferTransferLayout)return EvaluateReference(input,g,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared);
+            if(input.EngineerSearch && !AcceptJunctionLower(input,cross,width,grid,edge))return null;
             var rows=grid.Rows;var trib=grid.Tributaries;var ls=grid.LeftScales;var rs=grid.RightScales;
             if(ls.Length!=rows.Length || rs.Length!=rows.Length)throw new ArgumentException("Crossing beam row loads do not match the support rows.");
             if(cross.Left!=null && !Pass(input,cross.Left.Analysis,Math.Max(ls.Max(),input.TransferredSlab.SlabSpacing(true)/1000),1,input.Diagnostics,input.DiagnosticScope+"Left slab H20",1,()=> $"governing row T{Array.IndexOf(ls,ls.Max())+1} · stock {cross.Left.Stock:0} mm") || cross.Right!=null && !Pass(input,cross.Right.Analysis,Math.Max(rs.Max(),input.TransferredSlab.SlabSpacing(false)/1000),1,input.Diagnostics,input.DiagnosticScope+"Right slab H20",1,()=> $"governing row T{Array.IndexOf(rs,rs.Max())+1} · stock {cross.Right.Stock:0} mm"))return null;
@@ -1331,6 +1345,7 @@ namespace EngineeringDashboard
         }
         private static TowerLayout EvaluateReference(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,Dictionary<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared)
         {
+            if(input.EngineerSearch && !AcceptJunctionLower(input,cross,width,grid,edge))return null;
             var rows=grid.Rows;var trib=grid.Tributaries;var ls=grid.LeftScales;var rs=grid.RightScales;
             if(ls.Length!=rows.Length || rs.Length!=rows.Length)throw new ArgumentException("Crossing beam row loads do not match the support rows.");
             if(cross.Left!=null && !Pass(input,cross.Left.Analysis,Math.Max(ls.Max(),input.TransferredSlab.SlabSpacing(true)/1000),1,input.Diagnostics,input.DiagnosticScope+"Left slab H20",1,()=> $"governing row T{Array.IndexOf(ls,ls.Max())+1} · stock {cross.Left.Stock:0} mm") || cross.Right!=null && !Pass(input,cross.Right.Analysis,Math.Max(rs.Max(),input.TransferredSlab.SlabSpacing(false)/1000),1,input.Diagnostics,input.DiagnosticScope+"Right slab H20",1,()=> $"governing row T{Array.IndexOf(rs,rs.Max())+1} · stock {cross.Right.Stock:0} mm"))return null;
