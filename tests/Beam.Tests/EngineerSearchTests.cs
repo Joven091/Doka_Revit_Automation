@@ -34,12 +34,17 @@ internal static class EngineerSearchTests
         var combined=new TowerLayout {EngineerSearch=true,PositionsMm=new[] {0.0,1500,3000,3500,5000,6500},Joined=new[] {true,true,false,true,true},WidthMm=1524};
         Check(TowerOptimizer.CompareBracePreference(loose,combined)<0,"separate towers rank first at equal leg count");
         Check(EngineerTowerSearch.BracePenalty(new[] {0.0,1500},new[] {true},1524,false)<EngineerTowerSearch.BracePenalty(new[] {0.0,1000},new[] {true},1524,false),"1500 mm preferred over 1000 mm");
+        foreach(var material in new[] {PrimaryBeamMaterial.DoubleH20,PrimaryBeamMaterial.WS10})
+        {
+            var beam=TowerOptimizer.Optimize(new TowerInput {EngineerSearch=true,LengthMm=2450,TotalLineLoad=20,PrimaryMaterial=material,LegCapacityKn=15,DeflectionDenominator=270,StockLengthsMm=new[] {2450.0},MaximumConcreteEndOverhangMm=100});
+            Check(beam.EngineerSearch && beam.MaxLegKn<=15+1e-8 && beam.Utilization<=1+1e-8,"actual lower leg capacity is checked for both materials");
+        }
         Reported();
     }
     static void Reported()
     {
         var common=new TowerInput {FullLoadingOnly=true,EngineerSearch=true,LengthMm=7000,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=150,Exclude600Standalone=true,DeflectionDenominator=270,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.SlabSupports};
-        var network=new TransferNetworkInput {PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm,BeamSpacingsMm=Enumerable.Repeat(305.0,4).ToArray(),SlabSpacingsMm=Enumerable.Repeat(488.0,3).ToArray(),CrossingSpacingsMm=new double[0],UpperSpacingMm=305,
+        var network=new TransferNetworkInput {PlywoodProfileId=PlywoodCatalog.Default.Id,PlywoodDeflectionDenominator=350,PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm,BeamSpacingsMm=Enumerable.Repeat(305.0,4).ToArray(),SlabSpacingsMm=Enumerable.Repeat(488.0,3).ToArray(),CrossingSpacingsMm=new double[0],UpperSpacingMm=305,
             Beams=Enumerable.Range(0,4).Select(i=>new TransferBeamRow {WidthMm=800,DepthMm=1750,BottomElevationMm=-1750}).ToArray(),
             Bays=new[] {new TransferBayRow {WidthMm=2125,ThicknessMm=300},new TransferBayRow {WidthMm=2500,ThicknessMm=200},new TransferBayRow {WidthMm=2000,ThicknessMm=200}}};
         var timer=System.Diagnostics.Stopwatch.StartNew();

@@ -473,27 +473,26 @@ namespace EngineeringDashboard
         {
             TowerLayout best=null;int tested=0;
             var covers=TransferredSlabOptimizer.StockCovers(input);
-            double heavy=input.TotalLineLoad/2+Math.Abs(input.TransverseLoadMoment)/1.0;
-            int initial=EngineerTowerSearch.InitialLegs(input,heavy*input.LengthMm/1000);
-            var work=covers.SelectMany(c=>new[] {false,true}.SelectMany(rotated=>EngineerTowerSearch.Geometries(c,rotated,input).Select(g=>Tuple.Create(c,rotated,g))));
-            foreach(var item in work.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Item3.Positions.Length,initial)).ThenBy(w=>w.Item3.Joined.Count(j=>j)))
+            Func<double[],double,int> estimate=(stocks,width)=>EngineerTowerSearch.InitialLegs(input,
+                (input.TotalLineLoad/2+Math.Abs(input.TransverseLoadMoment)/(width/1000))*input.LengthMm/1000
+                +stocks.Sum(stock=>input.Primary.SelfWeightKnM(stock)*stock/1000));
+            int initial=estimate(new double[0],1524);
+            var work=covers.SelectMany(c=>new[] {false,true}.SelectMany(rotated=>EngineerTowerSearch.Geometries(c,rotated,input)
+                .SelectMany(g=>(rotated ? BaysMm : new[] {1524.0}).Where(width=>!rotated || !input.Exclude600Standalone || width!=600)
+                    .Select(width=>Tuple.Create(c,rotated,g,width,estimate(c,width))))));
+            foreach(var item in work.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Item3.Positions.Length,w.Item5)).ThenBy(w=>w.Item3.Joined.Count(j=>j)))
             {
                 input.Trace?.CheckCancellation();var g=item.Item3;
                 if(best!=null && g.Positions.Length>best.PositionsMm.Length)continue;
                 double edge=(input.LengthMm-item.Item1.Sum())/2;
                 var worker=input.CopyForSearch();worker.EngineerSearch=false;worker.LengthMm=item.Item1.Sum();
                 // Reuse the existing exact member/stock checker at the proposed positions.
-                var positions=g.Positions;
-                foreach(double width in item.Item2 ? BaysMm : new[] {1524.0})
-                {
-                    if(item.Item2 && input.Exclude600Standalone && width==600)continue;
-                    var candidate=Evaluate(worker,positions,g.Joined,width,item.Item2);tested++;
-                    if(candidate==null)continue;
-                    candidate.PositionsMm=candidate.PositionsMm.Select(x=>x+edge).ToArray();foreach(var piece in candidate.StockPlan.Pieces)piece.StartMm+=edge;candidate.LengthMm=input.LengthMm;candidate.ConcreteEndOverhangMm=edge;
-                    candidate.EngineerSearch=true;candidate.SearchAssumedLegKn=EngineerTowerSearch.AssumedLegKn(input);
-                    candidate.SearchInitialLegsPerLine=EngineerTowerSearch.InitialLegs(input,Math.Max(candidate.LeftLineLoad,candidate.RightLineLoad)*input.LengthMm/1000);
-                    if(best==null || Better(candidate,best))best=candidate;
-                }
+                var candidate=Evaluate(worker,g.Positions,g.Joined,item.Item4,item.Item2);tested++;
+                if(candidate==null)continue;
+                candidate.PositionsMm=candidate.PositionsMm.Select(x=>x+edge).ToArray();foreach(var piece in candidate.StockPlan.Pieces)piece.StartMm+=edge;
+                candidate.LengthMm=input.LengthMm;candidate.ConcreteEndOverhangMm=edge;candidate.EngineerSearch=true;
+                candidate.SearchAssumedLegKn=EngineerTowerSearch.AssumedLegKn(input);candidate.SearchInitialLegsPerLine=item.Item5;
+                if(best==null || Better(candidate,best))best=candidate;
             }
             if(best==null){var replay=input.CopyForSearch();replay.EngineerSearch=false;best=OptimizeCore(replay);best.EngineerSearch=true;best.SearchAssumedLegKn=EngineerTowerSearch.AssumedLegKn(input);best.SearchInitialLegsPerLine=initial;}
             best.Tested=tested;return best;
