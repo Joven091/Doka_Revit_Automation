@@ -52,7 +52,7 @@ internal static class Program
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));
    if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    if(args.Contains("--drawing-ui")){D3WorkspaceUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));PresentationUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));DimensionLaneUiTests.Run();return 0;}
-   window=new BeamCalculatorWindow();vm=new BeamCalculatorViewModel();window.DataContext=vm;Render();
+   window=new BeamCalculatorWindow();vm=new BeamCalculatorViewModel {ReplayConstructionStages=true};window.DataContext=vm;Render();
    var secondaryText=(TextBlock)window.FindName("SecondarySpacingText");
    Check(secondaryText.Text=="407 mm" && !secondaryText.Text.Contains("chart"),"secondary result is bound to shared plywood model");
    var import=(Button)window.FindName("ImportButton");var results=(Border)window.FindName("ResultsBorder");var diagram=(BeamSupportDiagram)window.FindName("SupportDiagram");

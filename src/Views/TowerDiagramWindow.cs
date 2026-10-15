@@ -159,13 +159,15 @@ namespace EngineeringDashboard
             charts.Children.Clear();
             LoadCaseSelector=null;
             if(networkLayout)AddSystemStage();
-            if(!upper)
+            if(!upper && t.FullLoadingOnly)
+                charts.Children.Add(new TextBlock {Text="Load case: "+CaseLabel(t.CaseNames[SelectedLoadCase]),Margin=new Thickness(0,8,0,8)});
+            else if(!upper)
             {
                 var choices=new DockPanel {Margin=new Thickness(0,8,0,8)};
                 var label=new TextBlock {Text="Load case",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)};DockPanel.SetDock(label,Dock.Left);choices.Children.Add(label);
                 var selector=new ComboBox {MinWidth=250,HorizontalAlignment=HorizontalAlignment.Stretch,ToolTip="Choose a checked system loading stage. The system governing stage has the highest average of bending, shear, deflection and leg-load category maxima."};
                 for(int c=0;c<t.CaseNames.Length;c++)
-                    selector.Items.Add(new ComboBoxItem {Content=CaseLabel(t.CaseNames[c])+(c==governing ? " · system governing" : ""),Tag=c});
+                    selector.Items.Add(new ComboBoxItem {Content=CaseLabel(t.CaseNames[c])+(t.FullLoadingOnly ? " · fully loaded" : c==governing ? " · system governing" : ""),Tag=c});
                 selector.SelectedIndex=SelectedLoadCase;
                 selector.SelectionChanged+=(s,e)=> {if(selector.SelectedIndex<0 || selector.SelectedIndex==SelectedLoadCase)return;bool focused=selector.IsKeyboardFocusWithin;SelectedLoadCase=selector.SelectedIndex;if(networkLayout)network.DisplayStage=SystemLoadingStage.Select(network,network.DisplayStage,networkBeam-1,SelectedLoadCase);RefreshTransfer();if(focused)Dispatcher.BeginInvoke(new Action(()=>LoadCaseSelector?.Focus()));};
                 LoadCaseSelector=selector;choices.Children.Add(selector);
@@ -213,7 +215,7 @@ namespace EngineeringDashboard
         private void AddSystemStage()
         {
             var stage=network.DisplayStage;
-            charts.Children.Add(new TextBlock {Text=$"System stage: {stage.Name} · score {stage.Score*100:0.0}%",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,4,0,4)});
+            charts.Children.Add(new TextBlock {Text=$"{(network.Beams.All(b=>b.Transfer.FullLoadingOnly) ? "Fully loaded" : "System stage")}: {stage.Name} · score {stage.Score*100:0.0}%",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,4,0,4)});
         }
         private static TransferMember ScaleDisplay(TransferMember m,double scale)=>new TransferMember {Name=m.Name,LoadCase=m.LoadCase,H20Count=m.H20Count,PrimaryMaterial=m.PrimaryMaterial,StartMm=m.StartMm,LengthMm=m.LengthMm,SupportsMm=m.SupportsMm,
             Uniform=m.Uniform.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM*scale}).ToArray(),Points=m.Points.Select(p=>new BeamPointLoad {PositionMm=p.PositionMm,Kn=p.Kn*scale}).ToArray(),Analysis=m.Analysis.Scale(scale)};

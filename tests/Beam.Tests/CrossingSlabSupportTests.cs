@@ -84,15 +84,16 @@ internal static class CrossingSlabSupportTests
             Check(ex.Details.Contains("deflection") && !ex.Details.Contains("slab cross exclusion"),"original stock scope reaches a member limit rather than the former row-exclusion gap");
             Console.WriteLine("Original reported stock scope rejected: "+ex.Message);
         }
-        common.LegCapacityKn=30;
+        common.LegCapacityKn=30;common.FullLoadingOnly=true;
         var current=TransferNetworkOptimizer.Optimize(common,Input());
+        Check(current.Beams.All(b=>b.Transfer.FullLoadingOnly && b.Transfer.CaseNames.Length==1 && b.Transfer.CaseNames[0].Contains("slab") && b.Transfer.CaseNames[0].Contains("X1")),"reported production setup checks only beam plus slab plus crossing");
         Check(current.PeakLegKn<=30+1e-7 && current.Beams.All(b=>b.Utilization<=1+1e-8),"reported 30 kN leg limit passes with flat UDL and shutter end strips");
         var stage=current.SystemGoverningStage;
         Check(stage.Score>0 && stage.BeamCases.Length==2,"reported layout has a complete system governing stage");
         foreach(var beam in current.Beams)foreach(var cases in beam.Transfer.PrimaryCases)foreach(var member in cases)
         {Check(member.Points.Length==0 && member.Utilization<=1+1e-8 && member.Analysis.Reactions.All(q=>q<=30+1e-7),"every reported primary construction stage still passes individually");}
         Console.WriteLine($"Reported 30 kN setup: {current.LegCount} legs; system stage {stage.Name}; score {stage.Score*100:0.###}%; peak leg {current.PeakLegKn:0.###} kN.");
-        common.LegCapacityKn=70;
+        common.LegCapacityKn=70;common.FullLoadingOnly=false;
         // A separate passing fixture permits fitted receiving H20 stock; production never changes the user's scope.
         common.CustomH20Scope=CustomH20LengthScope.Both;
         var result=TransferNetworkOptimizer.Optimize(common,Input());

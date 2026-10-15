@@ -113,6 +113,7 @@ namespace EngineeringDashboard
     {
         internal TransferredSlabResult Copy() => (TransferredSlabResult)MemberwiseClone();
         public double[] RowsMm, TributaryWidthsMm;
+        public bool FullLoadingOnly;
         // Physical setting-out can move/add beam-only bearers. Design rows and nominal loads stay fixed.
         public double[] SettingOutRowsMm;
         public int[] SettingOutDesignRows;
@@ -182,7 +183,7 @@ namespace EngineeringDashboard
             + (RightUpperStockMm > 0 ? $"\nRight slab H20: 1 × {RightUpperStockMm:0} mm{(RightUpperCustom ? " custom" : "")} per row · edge {RightUpperEdgeMm:0} mm · equal foot setback {RightFootMm:0.###} mm at both faces" : "")
             + $"\nSlab H20 covered area: {CoveredSlabAreaM2:0.00} m² · physical slab reference including external end supports: {SlabLoadKn:0.00} kN (including shutter {ShutterLoadKn:0.00} kN at 100 mm outward from each beam face)\nLoad cases: {string.Join("; ", CaseNames)}\n"
             + string.Join("\n", PrimaryCases.SelectMany(x => x).Concat(LowerCases.SelectMany(x => x)).Concat(UpperMembers).Select(m => $"{m.Name} · {m.LoadCase}: M {m.Analysis.MomentKnM:0.00}/{m.MomentLimitKnM:0.##} kNm · V {m.Analysis.ShearKn:0.00}/{m.ShearLimitKn:0.##} kN · d {m.Analysis.DeflectionMm:0.00} mm · minimum signed reaction {m.MinimumReactionKn:0.######} kN · utilization {m.Utilization*100:0.0}%"+(m.SubsetDeflectionBound>0 ? $" · all-subset bounds M {m.SubsetMomentBoundKnM:0.###} kNm, V {m.SubsetShearBoundKn:0.###} kN, d-utilization {m.SubsetDeflectionBound*100:0.0}%" : "")));
-        public const string Assumptions = "Slab load transfers through single slab H20s and vertical upper feet, single lower secondary H20s and selected longitudinal primaries to tower legs. The upper assembly has no D3 geometry. Beam concrete is present before slab loading; beam-only, each one-sided slab stage and combined stages are checked. The slab area over upper H20 stock loads that stock; each 200–350 mm slab-edge strip loads its own side shutter, acting 100 mm outward from the adjacent beam face. These edge loads are additional to the upper-foot loads. Slab above the concrete beam width is not counted again. Main-primary beam and slab UDL intensities are unadjusted over their intended covered region. Uncovered longitudinal end-strip loads are assigned to external column-side supports, whose capacity requires separate verification. Slab-secondary longitudinal strips outside shared coverage are assigned to assumed external supports; in-coverage tributaries, genuine crossing loads and transverse cantilevers remain checked. Local beam-only rows add no slab feet or slab tributary. Dedicated crossing formwork includes the full concrete span, including end strips, using a UDL scaled over centred primary stock coverage; secondary end-zone sheathing influences remain explicitly calculated. Each slab H20 is one length with no upper joints. Single-beam transfer mode retains its legacy upper-length fallback: if no catalogue length fits 200–350 mm edge strips, a custom upper length is rounded down to a multiple of 25 mm, keeping each edge closest to 200 mm. Network mode respects the custom-length setting for upper, lower and primary H20s. If full catalogue network transfer fails, separately supported slab bays may be excluded from transfer; the search minimizes their number before ranking calculated supports/timber. Their slab, shutter and crossing-beam loads do not reach the calculated beams, and their formwork design and quantities are excluded and expressly identified. WS10 primary lengths always use uncut catalogue stock. H20 primary and lower secondary lengths use catalogue stock unless custom H20 lengths are enabled; additional lengths are multiples of 25 mm. The custom primary cover search adds bounded balanced runs and small joint shifts. The original stock-only solution is retained when it ranks better. Feet have at least 250 mm face-to-centre clearance and 150 mm inset from the upper stock end. The network uses 2–15 actual parallel beams, each with its own width/depth, and one slab bay between neighbours. Slab H20 stock is centred and its feet have equal setbacks from both concrete faces, giving equal overhangs; this arrangement repeats at every row in a bay. Uniform slab loading gives equal reactions at the two slab feet. Actual receiving-secondary, primary and tower-leg reactions can differ and are checked individually for every construction stage. Each lower beam is independently checked against the entered permissible leg load, and negative bearing reactions invalidate a candidate. Shared slab coverage and support rows align upper supports across all beams. Each beam can use longer primary coverage; its end rows carry the actual extra beam-concrete tributary load. In explicit Legacy slab rows mode, optional perpendicular beams span one clear slab bay and transfer through the existing slab H20s and shutter-edge strips during that bay loading stage. The existing slab row load is retained once; the additional crossing-beam concrete and surcharge are assigned only to H20 rows physically beneath that footprint, using midpoint tributaries between those rows. The added area load is the crossing beam total-depth load minus the existing slab-thickness load; concrete, formwork and working allowances are not counted twice. Crossing beam footprints must lie within longitudinal H20 coverage and cannot overlap within a bay. Legacy bearing and level-change details are outside the legacy load-transfer model. Modern cross-beam formwork has separately reported elevation, bearing and support checks. Two-support upper/lower bearers are statically determinate; different lower-foot movements add an affine displacement to the upper beam. Single-beam mode retains the mirrored opposite-beam assumption; network mode uses both actual beam responses. Slab and lower secondary H20 limits are M=5 kNm, V=11 kN and EI=449.8756 kNm². Double-H20 longitudinal primary limits are M=10 kNm, V=22 kN and EI=899.7512 kNm², assuming equal load sharing. The selected primary material basis defines WS10 checks and catalogue restrictions. Longitudinal primaries use distributed design loads derived from the per-metre beam and slab reactions, independent of exact secondary row positions. Beam-concrete UDL covers primary stock; network slab UDL uses its unadjusted intensity over the intersection of primary and shared slab support coverage. Physical loads outside either supported region are assigned once to unverified external column-side supports. Crossing increments retain their actual footprints. Slab and lower-secondary design reactions use at least the full entered spacing, including end rows. Covered-area totals remain physical reference quantities; design loads can exceed them. Additional crossing-beam load remains distributed over its physical footprint, rather than averaged over the whole beam. Primary moment, shear, deflection and tower-leg checks, diagrams and reported utilization all use this same UDL model. Secondary maximum spacing and bearing details still require site control. Relative H20 deflection uses each support span/overhang; total slab movement is reported without an assumed project tolerance. Transfer/network search uses relative economic weights for tower legs, upper feet and material length separately, then brace preference and symmetry, counting shared upper timber once. Search candidates are bounded; a global optimum is not proven. Dedicated crossing junctions use receiving H20s directly at matching soffits; a deeper parallel beam carries each crossing-end strip through its existing side shutter at the midpoint of its selected width (normally 200 mm / 100 mm offset; locally 175 mm / 87.5 mm offset only after the standard detail fails). These loads are included in receiving secondary, primary and individual tower-leg stage checks. Crossing primary stock ends retain their selected local 200 mm or exceptional 175 mm allowances from the parallel concrete faces; exceptions are identified in the schedule and plan. Plans show towers and primary stock lengths; a toggle shows single secondaries, which are also shown in section with stock length and spacing. Sheathing, shutter/connection strength, bearing, upper-support capacity/stability, lower tower stability and foundations require separate design. Doka H20 instructions restrict heavy point loads with wide spans; numeric member checks alone do not approve foot or shutter bearing details.";
+        public const string Assumptions = "Slab load transfers through single slab H20s and vertical upper feet, single lower secondary H20s and selected longitudinal primaries to tower legs. The upper assembly has no D3 geometry. Production checks the fully loaded beam, connected slabs and applicable crossings together. Partial construction stages are outside this result. The slab area over upper H20 stock loads that stock; each 200–350 mm slab-edge strip loads its own side shutter, acting 100 mm outward from the adjacent beam face. These edge loads are additional to the upper-foot loads. Slab above the concrete beam width is not counted again. Main-primary beam and slab UDL intensities are unadjusted over their intended covered region. Uncovered longitudinal end-strip loads are assigned to external column-side supports, whose capacity requires separate verification. Slab-secondary longitudinal strips outside shared coverage are assigned to assumed external supports; in-coverage tributaries, genuine crossing loads and transverse cantilevers remain checked. Local beam-only rows add no slab feet or slab tributary. Dedicated crossing formwork includes the full concrete span, including end strips, using a UDL scaled over centred primary stock coverage; secondary end-zone sheathing influences remain explicitly calculated. Each slab H20 is one length with no upper joints. Single-beam transfer mode retains its legacy upper-length fallback: if no catalogue length fits 200–350 mm edge strips, a custom upper length is rounded down to a multiple of 25 mm, keeping each edge closest to 200 mm. Network mode respects the custom-length setting for upper, lower and primary H20s. If full catalogue network transfer fails, separately supported slab bays may be excluded from transfer; the search minimizes their number before ranking calculated supports/timber. Their slab, shutter and crossing-beam loads do not reach the calculated beams, and their formwork design and quantities are excluded and expressly identified. WS10 primary lengths always use uncut catalogue stock. H20 primary and lower secondary lengths use catalogue stock unless custom H20 lengths are enabled; additional lengths are multiples of 25 mm. The custom primary cover search adds bounded balanced runs and small joint shifts. The original stock-only solution is retained when it ranks better. Feet have at least 250 mm face-to-centre clearance and 150 mm inset from the upper stock end. The network uses 2–15 actual parallel beams, each with its own width/depth, and one slab bay between neighbours. Slab H20 stock is centred and its feet have equal setbacks from both concrete faces, giving equal overhangs; this arrangement repeats at every row in a bay. Uniform slab loading gives equal reactions at the two slab feet. Actual receiving-secondary, primary and tower-leg reactions can differ and are checked individually for every construction stage. Each lower beam is independently checked against the entered permissible leg load, and negative bearing reactions invalidate a candidate. Shared slab coverage and support rows align upper supports across all beams. Each beam can use longer primary coverage; its end rows carry the actual extra beam-concrete tributary load. In explicit Legacy slab rows mode, optional perpendicular beams span one clear slab bay and transfer through the existing slab H20s and shutter-edge strips during that bay loading stage. The existing slab row load is retained once; the additional crossing-beam concrete and surcharge are assigned only to H20 rows physically beneath that footprint, using midpoint tributaries between those rows. The added area load is the crossing beam total-depth load minus the existing slab-thickness load; concrete, formwork and working allowances are not counted twice. Crossing beam footprints must lie within longitudinal H20 coverage and cannot overlap within a bay. Legacy bearing and level-change details are outside the legacy load-transfer model. Modern cross-beam formwork has separately reported elevation, bearing and support checks. Two-support upper/lower bearers are statically determinate; different lower-foot movements add an affine displacement to the upper beam. Single-beam mode retains the mirrored opposite-beam assumption; network mode uses both actual beam responses. Slab and lower secondary H20 limits are M=5 kNm, V=11 kN and EI=449.8756 kNm². Double-H20 longitudinal primary limits are M=10 kNm, V=22 kN and EI=899.7512 kNm², assuming equal load sharing. The selected primary material basis defines WS10 checks and catalogue restrictions. Longitudinal primaries use distributed design loads derived from the per-metre beam and slab reactions, independent of exact secondary row positions. Beam-concrete UDL covers primary stock; network slab UDL uses its unadjusted intensity over the intersection of primary and shared slab support coverage. Physical loads outside either supported region are assigned once to unverified external column-side supports. Crossing increments retain their actual footprints. Slab and lower-secondary design reactions use at least the full entered spacing, including end rows. Covered-area totals remain physical reference quantities; design loads can exceed them. Additional crossing-beam load remains distributed over its physical footprint, rather than averaged over the whole beam. Primary moment, shear, deflection and tower-leg checks, diagrams and reported utilization all use this same UDL model. Secondary maximum spacing and bearing details still require site control. Relative H20 deflection uses each support span/overhang; total slab movement is reported without an assumed project tolerance. Transfer/network search uses relative economic weights for tower legs, upper feet and material length separately, then brace preference and symmetry, counting shared upper timber once. Search candidates are bounded; a global optimum is not proven. Dedicated crossing junctions use receiving H20s directly at matching soffits; a deeper parallel beam carries each crossing-end strip through its existing side shutter at the midpoint of its selected width (normally 200 mm / 100 mm offset; locally 175 mm / 87.5 mm offset only after the standard detail fails). These loads are included in receiving secondary, primary and individual tower-leg stage checks. Crossing primary stock ends retain their selected local 200 mm or exceptional 175 mm allowances from the parallel concrete faces; exceptions are identified in the schedule and plan. Plans show towers and primary stock lengths; a toggle shows single secondaries, which are also shown in section with stock length and spacing. Sheathing, shutter/connection strength, bearing, upper-support capacity/stability, lower tower stability and foundations require separate design. Doka H20 instructions restrict heavy point loads with wide spans; numeric member checks alone do not approve foot or shutter bearing details.";
     }
     /// <summary>Transverse force transfer with continuous distributed primary design loads.</summary>
     public static class TransferredSlabOptimizer
@@ -206,6 +207,7 @@ namespace EngineeringDashboard
             public TransferMember[] UnitMembers;public string[][] UnitPointLabels;
             // Only the latest grid is retained, keeping memory bounded in single-beam searches.
             public string RowKey;
+            public int[] DesignCases;
             public TransferMember[][] LowerByCase;
             public bool[] LowerCaseComputed;
             // Transverse response depends on the load case and three exact tributaries,
@@ -308,15 +310,16 @@ namespace EngineeringDashboard
         {
             private readonly double length;
             private readonly int uniformCount;
+            private readonly bool deferred;
             private readonly double[] supports;
             private readonly double[] positions,forces;
             private readonly int hash;
-            internal PrimaryKey(double length,double[] supports,double[] positions,double[] forces,int uniformCount=-1)
+            internal PrimaryKey(double length,double[] supports,double[] positions,double[] forces,int uniformCount=-1,bool deferred=false)
             {
-                this.length=length;this.supports=supports;this.positions=positions;this.forces=forces;this.uniformCount=uniformCount;
+                this.length=length;this.supports=supports;this.positions=positions;this.forces=forces;this.uniformCount=uniformCount;this.deferred=deferred;
                 unchecked
                 {
-                    int h=length.GetHashCode()*31+uniformCount;
+                    int h=(length.GetHashCode()*31+uniformCount)*31+(deferred ? 1 : 0);
                     for(int i=0;i<supports.Length;i++)h=h*31+supports[i].GetHashCode();
                     for(int i=0;i<positions.Length;i++) {h=h*31+positions[i].GetHashCode();h=h*31+forces[i].GetHashCode();}
                     hash=h;
@@ -324,13 +327,13 @@ namespace EngineeringDashboard
             }
             internal PrimaryKey(double length,double[] supports,BeamDistributedLoad[] uniform)
                 :this(length,supports,uniform,new BeamPointLoad[0]) {}
-            internal PrimaryKey(double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points)
-                :this(length,supports,uniform.SelectMany(q=>new[] {q.StartMm,q.EndMm}).Concat(points.Select(p=>p.PositionMm)).ToArray(),uniform.SelectMany(q=>new[] {q.KnPerM,q.KnPerM}).Concat(points.Select(p=>p.Kn)).ToArray(),uniform.Length) {}
+            internal PrimaryKey(double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,bool deferred=false)
+                :this(length,supports,uniform.SelectMany(q=>new[] {q.StartMm,q.EndMm}).Concat(points.Select(p=>p.PositionMm)).ToArray(),uniform.SelectMany(q=>new[] {q.KnPerM,q.KnPerM}).Concat(points.Select(p=>p.Kn)).ToArray(),uniform.Length,deferred) {}
             public override int GetHashCode()=>hash;
             public override bool Equals(object other)=>Equals(other as PrimaryKey);
             public bool Equals(PrimaryKey other)
             {
-                if(other==null || hash!=other.hash || length!=other.length || uniformCount!=other.uniformCount || supports.Length!=other.supports.Length || positions.Length!=other.positions.Length)return false;
+                if(other==null || hash!=other.hash || length!=other.length || uniformCount!=other.uniformCount || deferred!=other.deferred || supports.Length!=other.supports.Length || positions.Length!=other.positions.Length)return false;
                 for(int i=0;i<supports.Length;i++)if(supports[i]!=other.supports[i])return false;
                 for(int i=0;i<positions.Length;i++)if(positions[i]!=other.positions[i] || forces[i]!=other.forces[i])return false;
                 return true;
@@ -916,17 +919,18 @@ namespace EngineeringDashboard
                             if ((mask&1)!=0) points.Add(new BeamPointLoad {PositionMm=t.BeamCentreOffsetMm-t.BeamWidthMm/2-100-start,Kn=left.Load*left.Edge/1000});
                             if ((mask&2)!=0) points.Add(new BeamPointLoad {PositionMm=t.BeamCentreOffsetMm+t.BeamWidthMm/2+100-start,Kn=right.Load*right.Edge/1000});
                             var a=AnalyzeTransverse(input,BeamSearchCounter.LowerAnalyses,stock,new[] {-width/2-start,width/2-start},new[] {new BeamDistributedLoad {StartMm=t.BeamCentreOffsetMm-t.BeamWidthMm/2-start,EndMm=t.BeamCentreOffsetMm+t.BeamWidthMm/2-start,KnPerM=t.BeamLineLoadKnM/(t.BeamWidthMm/1000)}},points.ToArray(),TowerOptimizer.PairEI/2,input.DeflectionDenominator);
-                            if (!Pass(input,a,tributaryMm/1000,1,input.Diagnostics,input.DiagnosticScope+"Lower secondary",2,()=> $"stock {stock:0} mm · primary span {width:0} mm · {(mask==0 ? "Beam" : mask==1 ? "Beam + left slab" : mask==2 ? "Beam + right slab" : "Beam + both slabs")} · base tributary {tributaryMm:0.###} mm")) { valid=false;break; }
+                            if ((!input.FullLoadingOnly || mask==((left==null ? 0 : 1)|(right==null ? 0 : 2))) && !Pass(input,a,tributaryMm/1000,1,input.Diagnostics,input.DiagnosticScope+"Lower secondary",2,()=> $"stock {stock:0} mm · primary span {width:0} mm · {(mask==0 ? "Beam" : mask==1 ? "Beam + left slab" : mask==2 ? "Beam + right slab" : "Beam + both slabs")} · base tributary {tributaryMm:0.###} mm")) { valid=false;break; }
                             cases.Add(a); names.Add(mask==0 ? "Beam" : mask==1 ? "Beam + left slab" : mask==2 ? "Beam + right slab" : "Beam + both slabs");
                         }
-                        if(valid) result.Add(new CrossOption { Start=start,Stock=stock,Left=left,Right=right,Cases=cases.ToArray(),Names=names.ToArray() });
+                        if(valid) result.Add(new CrossOption { Start=start,Stock=stock,Left=left,Right=right,Cases=cases.ToArray(),Names=names.ToArray(),DesignCases=input.FullLoadingOnly ? new[] {cases.Count-1} : Enumerable.Range(0,cases.Count).ToArray() });
                     }
             }
             // Retain varied reaction splits as well as the least-timber choices; this is a bounded search.
-            return result.OrderBy(x=>x.Stock+(x.Left?.Stock??0)+(x.Right?.Stock??0)).ThenBy(x=>x.Cases.Max(a=>a.DeflectionUtilization)).GroupBy(x=>Math.Round(x.Cases.Last().Reactions[0],1)).Select(g=>g.First()).Take(24).ToArray();
+            return result.OrderBy(x=>x.Stock+(x.Left?.Stock??0)+(x.Right?.Stock??0)).ThenBy(x=>x.DesignCases.Max(i=>x.Cases[i].DeflectionUtilization)).GroupBy(x=>Math.Round(x.Cases.Last().Reactions[0],1)).Select(g=>g.First()).Take(24).ToArray();
         }
         private static bool Pass(TowerInput input,LoadedBeamAnalysis a,double scale=1,int h20Count=2,TowerSearchDiagnostics diag=null,string scope="H20",int stage=1,Func<string> location=null)
         {
+            if(input.DeferCrossingChecks && (stage==2 || stage==3))return true;
             if(stage==3 && input.Primary.IsWS10)
             {
                 double strength=input.Primary.Strength(a)*scale;
@@ -1058,9 +1062,14 @@ namespace EngineeringDashboard
             // Main-primary intensities are independent of coverage. Uncovered longitudinal
             // strips belong to external column-side supports. Slab coverage can
             // differ from primary coverage; each excluded load is assigned once.
-            var design=PrimaryUniformLoads(stockStart,stockLength,beam,l,r,input.TransferredSlab.LeftCrossingBands,input.TransferredSlab.RightCrossingBands,input.IgnoreUplift,
+            var design=PrimaryUniformLoads(stockStart,stockLength,beam,l,r,input.TransferredSlab.LeftCrossingBands,input.TransferredSlab.RightCrossingBands,input.IgnoreUplift || input.DeferCrossingChecks,
                 slabEdge,slabEdge+slabCoverage);
             return design==null || !input.Primary.IsWS10 ? design : design.Concat(new[] {new BeamDistributedLoad {StartMm=0,EndMm=stockLength,KnPerM=input.Primary.SelfWeightKnM(stockLength)}}).ToArray();
+        }
+        private static ColumnEndStripLoad[][] SelectColumnCases(TowerInput input,CrossOption cross,double edge)
+        {
+            var all=ColumnSupportLoads(input,cross,edge);
+            return all.Length==0 ? all : cross.DesignCases.Select(i=>all[i]).ToArray();
         }
         private static ColumnEndStripLoad[][] ColumnSupportLoads(TowerInput input,CrossOption cross,double edge)
         {
@@ -1138,7 +1147,7 @@ namespace EngineeringDashboard
             int n=g.Positions.Length; var left=Enumerable.Repeat(double.NegativeInfinity,n).ToArray(); var right=Enumerable.Repeat(double.NegativeInfinity,n).ToArray();
             var minLeft=Enumerable.Repeat(double.PositiveInfinity,n).ToArray(); var minRight=Enumerable.Repeat(double.PositiveInfinity,n).ToArray();
             var checkedCases=new List<PrimaryCheck[]>(); var lowerCases=new List<TransferMember[]>();
-            for(int c=0;c<cross.Cases.Length;c++)
+            foreach(int c in cross.DesignCases)
             {
                 var checks=new PrimaryCheck[g.Stock.Length*2];
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
@@ -1149,7 +1158,7 @@ namespace EngineeringDashboard
                     if(uniform==null) {input.Diagnostics?.Geometry(input.DiagnosticScope+"primary distributed uplift","Primary UDL has an upward resultant within a loaded interval.","Review transverse bearings and asymmetric slab/crossing loads.");return null;}
                     input.Trace?.CheckCancellation();
                     var points=new BeamPointLoad[0];
-                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,uniform,points);
+                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,uniform,points,input.DeferCrossingChecks);
                     PrimaryCheck check;
                     if(primaryCache==null || !primaryCache.TryGetValue(key,out check))
                     {
@@ -1162,14 +1171,14 @@ namespace EngineeringDashboard
                             input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
                             long priorHits=matrixCache?.Hits??0;
                             using(input.Trace?.Measure(BeamSearchStage.PrimaryAnalysis))
-                            analysis=LoadedBeamAnalysis.AnalyzeCombinedCached(stock.StockLengthMm,supports,uniform,points,input.Primary.EI,input.DeflectionDenominator,matrixCache,input.LegCapacityKn,input.StagePrimaryChecks && !input.Primary.IsWS10,input.IgnoreUplift,input.TransferredSlab.IncludeConcreteEndStrips);
+                            analysis=LoadedBeamAnalysis.AnalyzeCombinedCached(stock.StockLengthMm,supports,uniform,points,input.Primary.EI,input.DeflectionDenominator,matrixCache,input.LegCapacityKn,input.StagePrimaryChecks && !input.Primary.IsWS10 && !input.DeferCrossingChecks,input.IgnoreUplift || input.DeferCrossingChecks,input.TransferredSlab.IncludeConcreteEndStrips);
                             if(!analysis.DeflectionEvaluated)input.Trace?.Increment(BeamSearchCounter.PrimaryDeflectionSkipped);
                             if(matrixCache!=null && matrixCache.Hits>priorHits)input.Trace?.Increment(BeamSearchCounter.PrimaryMatrixCacheHits);
                         }
                         bool memberPass=Pass(input,analysis,1,2,input.Diagnostics,input.DiagnosticScope+"Primary pair · UDL",3,()=> $"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · stock {stock.StockLengthMm:0} mm · x={stock.StartMm+edge:0.###}–{stock.EndMm+edge:0.###} mm");
                         int peakLeg=Array.IndexOf(analysis.Reactions,analysis.Reactions.Max());
-                        input.Diagnostics?.LegsLazy(analysis.Reactions,input.LegCapacityKn,input.DiagnosticScope+"Tower legs · UDL",()=> $"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · peak leg x={g.Positions[stock.FirstSupport+peakLeg]+edge:0.###} mm");
-                        check=new PrimaryCheck {Analysis=analysis,Points=points,Uniform=uniform,Passed=memberPass && analysis.Reactions.Max()<=input.LegCapacityKn+1e-8};
+                        if(!input.DeferCrossingChecks)input.Diagnostics?.LegsLazy(analysis.Reactions,input.LegCapacityKn,input.DiagnosticScope+"Tower legs · UDL",()=> $"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · peak leg x={g.Positions[stock.FirstSupport+peakLeg]+edge:0.###} mm");
+                        check=new PrimaryCheck {Analysis=analysis,Points=points,Uniform=uniform,Passed=memberPass && (input.DeferCrossingChecks || analysis.Reactions.Max()<=input.LegCapacityKn+1e-8)};
                         if(primaryCache!=null && primaryCache.Count<4096)primaryCache[key]=check;
                         if(key!=null && reused==null)shared?.Store(key,check);
                     }
@@ -1195,7 +1204,7 @@ namespace EngineeringDashboard
                 for(int line=0;line<2;line++)for(int i=0;i<g.Stock.Length;i++)
                 {
                     var stock=g.Stock[i];var check=checkedCases[c][line*g.Stock.Length+i];
-                    members[line*g.Stock.Length+i]=new TransferMember {PrimaryMaterial=input.PrimaryMaterial,PrimarySelfWeightKnM=input.Primary.SelfWeightKnM(stock.StockLengthMm),Name="P"+(i+1)+(line==0 ? " L" : " R"),LoadCase=cross.Names[c],StartMm=stock.StartMm+edge,LengthMm=stock.StockLengthMm,SupportsMm=g.MemberSupports[i],Points=check.Points,Uniform=check.Uniform,Analysis=check.Analysis};
+                    members[line*g.Stock.Length+i]=new TransferMember {PrimaryMaterial=input.PrimaryMaterial,PrimarySelfWeightKnM=input.Primary.SelfWeightKnM(stock.StockLengthMm),Name="P"+(i+1)+(line==0 ? " L" : " R"),LoadCase=cross.Names[cross.DesignCases[c]],StartMm=stock.StartMm+edge,LengthMm=stock.StockLengthMm,SupportsMm=g.MemberSupports[i],Points=check.Points,Uniform=check.Uniform,Analysis=check.Analysis};
                 }
                 primaryCases.Add(members);
             }
@@ -1208,18 +1217,18 @@ namespace EngineeringDashboard
                 pieces[i].GoverningDeflectionLimitMm=governing.GoverningLengthMm/input.DeflectionDenominator;
                 pieces[i].GoverningDeflectionMm=governing.DeflectionUtilization*pieces[i].GoverningDeflectionLimitMm;
             }
-            var transfer=new TransferredSlabResult {UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=ColumnSupportLoads(input,cross,edge),CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
+            var transfer=new TransferredSlabResult {UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=SelectColumnCases(input,cross,edge),CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
                 LeftUpperStockMm=cross.Left?.Stock??0,RightUpperStockMm=cross.Right?.Stock??0,LeftUpperCustom=cross.Left?.Custom??false,RightUpperCustom=cross.Right?.Custom??false,LeftUpperEdgeMm=cross.Left?.Edge??0,RightUpperEdgeMm=cross.Right?.Edge??0,
                 LeftFootReactionKn=(cross.Left?.Analysis.Reactions[0]??0)*ls.Max(),RightFootReactionKn=(cross.Right?.Analysis.Reactions[0]??0)*rs.Max(),
                 BeamLoadKn=input.TransferredSlab.TotalBeamLineLoadKnM*input.LengthMm/1000,
                 CoveredSlabAreaM2=(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge))*((cross.Left?.Stock??0)+(cross.Right?.Stock??0))/1e6,
                 ShutterLoadKn=PhysicalShutterLoadKn(input,cross),
-                SlabLoadKn=PhysicalSlabLoadKn(input,cross),PrimaryCases=primaryCases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=upper.ToArray(),CaseNames=cross.Names};
+                SlabLoadKn=PhysicalSlabLoadKn(input,cross),PrimaryCases=primaryCases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=upper.ToArray(),CaseNames=cross.DesignCases.Select(i=>cross.Names[i]).ToArray(),FullLoadingOnly=input.FullLoadingOnly};
             // Two-support lower and upper bearers are statically determinate: support movement adds an affine displacement without altering reactions.
-            if(!input.TransferredSlab.IsNetwork) for(int c=0;c<cross.Cases.Length;c++) for(int row=0;row<rows.Length;row++) foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null))
+            if(!input.TransferredSlab.IsNetwork) for(int c=0;c<cross.DesignCases.Length;c++) for(int row=0;row<rows.Length;row++) foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null))
             {
                 input.Trace?.CheckCancellation();
-                bool isLeft=u==cross.Left; if(!(cross.Names[c].Contains(isLeft ? "left" : "right") || cross.Names[c].Contains("both"))) continue;
+                bool isLeft=u==cross.Left; if(!(transfer.CaseNames[c].Contains(isLeft ? "left" : "right") || transfer.CaseNames[c].Contains("both"))) continue;
                 int run=Array.FindIndex(g.Stock,s=>rows[row]>=s.StartMm && rows[row]<s.EndMm);
                 double dl=primaryCases[c][run].Analysis.Response(rows[row]-g.Stock[run].StartMm)[2],dr=primaryCases[c][run+g.Stock.Length].Analysis.Response(rows[row]-g.Stock[run].StartMm)[2];
                 double x=input.TransferredSlab.BeamCentreOffsetMm+(isLeft ? -1 : 1)*(input.TransferredSlab.BeamWidthMm/2+u.Foot);
@@ -1241,7 +1250,7 @@ namespace EngineeringDashboard
             int n=g.Positions.Length; var left=Enumerable.Repeat(double.NegativeInfinity,n).ToArray(); var right=Enumerable.Repeat(double.NegativeInfinity,n).ToArray();
             var minLeft=Enumerable.Repeat(double.PositiveInfinity,n).ToArray(); var minRight=Enumerable.Repeat(double.PositiveInfinity,n).ToArray();
             var primaryCases=new List<TransferMember[]>(); var lowerCases=new List<TransferMember[]>();
-            for(int c=0;c<cross.Cases.Length;c++)
+            foreach(int c in cross.DesignCases)
             {
                 var members=new List<TransferMember>();
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
@@ -1252,7 +1261,7 @@ namespace EngineeringDashboard
                     if(uniform==null) {input.Diagnostics?.Geometry(input.DiagnosticScope+"primary distributed uplift","Primary UDL has an upward resultant within a loaded interval.","Review transverse bearings and asymmetric slab/crossing loads.");return null;}
                     input.Trace?.CheckCancellation();
                     var points=new BeamPointLoad[0];
-                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,uniform,points);
+                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,uniform,points,input.DeferCrossingChecks);
                     PrimaryCheck check;
                     if(primaryCache==null || !primaryCache.TryGetValue(key,out check))
                     {
@@ -1265,14 +1274,14 @@ namespace EngineeringDashboard
                             input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
                             long priorHits=matrixCache?.Hits??0;
                             using(input.Trace?.Measure(BeamSearchStage.PrimaryAnalysis))
-                            analysis=LoadedBeamAnalysis.AnalyzeCombinedCached(stock.StockLengthMm,supports,uniform,points,input.Primary.EI,input.DeflectionDenominator,matrixCache,input.LegCapacityKn,input.StagePrimaryChecks && !input.Primary.IsWS10,input.IgnoreUplift,input.TransferredSlab.IncludeConcreteEndStrips);
+                            analysis=LoadedBeamAnalysis.AnalyzeCombinedCached(stock.StockLengthMm,supports,uniform,points,input.Primary.EI,input.DeflectionDenominator,matrixCache,input.LegCapacityKn,input.StagePrimaryChecks && !input.Primary.IsWS10 && !input.DeferCrossingChecks,input.IgnoreUplift || input.DeferCrossingChecks,input.TransferredSlab.IncludeConcreteEndStrips);
                             if(!analysis.DeflectionEvaluated)input.Trace?.Increment(BeamSearchCounter.PrimaryDeflectionSkipped);
                             if(matrixCache!=null && matrixCache.Hits>priorHits)input.Trace?.Increment(BeamSearchCounter.PrimaryMatrixCacheHits);
                         }
                         bool memberPass=Pass(input,analysis,1,2,input.Diagnostics,input.DiagnosticScope+"Primary pair · UDL",3,()=> $"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · stock {stock.StockLengthMm:0} mm · x={stock.StartMm+edge:0.###}–{stock.EndMm+edge:0.###} mm");
                         int peakLeg=Array.IndexOf(analysis.Reactions,analysis.Reactions.Max());
-                        input.Diagnostics?.LegsLazy(analysis.Reactions,input.LegCapacityKn,input.DiagnosticScope+"Tower legs · UDL",()=> $"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · peak leg x={g.Positions[stock.FirstSupport+peakLeg]+edge:0.###} mm");
-                        check=new PrimaryCheck {Analysis=analysis,Points=points,Uniform=uniform,Passed=memberPass && analysis.Reactions.Max()<=input.LegCapacityKn+1e-8};
+                        if(!input.DeferCrossingChecks)input.Diagnostics?.LegsLazy(analysis.Reactions,input.LegCapacityKn,input.DiagnosticScope+"Tower legs · UDL",()=> $"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · peak leg x={g.Positions[stock.FirstSupport+peakLeg]+edge:0.###} mm");
+                        check=new PrimaryCheck {Analysis=analysis,Points=points,Uniform=uniform,Passed=memberPass && (input.DeferCrossingChecks || analysis.Reactions.Max()<=input.LegCapacityKn+1e-8)};
                         if(primaryCache!=null && primaryCache.Count<4096)primaryCache[key]=check;
                         if(key!=null && reused==null)shared?.Store(key,check);
                     }
@@ -1296,18 +1305,18 @@ namespace EngineeringDashboard
             }
             var upper=new List<TransferMember>();
             foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null)) upper.Add(new TransferMember {H20Count=1,Name=u==cross.Left ? "Upper left" : "Upper right",LoadCase="Slab · governing row",StartMm=u.Edge,LengthMm=u.Stock,SupportsMm=new[] {u.Foot-u.Edge,u.Bay-u.OtherFoot-u.Edge},Points=new BeamPointLoad[0],Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=u.Stock,KnPerM=u.Load*Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000)}},Analysis=u.Analysis.Scale(Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000))});
-            var transfer=new TransferredSlabResult {UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=ColumnSupportLoads(input,cross,edge),CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
+            var transfer=new TransferredSlabResult {UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=SelectColumnCases(input,cross,edge),CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
                 LeftUpperStockMm=cross.Left?.Stock??0,RightUpperStockMm=cross.Right?.Stock??0,LeftUpperCustom=cross.Left?.Custom??false,RightUpperCustom=cross.Right?.Custom??false,LeftUpperEdgeMm=cross.Left?.Edge??0,RightUpperEdgeMm=cross.Right?.Edge??0,
                 LeftFootReactionKn=(cross.Left?.Analysis.Reactions[0]??0)*ls.Max(),RightFootReactionKn=(cross.Right?.Analysis.Reactions[0]??0)*rs.Max(),
                 BeamLoadKn=input.TransferredSlab.TotalBeamLineLoadKnM*input.LengthMm/1000,
                 CoveredSlabAreaM2=(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge))*((cross.Left?.Stock??0)+(cross.Right?.Stock??0))/1e6,
                 ShutterLoadKn=PhysicalShutterLoadKn(input,cross),
-                SlabLoadKn=PhysicalSlabLoadKn(input,cross),PrimaryCases=primaryCases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=upper.ToArray(),CaseNames=cross.Names};
+                SlabLoadKn=PhysicalSlabLoadKn(input,cross),PrimaryCases=primaryCases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=upper.ToArray(),CaseNames=cross.DesignCases.Select(i=>cross.Names[i]).ToArray(),FullLoadingOnly=input.FullLoadingOnly};
             // Two-support lower and upper bearers are statically determinate: support movement adds an affine displacement without altering reactions.
-            if(!input.TransferredSlab.IsNetwork) for(int c=0;c<cross.Cases.Length;c++) for(int row=0;row<rows.Length;row++) foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null))
+            if(!input.TransferredSlab.IsNetwork) for(int c=0;c<cross.DesignCases.Length;c++) for(int row=0;row<rows.Length;row++) foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null))
             {
                 input.Trace?.CheckCancellation();
-                bool isLeft=u==cross.Left; if(!(cross.Names[c].Contains(isLeft ? "left" : "right") || cross.Names[c].Contains("both"))) continue;
+                bool isLeft=u==cross.Left; if(!(transfer.CaseNames[c].Contains(isLeft ? "left" : "right") || transfer.CaseNames[c].Contains("both"))) continue;
                 int run=Array.FindIndex(g.Stock,s=>rows[row]>=s.StartMm && rows[row]<s.EndMm);
                 double dl=primaryCases[c][run].Analysis.Response(rows[row]-g.Stock[run].StartMm)[2],dr=primaryCases[c][run+g.Stock.Length].Analysis.Response(rows[row]-g.Stock[run].StartMm)[2];
                 double x=input.TransferredSlab.BeamCentreOffsetMm+(isLeft ? -1 : 1)*(input.TransferredSlab.BeamWidthMm/2+u.Foot);

@@ -41,7 +41,7 @@ internal static class CrossSupportUiTests
     static string Preview(string path,string name)=>string.IsNullOrEmpty(path) ? null : System.IO.Path.ChangeExtension(path,name+".png");
     static void CoordinatedWorkspace(string previewPath)
     {
-        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=6900,TowerLegCapacityKn=70,StockLengthsText="1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900",AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,PlywoodDeflectionLimit="L/270",DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+        var vm=new BeamCalculatorViewModel {ReplayConstructionStages=true,HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=6900,TowerLegCapacityKn=70,StockLengthsText="1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900",AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=75,PlywoodDeflectionLimit="L/270",DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         while(vm.NetworkBeams.Count<8)vm.AddNetworkBay();
         for(int i=0;i<8;i++) {vm.NetworkBeams[i].WidthMm=i%2==0 ? 800 : 650;vm.NetworkBeams[i].DepthMm=i%2==0 ? 1750 : 1150;vm.NetworkBeams[i].BottomElevationMm=-vm.NetworkBeams[i].DepthMm;}
         var widths=new[] {2677.0,1875,3275,2275,2278,2272,2252};
@@ -217,6 +217,7 @@ internal static class CrossSupportUiTests
         Check(section.MemberTargets.Any(t=>t.Item2<0),"cross members selectable in section");
         var bearing=vm.NetworkResult.CrossSupports[0].Bearings[0];Check(bearing.FillerHeightMm==150,"section filler uses the independently computed gap");
         var diagrams=new TowerDiagramWindow(vm,vm.NetworkResult.CrossSupports[0]);diagrams.SelectMember(0,0,-1);
+        Check(vm.NetworkResult.Beams.All(b=>b.Transfer.FullLoadingOnly && b.Transfer.CaseNames.Length==1),"production checks exactly one fully loaded case per receiving beam");
         Check(diagrams.SelectedTransferMember==vm.NetworkResult.CrossSupports[0].Members[0] && diagrams.ActualLoadedAnalysis==diagrams.LoadedAnalysis,"cross diagram uses its actual concrete and formwork loads");diagrams.Close();
         var canvas=new BeamFormworkCanvas(vm) {Width=1200,Height=600,Formwork=true};canvas.Measure(new Size(1200,600));canvas.Arrange(new Rect(0,0,1200,600));canvas.Fit();canvas.UpdateLayout();
         var planBitmap=new RenderTargetBitmap(1200,600,96,96,System.Windows.Media.PixelFormats.Pbgra32);planBitmap.Render(canvas);
