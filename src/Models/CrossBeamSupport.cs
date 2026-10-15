@@ -94,7 +94,7 @@ namespace EngineeringDashboard
         {
             var cuts=n.CrossingBeams.Where(c=>c.BayNumber==bay+1 && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows).OrderBy(c=>c.PositionMm).ToArray();
             if(cuts.Length==0)return original;
-            if(n.HasIndividualSpacings)
+            if(n.HasIndividualSpacings && n.UseCrossingSlabLedgers)
             {
                 var map=n.CrossSlabLayout(cover+2*edge,cover,bay);
                 return !map.Valid ? null : rows.Select(x=>Array.IndexOf(map.Rows,x)).Select(i=>i<0 ? 0 : map.Widths[i]).ToArray();

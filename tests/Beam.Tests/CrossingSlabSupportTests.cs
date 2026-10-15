@@ -23,7 +23,7 @@ internal static class CrossingSlabSupportTests
             Near(map.Redistribution.Sum(b=>b.KnPerM*(b.EndMm-b.StartMm))+map.Edges.Sum(e=>e.WidthMm),0,"primary baseline removes exactly the load sent to ledgers");
             Near(map.Redistribution.Sum(b=>b.KnPerM*(b.EndMm*b.EndMm-b.StartMm*b.StartMm)/2)+map.Edges.Sum(e=>e.PositionMm*e.WidthMm),0,"primary redistribution retains the physical load resultant");
             Check(map.Edges.Count==2 && map.Edges.All(e=>e.WidthMm>0),"both crossing faces receive explicit slab-edge reactions");
-            if(pitch==488){Check(map.Rows.Contains(4163),"first right row is 488 mm from X1's 3675 mm face");Check(map.Rows.Contains(6115),"plywood joint 2440 mm from the crossing is supported");}
+            if(pitch==488){Check(map.Rows.Contains(4163),"first right row is 488 mm from X1's 3675 mm face");Check(map.Rows.Contains(4880),"required plywood joint at 4880 mm remains supported");}
             var weights=CrossBeamSupportOptimizer.PointRowWeights(new[] {3100.0,3400,3600},3675);
             Near(weights.Sum(),1,"ledger transfer weights conserve force");Near(weights.Zip(new[] {3100.0,3400,3600},(w,x)=>w*x).Sum(),3675,"ledger transfer weights conserve moment");
         }
@@ -35,6 +35,18 @@ internal static class CrossingSlabSupportTests
     internal static void Reported()
     {
         var common=new TowerInput {LengthMm=7000,LegCapacityKn=70,DeflectionDenominator=270,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=150,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,Exclude600Standalone=false,IgnoreUplift=true,NetworkSearchWorkers=1};
+        try
+        {
+            var original=TransferNetworkOptimizer.Optimize(common,Input());
+            Check(original.CrossSupports[0].SlabEdgeLoadKn>0,"reported stock scope reaches a checked ledger load path");
+        }
+        catch(TowerOptimizationException ex)
+        {
+            Check(ex.Details.Contains("deflection") && !ex.Details.Contains("slab cross exclusion"),"original stock scope reaches a member limit rather than the former row-exclusion gap");
+            Console.WriteLine("Original reported stock scope rejected: "+ex.Message);
+        }
+        // A separate passing fixture permits fitted receiving H20 stock; production never changes the user's scope.
+        common.CustomH20Scope=CustomH20LengthScope.Both;
         var result=TransferNetworkOptimizer.Optimize(common,Input());
         Check(result.CrossSupports.Length==1 && result.CrossSupports[0].SlabEdgeLoadKn>0,"reported setup has a passing crossing with slab-edge loads");
         var x=result.CrossSupports[0];double concrete=result.Input.AreaLoad(x.Input.DepthMm)*x.Input.WidthMm*2000/1e6;

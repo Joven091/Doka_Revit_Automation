@@ -17,7 +17,7 @@ namespace EngineeringDashboard
         internal readonly List<SlabEdgeReaction> Edges=new List<SlabEdgeReaction>();
         internal readonly List<BeamDistributedLoad> Redistribution=new List<BeamDistributedLoad>();
         internal bool Valid=true;
-        internal static CrossingSlabSupportLayout Build(TransferNetworkInput input,int bay,double start,double end)
+        internal static CrossingSlabSupportLayout Build(TransferNetworkInput input,int bay,double start,double end,double[] adjacent=null)
         {
             var layout=new CrossingSlabSupportLayout();double maximum=input.BaySpacing(bay);
             var cuts=input.CrossingBeams.Select((c,i)=>new {C=c,I=i}).Where(x=>x.C.BayNumber==bay+1 && x.C.SupportMode!=CrossBeamSupportMode.LegacySlabRows).OrderBy(x=>x.C.PositionMm).ToArray();
@@ -35,12 +35,11 @@ namespace EngineeringDashboard
                 bool l=strip.Item3>=0,r=strip.Item4>=0;
                 double lo=l ? strip.Item1 : strip.Item1+40,hi=r ? strip.Item2 : strip.Item2-40;
                 if(hi<=lo){layout.Valid=false;return layout;}
-                // Sheet joints are set out from the crossing bearing, with a cut closing sheet.
-                // Required joints remain supports; their phase is local to this slab strip.
+                // Keep every required 2440 mm sheet joint outside the crossing footprint.
+                // Crossing bearings and coverage ends are additional setting-out anchors.
                 var anchors=new List<double> {lo};
-                if(r && !l)
-                {for(double x=hi-PlywoodSpacing.SheetLengthMm;x>lo+80;x-=PlywoodSpacing.SheetLengthMm)anchors.Add(x);}
-                else for(double x=lo+PlywoodSpacing.SheetLengthMm;x<hi-80;x+=PlywoodSpacing.SheetLengthMm)anchors.Add(x);
+                for(double x=(Math.Floor(lo/PlywoodSpacing.SheetLengthMm)+1)*PlywoodSpacing.SheetLengthMm;x<hi-80;x+=PlywoodSpacing.SheetLengthMm)
+                    if(x-lo>=80)anchors.Add(x);
                 anchors.Add(hi);anchors.Sort();var local=new List<double> {lo};
                 for(int k=1;k<anchors.Count;k++)
                 {
@@ -60,12 +59,25 @@ namespace EngineeringDashboard
                     if(!virtualNode){if(l && local[k]-lo<clearance-1e-7 || r && hi-local[k]<clearance-1e-7){layout.Valid=false;return layout;}rows.Add(local[k]);}
                 }
             }
+            if(adjacent!=null && adjacent.Length>0)
+            {
+                foreach(double row in rows.ToArray())
+                {
+                    bool mandatory=Math.Abs(row/PlywoodSpacing.SheetLengthMm-Math.Round(row/PlywoodSpacing.SheetLengthMm))<1e-7 || row==start+40 || row==end-40;
+                    if(mandatory)continue;
+                    var nearby=adjacent.OrderBy(x=>Math.Abs(x-row)).First();
+                    if(Math.Abs(nearby-row)>=80 || Math.Abs(nearby-row)<1e-7)continue;
+                    if(nearby<start+40 || nearby>end-40 || cuts.Any(c=>Math.Abs(nearby-c.C.PositionMm)<c.C.WidthMm/2+ShutterZoneMm+40-1e-7))continue;
+                    rows.Remove(row);rows.Add(nearby);
+                }
+            }
             layout.Rows=rows.ToArray();layout.Widths=new double[layout.Rows.Length];
             foreach(var strip in strips)
             {
                 var nodes=layout.Rows.Where(x=>x>=strip.Item1-1e-7 && x<=strip.Item2+1e-7).ToList();
                 if(strip.Item3>=0)nodes.Insert(0,strip.Item1);if(strip.Item4>=0)nodes.Add(strip.Item2);
                 if(nodes.Count<2){layout.Valid=false;return layout;}
+                if(nodes.Zip(nodes.Skip(1),(x,y)=>y-x).Any(g=>g<80-1e-7 || g>maximum+1e-7)){layout.Valid=false;return layout;}
                 var widths=CrossBeamSupportOptimizer.EndZoneWidths(strip.Item1,strip.Item2,nodes.ToArray());
                 for(int k=0;k<nodes.Count;k++)
                 {
@@ -91,7 +103,7 @@ namespace EngineeringDashboard
         internal static BeamPointLoad[] SlabEdgeLoads(TransferNetworkResult r,int index)
         {
             var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;
-            if(r.Bays[bay]==null || !r.Input.HasIndividualSpacings)return new BeamPointLoad[0];
+            if(r.Bays[bay]==null || !r.Input.HasIndividualSpacings || !r.Input.UseCrossingSlabLedgers)return new BeamPointLoad[0];
             var map=r.Input.CrossSlabLayout(r.Beams[0].LengthMm,r.SlabCoveredLengthMm,bay);
             double area=r.Input.AreaLoad(r.Input.Bays[bay].ThicknessMm);
             return map.Edges.Where(e=>e.Crossing==index).Select(e=>new BeamPointLoad {PositionMm=e.PositionMm-c.PositionMm,Kn=area*e.WidthMm/1000}).ToArray();
