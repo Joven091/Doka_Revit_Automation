@@ -100,9 +100,8 @@ internal static class CrossSupportUiTests
         vm.SelectNetworkBeam(5);var cases=new TowerDiagramWindow(vm);cases.SelectMember(0,0,-1);cases.Show();Pump();
         Check(cases.LoadCaseSelector.Items.Count==16 && !Descendants(cases).OfType<Expander>().Any(),"reported B6 retains sixteen checks behind one dropdown and collapsed details");
         var labels=cases.LoadCaseSelector.Items.Cast<ComboBoxItem>().Select(item=>item.Content.ToString()).ToArray();
-        Check(labels.Any(label=>label=="B6 + S6 + X6") && labels.All(label=>!label.Contains("left slab") && !label.Contains("right slab") && !label.Contains("both slabs")),"reported case labels identify actual beams and slab bays");
-        var members=vm.NetworkResult.Beams[5].Transfer.PrimaryCases.Select(stage=>stage[0]).ToArray();
-        Check(cases.SelectedTransferMember.Utilization==members.Max(m=>m.Utilization),"reported B6 defaults to its actual governing member case");
+        Check(labels.Any(label=>label.Replace(" · system governing","")=="B6 + S6 + X6") && labels.All(label=>!label.Contains("left slab") && !label.Contains("right slab") && !label.Contains("both slabs")),"reported case labels identify actual beams and slab bays");
+        Check(cases.SelectedLoadCase==vm.NetworkResult.DisplayStage.BeamCases[5] && ReferenceEquals(cases.SelectedTransferMember,vm.NetworkResult.Beams[5].Transfer.PrimaryCases[cases.SelectedLoadCase][0]),"reported B6 defaults to the consistent system stage and its exact member analysis");
         // The designer ranking can change B6's stock breaks and governing case.
         // Select an actual overlapping-load member, rather than assuming P1 carries a crossing.
         int runs=vm.NetworkResult.Beams[5].StockPlan.Pieces.Length;

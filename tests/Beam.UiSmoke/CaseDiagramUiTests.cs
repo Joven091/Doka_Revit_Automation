@@ -34,16 +34,16 @@ internal static class CaseDiagramUiTests
         var primary=new[] {new[] {Member(8,"P1 L"),Member(2,"P1 R")},new[] {Member(2,"P1 L"),Member(9,"P1 R")},new[] {Member(3,"P1 L"),Member(3,"P1 R")}};
         var lower=new[] {new[] {Member(1,"T1",1)},new[] {Member(6,"T1",1)},new[] {Member(2,"T1",1)}};
         var transfer=new TransferredSlabResult {RowsMm=new[] {1000.0},CaseNames=new[] {"Beam","Beam + left slab","Beam + both slabs"},PrimaryCases=primary,LowerCases=lower,EnteredUpperSpacingMm=250};
-        var layout=new TowerLayout {DeflectionDenominator=270,StockPlan=new TowerStockPlan {Pieces=new[] {new TowerStockPiece {StockLengthMm=2000}}},Transfer=transfer};
+        var layout=new TowerLayout {LegCapacityKn=70,DeflectionDenominator=270,StockPlan=new TowerStockPlan {Pieces=new[] {new TowerStockPiece {StockLengthMm=2000}}},Transfer=transfer};
         var vm=new BeamCalculatorViewModel {UseTowers=true};typeof(BeamCalculatorViewModel).GetProperty("TowerResult").SetValue(vm,layout);
         var window=new TowerDiagramWindow(vm);window.SelectMember(0,0,-1);
-        Check(window.SelectedLoadCase==0 && window.SelectedTransferMember==primary[0][0],"default uses the governing member case, even when it is not last");
+        Check(window.SelectedLoadCase==1 && window.SelectedTransferMember==primary[1][0],"default uses the system score even when this member alone is more utilized in another case");
         Check(window.LoadCaseSelector.Items.Count==3 && !Labels((DependencyObject)window.Content).Any(t=>t.Text.StartsWith("UDL design model") || t.Text.StartsWith("Member design · ")),"all checked cases stay selectable with a compact summary");
         window.LoadCaseSelector.SelectedIndex=2;Check(window.SelectedTransferMember==primary[2][0],"manual selection changes the actual analysis");
         window.SelectMember(0,0,-1);Check(window.SelectedLoadCase==2,"refreshing the same member retains the manual choice");
-        window.SelectMember(0,1,-1);Check(window.SelectedLoadCase==1 && window.SelectedTransferMember==primary[1][1],"changing primary line resets to that line's governing case");
-        window.SelectMember(1,0,-1);Check(window.SelectedLoadCase==1 && window.SelectedTransferMember==lower[1][0],"lower secondary has its own governing case");
-        primary[2][0].SubsetShearBoundKn=21;window.SelectMember(0,0,-1);Check(window.SelectedLoadCase==2,"conservative subset bounds participate in governing selection");
+        window.SelectMember(0,1,-1);Check(window.SelectedLoadCase==1 && window.SelectedTransferMember==primary[1][1],"changing primary line returns to the same system governing stage");
+        window.SelectMember(1,0,-1);Check(window.SelectedLoadCase==1 && window.SelectedTransferMember==lower[1][0],"lower secondary uses the same system governing stage");
+        primary[2][0].SubsetShearBoundKn=21;primary[2][0].SubsetMomentBoundKnM=9.5;primary[2][0].SubsetDeflectionBound=.95;window.SelectMember(0,0,-1);Check(window.SelectedLoadCase==2,"conservative subset bounds participate in all system score categories");
         Check(window.SelectedTransferMember.SubsetShearBoundKn==21,"selected design retains subset bounds");window.Close();
 
         // Input-model fixture: the slab and lower-secondary nominal pitches differ.
