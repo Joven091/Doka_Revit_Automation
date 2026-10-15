@@ -92,3 +92,22 @@ jobs:
           name: beam-ui-previews
           path: artifacts/
           if-no-files-found: ignore
+
+  beam-preview:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build tests/Beam.UiSmoke/Beam.UiSmoke.csproj -c Release --warnaserror
+      - name: Package standalone calculator preview
+        shell: pwsh
+        run: |
+          Copy-Item tests/Beam.UiSmoke/start-preview.cmd tests/Beam.UiSmoke/bin/Release/net48/start-preview.cmd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: beam-calculator-standalone-preview
+          path: tests/Beam.UiSmoke/bin/Release/net48/
+          if-no-files-found: error

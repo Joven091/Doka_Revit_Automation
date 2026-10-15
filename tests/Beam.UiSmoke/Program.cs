@@ -46,6 +46,7 @@ internal static class Program
   {
    System.Windows.Media.RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;
    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+   if(args.Contains("--preview"))return StandalonePreview.Run();
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));
    if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    if(args.Contains("--drawing-ui")){D3WorkspaceUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));PresentationUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));DimensionLaneUiTests.Run();return 0;}
