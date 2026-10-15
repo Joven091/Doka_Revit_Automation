@@ -735,11 +735,13 @@ namespace EngineeringDashboard
                     }
                     double used=braces.Sum();
                     foreach(double inset in groups.Length==1 ? new[] {(length-used)/2} : Enumerable.Range(0,9).Select(i=>setback+100*i))
-                    foreach(double bias in groups.Length>2 ? new[] {0.0,-100,100} : new[] {0.0})
+                    foreach(double skew in groups.Length>2 && braces.Distinct().Count()>1 ? new[] {0.0,-150,150} : new[] {0.0})
+                    foreach(double bias in groups.Length>2 ? skew==0 ? new[] {0.0,-100,100} : new[] {0.0,-200,200} : new[] {0.0})
                     {
                         input.Trace?.CheckCancellation();
-                        if(inset<setback-1e-7)continue;
-                        double gap=groups.Length==1 ? 0 : (length-2*inset-used)/(groups.Length-1);
+                        if(inset<setback-1e-7 || inset+skew<setback-1e-7)continue;
+                        // Different stock lengths can require unequal end cantilevers.
+                        double gap=groups.Length==1 ? 0 : (length-2*inset-skew-used)/(groups.Length-1);
                         if(groups.Length>1 && gap-Math.Abs(bias)<25)continue;
                         var positions=new List<double>();var joined=new List<bool>();double x=inset;int brace=0;
                         for(int g=0;g<groups.Length;g++)
