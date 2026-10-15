@@ -1198,7 +1198,7 @@ namespace EngineeringDashboard
             if(input.TransferLowerAcceptance==null)return cross.TransversePassed=true;
             var lower=cross.DesignCases.Select(c=>LowerCase(input,cross,width,grid,edge,c)).ToArray();
             if(lower.Any(c=>c==null))return false;
-            var probe=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,WidthMm=width,LengthMm=input.LengthMm,
+            var probe=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,PositionsMm=new double[0],Joined=new bool[0],WidthMm=width,LengthMm=input.LengthMm,
                 StockPlan=new TowerStockPlan {Pieces=new TowerStockPiece[0]},
                 Transfer=new TransferredSlabResult {RowsMm=grid.Rows.Select(x=>x+edge).ToArray(),LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,CaseNames=cross.DesignCases.Select(c=>cross.Names[c]).ToArray(),LowerCases=lower}};
             return cross.TransversePassed=input.TransferLowerAcceptance(OffsetReceiver(input,probe));

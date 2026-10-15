@@ -60,7 +60,7 @@ internal static class EngineerSearchTests
             Console.WriteLine(vm.BuildDiagnosticReport("engineer junction progress"));
             if(timer.Elapsed.TotalSeconds>=90){vm.CancelOptimization();task.GetAwaiter().GetResult();throw new Exception("Engineer junction exceeded 90 seconds");}
         }
-        task.GetAwaiter().GetResult();Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
+        task.GetAwaiter().GetResult();if(!vm.IsCalculationValid)Console.WriteLine(vm.BuildDiagnosticReport("engineer junction failure"));Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
         Console.WriteLine("ENGINEER JUNCTION "+(report ? "REPORT" : "ORIGINAL")+" seconds="+timer.Elapsed.TotalSeconds);Console.WriteLine(vm.NetworkResult.LayoutDiagnostics);
     }
     static void Reported()
