@@ -36,7 +36,7 @@ internal static class WorkspaceTests
     {
         // Eight-beam drawing fixture reuses checked members; this does not run another network search.
         var fixture=new TransferNetworkResult {Beams=Enumerable.Repeat(actual.Beams[1],8).ToArray(),Bays=Enumerable.Repeat(actual.Bays[0],7).ToArray(),BeamCentresMm=Enumerable.Range(0,8).Select(i=>i*4500.0).ToArray(),Input=new TransferNetworkInput {Beams=Enumerable.Repeat(actual.Input.Beams[1],8).ToArray(),Bays=Enumerable.Repeat(actual.Input.Bays[0],7).ToArray()}};
-        var section=new TransferNetworkPlan {Width=1200,SectionOnly=true};section.SetResult(fixture);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,section.DesiredSize.Height));section.UpdateLayout();
+        var section=new TransferNetworkPlan {Width=1200,SectionOnly=true,SectionPositionMm=actual.Beams[1].Transfer.RowsMm[actual.Beams[1].Transfer.SlabRowIndices[0]]};section.SetResult(fixture);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,section.DesiredSize.Height));section.UpdateLayout();
         Action<string> capture=path=> {var bitmap=new RenderTargetBitmap(1200,(int)Math.Ceiling(section.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(section);if(path!=null){var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}};
         capture(output==null ? null : Path.ChangeExtension(output,"workspace-dense-section.png"));
         Check(section.MemberTargets.Count==47 && section.DrawnSecondaryLengthCount==8 && section.DrawnPrimarySectionCount==32,"eight-beam section retains secondary, shared slab and both paired primary section targets");
@@ -277,8 +277,8 @@ internal static class WorkspaceTests
             Click("Geometry");Render();var beam=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Beam && h.Item3==1);
             Check(drawing.SelectAt(Centre(beam.Item1)) && drawing.SelectedIndex==1 && workspace.Fields["DepthMm"].Text=="1200","click selects actual beam and editable depth");
             Check(workspace.SelectedResultText.Contains("Selected beam · B2") && workspace.SelectedResultText.Contains(model.NetworkResult.Beams[1].LegCount+" tower legs"),"each geometry beam selection displays that beam's own result");
-            workspace.InspectorTabs.SelectedIndex=1;Render();var advanced=Controls<Expander>(workspace.SharedProperties).Single(e=>Equals(e.Header,"Stock and load settings"));advanced.IsExpanded=true;
-            drawing.Select(FormworkObject.Beam,0);Render();Check(workspace.InspectorTabs.SelectedIndex==0 && Controls<Expander>(workspace.SharedProperties).Single(e=>Equals(e.Header,"Stock and load settings")).IsExpanded,"selection returns to object properties and preserves expanded shared settings");
+            workspace.InspectorTabs.SelectedIndex=1;Render();var advanced=Controls<Expander>(workspace.SharedProperties).Single(e=>Equals(e.Tag,"Available lengths"));advanced.IsExpanded=true;
+            drawing.Select(FormworkObject.Beam,0);Render();Check(workspace.InspectorTabs.SelectedIndex==0 && Controls<Expander>(workspace.SharedProperties).Single(e=>Equals(e.Tag,"Available lengths")).IsExpanded,"selection returns to object properties and preserves expanded shared settings");
             drawing.Select(FormworkObject.Beam,1);Render();
             Enter("DepthMm","1325");Check(model.NetworkBeams[1].DepthMm==1325 && !model.IsCalculationValid && workspace.Diagrams==null && !workspace.Buttons["Export"].IsEnabled,"editing invalidates shared result and diagrams");
             Check(workspace.NetworkResultText=="" && workspace.SelectedResultText=="","an edit hides all stale result quantities");
@@ -299,7 +299,7 @@ internal static class WorkspaceTests
             Click("Undo");Check(model.CrossingBeams.Count==1,"undo restores crossing geometry");Click("Redo");Check(model.CrossingBeams.Count==0,"redo removes crossing geometry");
             CadSelection(model);
             model.AllowCustomH20Lengths=false;Pump();
-            var customH20=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow custom H20 lengths (25 mm)"));
+            var customH20=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow custom H20 lengths"));
             Check(customH20.IsChecked==false,"custom H20 checkbox reflects disabled setting");customH20.IsChecked=true;customH20.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
             Check(model.AllowCustomH20Lengths && !model.IsCalculationValid,"workspace custom toggle updates shared model and invalidates result");
             Click("Undo");Check(!model.AllowCustomH20Lengths,"undo restores custom setting");Click("Redo");Check(model.AllowCustomH20Lengths,"redo restores custom setting");
@@ -319,7 +319,7 @@ internal static class WorkspaceTests
             Check(model.AllowCustomH20Lengths && model.CustomH20Scope==CustomH20LengthScope.Both,"legacy custom-enabled files retain both scopes");
             Check(((CheckBox)parent.FindName("CustomH20LengthsCheckBox")).IsChecked==true,"calculator checkbox synchronizes with layout window");
             customLengthsRecord.Inputs.RemoveAll(f=>f.Name=="AllowCustomH20Lengths");parent.RestoreCalculation(customLengthsRecord);Pump();
-            Check(!model.AllowCustomH20Lengths && Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow custom H20 lengths (25 mm)")).IsChecked==false,"legacy files restore disabled custom mode in both windows");
+            Check(!model.AllowCustomH20Lengths && Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow custom H20 lengths")).IsChecked==false,"legacy files restore disabled custom mode in both windows");
             Check(!Controls<ComboBox>(workspace).Single(c=>c.Name=="CustomH20ScopeSelector").IsEnabled,"scope selector disables when custom master switch is off");
             Check(!Controls<CheckBox>(workspace).Any(c=>c.Content?.ToString().Contains("uplift")==true) && model.IgnoreUplift,"shared settings have no editable uplift checkbox");
             var upliftRecord=parent.CaptureDrawingInputs();Check(upliftRecord.Inputs.Single(f=>f.Name=="IgnoreUplift").Value=="True","drawing saves the fixed exclusion");
@@ -351,7 +351,7 @@ internal static class WorkspaceTests
             Check(workspace.Diagnostics.ReportBox.Text.Contains("Search outcome: Succeeded") && workspace.Diagnostics.ReportBox.Text.Contains("Receiving-beam solves:"),"refresh captures completed search counters");
             Check(model.IsCalculationValid && model.NetworkResult.Beams.Length==3,"edited geometry calculates with existing optimizer");
 
-            Click("Section");Render();Check(workspace.Section.DrawnSecondaryLengthCount==3 && workspace.Section.DrawnTowerLegCount==0,"section is separate from plan and retains lower secondary lengths");
+            Click("Section");workspace.SectionPosition.Value=model.NetworkResult.Beams[0].Transfer.RowsMm[model.NetworkResult.Beams[0].Transfer.SlabRowIndices[0]];Render();Check(workspace.Section.SectionRows.All(r=>Math.Abs(r.Item3-workspace.Section.ActualSectionPositionMm)<=40+1e-7),"section is separate from plan and uses one shared physical cut");
             double sectionZoom=workspace.SectionViewport.Scale;Click("ZoomIn");Check(workspace.SectionViewport.Scale>sectionZoom,"zoom controls operate on active section");workspace.SectionViewport.PanBy(new Vector(20,10));Click("Fit");Render();
             var sectionHit=workspace.Section.MemberTargets.First(h=>h.Item3>=model.NetworkResult.Beams[h.Item2].StockPlan.Pieces.Length+model.NetworkResult.Beams[h.Item2].Transfer.RowsMm.Length);
             Check(workspace.Section.SelectAt(Centre(sectionHit.Item1)),"slab secondary selected from section");Pump();Check(workspace.Diagrams.SelectedTransferMember.H20Count==1,"section selection uses single slab H20 diagrams");
@@ -372,7 +372,7 @@ internal static class WorkspaceTests
             Click("Geometry");drawing.Select(FormworkObject.Slab,0);Render();Check(workspace.SelectedResultText.Contains("Selected slab · S1") && workspace.SelectedResultText.Contains(model.NetworkResult.Bays[0].StockLengthMm.ToString("0.###")+" mm custom"),"slab selection reports its own H20 stock and receiving beams");
             Click("Geometry");drawing.Select(FormworkObject.Beam,0);workspace.Fields["DepthMm"].Text="bad";Pump();Render();
             Check(!workspace.Buttons["Calculate"].IsEnabled && !model.CanOptimizeTowers && !parent.TryGetValidCalculation(out var ignored),"workspace conversion errors also block calculator and export guards");
-            var exclusion=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Exclude standalone 600 mm towers"));exclusion.IsChecked=false;exclusion.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+            var exclusion=Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow standalone 600 mm towers"));exclusion.IsChecked=true;exclusion.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
             Check(exclusion.IsChecked==model.Exclude600Standalone && model.Exclude600Standalone,"invalid text cannot leave a tower-exclusion checkbox inconsistent with solver");
             var criterion=Controls<ComboBox>(workspace).Single(c=>c.SelectedItem is BeamDeflectionOption);var previousCriterion=model.DeflectionLimit;criterion.SelectedItem=model.DeflectionOptions.Last();Pump();
             Check(criterion.SelectedItem==previousCriterion && model.DeflectionLimit==previousCriterion,"invalid text cannot leave displayed deflection criterion inconsistent with solver");
@@ -380,7 +380,7 @@ internal static class WorkspaceTests
             Enter("DepthMm","1750");workspace.Fields["StockLengthsText"].Text="bad";Pump();Check(!workspace.CommitFields() && !workspace.Buttons["Calculate"].IsEnabled,"invalid stocks cannot leave a stale result");
             Click("Diagnose");Check(workspace.Diagnostics.ReportBox.Text.Contains("StockLengthsText = bad") && workspace.Diagnostics.ReportBox.Text.Contains("text input errors: True"),"diagnose captures invalid pending stock text without committing it");
             workspace.Fields["StockLengthsText"].Text=model.StockLengthsText;Check(workspace.CommitFields() && model.CanOptimizeTowers,"corrected stock input releases shared validation");
-            model.Exclude600Standalone=false;Pump();Check(Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Exclude standalone 600 mm towers")).IsChecked==false,"parent-window edits synchronize categorical settings");model.Exclude600Standalone=true;Pump();
+            model.Exclude600Standalone=false;Pump();Check(Controls<CheckBox>(workspace).Single(c=>Equals(c.Content,"Allow standalone 600 mm towers")).IsChecked==true,"parent-window edits synchronize categorical settings");model.Exclude600Standalone=true;Pump();
             var calculatorDiagnose=(Button)parent.FindName("DiagnoseBeamButton");calculatorDiagnose.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
             Check(parent.Diagnostics!=null && parent.Diagnostics.ReportBox.Text.Contains("Source: Beam calculator"),"calculator provides the same diagnostic report");parent.Diagnostics.Close();
             var beforeFallback=parent.CaptureDrawingInputs();

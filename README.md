@@ -39,3 +39,15 @@ The GitHub Windows workflow also runs the calculator UI smoke tests and net48 be
 Build Release, then compile `installer.iss` with Inno Setup on Windows. It packages the root `MyRevitAddin.addin` manifest and the DLLs in `src/bin/Release/net48`, producing an installer in `artifacts/installer`. The installer writes to the current user's Revit 2024 add-ins directory.
 
 For manual installation, copy the manifest and the Release DLLs together into `%APPDATA%\Autodesk\Revit\Addins\2024`. The existing assembly names and calculator registration IDs are retained for installation compatibility.
+
+## Try the beam calculator without Revit
+
+On Windows 10/11 with .NET Framework 4.8, download the **beam-calculator-standalone-preview** artifact from a successful **Dome calculator and existing calculator checks** workflow run. Extract the entire ZIP and double-click **start-preview.cmd**. The preview opens the calculator, including D3 geometry, calculation, sections, settings and response diagrams, without copying anything into Revit's add-ins folder. Importing model data or writing results into Revit still requires the add-in.
+
+To launch from source with the .NET 10 SDK:
+
+```powershell
+./scripts/start-beam-preview.ps1
+```
+
+The preview uses the production calculator views and numerical models with the existing test host. It does not replace Revit integration testing.

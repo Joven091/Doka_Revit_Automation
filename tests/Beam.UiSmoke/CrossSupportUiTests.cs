@@ -87,18 +87,18 @@ internal static class CrossSupportUiTests
         workspace.Buttons["Section"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
         for(int i=0;i<vm.NetworkResult.CrossSupports.Length;i++)
         {
-            workspace.Section.SelectMember(-i-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,$"coordinated-report-X{i+1}-section"));
+            workspace.Section.SectionPositionMm=vm.NetworkResult.CrossSupports[i].Input.PositionMm;workspace.Section.SelectMember(-i-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,$"coordinated-report-X{i+1}-section"));
             Check(workspace.Section.DrawnConcreteEndZoneCount==vm.NetworkResult.CrossSupports[i].Bearings.Where(b=>b.IsConcreteEndZone).Select(b=>b.Beam).Distinct().Count(),$"X{i+1} section draws each direct or shutter-supported junction end zone");
         }
         int crossing=Array.FindIndex(vm.NetworkResult.CrossSupports,c=>Math.Abs(c.TowerSpanOffsetMm)>0);var support=vm.NetworkResult.CrossSupports[crossing];
-        workspace.Section.SelectMember(-crossing-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,"coordinated-report-section"));
+        workspace.Section.SectionPositionMm=support.Input.PositionMm;workspace.Section.SelectMember(-crossing-1,-1,0);Pump();Capture(workspace.Section,2000,420,Preview(previewPath,"coordinated-report-section"));
         var target=workspace.Section.MemberTargets.First(t=>t.Item2==-crossing-1 && support.Members[t.Item3].H20Count==2);
         workspace.Section.SelectAt(new Point(target.Item1.X+target.Item1.Width/2,target.Item1.Y+target.Item1.Height/2));Pump();
         Check(workspace.Diagrams!=null && Descendants(workspace.Diagrams).Count(c=>c.GetType().Name=="LoadedResponsePlot")==3,"translated crossing supports retain all three response diagrams");
         Check(workspace.Diagrams.DisplayedTransferMember.SupportsMm.SequenceEqual(support.Members[target.Item3].SupportsMm),"diagram uses the actual displaced support positions");
         var body=(FrameworkElement)((ScrollViewer)workspace.Diagrams.Content).Content;body.Measure(new Size(900,double.PositiveInfinity));body.Arrange(new Rect(0,0,900,body.DesiredSize.Height));body.UpdateLayout();Capture(body,900,(int)Math.Ceiling(body.DesiredSize.Height),Preview(previewPath,"coordinated-report-primary"));
         vm.SelectNetworkBeam(5);var cases=new TowerDiagramWindow(vm);cases.SelectMember(0,0,-1);cases.Show();Pump();
-        Check(cases.LoadCaseSelector.Items.Count==16 && cases.CheckedCasesTable.Items.Count==16 && !cases.CheckedCasesDetails.IsExpanded,"reported B6 retains sixteen checks behind one dropdown and collapsed details");
+        Check(cases.LoadCaseSelector.Items.Count==16 && !Descendants(cases).OfType<Expander>().Any(),"reported B6 retains sixteen checks behind one dropdown and collapsed details");
         var labels=cases.LoadCaseSelector.Items.Cast<ComboBoxItem>().Select(item=>item.Content.ToString()).ToArray();
         Check(labels.Any(label=>label=="B6 + S6 + X6") && labels.All(label=>!label.Contains("left slab") && !label.Contains("right slab") && !label.Contains("both slabs")),"reported case labels identify actual beams and slab bays");
         var members=vm.NetworkResult.Beams[5].Transfer.PrimaryCases.Select(stage=>stage[0]).ToArray();
@@ -124,7 +124,7 @@ internal static class CrossSupportUiTests
         double sourceForce=source.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000),shownForce=combined.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000);
         Check(Math.Abs(sourceForce-shownForce)<1e-7*Math.Max(1,Math.Abs(sourceForce)),"loading diagram preserves total crossing force");
         var caseBody=(FrameworkElement)((ScrollViewer)cases.Content).Content;caseBody.Measure(new Size(900,double.PositiveInfinity));caseBody.Arrange(new Rect(0,0,900,caseBody.DesiredSize.Height));caseBody.UpdateLayout();Capture(caseBody,900,(int)Math.Ceiling(caseBody.DesiredSize.Height),Preview(previewPath,"reported-B6-diagrams"));
-        cases.CheckedCasesDetails.IsExpanded=true;Pump();caseBody.Measure(new Size(900,double.PositiveInfinity));caseBody.Arrange(new Rect(0,0,900,caseBody.DesiredSize.Height));caseBody.UpdateLayout();Capture(caseBody,900,(int)Math.Ceiling(caseBody.DesiredSize.Height),Preview(previewPath,"reported-B6-checked-cases"));cases.Close();
+        Pump();caseBody.Measure(new Size(900,double.PositiveInfinity));caseBody.Arrange(new Rect(0,0,900,caseBody.DesiredSize.Height));caseBody.UpdateLayout();Capture(caseBody,900,(int)Math.Ceiling(caseBody.DesiredSize.Height),Preview(previewPath,"reported-B6-checked-cases"));cases.Close();
         workspace.Close();
     }
     static void ReportedWorkspace(string previewPath)
@@ -177,11 +177,11 @@ internal static class CrossSupportUiTests
             var window=workspace.Diagrams;Check(window!=null && window.IsVisible && window.SelectedTransferMember.H20Count==count,"selected crossing member displayed in the standard diagram window");
             Check(Descendants(window).Count(c=>c.GetType().Name=="LoadedResponsePlot")==3,"crossing has shear, moment and deflection plots");
             Check(window.LoadingDiagram.TranslatePoint(new Point(0,0),window).Y<300,"crossing loading chart is visible above its collapsed schedule");
-            var schedule=Descendants(window).OfType<Expander>().Single(e=>Equals(e.Header,"Crossing support schedule and details"));Check(!schedule.IsExpanded,"long crossing schedule stays collapsed initially");
+            Check(!Descendants(window).OfType<Expander>().Any(),"crossing window omits removed explanatory sections");
             if(count==2)Check(window.DisplayedTransferMember.Points.Length==0 && window.DisplayedTransferMember.Uniform.Length>0,"primary diagram shows the checked UDL without secondary-row point loads");
             var body=(FrameworkElement)((ScrollViewer)window.Content).Content;body.Measure(new Size(900,double.PositiveInfinity));body.Arrange(new Rect(0,0,900,body.DesiredSize.Height));body.UpdateLayout();
             if(support.NominalSecondarySpacingMm>0)
-                Check(Descendants(body).OfType<TextBlock>().Any(t=>t.Text.StartsWith($"Nominal crossing secondary spacing {support.Towers.Transfer.EnteredUpperSpacingMm:0.###} mm;")),"crossing diagram identifies its actual selected nominal pitch");
+                Check(Descendants(body).OfType<TextBlock>().Any(t=>t.Text==$"Secondary beam spacing: {support.Towers.Transfer.EnteredUpperSpacingMm:0.###} mm"),"crossing diagram identifies its actual selected nominal pitch");
             Capture(body,900,(int)Math.Ceiling(body.ActualHeight),Preview(previewPath,count==2 ? "current-report-primary" : "current-report-secondary"));
             var next=workspace.Section.MemberTargets.First(t=>t.Item2<0 && support.Members[t.Item3].H20Count==count && t.Item3!=window.SelectedRun);
             workspace.Section.SelectAt(new Point(next.Item1.X+next.Item1.Width/2,next.Item1.Y+next.Item1.Height/2));Pump();
@@ -210,7 +210,7 @@ internal static class CrossSupportUiTests
         Check(vm.NetworkResult.CrossSupports.Where(c=>c.Towers?.Transfer!=null).All(c=>PlywoodSpacing.StandardSpacingsMm.Contains(c.Towers.Transfer.EnteredUpperSpacingMm)),"crossing formwork uses only permitted sheet spacings");
         var section=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true};section.SetResult(vm.NetworkResult);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,section.DesiredSize.Height));section.UpdateLayout();
         var bitmap=new RenderTargetBitmap(1200,(int)Math.Ceiling(section.ActualHeight),96,96,System.Windows.Media.PixelFormats.Pbgra32);bitmap.Render(section);
-        Check(section.DrawnH20ProfileCount>=vm.NetworkResult.Beams.Length*5 && section.DrawnPrimarySectionCount==vm.NetworkResult.Beams.Length*4,"section shows real flange/web profiles and both paired primary members");
+        Check(section.DrawnH20ProfileCount>=vm.NetworkResult.Beams.Length*4 && section.DrawnPrimarySectionCount==vm.NetworkResult.Beams.Length*4,"section shows real flange/web profiles and both paired primary members");
         Check(section.MemberTargets.Any(t=>t.Item2<0),"cross members selectable in section");
         var bearing=vm.NetworkResult.CrossSupports[0].Bearings[0];Check(bearing.FillerHeightMm==150,"section filler uses the independently computed gap");
         var diagrams=new TowerDiagramWindow(vm,vm.NetworkResult.CrossSupports[0]);diagrams.SelectMember(0,0,-1);

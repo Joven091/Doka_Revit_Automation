@@ -279,7 +279,6 @@ namespace EngineeringDashboard
             {
                 var b=result.Beams[beam];var input=result.Input.Beams[beam];var t=b.Transfer;double centre=result.BeamCentresMm[beam],bottom=top+(highest-input.BottomElevationMm)*depthScale,beamTop=top+(highest-input.BottomElevationMm-input.DepthMm)*depthScale;
                 dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(xx(centre-input.WidthMm/2),beamTop,input.WidthMm*scale,bottom-beamTop));
-                SectionNote($"B{beam+1} · D {input.DepthMm:0.###}",xx(centre),top-26,true);
                 int row=IntersectingRow(t.RowsMm,cut),encoded=b.StockPlan.Pieces.Length+row;
                 double start=xx(centre+t.LowerStockStartMm),end=xx(centre+t.LowerStockStartMm+t.LowerStockLengthMm);
                 if(row>=0)
@@ -288,10 +287,10 @@ namespace EngineeringDashboard
                     H20Drawing.Longitudinal(dc,lowerRect,beam==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;
                     MemberTargets.Add(Tuple.Create(lowerRect,beam,encoded,0));
                     SectionRows.Add(Tuple.Create(beam,row,t.RowsMm[row]));
-                    SectionNote($"B{beam+1}.T{row+1} · x {t.RowsMm[row]:0.###} mm",xx(centre),sectionBottom+24,false);
-                    SectionDimension(start,end,sectionBottom+52,$"H20 {t.LowerStockLengthMm:0}",false);DrawnSecondaryLengthCount++;
+                    SectionNote($"B{beam+1} · D {input.DepthMm:0.###} · T{row+1}",xx(centre),top-26,true);
+                    SectionDimension(start,end,sectionBottom+24,$"H20 {t.LowerStockLengthMm:0}",false);DrawnSecondaryLengthCount++;
                 }
-                else SectionNote($"B{beam+1} · cut between secondary H20s",xx(centre),sectionBottom+24,false);
+                else SectionNote($"B{beam+1} · D {input.DepthMm:0.###} · between H20s",xx(centre),top-26,true);
                 int primaryRun=Array.FindIndex(b.StockPlan.Pieces,p=>cut>=p.StartMm-1e-7 && cut<=p.EndMm+1e-7);
                 if(primaryRun<0)continue;
                 foreach(double support in new[] {b.TransverseOffsetMm-b.WidthMm/2,b.TransverseOffsetMm+b.WidthMm/2})
