@@ -38,7 +38,9 @@ namespace EngineeringDashboard
             dimensionField=field;dimensionError.Text="";DimensionInput.Text=box.Text;
             DimensionPopup.HorizontalOffset=Math.Max(4,Math.Min(Drawing.ActualWidth-180,Drawing.LastDimensionBounds.Left));
             DimensionPopup.VerticalOffset=Math.Max(4,Math.Min(Drawing.ActualHeight-100,Drawing.LastDimensionBounds.Bottom+4));
-            DimensionPopup.IsOpen=true;DimensionInput.Focus();DimensionInput.SelectAll();
+            DimensionPopup.IsOpen=true;
+            DimensionInput.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,new Action(()=>
+            {if(DimensionPopup.IsOpen){DimensionInput.Focus();Keyboard.Focus(DimensionInput);DimensionInput.SelectAll();}}));
         }
         internal bool CommitDimensionInput()
         {

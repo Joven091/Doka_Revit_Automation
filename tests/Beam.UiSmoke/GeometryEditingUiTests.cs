@@ -92,8 +92,12 @@ internal static class GeometryEditingUiTests
         drawing.Select(FormworkObject.Crossing,0);Render(view.Surface);
         int positionLabel=drawing.AnnotationLabels.FindIndex(t=>t==sourceX.ToString("0.###"));
         Check(positionLabel>=0 && !drawing.AnnotationLabels.Contains("x "+sourceX.ToString("0.###")),"crossing position has an editable numeric label without x");
-        drawing.SelectAt(Centre(drawing.AnnotationBounds[positionLabel]));
-        Check(view.DimensionPopup.IsOpen,"clicking a dimension opens the canvas editor");
+        var dimensionPoint=Centre(drawing.AnnotationBounds[positionLabel]);
+        Check(drawing.BeginDimensionPress(dimensionPoint),"dimension press can be cancelled before release");drawing.CancelSelectionGesture();
+        Check(!drawing.EndDimensionPress(dimensionPoint) && !view.DimensionPopup.IsOpen && !drawing.IsMouseCaptured,"cancelled press cannot reopen a dimension editor on a later release");
+        Check(drawing.BeginDimensionPress(dimensionPoint) && !view.DimensionPopup.IsOpen,"dimension press waits for release before opening the editor");
+        Check(drawing.EndDimensionPress(dimensionPoint),"dimension release completes the click");Pump();
+        Check(view.DimensionPopup.IsOpen && view.DimensionInput.IsKeyboardFocused && !drawing.IsMouseCaptured,"released dimension click leaves keyboard focus in the editor without mouse capture");
         view.DimensionInput.Text=(sourceX+137).ToString("0.###");
         view.DimensionInput.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(view.Surface),0,Key.Enter){RoutedEvent=Keyboard.PreviewKeyDownEvent});Pump();
         Check(!view.DimensionPopup.IsOpen && model.CrossingBeams[0].PositionMm==sourceX+137,"Enter commits the inline dimension and moves X1 exactly");Click(view,"Undo");

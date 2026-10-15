@@ -54,12 +54,23 @@ namespace EngineeringDashboard
         public string ShutterClearanceNotice=>!HasReducedShutterClearance ? "" : $"X{CrossingIndex+1}: local side-shutter exception · B{Input.BayNumber} allowance {NearShutterClearanceMm:0.###} mm · B{Input.BayNumber+1} allowance {FarShutterClearanceMm:0.###} mm. Standard 200 mm detail was tried first; reduced junction loads, bearing positions and full stock clearances were rechecked.";
         public double TowerSpanOffsetMm;
         public double PrimaryNearExtensionMm,PrimaryFarExtensionMm;
-        public double NominalSecondarySpacingMm=>Towers?.Transfer?.EnteredUpperSpacingMm??0;
+        public double[] SecondaryStationsMm= new double[0];
+        public double NominalSecondarySpacingMm=>Towers?.Transfer?.EnteredUpperSpacingMm??(SecondaryStationsMm.Length<2 ? 0 : SecondaryStationsMm.Zip(SecondaryStationsMm.Skip(1),(a,b)=>b-a).Max());
+        public string SecondarySpacingDescription
+        {
+            get
+            {
+                if(Towers!=null)return $"{NominalSecondarySpacingMm:0.###} mm";
+                var gaps=SecondaryStationsMm.Zip(SecondaryStationsMm.Skip(1),(a,b)=>b-a).ToArray();
+                if(gaps.Length==0)return "Not applicable";
+                return gaps.Max()-gaps.Min()<1e-7 ? $"{gaps.Max():0.###} mm" : $"varies, {gaps.Min():0.###}–{gaps.Max():0.###} mm";
+            }
+        }
         public int H20Count=>Towers==null ? Members.Sum(m=>m.H20Quantity) : Towers.StockPlan.TotalH20Count+Towers.Transfer.AdditionalH20Count;
         public int WS10Count=>Towers?.StockPlan.WS10Count??Members.Sum(m=>m.WS10Quantity);
         public double WS10LengthMm=>Towers==null ? Members.Sum(m=>m.LengthMm*m.WS10Quantity) : Towers.Primary.IsWS10 ? Towers.StockPlan.PrimaryLengthMm : 0;
         public double TimberMm=>Towers==null ? Members.Sum(m=>m.LengthMm*m.H20Quantity) : Towers.StockPlan.TotalStockLengthMm+Towers.Transfer.AdditionalTimberMm;
-        public const string Limitations="Filler heights are geometric gaps only: filler timber bearing strength, restraint and stability are not verified. Crossing junction strips on deeper parallel beams use the existing slab-edge shutter model: the selected strip width (normally 200 mm; locally 175 mm only after the standard detail fails) reacts at its midpoint outside the concrete face on the receiving secondary. Side-shutter bearing and connection strength are not calculated. H20 bearing/connection design, sheathing, tower stability, bracing strength and foundations require separate verification. H20 depth is 200 mm and flange width is 80 mm. H20 clearance checks include full stock tails, H20 pairs and tower leg columns. Tower-to-tower clearance reserves each complete braced footprint below its head, with 40 mm around leg centres, so independent frames and columns cannot intersect. Frame-to-timber clearance needs the actual jack extensions, brace levels and hardware; these details are not modelled. Cross-beam load includes concrete and applicable construction/formwork allowances, with no slab tributary. Shared reactions are added over their actual longitudinal footprints to the main primary UDL design model. Construction stages include every subset of up to eight shared crossings; larger sets use conservative demand and reaction bounds covering every subset. Search is bounded and does not prove a global optimum.";
+        public const string Limitations="Filler heights are geometric gaps only: filler timber bearing strength, restraint and stability are not verified. Crossing junction strips on deeper parallel beams use the existing slab-edge shutter model: the selected strip width (normally 200 mm; locally 175 mm only after the standard detail fails) reacts at its midpoint outside the concrete face on the receiving secondary. Side-shutter bearing and connection strength are not calculated. H20 bearing/connection design, sheathing, tower stability, bracing strength and foundations require separate verification. H20 depth is 200 mm and flange width is 80 mm. H20 clearance checks include full stock tails, H20 pairs and tower leg columns. Tower-to-tower clearance reserves each complete braced footprint below its head, with 40 mm around leg centres, so independent frames and columns cannot intersect. Frame-to-timber clearance needs the actual jack extensions, brace levels and hardware; these details are not modelled. Cross-beam load includes concrete and applicable construction/formwork allowances, with no slab tributary. Shared reactions are flattened once per crossing and primary line, preserving force and longitudinal first moment inside the physical crossing footprint. An eccentric resultant uses a shorter centred flat block. The main-primary baseline and every stage capacity check remain in force. Shared H20 end strips transfer through the existing side shutters to receiving secondaries, rather than point loads at stock ends. Production checks all applicable structural loads together; partial construction stages are not covered. Historical staged test inputs retain their original subset checks. Search is bounded and does not prove a global optimum.";
         public string Schedule=>$"X{CrossingIndex+1}: S{Input.BayNumber} · {(Towers==null ? "Existing supports" : "Dedicated towers")} · {Input.WidthMm:0.###} × {Input.DepthMm:0.###} mm · bottom {Input.BottomElevationMm:0.###} mm\nCross-beam load {LoadKn:0.###} kN · {H20Count} H20s{(WS10Count>0 ? $" · {WS10Count} WS10s" : "")} · {TimberMm/1000:0.###} m timber · {Towers?.LegCount??0} dedicated legs · movement {MovementMm:0.###} mm"
             +(Towers==null || Towers.ConcreteEndOverhangMm<=1e-7 ? "" : $"\nConcrete end strips up to {Towers.ConcreteEndOverhangMm:0.###} mm per end transfer through the outer two secondary rows at each end; primary UDL includes the full concrete-span load over centred covered concrete; no secondary-row point loads are applied to primaries.")
             +(SlabEdgeLoadKn<=1e-10 ? "" : $"\nSlab plywood edge ledgers: {SlabEdgeLoadKn:0.###} kN transferred through this crossing formwork; counted once.")
@@ -243,14 +254,15 @@ namespace EngineeringDashboard
                 double edge=(span-stock)/2;
                 if(near-edge<150 || far-edge<150)continue;
                 var members=new List<TransferMember>();var bearings=new List<CrossBeamBearing>();var solids=new List<FormworkSolid>();bool valid=true;
-                var ledgerRows=LedgerRowLineLoads(r,index,rows.Select(i=>left.RowsMm[i]).ToArray());var ledgerBearings=new List<CrossBeamBearing>();
+                var ledgerRows=LedgerRowLineLoads(r,index,rows.Select(i=>left.RowsMm[i]).ToArray());var ledgerBearings=new List<CrossBeamBearing>();var endBearings=new List<CrossBeamBearing>();
                 for(int k=0;k<rows.Length;k++)
                 {
                     double lo=k==0 ? c.PositionMm-c.WidthMm/2 : (left.RowsMm[rows[k-1]]+left.RowsMm[rows[k]])/2;
                     double hi=k==rows.Length-1 ? c.PositionMm+c.WidthMm/2 : (left.RowsMm[rows[k]]+left.RowsMm[rows[k+1]])/2;
-                    // Concrete end allowance is carried at the stock end, retaining full concrete load.
+                    // As for slab H20s, only the area above the stock loads the H20.
+                    // The remaining strip loads its own shutter on the receiving secondary.
                     var q=new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock,KnPerM=r.Input.AreaLoad(c.DepthMm)*(hi-lo)/1000+ledgerRows[k]}};
-                    var points=edge<=1e-7 ? new BeamPointLoad[0] : new[] {new BeamPointLoad {PositionMm=0,Kn=q[0].KnPerM*edge/1000},new BeamPointLoad {PositionMm=stock,Kn=q[0].KnPerM*edge/1000}};
+                    var points=new BeamPointLoad[0];
                     var m=new TransferMember {Name=$"X{index+1} H20 {k+1}",LoadCase="Cross concrete + construction/formwork",H20Count=1,StartMm=face+edge,LengthMm=stock,SupportsMm=new[] {near-edge,span-far-edge},Uniform=q,Points=points};
                     m.Analysis=LoadedBeamAnalysis.Analyze(stock,m.SupportsMm,q,points,TowerOptimizer.PairEI/2,common.DeflectionDenominator);
                     if(!Pass(m,common,$"Cross X{index+1}; receiving T{rows[k]+1}")) {valid=false;break;}
@@ -266,10 +278,21 @@ namespace EngineeringDashboard
                             var extra=bearing.Copy();extra.Label="Slab edge ledger";extra.ReactionKn=ledgerForce;extra.FootprintStartMm=x-40;extra.FootprintEndMm=x+40;ledgerBearings.Add(extra);
                         }
                         bearings.Add(bearing);
+                        if(edge>1e-7)
+                        {
+                            double start=face+(side==0 ? 0 : span-edge),end=start+edge;
+                            var strip=new CrossBeamBearing {Beam=beam,Row=bearing.Row,Label="Crossing end strip",IsConcreteEndZone=true,IsShutterEndZone=true,
+                                EndZoneStartMm=start,EndZoneEndMm=end,EndZoneTributaryWidthMm=hi-lo,Xmm=x,Ymm=(start+end)/2,
+                                ReceivingTopMm=bearing.ReceivingTopMm,H20UndersideMm=c.BottomElevationMm,
+                                FootprintStartMm=lo,FootprintEndMm=hi,ReactionKn=r.Input.AreaLoad(c.DepthMm)*(hi-lo)*edge/1e6};
+                            endBearings.Add(strip);
+                            if(Math.Abs(ledgerRows[k])>1e-10)
+                            {var extra=strip.Copy();extra.Label="Slab edge ledger";extra.ReactionKn=ledgerRows[k]*edge/1000;extra.FootprintStartMm=x-40;extra.FootprintEndMm=x+40;endBearings.Add(extra);}
+                        }
                         if(bearing.FillerHeightMm>1e-7)solids.Add(new FormworkSolid {Name=$"X{index+1} filler B{beam+1}/T{rows[k]+1}",X0=x-40,X1=x+40,Y0=y-40,Y1=y+40,Z0=bearing.ReceivingTopMm,Z1=bearing.H20UndersideMm});
                     }
                 }
-                if(valid)return new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.ExistingSupportsOnly,Members=members.ToArray(),Bearings=bearings.Concat(ledgerBearings).ToArray(),Solids=solids.ToArray(),LoadKn=members.Sum(m=>m.Analysis.TotalLoadKn),SlabEdgeLoadKn=SlabEdgeLoads(r,index).Sum(p=>p.Kn)*span/1000};
+                if(valid)return new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.ExistingSupportsOnly,Members=members.ToArray(),Bearings=bearings.Concat(ledgerBearings).Concat(endBearings).ToArray(),SecondaryStationsMm=rows.Select(i=>left.RowsMm[i]).ToArray(),Solids=solids.ToArray(),LoadKn=members.Sum(m=>m.Analysis.TotalLoadKn)+endBearings.Sum(b=>b.ReactionKn),SlabEdgeLoadKn=SlabEdgeLoads(r,index).Sum(p=>p.Kn)*span/1000};
             }
             failure=$"X{index+1}: no permitted shared H20 stock passes moment, shear, deflection{(common.IgnoreUplift ? "" : ", uplift")} and bearing/end geometry.";return null;
         }
@@ -677,7 +700,7 @@ namespace EngineeringDashboard
                     if(detail!=null)towerFailure=(towerFailure??"")+ $" X{index+1} allowance near {allowance.Near:0} mm / far {allowance.Far:0} mm: "+detail;
                     if(support!=null)
                     {
-                        support=new CrossBeamSupportResult {CrossingIndex=support.CrossingIndex,Input=support.Input,Arrangement=support.Arrangement,Towers=support.Towers,Members=support.Members,Solids=support.Solids,Bearings=support.Bearings,LoadKn=support.LoadKn,SlabEdgeLoadKn=support.SlabEdgeLoadKn,SharedFailure=sharedFailure,JunctionNotice=support.JunctionNotice,TowerSpanOffsetMm=support.TowerSpanOffsetMm,PrimaryNearExtensionMm=support.PrimaryNearExtensionMm,PrimaryFarExtensionMm=support.PrimaryFarExtensionMm,NearShutterClearanceMm=support.NearShutterClearanceMm,FarShutterClearanceMm=support.FarShutterClearanceMm};
+                        support=new CrossBeamSupportResult {CrossingIndex=support.CrossingIndex,Input=support.Input,Arrangement=support.Arrangement,Towers=support.Towers,Members=support.Members,SecondaryStationsMm=support.SecondaryStationsMm,Solids=support.Solids,Bearings=support.Bearings,LoadKn=support.LoadKn,SlabEdgeLoadKn=support.SlabEdgeLoadKn,SharedFailure=sharedFailure,JunctionNotice=support.JunctionNotice,TowerSpanOffsetMm=support.TowerSpanOffsetMm,PrimaryNearExtensionMm=support.PrimaryNearExtensionMm,PrimaryFarExtensionMm=support.PrimaryFarExtensionMm,NearShutterClearanceMm=support.NearShutterClearanceMm,FarShutterClearanceMm=support.FarShutterClearanceMm};
                         accepted.Add(support);if(arrange(index+1))return true;accepted.RemoveAt(accepted.Count-1);
                         towerFailure=(towerFailure??"")+$" X{index+1}: dedicated towers with {allowance.Near:0}/{allowance.Far:0} mm allowances do not permit a complete passing cross-beam combination.";
                         break;
@@ -751,15 +774,37 @@ namespace EngineeringDashboard
         private static BeamDistributedLoad[] PrimaryIncrement(TransferNetworkResult r,int beam,TransferMember p,int line,IEnumerable<CrossBeamSupportResult> supports,TowerInput common)
         {
             var loads=new List<BeamDistributedLoad>();var t=r.Beams[beam].Transfer;
-            foreach(var s in supports)foreach(var b in s.Bearings.Where(b=>b.Beam==beam))
+            foreach(var s in supports)
             {
-                var lower=t.LowerCases[0][b.Row];
-                var increment=BearingIncrement(r,beam,lower,new[] {b},common);
-                double a=Math.Max(p.StartMm,b.FootprintStartMm),z=Math.Min(p.StartMm+p.LengthMm,b.FootprintEndMm);
-                if(z>a+1e-7)loads.Add(new BeamDistributedLoad {StartMm=a-p.StartMm,EndMm=z-p.StartMm,KnPerM=increment.Analysis.Reactions[line]*1000/(b.FootprintEndMm-b.FootprintStartMm)});
+                var bands=new List<BeamDistributedLoad>();
+                foreach(var b in s.Bearings.Where(b=>b.Beam==beam))
+                {
+                    var lower=t.LowerCases[0][b.Row];
+                    var increment=BearingIncrement(r,beam,lower,new[] {b},common);
+                    bands.Add(new BeamDistributedLoad {StartMm=b.FootprintStartMm,EndMm=b.FootprintEndMm,KnPerM=increment.Analysis.Reactions[line]*1000/(b.FootprintEndMm-b.FootprintStartMm)});
+                }
+                if(!TryFlattenCrossing(bands.ToArray(),s.Input.PositionMm-s.Input.WidthMm/2,s.Input.PositionMm+s.Input.WidthMm/2,out var flat))return null;
+                if(flat==null)continue;
+                double a=Math.Max(p.StartMm,flat.StartMm),z=Math.Min(p.StartMm+p.LengthMm,flat.EndMm);
+                if(z>a+1e-7)loads.Add(new BeamDistributedLoad {StartMm=a-p.StartMm,EndMm=z-p.StartMm,KnPerM=flat.KnPerM});
             }
             return loads.ToArray();
         }
+        internal static bool TryFlattenCrossing(BeamDistributedLoad[] bands,double start,double end,out BeamDistributedLoad flat)
+        {
+            flat=null;double force=0,moment=0;
+            foreach(var b in bands)
+            {double f=b.KnPerM*(b.EndMm-b.StartMm)/1000;force+=f;moment+=f*((b.StartMm+b.EndMm)/2-(start+end)/2);}
+            if(Math.Abs(force)<1e-10)return Math.Abs(moment)<1e-7;
+            double centre=(start+end)/2+moment/force;
+            // A flat rectangle can preserve force and first moment only when centred on
+            // the original resultant. Shorten it inside the physical footprint if eccentric.
+            double width=2*Math.Min(centre-start,end-centre);
+            if(width<=1e-7 || !TowerBeamAnalysis.Finite(width))return false;
+            flat=new BeamDistributedLoad {StartMm=centre-width/2,EndMm=centre+width/2,KnPerM=force*1000/width};
+            return true;
+        }
+
         private static TransferMember BearingIncrement(TransferNetworkResult r,int beam,TransferMember lower,IEnumerable<CrossBeamBearing> bearings,TowerInput common)
         {
             var b=bearings.ToArray();double origin=r.BeamCentresMm[beam]+lower.StartMm;
@@ -807,7 +852,7 @@ namespace EngineeringDashboard
                 var minLeft=Enumerable.Repeat(double.PositiveInfinity,left.Length).ToArray();var minRight=Enumerable.Repeat(double.PositiveInfinity,left.Length).ToArray();
                 bool conservative=relevant.Length>8;
                 int combinations=conservative ? 2 : 1<<relevant.Length;
-                for(int stage=0;stage<t.CaseNames.Length;stage++)for(int mask=0;mask<combinations;mask++)
+                for(int stage=0;stage<t.CaseNames.Length;stage++)for(int mask=common.FullLoadingOnly ? combinations-1 : 0;mask<combinations;mask++)
                 {
                     common.Trace?.CheckCancellation();
                     var active=relevant.Where((s,i)=>conservative ? mask==1 : (mask&(1<<i))!=0).ToArray();
@@ -833,12 +878,13 @@ namespace EngineeringDashboard
                         // Retain the primary UDL baseline; increments remain local to their concrete tributaries.
                         var baseline=original.Uniform;
                         var increment=PrimaryIncrement(r,beam,original,line,active,common);
+                        if(increment==null){Reject(common,"Crossing resultant cannot be represented by a flat UDL inside its physical footprint.");return false;}
                         var uniform=baseline.Concat(increment).ToArray();
                         var m=increment.Length==0 ? StageCopy(original,name) : Analyze(original,new BeamPointLoad[0],uniform,common,name);primary[run+line*runs]=m;
                         if(!Pass(m,common,name))return false;
                         common.Diagnostics?.Legs(m.Analysis.Reactions,common.LegCapacityKn,$"B{beam+1} cross stage legs",name);
                         if(m.Analysis.Reactions.Max()>common.LegCapacityKn+1e-8)return false;
-                        if(conservative && mask==1)
+                        if(conservative && mask==1 && !common.FullLoadingOnly)
                         {
                             var baseMember=Analyze(original,new BeamPointLoad[0],baseline,common,name);
                             var increments=active.Select(s=>Analyze(original,new BeamPointLoad[0],PrimaryIncrement(r,beam,original,line,new[] {s},common),common,"increment")).ToArray();
@@ -855,7 +901,7 @@ namespace EngineeringDashboard
                     names.Add(name);cases.Add(primary);lowerCases.Add(lower);
                     if(t.ColumnSupportLoads.Length>0)columnLoads.Add(t.ColumnSupportLoads[stage].Select(x=>new ColumnEndStripLoad {LoadCase=name,End=x.End,StartMm=x.StartMm,EndMm=x.EndMm,LeftLineKn=x.LeftLineKn,RightLineKn=x.RightLineKn,LeftLineMomentKnM=x.LeftLineMomentKnM,RightLineMomentKnM=x.RightLineMomentKnM}).ToArray());
                 }
-                l.Transfer=new TransferredSlabResult {UnitLowerCases=t.UnitLowerCases,UnitPointLabels=t.UnitPointLabels,SlabSupportStartMm=t.SlabSupportStartMm,SlabSupportEndMm=t.SlabSupportEndMm,ColumnSupportLoads=columnLoads.ToArray(),RowsMm=t.RowsMm,SlabRowIndices=t.SlabRowIndices,TributaryWidthsMm=t.TributaryWidthsMm,LeftUpperScales=t.LeftUpperScales,RightUpperScales=t.RightUpperScales,EnteredUpperSpacingMm=t.EnteredUpperSpacingMm,LeftSlabSpacingMm=t.LeftSlabSpacingMm,RightSlabSpacingMm=t.RightSlabSpacingMm,HasIndividualSpacings=t.HasIndividualSpacings,CrossFormwork=t.CrossFormwork,BeamLoadKn=t.BeamLoadKn,LowerStockStartMm=t.LowerStockStartMm,LowerStockLengthMm=t.LowerStockLengthMm,LeftFootMm=t.LeftFootMm,RightFootMm=t.RightFootMm,LeftUpperStockMm=t.LeftUpperStockMm,RightUpperStockMm=t.RightUpperStockMm,LeftUpperEdgeMm=t.LeftUpperEdgeMm,RightUpperEdgeMm=t.RightUpperEdgeMm,LeftUpperCustom=t.LeftUpperCustom,RightUpperCustom=t.RightUpperCustom,LowerCustom=t.LowerCustom,LeftFootReactionKn=t.LeftFootReactionKn,RightFootReactionKn=t.RightFootReactionKn,SlabMovementMm=t.SlabMovementMm,CoveredSlabAreaM2=t.CoveredSlabAreaM2,SlabLoadKn=t.SlabLoadKn,ShutterLoadKn=t.ShutterLoadKn,PrimaryCases=cases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=t.UpperMembers,CaseNames=names.ToArray()};
+                l.Transfer=new TransferredSlabResult {UnitLowerCases=t.UnitLowerCases,UnitPointLabels=t.UnitPointLabels,SlabSupportStartMm=t.SlabSupportStartMm,SlabSupportEndMm=t.SlabSupportEndMm,ColumnSupportLoads=columnLoads.ToArray(),FullLoadingOnly=t.FullLoadingOnly,RowsMm=t.RowsMm,SlabRowIndices=t.SlabRowIndices,TributaryWidthsMm=t.TributaryWidthsMm,LeftUpperScales=t.LeftUpperScales,RightUpperScales=t.RightUpperScales,EnteredUpperSpacingMm=t.EnteredUpperSpacingMm,LeftSlabSpacingMm=t.LeftSlabSpacingMm,RightSlabSpacingMm=t.RightSlabSpacingMm,HasIndividualSpacings=t.HasIndividualSpacings,CrossFormwork=t.CrossFormwork,BeamLoadKn=t.BeamLoadKn,LowerStockStartMm=t.LowerStockStartMm,LowerStockLengthMm=t.LowerStockLengthMm,LeftFootMm=t.LeftFootMm,RightFootMm=t.RightFootMm,LeftUpperStockMm=t.LeftUpperStockMm,RightUpperStockMm=t.RightUpperStockMm,LeftUpperEdgeMm=t.LeftUpperEdgeMm,RightUpperEdgeMm=t.RightUpperEdgeMm,LeftUpperCustom=t.LeftUpperCustom,RightUpperCustom=t.RightUpperCustom,LowerCustom=t.LowerCustom,LeftFootReactionKn=t.LeftFootReactionKn,RightFootReactionKn=t.RightFootReactionKn,SlabMovementMm=t.SlabMovementMm,CoveredSlabAreaM2=t.CoveredSlabAreaM2,SlabLoadKn=t.SlabLoadKn,ShutterLoadKn=t.ShutterLoadKn,PrimaryCases=cases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=t.UpperMembers,CaseNames=names.ToArray()};
                 l.LeftReactions=left;l.RightReactions=right;l.MinimumLeftReactions=minLeft;l.MinimumRightReactions=minRight;l.MaxLegKn=Math.Max(left.Max(),right.Max());
                 var all=cases.Concat(lowerCases).SelectMany(c=>c).Concat(t.UpperMembers).ToArray();
                 l.MomentKnM=all.Max(m=>m.Analysis.MomentKnM);l.ShearKn=all.Max(m=>m.Analysis.ShearKn);l.DeflectionMm=all.Max(m=>m.Analysis.DeflectionMm);l.Utilization=Math.Max(l.MaxLegKn/l.LegCapacityKn,all.Max(m=>m.Utilization));l.Governing=l.MaxLegKn/l.LegCapacityKn>=all.Max(m=>m.Utilization) ? "Leg capacity" : all.OrderByDescending(m=>m.Utilization).First().Name;

@@ -52,7 +52,7 @@ internal static class Program
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));
    if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    if(args.Contains("--drawing-ui")){D3WorkspaceUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));PresentationUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));DimensionLaneUiTests.Run();return 0;}
-   window=new BeamCalculatorWindow();vm=new BeamCalculatorViewModel();window.DataContext=vm;Render();
+   window=new BeamCalculatorWindow();vm=new BeamCalculatorViewModel {ReplayConstructionStages=true};window.DataContext=vm;Render();
    var secondaryText=(TextBlock)window.FindName("SecondarySpacingText");
    Check(secondaryText.Text=="407 mm" && !secondaryText.Text.Contains("chart"),"secondary result is bound to shared plywood model");
    var import=(Button)window.FindName("ImportButton");var results=(Border)window.FindName("ResultsBorder");var diagram=(BeamSupportDiagram)window.FindName("SupportDiagram");
@@ -323,6 +323,8 @@ internal static class Program
    for(int bay=0;bay<vm.NetworkResult.Bays.Length;bay++)
    {
     var layout=vm.NetworkResult.Beams[bay];int firstUpper=layout.StockPlan.Pieces.Length+layout.Transfer.RowsMm.Length;
+    int slabStage=Array.FindIndex(layout.Transfer.CaseNames,n=>n.Contains("right slab") || n.Contains("both slabs"));
+    vm.NetworkResult.DisplayStage=SystemLoadingStage.Select(vm.NetworkResult,vm.NetworkResult.DisplayStage,bay,slabStage);
     networkPlan.SectionPositionMm=layout.Transfer.RowsMm[Array.IndexOf(layout.Transfer.RightUpperScales,layout.Transfer.RightUpperScales.Max())];networkPlan.InvalidateVisual();Render();
     var slabHit=networkPlan.MemberTargets.First(h=>h.Item2==bay && h.Item3>=firstUpper);
     Check(networkPlan.SelectAt(new Point(slabHit.Item1.X+slabHit.Item1.Width/2,slabHit.Item1.Y+slabHit.Item1.Height/2)),"select single slab H20 directly from main section");Pump();

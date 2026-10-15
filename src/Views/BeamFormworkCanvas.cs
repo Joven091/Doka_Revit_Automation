@@ -20,6 +20,7 @@ namespace EngineeringDashboard
         internal double SectionPositionMm=double.NaN;
         internal event Action<double> SectionPositionChanged;
         private bool draggingSection;
+        private Tuple<Rect,FormworkObject,int,string> pressedDimension;
         private Rect sectionTarget;
         private readonly List<Tuple<Rect,string>> crossingLabels=new List<Tuple<Rect,string>>();
         private readonly List<Rect> dimensionLines=new List<Rect>();
@@ -186,7 +187,7 @@ namespace EngineeringDashboard
             if(Equals(next,HoveredObject))return;HoveredObject=next;InvalidateVisual();
         }
         internal void CancelSelectionGesture()
-        {selecting=dragging=false;HoveredObject=null;if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
+        {pressedDimension=null;selecting=dragging=false;HoveredObject=null;if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
         private bool IsSelected(FormworkObject kind,int index,Rect rect)
         {
             bool selected=selection.Contains(Tuple.Create(kind,index));
@@ -613,6 +614,24 @@ namespace EngineeringDashboard
             var hit=ObjectTargets.FirstOrDefault(h=>h.Item2==FormworkObject.Slab && h.Item1.Contains(point));
             return hit==null ? null : Tuple.Create(hit.Item3,Math.Round(World(point).X/25)*25);
         }
+        internal bool BeginDimensionPress(Point point)
+        {
+            if(Formwork || Model.IsOptimizing || CanInteract!=null && !CanInteract())return false;
+            pressedDimension=dimensions.FirstOrDefault(h=>h.Item1.Contains(point));
+            if(pressedDimension==null)return false;
+            CaptureMouse();return true;
+        }
+        internal bool EndDimensionPress(Point point)
+        {
+            if(pressedDimension==null)return false;
+            var hit=pressedDimension;pressedDimension=null;ReleaseMouseCapture();
+            if(hit.Item1.Contains(point))
+            {
+                LastDimensionBounds=hit.Item1;Select(hit.Item2,hit.Item3);
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,new Action(()=>DimensionSelected?.Invoke(hit.Item2,hit.Item3,hit.Item4)));
+            }
+            return true;
+        }
         protected override void OnMouseDown(MouseButtonEventArgs e)
         {
             base.OnMouseDown(e);Focus();mouseStart=e.GetPosition(this);
@@ -625,11 +644,11 @@ namespace EngineeringDashboard
                 if(IsDrafting){SelectAt(mouseStart);e.Handled=true;return;}
                 if(e.ClickCount==2) {Fit();e.Handled=true;return;}
                 bool toggle=(Keyboard.Modifiers&ModifierKeys.Shift)!=0;
-                bool dimension=dimensions.Any(h=>h.Item1.Contains(mouseStart));
+                if(BeginDimensionPress(mouseStart)){e.Handled=true;return;}
                 if(SelectAt(mouseStart,toggle))
                 {
-                    if(!dimension)Focus();
-                    dragging=!dimension && !toggle && !Formwork && selection.Count==1 && (SelectedKind==FormworkObject.Crossing || SelectedKind==FormworkObject.Beam);
+                    Focus();
+                    dragging=!toggle && !Formwork && selection.Count==1 && (SelectedKind==FormworkObject.Crossing || SelectedKind==FormworkObject.Beam);
                     dragDelta=0;if(dragging)CaptureMouse();e.Handled=true;
                 }
                 else if(!Formwork && !AddCrossing && (CanInteract==null || CanInteract()))
@@ -654,7 +673,9 @@ namespace EngineeringDashboard
         protected override void OnMouseUp(MouseButtonEventArgs e)
         {
             if(draggingSection){draggingSection=false;ReleaseMouseCapture();e.Handled=true;return;}
-            base.OnMouseUp(e);bool moved=dragging && Math.Abs(dragDelta)>4,window=selecting;
+            base.OnMouseUp(e);
+            if(e.ChangedButton==MouseButton.Left && EndDimensionPress(e.GetPosition(this))){e.Handled=true;return;}
+            bool moved=dragging && Math.Abs(dragDelta)>4,window=selecting;
             var end=e.GetPosition(this);
             if(panning || dragging || selecting) {panning=dragging=selecting=false;ReleaseMouseCapture();}
             if(window) {if((end-mouseStart).Length>4)SelectWindow(mouseStart,end,addWindow);else if(!addWindow)ClearSelection();}

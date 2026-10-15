@@ -252,6 +252,8 @@ internal static class WorkspaceTests
             double planHeight=drawing.ActualHeight;var hit=drawing.MemberTargets.First();Check(drawing.SelectAt(Centre(hit.Item1)),"primary H20 is selected directly from plan");Pump();Render();
             Check(workspace.Diagrams!=null && workspace.Diagrams.IsVisible && workspace.Diagrams.Owner==parent && workspace.Diagrams.SelectedTransferMember.H20Count==2,"primary pair opens a diagram owned by the main D3 calculator");
             Check(Math.Abs(workspace.Diagrams.LoadedAnalysis.TotalLoadKn-model.NetworkResult.Beams[hit.Item2].Transfer.PrimaryCases[workspace.Diagrams.SelectedLoadCase][hit.Item3].Analysis.TotalLoadKn)<1e-8,"plan selection displays actual member load");
+            Check(workspace.Diagrams.SelectedLoadCase==model.NetworkResult.DisplayStage.BeamCases[hit.Item2],"primary defaults to the shared system stage rather than its individual governing case");
+            Check(Controls<TextBlock>(workspace.Diagrams).Any(t=>t.Text.StartsWith("System stage:")),"response diagram identifies the consistent system stage and score");
             Check(Controls<TowerDiagramWindow.MemberLoadingPlot>(workspace.Diagrams).Count()==1 && Controls<FrameworkElement>(workspace.Diagrams).Count(b=>b.GetType().Name=="LoadedResponsePlot")==3 && !Controls<TowerDiagramWindow.MemberLoadingPlot>(workspace).Any(),"loading and response cards are outside the workspace");
             Check(Math.Abs(drawing.ActualHeight-planHeight)<.01,"opening diagrams does not shrink the drawing canvas");
             RenderDiagrams();Check(workspace.Diagrams.LoadingDiagram.DrawnSupportCount==workspace.Diagrams.SelectedTransferMember.SupportsMm.Length && workspace.Diagrams.LoadingDiagram.DrawnUniformCount==workspace.Diagrams.LoadingDiagram.CombinedUniform.Length,"loading schematic renders every support and combined distributed design interval");
@@ -286,7 +288,8 @@ internal static class WorkspaceTests
             Click("Undo");Check(model.NetworkBeams[1].DepthMm==1200,"undo restores beam depth");Click("Redo");Check(model.NetworkBeams[1].DepthMm==1325,"redo restores edited depth");Click("Undo");
             drawing.Select(FormworkObject.Beam,1);drawing.MoveSelection(42);Pump();Render();Check(model.NetworkBays[0].WidthMm==3950,"moving a beam edits its adjacent span in 25 mm steps");Click("Undo");Check(model.NetworkBays[0].WidthMm==3900,"undo restores dragged span");
             drawing.Select(FormworkObject.Slab,0);Render();int spanLabel=drawing.AnnotationLabels.IndexOf("3900");
-            Check(spanLabel>=0 && drawing.SelectAt(Centre(drawing.AnnotationBounds[spanLabel])) && workspace.DimensionPopup.IsOpen && workspace.DimensionInput.SelectedText=="3900","clicking the rotated span text opens its exact value on the canvas");
+            Check(spanLabel>=0 && drawing.SelectAt(Centre(drawing.AnnotationBounds[spanLabel])),"rotated span text selects its dimension");Pump();
+            Check(workspace.DimensionPopup.IsOpen && workspace.DimensionInput.IsKeyboardFocused && workspace.DimensionInput.SelectedText=="3900","clicking the rotated span text opens and focuses its exact value on the canvas");
             workspace.DimensionInput.Text="3850";Check(workspace.CommitDimensionInput() && model.NetworkBays[0].WidthMm==3850,"inline slab span edits target the selected bay");Click("Undo");
             drawing.Select(FormworkObject.Beam,0);Click("AddCrossing");Render();var slab=drawing.ObjectTargets.Single(h=>h.Item2==FormworkObject.Slab && h.Item3==0);
             var place=drawing.Screen(3178,drawing.World(Centre(slab.Item1)).Y);Check(drawing.SelectAt(place),"crossing beam placed by clicking slab");Pump();Render();

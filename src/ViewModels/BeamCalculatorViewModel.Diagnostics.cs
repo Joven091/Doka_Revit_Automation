@@ -61,6 +61,7 @@ namespace EngineeringDashboard
             if(IsCalculationValid && IndependentBeamResults.Length>0)text.AppendLine("\nINDEPENDENT BEAM RESULTS\n"+string.Join("\n",IndependentBeamResults.Select((b,i)=>$"I{i+1}: length {b.LengthMm:0.###} mm; own beam load {b.TotalSupportedLoadKn:0.###} kN; {b.LegCount} legs; peak leg {b.MaxLegKn:0.###} kN. Slab loads remain on connected bays.")));
             if(IsCalculationValid && NetworkResult!=null)text.AppendLine("\nSELECTED NETWORK LAYOUT\n"+NetworkResult.LayoutDiagnostics);
             if(!string.IsNullOrEmpty(TowerFailureDetails))text.AppendLine("\nCURRENT FAILURE DETAILS\n"+TowerFailureDetails);
+            text.AppendLine("\nLOADING POLICY\n"+(ReplayConstructionStages ? "Historical staged regression replay." : "Fully loaded beam + connected slabs + applicable crossings only. Partial construction stages are not checked."));
             text.AppendLine("\nPRIMARY MATERIAL BASIS\n"+PrimaryMaterialAssumptions);
             text.AppendLine("\nSEARCH LIMITS / RANKING");
             text.AppendLine("Normal calculation has no elapsed-time limit. The 30-second solution time is a performance target. Catalogue, custom and fallback searches run to completion within their candidate limits; user cancellation remains available.");

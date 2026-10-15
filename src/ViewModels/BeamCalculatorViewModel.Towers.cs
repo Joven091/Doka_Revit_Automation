@@ -43,6 +43,7 @@ namespace EngineeringDashboard
         public double TowerLegCapacityKn { get => towerLegCapacityKn; set { towerLegCapacityKn = value; Changed(); } }
         public string StockLengthsText { get => stockLengthsText; set { stockLengthsText = value; Changed(); } }
         public double StockEndSetbackMm { get => stockEndSetbackMm; set { stockEndSetbackMm = value; Changed(); } }
+        internal bool ReplayConstructionStages {get;set;}
         public TowerLayout TowerResult { get; private set; }
         private CancellationTokenSource towerCancellation;
         internal bool OptimizeCrossingJunctions {get;set;}=true;
@@ -86,7 +87,7 @@ namespace EngineeringDashboard
             if (checkPlywood) ValidatePlywoodSpacing();
             double left = HasLeftSlab && !IsTransferMode ? AreaLoad(LeftSlabThickness) * SlabStripWidthMm / 1000 : 0;
             double right = HasRightSlab && !IsTransferMode ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;
-            var input = new TowerInput { PrimaryMaterial=PrimaryMaterial, LengthMm = BeamLengthMm, LegCapacityKn = TowerLegCapacityKn, DeflectionLimitMm = DeflectionLimit.Millimetres, DeflectionDenominator = DeflectionLimit.Denominator,
+            var input = new TowerInput { FullLoadingOnly=!ReplayConstructionStages, PrimaryMaterial=PrimaryMaterial, LengthMm = BeamLengthMm, LegCapacityKn = TowerLegCapacityKn, DeflectionLimitMm = DeflectionLimit.Millimetres, DeflectionDenominator = DeflectionLimit.Denominator,
                 IgnoreUplift = IgnoreUplift, AllowCustomH20Lengths = AllowCustomH20Lengths, CustomH20Scope = CustomH20Scope, Exclude600Standalone = Exclude600Standalone, MaximumConcreteEndOverhangMm = MaximumConcreteEndOverhangMm, StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
                 TotalLineLoad = IsNetworkMode ? 0 : AreaLoad(Depth) * Width / 1000 + left + right,
                 TransverseLoadMoment = IsTransferMode ? 0 : (right - left) * (Width + (HasAnySlab ? SlabStripWidthMm : 0)) / 2000 };

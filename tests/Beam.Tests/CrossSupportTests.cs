@@ -6,7 +6,7 @@ internal static class CrossSupportTests
 {
     static int checks;
     static void Check(bool value,string message) {checks++;if(!value)throw new Exception("Cross supports: "+message);}
-    static void Near(double actual,double expected,string message)=>Check(Math.Abs(actual-expected)<1e-6*Math.Max(1,Math.Abs(expected)),message);
+    static void Near(double actual,double expected,string message)=>Check(Math.Abs(actual-expected)<1e-6*Math.Max(1,Math.Abs(expected)),message+": actual "+actual+", expected "+expected);
     static TowerInput Common()=>new TowerInput {LengthMm=2450,LegCapacityKn=70,DeflectionDenominator=350,MaximumConcreteEndOverhangMm=0,AllowSeparateSlabFallback=false,NetworkSearchWorkers=1};
     static TransferNetworkInput Input(CrossBeamSupportMode mode=CrossBeamSupportMode.ExistingSupportsOnly,double bottom=-400)=>new TransferNetworkInput {UpperSpacingMm=250,LocalRowGapMm=100,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=600},new TransferBeamRow {WidthMm=300,DepthMm=600}},Bays=new[] {new TransferBayRow {WidthMm=3900,ThicknessMm=100}},CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1225,WidthMm=400,DepthMm=150,BottomElevationMm=bottom,SupportMode=mode}}};
     static void Failed(TowerInput common,TransferNetworkInput input,string message)
@@ -23,26 +23,35 @@ internal static class CrossSupportTests
             string name=transfer.CaseNames[stage];int suffix=name.IndexOf(" + X",StringComparison.Ordinal);
             int baseline=Array.IndexOf(transfer.CaseNames,name.Substring(0,suffix));
             int runs=layout.StockPlan.Pieces.Length;
-            var bearings=result.CrossSupports.SelectMany(s=>s.Bearings).Where(b=>b.Beam==beam).ToArray();
+
             for(int member=0;member<transfer.PrimaryCases[stage].Length;member++)
             {
                 var loaded=transfer.PrimaryCases[stage][member];var original=transfer.PrimaryCases[baseline][member];
                 int line=member/runs;
-                var cuts=loaded.Uniform.Concat(original.Uniform).SelectMany(q=>new[] {q.StartMm,q.EndMm})
-                    .Concat(bearings.SelectMany(b=>new[] {Math.Max(0,b.FootprintStartMm-loaded.StartMm),Math.Min(loaded.LengthMm,b.FootprintEndMm-loaded.StartMm)}))
-                    .Where(x=>x>=0 && x<=loaded.LengthMm).Distinct().OrderBy(x=>x).ToArray();
-                for(int i=1;i<cuts.Length;i++)
+                var expectedBands=new System.Collections.Generic.List<BeamDistributedLoad>();
+                foreach(var support in result.CrossSupports)
                 {
-                    double x=(cuts[i-1]+cuts[i])/2,expected=original.Uniform.Where(q=>x>q.StartMm && x<q.EndMm).Sum(q=>q.KnPerM);
-                    foreach(var bearing in bearings.Where(b=>x+loaded.StartMm>b.FootprintStartMm && x+loaded.StartMm<b.FootprintEndMm))
+                    double force=0,moment=0;
+                    foreach(var bearing in support.Bearings.Where(b=>b.Beam==beam))
                     {
                         var lower=transfer.LowerCases[baseline][bearing.Row];
                         double position=bearing.Ymm-result.BeamCentresMm[beam]-lower.StartMm;
                         double right=bearing.ReactionKn*(position-lower.SupportsMm[0])/(lower.SupportsMm[1]-lower.SupportsMm[0]);
-                        expected+=(line==0 ? bearing.ReactionKn-right : right)*1000/(bearing.FootprintEndMm-bearing.FootprintStartMm);
-                        incrementFound=true;
+                        double reaction=line==0 ? bearing.ReactionKn-right : right;
+                        force+=reaction;moment+=reaction*(bearing.FootprintStartMm+bearing.FootprintEndMm)/2;
                     }
-                    Near(loaded.Uniform.Where(q=>x>q.StartMm && x<q.EndMm).Sum(q=>q.KnPerM),expected,"primary baseline UDL and local cross increments agree with independent transverse statics");
+                    if(Math.Abs(force)<1e-10)continue;
+                    double centre=moment/force,start=support.Input.PositionMm-support.Input.WidthMm/2,end=start+support.Input.WidthMm;
+                    double width=2*Math.Min(centre-start,end-centre),a=Math.Max(loaded.StartMm,centre-width/2),z=Math.Min(loaded.StartMm+loaded.LengthMm,centre+width/2);
+                    if(z>a)expectedBands.Add(new BeamDistributedLoad {StartMm=a-loaded.StartMm,EndMm=z-loaded.StartMm,KnPerM=force*1000/width});
+                    incrementFound=true;
+                }
+                var cuts=loaded.Uniform.Concat(original.Uniform).Concat(expectedBands).SelectMany(q=>new[] {q.StartMm,q.EndMm}).Distinct().OrderBy(x=>x).ToArray();
+                for(int i=1;i<cuts.Length;i++)
+                {
+                    if(cuts[i]-cuts[i-1]<1e-6)continue; // Independent statics and stiffness arithmetic can differ at the same boundary by round-off.
+                    double x=(cuts[i-1]+cuts[i])/2;
+                    Near(loaded.Uniform.Where(q=>x>q.StartMm && x<q.EndMm).Sum(q=>q.KnPerM),original.Uniform.Concat(expectedBands).Where(q=>x>q.StartMm && x<q.EndMm).Sum(q=>q.KnPerM),"flat primary crossing UDL agrees with independent force and moment statics");
                 }
             }
         }
