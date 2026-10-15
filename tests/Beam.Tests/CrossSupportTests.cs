@@ -88,7 +88,8 @@ internal static class CrossSupportTests
         Check(result.Bays.All(b=>Math.Abs(b.NearFootMm-b.FarFootMm)<1e-7),"shared cross support is evaluated with symmetric slab feet");
         Check(cross.Arrangement==CrossBeamSupportMode.ExistingSupportsOnly && cross.Towers==null,"shared arrangement accepted with no new towers");
         Check(cross.Members.Length==3 && cross.Members.All(m=>m.Utilization<=1+1e-8),"100 mm receiving rows provide three individually passing parallel H20s for the 400 mm cross beam");
-        Check(cross.Bearings.All(bearing=>Math.Abs(bearing.FillerHeightMm)<1e-7),"both zero gaps are direct bearings");
+        Check(cross.Bearings.Where(bearing=>!bearing.IsConcreteEndZone).All(bearing=>Math.Abs(bearing.FillerHeightMm)<1e-7),"both zero H20 bearing gaps are direct bearings");
+        Check(cross.Bearings.Where(bearing=>bearing.IsConcreteEndZone).All(bearing=>bearing.IsShutterEndZone),"shorter shared stock transfers its supported end strips through the side shutters");
         Near(cross.LoadKn,input.AreaLoad(150)*.4*3.9,"cross load has no slab tributary");
         Near(result.SlabLoadKn,input.AreaLoad(100)*2.05*3.9,"remaining slab load conserved");
         Near(result.Beams.Sum(l=>l.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)),input.Beams.Sum(i=>input.AreaLoad(i.DepthMm)*i.WidthMm/1000*2.45)+result.SlabLoadKn+cross.LoadKn,"load transferred through secondaries and primary pairs to main legs");
