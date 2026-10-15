@@ -1187,6 +1187,34 @@ namespace EngineeringDashboard
             widths[last-1]+=edge-rightLast;widths[last]+=rightLast;
             return widths;
         }
+        private static bool NecessaryPrimarySpans(TowerInput input,Geometry geometry,CrossOption cross,double edge,int stage)
+        {
+            // Between supports, a constant UDL changes shear by qL and needs a
+            // moment range qL²/8. With |V|<=Vlim and |M|<=Mlim these are necessary
+            // bounds, independent of end moments. Unknown crossing increments
+            // are confined to their footprints, which are excluded from this filter.
+            var unknown=input.TransferredSlab.LeftCrossingBands.Concat(input.TransferredSlab.RightCrossingBands).Where(b=>b.KnPerM<0).ToArray();
+            foreach(var stock in geometry.Stock)for(int line=0;line<2;line++)
+            {
+                var loads=PrimaryUniformLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,stage,edge);
+                if(loads==null)continue;
+                var supports=geometry.MemberSupports[Array.IndexOf(geometry.Stock,stock)];
+                var limits=new[] {0.0}.Concat(supports).Concat(new[] {stock.StockLengthMm}).ToArray();
+                for(int span=1;span<limits.Length;span++)
+                {
+                    double a=limits[span-1],b=limits[span];
+                    var cuts=loads.SelectMany(q=>new[] {q.StartMm,q.EndMm}).Concat(unknown.SelectMany(q=>new[] {q.StartMm-stock.StartMm-edge,q.EndMm-stock.StartMm-edge})).Concat(new[] {a,b}).Where(x=>x>=a && x<=b).Distinct().OrderBy(x=>x).ToArray();
+                    for(int i=1;i<cuts.Length;i++)
+                    {
+                        double mid=(cuts[i-1]+cuts[i])/2,absolute=mid+stock.StartMm+edge;
+                        if(unknown.Any(q=>absolute>=q.StartMm && absolute<=q.EndMm))continue;
+                        double q=Math.Abs(loads.Where(u=>mid>=u.StartMm && mid<=u.EndMm).Sum(u=>u.KnPerM)),length=(cuts[i]-cuts[i-1])/1000;
+                        if(q*length>2*input.Primary.ShearLimitKn+1e-7 || q*length*length>16*input.Primary.MomentLimitKnM+1e-7)return false;
+                    }
+                }
+            }
+            return true;
+        }
         private static double PrimaryUtilization(TowerInput input,LoadedBeamAnalysis analysis)=>Math.Max(analysis.DeflectionUtilization,input.Primary.Strength(analysis));
         private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,Dictionary<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent)
         {
@@ -1200,6 +1228,7 @@ namespace EngineeringDashboard
             foreach(int c in cross.DesignCases)
             {
                 var checks=new PrimaryCheck[g.Stock.Length*2];
+                if(input.EngineerSearch && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {
@@ -1240,13 +1269,6 @@ namespace EngineeringDashboard
                 }
                 checkedCases.Add(checks); lowerCases.Add(lower);
             }
-            // Ranking uses the identical member utilization arithmetic. Preserve strict
-            // original-order ties; only candidates outside the economic bound are deferred.
-            var upper=new List<TransferMember>();
-            foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null)) upper.Add(new TransferMember {H20Count=1,Name=u==cross.Left ? "Upper left" : "Upper right",LoadCase="Slab · governing row",StartMm=u.Edge,LengthMm=u.Stock,SupportsMm=new[] {u.Foot-u.Edge,u.Bay-u.OtherFoot-u.Edge},Points=new BeamPointLoad[0],Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=u.Stock,KnPerM=u.Load*Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000)}},Analysis=u.Analysis.Scale(Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000))});
-            if(!input.EngineerSearch && input.TransferredSlab.IsNetwork && incumbent!=null && Economy(g,cross,grid,input)>Economy(incumbent)+.01)
-            {input.Trace?.Increment(BeamSearchCounter.TransferLayoutsDeferred);return null;}
-            input.Trace?.Increment(BeamSearchCounter.TransferLayoutsBuilt);
             var primaryCases=new List<TransferMember[]>();
             for(int c=0;c<checkedCases.Count;c++)
             {
@@ -1258,6 +1280,21 @@ namespace EngineeringDashboard
                 }
                 primaryCases.Add(members);
             }
+            if(input.EngineerSearch && input.TransferLayoutAcceptance!=null)
+            {
+                var provisional=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,IgnoreUplift=input.IgnoreUplift,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=g.Joined,WidthMm=width,Rotated=rotated,LengthMm=input.LengthMm,DeflectionDenominator=input.DeflectionDenominator,DeflectionLimitMm=input.DeflectionLimitMm,LegCapacityKn=input.LegCapacityKn,
+                    StockPlan=new TowerStockPlan {PrimaryMaterial=input.PrimaryMaterial,Pieces=g.Stock.Select(p=>new TowerStockPiece {StartMm=p.StartMm+edge,StockLengthMm=p.StockLengthMm,FirstSupport=p.FirstSupport,LastSupport=p.LastSupport}).ToArray()},
+                    Transfer=new TransferredSlabResult {FullLoadingOnly=input.FullLoadingOnly,RowsMm=rows.Select(x=>x+edge).ToArray(),LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,CaseNames=cross.DesignCases.Select(i=>cross.Names[i]).ToArray(),LowerCases=lowerCases.ToArray(),PrimaryCases=primaryCases.ToArray(),UpperMembers=new TransferMember[0],ColumnSupportLoads=new ColumnEndStripLoad[0][]}};
+                if(!input.TransferLayoutAcceptance(OffsetReceiver(input,provisional)))
+                {input.Trace?.Increment(BeamSearchCounter.TransferLayoutsDeferred);return null;}
+            }
+            // Ranking uses the identical member utilization arithmetic. Preserve strict
+            // original-order ties; only candidates outside the economic bound are deferred.
+            var upper=new List<TransferMember>();
+            foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null)) upper.Add(new TransferMember {H20Count=1,Name=u==cross.Left ? "Upper left" : "Upper right",LoadCase="Slab · governing row",StartMm=u.Edge,LengthMm=u.Stock,SupportsMm=new[] {u.Foot-u.Edge,u.Bay-u.OtherFoot-u.Edge},Points=new BeamPointLoad[0],Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=u.Stock,KnPerM=u.Load*Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000)}},Analysis=u.Analysis.Scale(Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000))});
+            if(!input.EngineerSearch && input.TransferredSlab.IsNetwork && incumbent!=null && Economy(g,cross,grid,input)>Economy(incumbent)+.01)
+            {input.Trace?.Increment(BeamSearchCounter.TransferLayoutsDeferred);return null;}
+            input.Trace?.Increment(BeamSearchCounter.TransferLayoutsBuilt);
             var pieces=g.Stock.Select((s,i)=>new TowerStockPiece {IsCustomLength=!input.PrimaryStockLengthsMm.Contains(s.StockLengthMm),StartMm=s.StartMm+edge,StockLengthMm=s.StockLengthMm,FirstSupport=s.FirstSupport,LastSupport=s.LastSupport,
                 StrengthUtilization=primaryCases.SelectMany(c=>new[] {c[i],c[i+g.Stock.Length]}).Max(m=>m.StrengthUtilization),MomentKnM=primaryCases.Max(c=>Math.Max(c[i].Analysis.MomentKnM,c[i+g.Stock.Length].Analysis.MomentKnM)),ShearKn=primaryCases.Max(c=>Math.Max(c[i].Analysis.ShearKn,c[i+g.Stock.Length].Analysis.ShearKn)),
                 DeflectionMm=primaryCases.Max(c=>Math.Max(c[i].Analysis.DeflectionMm,c[i+g.Stock.Length].Analysis.DeflectionMm)),DeflectionUtilization=primaryCases.Max(c=>Math.Max(c[i].Analysis.DeflectionUtilization,c[i+g.Stock.Length].Analysis.DeflectionUtilization)),GoverningDeflectionRegion=input.TransferredSlab.IncludeConcreteEndStrips ? "Envelope of primary UDL + end-strip stages" : "Envelope of primary UDL stages"}).ToArray();
@@ -1303,6 +1340,7 @@ namespace EngineeringDashboard
             foreach(int c in cross.DesignCases)
             {
                 var members=new List<TransferMember>();
+                if(input.EngineerSearch && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {
