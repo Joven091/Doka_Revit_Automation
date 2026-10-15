@@ -42,12 +42,18 @@ internal static class EngineerSearchTests
         }
         Reported();
     }
-    public static void Junction()
+    public static void Junction(bool report=false)
     {
-        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=10800,MaximumConcreteEndOverhangMm=75,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,PlywoodDeflectionLimit="L/270",DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
-        vm.NetworkBeams[0].WidthMm=650;vm.NetworkBeams[0].DepthMm=1150;vm.NetworkBeams[0].BottomElevationMm=-1150;
-        vm.NetworkBeams[1].WidthMm=800;vm.NetworkBeams[1].DepthMm=1750;vm.NetworkBeams[1].BottomElevationMm=-1750;
-        vm.NetworkBays[0].WidthMm=2575;vm.NetworkBays[0].ThicknessMm=300;vm.AddCrossingBeam();vm.CrossingBeams[0].PositionMm=5375;vm.CrossingBeams[0].WidthMm=650;vm.CrossingBeams[0].DepthMm=1150;vm.CrossingBeams[0].BottomElevationMm=-1150;
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,BeamLengthMm=report ? 10450 : 10800,MaximumConcreteEndOverhangMm=75,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,IgnoreUplift=true,Exclude600Standalone=true,PlywoodDeflectionLimit="L/270",DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+        if(report)vm.AddNetworkBay();
+        for(int i=0;i<vm.NetworkBeams.Count;i++)
+        {
+            bool deep=report ? i==2 : i==1;
+            vm.NetworkBeams[i].WidthMm=deep ? 800 : 650;vm.NetworkBeams[i].DepthMm=deep ? 1750 : 1150;vm.NetworkBeams[i].BottomElevationMm=deep ? -1750 : -1150;
+        }
+        vm.NetworkBays[0].WidthMm=report ? 3550 : 2575;foreach(var bay in vm.NetworkBays)bay.ThicknessMm=300;
+        if(report)vm.NetworkBays[1].WidthMm=2575;
+        vm.AddCrossingBeam();vm.CrossingBeams[0].PositionMm=report ? 2500 : 5375;vm.CrossingBeams[0].WidthMm=report ? 600 : 650;vm.CrossingBeams[0].DepthMm=report ? 600 : 1150;vm.CrossingBeams[0].BottomElevationMm=report ? -600 : -1150;
         var task=vm.OptimizeTowersAsync(false);var timer=System.Diagnostics.Stopwatch.StartNew();
         while(!task.Wait(TimeSpan.FromSeconds(30)))
         {
@@ -55,7 +61,7 @@ internal static class EngineerSearchTests
             if(timer.Elapsed.TotalSeconds>=90){vm.CancelOptimization();task.GetAwaiter().GetResult();throw new Exception("Engineer junction exceeded 90 seconds");}
         }
         task.GetAwaiter().GetResult();Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
-        Console.WriteLine("ENGINEER JUNCTION seconds="+timer.Elapsed.TotalSeconds);Console.WriteLine(vm.NetworkResult.LayoutDiagnostics);
+        Console.WriteLine("ENGINEER JUNCTION "+(report ? "REPORT" : "ORIGINAL")+" seconds="+timer.Elapsed.TotalSeconds);Console.WriteLine(vm.NetworkResult.LayoutDiagnostics);
     }
     static void Reported()
     {

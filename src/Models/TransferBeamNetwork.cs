@@ -776,11 +776,11 @@ namespace EngineeringDashboard
                                 var alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,int.MaxValue,width);
                                 if(alternative!=null)choices.Add(alternative);
                             }
-                            if(common.EngineerSearch && best!=null)
+                            if(common.EngineerSearch && common.EngineerJunctionExtraTiers>0 && best!=null)
                             {
                                 // A sparse receiver may pass its local loads but obstruct the
                                 // crossing tower. Keep the next leg tiers until the whole junction fits.
-                                foreach(int extra in new[] {1,2})
+                                foreach(int extra in Enumerable.Range(1,common.EngineerJunctionExtraTiers))
                                 {
                                     var larger=common.CopyForSearch();larger.EngineerMinimumStations=best.PositionsMm.Length+extra;
                                     var alternative=Solve(larger,input,beam,left,right,cover,phase,covers,geometryCache,larger.EngineerMinimumStations*2,best.WidthMm);
@@ -821,6 +821,12 @@ namespace EngineeringDashboard
                 }
             }
             catch(BeamSearchDeadlineException) {common.Trace?.CheckUserCancellation();}
+            if(common.EngineerSearch && common.EngineerJunctionExtraTiers==0 && outcome.Improvements.Count==0 && common.Trace?.BudgetReached!=true)
+            {
+                var expanded=common.CopyForSearch();expanded.EngineerJunctionExtraTiers=2;
+                var alternative=CoordinatedScenario(expanded,input,covers,geometryCache,options,cover,phase,rows);
+                alternative.Tested+=outcome.Tested;return alternative;
+            }
             return outcome;
         }
 
