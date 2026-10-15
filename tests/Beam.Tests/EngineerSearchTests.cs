@@ -79,9 +79,10 @@ internal static class EngineerSearchTests
         common.NetworkSearchWorkers=Math.Min(4,Environment.ProcessorCount);common.ReuseSearchWork=false;
         var repeat=TransferNetworkOptimizer.Optimize(common,network);Verify(repeat);
         Check(result.Schedule==repeat.Schedule && result.LayoutDiagnostics==repeat.LayoutDiagnostics,"serial/reused and parallel/uncached searches agree exactly");
-        // The same receiver lower rows recur under many longitudinal primary layouts.
+        // Dedicated/fallback end zones retain the original receiver cache; automatic
+        // shared crossings now use the complete spreader path (EngineerWorkflowTests).
         // Compare reuse with a fresh calculation and invalidate on changed crossing load.
-        var junction=network.WithSpacings();junction.CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3300,WidthMm=650,DepthMm=200,BottomElevationMm=-200}};
+        var junction=network.WithSpacings();junction.CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3300,WidthMm=650,DepthMm=200,BottomElevationMm=-200,SupportMode=CrossBeamSupportMode.DedicatedTowers}};
         common.ReuseSearchWork=true;common.CrossLowerCases=null;
         bool original=CrossBeamSupportOptimizer.CheckJunctionReceiver(common,junction,0,result.Beams[0]);
         Check(common.CrossLowerCases!=null && common.CrossLowerCases.Count>0,"crossing lower case is cached");
