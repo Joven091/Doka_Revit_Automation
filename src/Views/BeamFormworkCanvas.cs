@@ -187,7 +187,7 @@ namespace EngineeringDashboard
             if(Equals(next,HoveredObject))return;HoveredObject=next;InvalidateVisual();
         }
         internal void CancelSelectionGesture()
-        {selecting=dragging=false;HoveredObject=null;if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
+        {pressedDimension=null;selecting=dragging=false;HoveredObject=null;if(IsMouseCaptured)ReleaseMouseCapture();InvalidateVisual();}
         private bool IsSelected(FormworkObject kind,int index,Rect rect)
         {
             bool selected=selection.Contains(Tuple.Create(kind,index));
@@ -616,6 +616,7 @@ namespace EngineeringDashboard
         }
         internal bool BeginDimensionPress(Point point)
         {
+            if(Formwork || Model.IsOptimizing || CanInteract!=null && !CanInteract())return false;
             pressedDimension=dimensions.FirstOrDefault(h=>h.Item1.Contains(point));
             if(pressedDimension==null)return false;
             CaptureMouse();return true;
@@ -643,12 +644,11 @@ namespace EngineeringDashboard
                 if(IsDrafting){SelectAt(mouseStart);e.Handled=true;return;}
                 if(e.ClickCount==2) {Fit();e.Handled=true;return;}
                 bool toggle=(Keyboard.Modifiers&ModifierKeys.Shift)!=0;
-                bool dimension=BeginDimensionPress(mouseStart);
-                if(dimension){e.Handled=true;return;}
+                if(BeginDimensionPress(mouseStart)){e.Handled=true;return;}
                 if(SelectAt(mouseStart,toggle))
                 {
-                    if(!dimension)Focus();
-                    dragging=!dimension && !toggle && !Formwork && selection.Count==1 && (SelectedKind==FormworkObject.Crossing || SelectedKind==FormworkObject.Beam);
+                    Focus();
+                    dragging=!toggle && !Formwork && selection.Count==1 && (SelectedKind==FormworkObject.Crossing || SelectedKind==FormworkObject.Beam);
                     dragDelta=0;if(dragging)CaptureMouse();e.Handled=true;
                 }
                 else if(!Formwork && !AddCrossing && (CanInteract==null || CanInteract()))

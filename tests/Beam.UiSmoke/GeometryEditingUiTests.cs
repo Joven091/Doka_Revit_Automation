@@ -93,6 +93,8 @@ internal static class GeometryEditingUiTests
         int positionLabel=drawing.AnnotationLabels.FindIndex(t=>t==sourceX.ToString("0.###"));
         Check(positionLabel>=0 && !drawing.AnnotationLabels.Contains("x "+sourceX.ToString("0.###")),"crossing position has an editable numeric label without x");
         var dimensionPoint=Centre(drawing.AnnotationBounds[positionLabel]);
+        Check(drawing.BeginDimensionPress(dimensionPoint),"dimension press can be cancelled before release");drawing.CancelSelectionGesture();
+        Check(!drawing.EndDimensionPress(dimensionPoint) && !view.DimensionPopup.IsOpen && !drawing.IsMouseCaptured,"cancelled press cannot reopen a dimension editor on a later release");
         Check(drawing.BeginDimensionPress(dimensionPoint) && !view.DimensionPopup.IsOpen,"dimension press waits for release before opening the editor");
         Check(drawing.EndDimensionPress(dimensionPoint),"dimension release completes the click");Pump();
         Check(view.DimensionPopup.IsOpen && view.DimensionInput.IsKeyboardFocused && !drawing.IsMouseCaptured,"released dimension click leaves keyboard focus in the editor without mouse capture");
