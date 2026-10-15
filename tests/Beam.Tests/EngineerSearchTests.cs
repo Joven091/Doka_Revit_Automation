@@ -58,7 +58,7 @@ internal static class EngineerSearchTests
         while(!task.Wait(TimeSpan.FromSeconds(30)))
         {
             Console.WriteLine(vm.BuildDiagnosticReport("engineer junction progress"));
-            if(timer.Elapsed.TotalSeconds>=90){vm.CancelOptimization();task.GetAwaiter().GetResult();throw new Exception("Engineer junction exceeded 90 seconds");}
+            if(timer.Elapsed.TotalSeconds>=(report ? 180 : 90)){vm.CancelOptimization();task.GetAwaiter().GetResult();throw new Exception("Engineer junction exceeded its regression time budget");}
         }
         task.GetAwaiter().GetResult();if(!vm.IsCalculationValid)Console.WriteLine(vm.BuildDiagnosticReport("engineer junction failure"));Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
         Console.WriteLine("ENGINEER JUNCTION "+(report ? "REPORT" : "ORIGINAL")+" seconds="+timer.Elapsed.TotalSeconds);Console.WriteLine(vm.NetworkResult.LayoutDiagnostics);

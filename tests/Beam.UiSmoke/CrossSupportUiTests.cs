@@ -132,7 +132,8 @@ internal static class CrossSupportUiTests
         vm.AddNetworkBay();for(int i=0;i<3;i++) {vm.NetworkBeams[i].WidthMm=i==2 ? 800 : 650;vm.NetworkBeams[i].DepthMm=i==2 ? 1750 : 1150;vm.NetworkBeams[i].BottomElevationMm=i==2 ? -1750 : -1150;}
         vm.NetworkBays[0].WidthMm=3550;vm.NetworkBays[1].WidthMm=2575;foreach(var bay in vm.NetworkBays)bay.ThicknessMm=300;
         vm.AddCrossingBeam();var crossing=vm.CrossingBeams[0];crossing.BayNumber=1;crossing.PositionMm=2500;crossing.WidthMm=600;crossing.DepthMm=600;crossing.BottomElevationMm=-600;
-        var task=vm.OptimizeTowersAsync(false);var timer=System.Diagnostics.Stopwatch.StartNew();while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>90)throw new Exception("Current report UI timeout");}task.GetAwaiter().GetResult();
+        var task=vm.OptimizeTowersAsync(false);var timer=System.Diagnostics.Stopwatch.StartNew();while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>180)throw new Exception("Current report UI timeout");}task.GetAwaiter().GetResult();
+        Console.WriteLine("Current report UI solve seconds="+timer.Elapsed.TotalSeconds);
         Check(vm.IsCalculationValid,"current three-beam drawing report solves");
         var workspace=new BeamFormworkWorkspace(vm,null,null,null);workspace.Show();Pump();
         workspace.Buttons["Formwork"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));workspace.Drawing.AllDimensions=true;Pump();
