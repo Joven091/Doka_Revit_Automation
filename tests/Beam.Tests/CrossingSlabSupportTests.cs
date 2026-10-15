@@ -88,6 +88,7 @@ internal static class CrossingSlabSupportTests
         var current=TransferNetworkOptimizer.Optimize(common,Input());
         Check(current.Beams.All(b=>b.Transfer.FullLoadingOnly && b.Transfer.CaseNames.Length==1 && b.Transfer.CaseNames[0].Contains("slab") && b.Transfer.CaseNames[0].Contains("X1")),"reported production setup checks only beam plus slab plus crossing");
         Check(current.PeakLegKn<=30+1e-7 && current.Beams.All(b=>b.Utilization<=1+1e-8),"reported 30 kN leg limit passes with flat UDL and shutter end strips");
+        Check(TowerBeamAnalysis.Finite(current.SlabMovementMm) && current.SlabMovementMm>=0,"fully loaded slab movement uses the remaining combined case");
         var stage=current.SystemGoverningStage;
         Check(stage.Score>0 && stage.BeamCases.Length==2,"reported layout has a complete system governing stage");
         foreach(var beam in current.Beams)foreach(var cases in beam.Transfer.PrimaryCases)foreach(var member in cases)

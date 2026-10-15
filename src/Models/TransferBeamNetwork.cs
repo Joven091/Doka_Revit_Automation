@@ -905,11 +905,16 @@ namespace EngineeringDashboard
             double x=(left ? -1 : 1)*(beamWidth/2+(left ? t.LeftFootMm : t.RightFootMm));
             return t.LowerCases[loadCase][row].Analysis.Response(x-t.LowerStockStartMm)[2]+dl+(dr-dl)*(x-beam.TransverseOffsetMm+beam.WidthMm/2)/beam.WidthMm;
         }
-        private static int Case(TowerLayout b,bool left,bool right)=>Array.IndexOf(b.Transfer.CaseNames,left && right ? "Beam + both slabs" : left ? "Beam + left slab" : right ? "Beam + right slab" : "Beam");
+        private static int Case(TowerLayout b,bool left,bool right)=>b.Transfer.FullLoadingOnly ? 0 : Array.IndexOf(b.Transfer.CaseNames,left && right ? "Beam + both slabs" : left ? "Beam + left slab" : right ? "Beam + right slab" : "Beam");
         private static void CalculateMovement(TransferNetworkResult result,BeamSearchTrace trace)
         {
             for(int bay=0;bay<result.Bays.Length;bay++)for(int mask=0;mask<4;mask++)
             {
+                if(result.Beams[bay].Transfer.FullLoadingOnly)
+                {
+                    int full=(bay>0 && result.Bays[bay-1]!=null ? 1 : 0)|(bay+1<result.Bays.Length && result.Bays[bay+1]!=null ? 2 : 0);
+                    if(mask!=full)continue;
+                }
                 if(result.Bays[bay]==null || (mask&1)!=0 && (bay==0 || result.Bays[bay-1]==null) || (mask&2)!=0 && (bay==result.Bays.Length-1 || result.Bays[bay+1]==null))continue;
                 var left=result.Beams[bay];var right=result.Beams[bay+1];var upper=left.Transfer.UpperMembers.Single(m=>m.Name=="Upper right");
                 int lc=Case(left,(mask&1)!=0,true),rc=Case(right,true,(mask&2)!=0);
