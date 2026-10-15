@@ -170,7 +170,7 @@ internal static class CrossSupportUiTests
         Check(section.OfType<GeometryDrawing>().Any(d=>d.Brush is SolidColorBrush brush && brush.Color==Color.FromRgb(231,183,70)),"section retains established H20 flange colour");
         Check(!section.OfType<GeometryDrawing>().Any(g=>g.Geometry is EllipseGeometry && g.Brush is SolidColorBrush brush && brush.Color==Colors.DarkRed),"section omits crossing bearing dots");
         var support=vm.NetworkResult.CrossSupports.Single();
-        foreach(int count in new[] {2,1})
+        foreach(int count in support.Members.Select(m=>m.H20Count).Distinct().OrderByDescending(n=>n))
         {
             var physical=support.Solids.First(s=>s.Member!=null && s.Member.H20Count==count);
             workspace.SectionPosition.Value=(physical.X0+physical.X1)/2;workspace.Section.InvalidateVisual();Capture(workspace.Section,1200,420,null);
@@ -183,7 +183,7 @@ internal static class CrossSupportUiTests
             if(count==2)Check(window.DisplayedTransferMember.Points.Length==0 && window.DisplayedTransferMember.Uniform.Length>0,"primary diagram shows the checked UDL without secondary-row point loads");
             var body=(FrameworkElement)((ScrollViewer)window.Content).Content;body.Measure(new Size(900,double.PositiveInfinity));body.Arrange(new Rect(0,0,900,body.DesiredSize.Height));body.UpdateLayout();
             if(support.NominalSecondarySpacingMm>0)
-                Check(Descendants(body).OfType<TextBlock>().Any(t=>t.Text==$"Secondary beam spacing: {support.Towers.Transfer.EnteredUpperSpacingMm:0.###} mm"),"crossing diagram identifies its actual selected nominal pitch");
+                Check(Descendants(body).OfType<TextBlock>().Any(t=>t.Text==$"Secondary beam spacing: {support.NominalSecondarySpacingMm:0.###} mm"),"crossing diagram identifies its actual selected nominal pitch");
             Capture(body,900,(int)Math.Ceiling(body.ActualHeight),Preview(previewPath,count==2 ? "current-report-primary" : "current-report-secondary"));
             var other=support.Solids.First(s=>s.Member!=null && s.Member.H20Count==count && Array.IndexOf(support.Members,s.Member)!=window.SelectedRun);
             workspace.SectionPosition.Value=(other.X0+other.X1)/2;workspace.Section.InvalidateVisual();Capture(workspace.Section,1200,420,null);
@@ -265,6 +265,28 @@ internal static class CrossSupportUiTests
             var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(jointBitmap));using(var file=System.IO.File.Create(System.IO.Path.ChangeExtension(previewPath,"junction-plan.png")))encoder.Save(file);
             encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(jointSectionBitmap));using(var file=System.IO.File.Create(System.IO.Path.ChangeExtension(previewPath,"junction-section.png")))encoder.Save(file);
         }
-        jointWorkspace.Close();ReportedWorkspace(previewPath);CoordinatedWorkspace(previewPath);Console.WriteLine("Cross UI: section, filler, actual diagrams, elevation editor and reported junctions passed.");return checks;
+        jointWorkspace.Close();PrimaryZones(previewPath);ReportedWorkspace(previewPath);CoordinatedWorkspace(previewPath);Console.WriteLine("Cross UI: section, filler, actual diagrams, elevation editor and reported junctions passed.");return checks;
+    }
+
+    static void PrimaryZones(string previewPath)
+    {
+        var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,
+            Depth=1750,Width=800,BeamLengthMm=6100,TowerLegCapacityKn=30,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,
+            IgnoreUplift=true,Exclude600Standalone=false,PlywoodDeflectionLimit="L/350",DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+        foreach(var beam in vm.NetworkBeams){beam.WidthMm=800;beam.DepthMm=1750;beam.BottomElevationMm=-1750;}
+        vm.NetworkBays[0].WidthMm=2125;vm.NetworkBays[0].ThicknessMm=200;
+        vm.AddCrossingBeam();var cross=vm.CrossingBeams[0];cross.PositionMm=3350;cross.WidthMm=650;cross.DepthMm=1150;cross.BottomElevationMm=-1150;
+        var task=vm.OptimizeTowersAsync(false);var timer=System.Diagnostics.Stopwatch.StartNew();
+        while(!task.IsCompleted){Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>120)throw new Exception("Primary zones UI timeout");}
+        task.GetAwaiter().GetResult();Check(vm.IsCalculationValid,"reported two-zone UI case solves");
+        vm.SelectNetworkBeam(1);var layout=vm.NetworkResult.Beams[1];
+        int run=Array.FindIndex(layout.Transfer.PrimaryCases.Last().Take(layout.StockPlan.Pieces.Length).ToArray(),m=>m.Uniform.Any(q=>Math.Abs(q.KnPerM-25.99125)<1e-7) && m.Uniform.Any(q=>Math.Abs(q.KnPerM-52.288125)<1e-7));
+        Check(run>=0,"selected inner primary contains both concrete tributary zones");
+        var window=new TowerDiagramWindow(vm);window.SelectMember(run,0,-1);window.Show();Pump();
+        var member=window.DisplayedTransferMember;
+        Check(ReferenceEquals(member.Analysis,window.LoadedAnalysis) && member.Points.Length==0,"two-zone loading diagram uses the checked primary analysis");
+        Check(member.Uniform.All(q=>Math.Abs(q.KnPerM-25.99125)<1e-7 || Math.Abs(q.KnPerM-52.288125)<1e-7),"primary plot has only Beam + Slab and Beam + X1 load intensities");
+        Capture(window.LoadingDiagram,1000,290,Preview(previewPath,"engineer-primary-zones"));window.Close();
+        Console.WriteLine("Reported primary zones WPF preview passed: 25.991 / 52.288 kN/m.");
     }
 }
