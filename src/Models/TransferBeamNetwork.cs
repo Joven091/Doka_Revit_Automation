@@ -793,7 +793,17 @@ namespace EngineeringDashboard
         private static double[] RowStations(TowerInput common,TransferNetworkInput input,double cover,double phase)
         {
             double edge=(common.LengthMm-cover)/2;
-            if(input.HasIndividualSpacings)return input.SlabRows(common.LengthMm,cover).SelectMany(r=>r).Distinct().OrderBy(x=>x).ToArray();
+            if(input.HasIndividualSpacings)
+            {
+                var slab=input.SlabRows(common.LengthMm,cover).SelectMany(r=>r);
+                // Shared shutter ledgers need receiving rows inside the crossing as well as
+                // slab rows outside it. Insert those anchors before filling the beam grid.
+                var crossing=input.UseCrossingSlabLedgers ? input.CrossingBeams.SelectMany((c,i)=>
+                    c.SupportMode==CrossBeamSupportMode.LegacySlabRows ? new double[0] : c.WidthMm>80
+                        ? PlywoodSpacing.SheetSupportRows(c.PositionMm-c.WidthMm/2,c.PositionMm+c.WidthMm/2,input.CrossSpacing(i))
+                        : new[] {c.PositionMm}) : Enumerable.Empty<double>();
+                return slab.Concat(crossing).Distinct().OrderBy(x=>x).ToArray();
+            }
             if(input.PlywoodSheetLengthMm>0) return PlywoodSpacing.SheetSupportRows(edge,edge+cover,input.UpperSpacingMm,input.PlywoodSheetLengthMm);
             int count=(int)Math.Ceiling(cover/input.RowGapMm);
             double first=(cover-(count-1)*input.RowGapMm)/2+phase;
