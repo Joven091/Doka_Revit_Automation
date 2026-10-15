@@ -20,7 +20,7 @@ namespace EngineeringDashboard
         internal readonly BeamFormworkCanvas Drawing;
         internal readonly BeamSearchWaitingView Waiting;
         internal readonly SeparateSlabExplanationView SeparateSlabNotice=new SeparateSlabExplanationView();
-        internal readonly TransferNetworkPlan Section=new TransferNetworkPlan {SectionOnly=true,Width=1050,IsSelectionEnabled=true};
+        internal readonly TransferNetworkPlan Section=new TransferNetworkPlan {SectionOnly=true,IsSelectionEnabled=true};
         internal readonly FormworkDrawingViewport SectionViewport;
         internal readonly Dictionary<string,Control> Buttons=new Dictionary<string,Control>();
         internal readonly Dictionary<string,TextBox> Fields=new Dictionary<string,TextBox>();

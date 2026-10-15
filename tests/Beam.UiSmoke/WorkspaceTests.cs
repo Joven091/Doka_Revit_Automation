@@ -36,13 +36,37 @@ internal static class WorkspaceTests
     {
         // Eight-beam drawing fixture reuses checked members; this does not run another network search.
         var fixture=new TransferNetworkResult {Beams=Enumerable.Repeat(actual.Beams[1],8).ToArray(),Bays=Enumerable.Repeat(actual.Bays[0],7).ToArray(),BeamCentresMm=Enumerable.Range(0,8).Select(i=>i*4500.0).ToArray(),Input=new TransferNetworkInput {Beams=Enumerable.Repeat(actual.Input.Beams[1],8).ToArray(),Bays=Enumerable.Repeat(actual.Input.Bays[0],7).ToArray()}};
-        var section=new TransferNetworkPlan {Width=1200,SectionOnly=true};section.SetResult(fixture);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,420));section.UpdateLayout();
-        Action<string> capture=path=> {var bitmap=new RenderTargetBitmap(1200,420,96,96,PixelFormats.Pbgra32);bitmap.Render(section);if(path!=null){var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}};
+        var section=new TransferNetworkPlan {Width=1200,SectionOnly=true};section.SetResult(fixture);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,section.DesiredSize.Height));section.UpdateLayout();
+        Action<string> capture=path=> {var bitmap=new RenderTargetBitmap(1200,(int)Math.Ceiling(section.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(section);if(path!=null){var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(path))encoder.Save(file);}};
         capture(output==null ? null : Path.ChangeExtension(output,"workspace-dense-section.png"));
         Check(section.MemberTargets.Count==47 && section.DrawnSecondaryLengthCount==8 && section.DrawnPrimarySectionCount==32,"eight-beam section retains secondary, shared slab and both paired primary section targets");
         Check(NoOverlaps(section.AnnotationBounds),"eight-beam section annotation rectangles do not overlap");
         section.ShowAllDimensions=true;section.InvalidateVisual();section.UpdateLayout();capture(null);
-        Check(NoOverlaps(section.AnnotationBounds),"full section dimensions omit labels that would overlap");
+        Check(NoOverlaps(section.AnnotationBounds),"full section dimensions remain separate");
+        foreach(double width in new[] {1200.0,1000,760,520})
+        {
+            section.MinWidth=0;section.Width=width;section.InvalidateMeasure();section.InvalidateVisual();
+            section.Measure(new Size(width,double.PositiveInfinity));section.Arrange(new Rect(0,0,width,section.DesiredSize.Height));section.UpdateLayout();
+            var bitmap=new RenderTargetBitmap((int)Math.Ceiling(width),(int)Math.Ceiling(section.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(section);
+            Check(NoOverlaps(section.AnnotationBounds),"resized section labels never overlap");
+            Check(section.AnnotationBounds.All(r=>r.Left>=0 && r.Top>=0 && r.Right<=section.ActualWidth && r.Bottom<=section.ActualHeight),"resized section labels stay within drawing bounds");
+            Check(section.AnnotationBounds.All(r=>!section.SectionGeometryBounds.Any(g=>g.IntersectsWith(r))),"dimensions and callouts never mask section details");
+            Check(section.SectionLabels.Count(s=>s.Contains(" · D "))==8,"every beam depth remains visible in dense resized section");
+            Check(section.SectionLabels.Count(s=>s.StartsWith("H20 "))==8,"every lower stock length remains visible in dense resized section");
+            if(output!=null){var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(output,"section-"+width+".png")))encoder.Save(file);}
+        }
+        section.Width=double.NaN;section.MinWidth=520;section.IsSelectionEnabled=true;
+        var viewport=new FormworkDrawingViewport(section);
+        foreach(double width in new[] {1200.0,700,520})
+        {
+            viewport.Measure(new Size(width,800));viewport.Arrange(new Rect(0,0,width,800));viewport.UpdateLayout();
+            new RenderTargetBitmap((int)width,800,96,96,PixelFormats.Pbgra32).Render(viewport);
+            Check(Math.Abs(section.ActualWidth-Math.Max(520,width-20))<1e-7,"section allocates labels at the actual viewport width");
+            Check(section.AnnotationBounds.All(r=>r.Left*viewport.Scale+viewport.Pan.X>=0 && r.Right*viewport.Scale+viewport.Pan.X<=width && r.Bottom*viewport.Scale+viewport.Pan.Y<=800),"fitted section text stays within the resized viewport");
+            var target=section.MemberTargets.First();Check(section.SelectAt(Centre(target.Item1)),"resizing keeps section member selection active");
+            double fit=viewport.Scale;viewport.ZoomAt(1.2,new Point(width/2,400));Check(viewport.Scale>fit,"resized section still zooms");viewport.PanBy(new Vector(20,10));viewport.Fit();
+            Check(Math.Abs(viewport.Scale-fit)<1e-7,"fit restores resized section camera after zoom and pan");
+        }
     }
     static void Calculate()
     {

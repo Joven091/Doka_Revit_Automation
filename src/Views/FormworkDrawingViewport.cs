@@ -19,7 +19,12 @@ namespace EngineeringDashboard
         }
         protected override Size MeasureOverride(Size constraint)
         {
-            Child.Measure(new Size(double.PositiveInfinity,double.PositiveInfinity));
+            // Lay the section out at the pane width before fitting the camera so
+            // resizing allocates annotation rows instead of shrinking every label.
+            double width=Child is TransferNetworkPlan section && section.SectionOnly
+                ? double.IsInfinity(constraint.Width) ? 1050 : Math.Max(520,constraint.Width-20)
+                : double.PositiveInfinity;
+            Child.Measure(new Size(width,double.PositiveInfinity));
             return new Size(double.IsInfinity(constraint.Width) ? Child.DesiredSize.Width : constraint.Width,double.IsInfinity(constraint.Height) ? Child.DesiredSize.Height : constraint.Height);
         }
         protected override Size ArrangeOverride(Size size) {Child.Arrange(new Rect(new Point(),Child.DesiredSize));if(fitted)Fit(size);return size;}

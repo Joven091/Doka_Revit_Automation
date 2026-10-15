@@ -24,8 +24,8 @@ namespace EngineeringDashboard
         internal ComboBox LoadCaseSelector {get;private set;}
         internal Expander CheckedCasesDetails {get;private set;}
         internal DataGrid CheckedCasesTable {get;private set;}
-        internal TabControl LoadingTabs {get;private set;}
         internal EquivalentLoadingView EquivalentView {get;private set;}
+        internal TextBlock ResponseBasis {get;private set;}
         private readonly TowerLayout layout;
         private readonly CrossBeamSupportResult crossSupport;
         private readonly BeamCalculatorViewModel propModel;
@@ -86,6 +86,7 @@ namespace EngineeringDashboard
         private void Refresh()
         {
             if (SelectedRun < 0) return;
+            EquivalentView=null;ResponseBasis=null;
             if(crossSupport!=null) {RefreshCross();return;}
             if (propModel != null) { RefreshProps(); return; }
             if (layout.Transfer != null) { RefreshTransfer(); return; }
@@ -138,7 +139,7 @@ namespace EngineeringDashboard
         }
         private void RefreshTransfer()
         {
-            int tabIndex=LoadingTabs?.SelectedIndex??0;LoadingTabs=null;EquivalentView=null;
+            EquivalentView=null;ResponseBasis=null;
             var t=layout.Transfer; int runs=layout.StockPlan.Pieces.Length;
             bool upper=SelectedRun>=runs+t.RowsMm.Length;
             var cases=upper ? null : Enumerable.Range(0,t.CaseNames.Length).Select(c=>SelectedRun<runs ? t.PrimaryCases[c][SelectedRun+SelectedLine*runs] : t.LowerCases[c][SelectedRun-runs]).ToArray();
@@ -171,32 +172,37 @@ namespace EngineeringDashboard
                 LoadCaseSelector=selector;choices.Children.Add(selector);
                 charts.Children.Add(choices);
             }
-            int designStart=charts.Children.Count;
             if(primary)
                 charts.Children.Add(new Border {Background=new SolidColorBrush(Color.FromRgb(255,246,219)),Padding=new Thickness(8),Margin=new Thickness(0,0,0,8),
                     Child=new TextBlock {Text="UDL design model · full secondary tributaries; crossing loads remain over their footprints.",TextWrapping=TextWrapping.Wrap}});
             string spacingLabel=upper ? UpperSpacingLabel(t,SelectedRun-runs-t.RowsMm.Length) : $"Nominal beam secondary spacing {t.EnteredUpperSpacingMm:0.###} mm; local receiving gaps can be shorter.";
             charts.Children.Add(new TextBlock {Text=spacingLabel,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
-            charts.Children.Add(new TextBlock {Text=CaseLabel(m.LoadCase)+(m.IsWS10 ? " · load on this WS10 " : m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN · utilization "+m.Utilization.ToString("P1")+(SelectedLoadCase==governing && !upper ? " · governing case" : ""),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
+            charts.Children.Add(new TextBlock {Text="Member design · "+CaseLabel(m.LoadCase)+(m.IsWS10 ? " · load on this WS10 " : m.H20Count==1 ? " · load on this H20 " : " · load on this pair ")+m.Analysis.TotalLoadKn.ToString("0.00")+" kN · utilization "+m.Utilization.ToString("P1")+(SelectedLoadCase==governing && !upper ? " · governing case" : ""),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,4)});
             if(!upper) {AddCheckedCases(t.CaseNames,cases,governing);CheckedCasesDetails.IsExpanded=detailsExpanded;}
-            AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
+            var equivalent=!primary && !upper && t.UnitLowerCases.Length>0
+                ? EquivalentTransferredLoading.Create(layout,SelectedRun-runs,SelectedLoadCase) : null;
+            LoadingDiagram=null;
+            if(equivalent!=null && equivalent.IsAvailable)
+            {
+                EquivalentView=new EquivalentLoadingView(equivalent,t.ColumnSupportLoads.Length>0);
+                AddChart("Loading diagram · equivalent loads",EquivalentView,true);
+            }
+            else
+            {
+                if(equivalent!=null)charts.Children.Add(new TextBlock {Text=equivalent.UnavailableReason.Replace("use Secondary design checks.","actual member design loads shown below."),Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap});
+                AddLoadDetails(string.Join("   ",m.Analysis.Reactions.Select((v,i)=>$"Support {i+1} @ {m.SupportsMm[i]:0.###} mm: {v:0.00} kN"))
                 +(m.Points.Length==0 ? "" : "\nPoint loads from stock end: "+string.Join("; ",m.Points.Select(p=>$"{p.PositionMm:0.###} mm → {p.Kn:0.00} kN"))),
                 primary ? "UDL support reactions" : "Support reactions and point loads");
-            LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);
-            AddChart("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,true);
-            AddResponseCharts(m,primary);
-            if(!primary && !upper && t.UnitLowerCases.Length>0)
-            {
-                var design=new StackPanel();
-                while(charts.Children.Count>designStart)
-                {var child=charts.Children[designStart];charts.Children.RemoveAt(designStart);design.Children.Add(child);}
-                var tabs=new TabControl {Margin=new Thickness(0,6,0,0)};LoadingTabs=tabs;
-                var equivalent=EquivalentTransferredLoading.Create(layout,SelectedRun-runs,SelectedLoadCase);
-                EquivalentView=new EquivalentLoadingView(equivalent,t.ColumnSupportLoads.Length>0,()=>tabs.SelectedIndex=1);
-                tabs.Items.Add(new TabItem {Header="Equivalent loads",Content=EquivalentView});
-                tabs.Items.Add(new TabItem {Header="Secondary design checks",Content=design});tabs.SelectedIndex=tabIndex;
-                charts.Children.Add(tabs);
+                LoadingDiagram=new MemberLoadingPlot(m.LengthMm,m.SupportsMm,m.Analysis.Reactions,m.Uniform,m.Points);
+                AddChart("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,true);
             }
+            if(EquivalentView!=null)
+            {
+                ResponseBasis=new TextBlock {Text="Member design response · actual checked loads · "+CaseLabel(m.LoadCase),FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,12,0,0),
+                    ToolTip="Shear, moment and deflection use the selected member's actual design analysis. Equivalent loads above express transfer per reference spacing."};
+                charts.Children.Add(ResponseBasis);
+            }
+            AddResponseCharts(m,primary);
         }
         private static string UpperSpacingLabel(TransferredSlabResult t,int encoded)
         {
@@ -246,7 +252,7 @@ namespace EngineeringDashboard
             var panel=new StackPanel();
             panel.Children.Add(new TextBlock {Text=caption,FontSize=16,FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(51,51,51)),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,6)});
             panel.Children.Add(plot);
-            panel.Children.Add(new TextBlock {Text=loading ? "Red: applied load · green: support reactions · dimensions in mm. Full values are available under support reactions above." : "Distance from the left stock end (mm). Dashed verticals: supports · red dashed lines: permissible limits.",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,6,0,0)});
+            panel.Children.Add(new TextBlock {Text=loading ? plot is EquivalentLoadingView ? "Red: equivalent load · green: support reactions · dimensions in mm. Click a load or reaction for details." : "Red: applied load · green: support reactions · dimensions in mm. Full values are available under support reactions above." : "Distance from the left stock end (mm). Dashed verticals: supports · red dashed lines: permissible limits.",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,6,0,0)});
             charts.Children.Add(new Border {Background=Brushes.White,BorderBrush=new SolidColorBrush(Color.FromRgb(224,224,224)),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8),Padding=new Thickness(12),Margin=new Thickness(0,12,0,4),Child=panel});
         }
         private static Brush PlotBackground(int index)=>new SolidColorBrush(index==0 ? Color.FromRgb(255,255,217) : index==1 ? Color.FromRgb(220,250,220) : Color.FromRgb(218,255,255));
@@ -366,9 +372,11 @@ namespace EngineeringDashboard
                 label("0",left,dimensionY+25);label($"{length:0.###} mm",right,dimensionY+25);
             }
         }
-        private sealed class LoadedResponsePlot : FrameworkElement
+        internal sealed class LoadedResponsePlot : FrameworkElement
         {
             readonly TransferMember member; readonly int index,denominator;
+            internal TransferMember Member=>member;
+            internal int DiagramIndex=>index;
             public LoadedResponsePlot(TransferMember m,int i,int ratio) {member=m;index=i;denominator=ratio;Height=220;}
             protected override void OnRender(DrawingContext dc)
             {

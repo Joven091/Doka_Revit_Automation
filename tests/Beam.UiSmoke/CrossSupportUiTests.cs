@@ -24,8 +24,18 @@ internal static class CrossSupportUiTests
     }
     static RenderTargetBitmap Capture(FrameworkElement element,int width,int height,string path=null)
     {
-        element.Measure(new Size(width,height));element.Arrange(new Rect(0,0,width,height));element.UpdateLayout();
+        element.Measure(new Size(width,height));
+        if(element is TransferNetworkPlan plan && plan.SectionOnly)height=(int)Math.Ceiling(element.DesiredSize.Height);
+        element.Arrange(new Rect(0,0,width,height));element.UpdateLayout();
         var bitmap=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);bitmap.Render(element);
+        if(element is TransferNetworkPlan section && section.SectionOnly)
+        {
+            // A section belongs to a responsive camera viewport. Capture its
+            // current drawing at the actual size, without the parent's pan/zoom
+            // transform or a bitmap height clipped by the requested viewport.
+            var snapshot=new DrawingVisual();using(var dc=snapshot.RenderOpen())dc.DrawDrawing(VisualTreeHelper.GetDrawing(element));
+            bitmap=new RenderTargetBitmap((int)Math.Ceiling(element.ActualWidth),(int)Math.Ceiling(element.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(snapshot);
+        }
         if(path!=null) {var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=System.IO.File.Create(path))encoder.Save(file);}return bitmap;
     }
     static string Preview(string path,string name)=>string.IsNullOrEmpty(path) ? null : System.IO.Path.ChangeExtension(path,name+".png");
@@ -155,6 +165,9 @@ internal static class CrossSupportUiTests
         Check(workspace.Drawing.DrawnLegCount==vm.NetworkResult.LegCount && workspace.Drawing.DrawnCrossH20Count==vm.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"common plan rendering retains every actual leg and crossing H20");
         workspace.Buttons["Section"].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Capture(workspace.Section,1200,420,Preview(previewPath,"current-report-section"));
         var section=Primitives(VisualTreeHelper.GetDrawing(workspace.Section)).ToArray();
+        Check(workspace.Section.AnnotationBounds.All(r=>!workspace.Section.SectionGeometryBounds.Any(g=>g.IntersectsWith(r))),"crossing labels and dimension text remain outside all geometry");
+        Check(!section.OfType<GeometryDrawing>().Any(d=>d.Brush is SolidColorBrush brush && (brush.Color==Colors.Plum || brush.Color==Colors.MediumPurple)),"unselected primary and secondary H20s share the timber section palette");
+        Check(section.OfType<GeometryDrawing>().Any(d=>d.Brush is SolidColorBrush brush && brush.Color==Color.FromRgb(231,183,70)),"section retains established H20 flange colour");
         Check(!section.OfType<GeometryDrawing>().Any(g=>g.Geometry is EllipseGeometry && g.Brush is SolidColorBrush brush && brush.Color==Colors.DarkRed),"section omits crossing bearing dots");
         var support=vm.NetworkResult.CrossSupports.Single();
         foreach(int count in new[] {2,1})
@@ -195,8 +208,8 @@ internal static class CrossSupportUiTests
         var task=vm.OptimizeTowersAsync(false);var timer=System.Diagnostics.Stopwatch.StartNew();while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>90)throw new Exception("Cross UI search timeout");}task.GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,vm.WarningMessage+" "+vm.TowerFailureDetails);
         Check(vm.NetworkResult.CrossSupports.Where(c=>c.Towers?.Transfer!=null).All(c=>PlywoodSpacing.StandardSpacingsMm.Contains(c.Towers.Transfer.EnteredUpperSpacingMm)),"crossing formwork uses only permitted sheet spacings");
-        var section=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true};section.SetResult(vm.NetworkResult);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,420));section.UpdateLayout();
-        var bitmap=new RenderTargetBitmap(1200,420,96,96,System.Windows.Media.PixelFormats.Pbgra32);bitmap.Render(section);
+        var section=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true};section.SetResult(vm.NetworkResult);section.Measure(new Size(1200,420));section.Arrange(new Rect(0,0,1200,section.DesiredSize.Height));section.UpdateLayout();
+        var bitmap=new RenderTargetBitmap(1200,(int)Math.Ceiling(section.ActualHeight),96,96,System.Windows.Media.PixelFormats.Pbgra32);bitmap.Render(section);
         Check(section.DrawnH20ProfileCount>=vm.NetworkResult.Beams.Length*5 && section.DrawnPrimarySectionCount==vm.NetworkResult.Beams.Length*4,"section shows real flange/web profiles and both paired primary members");
         Check(section.MemberTargets.Any(t=>t.Item2<0),"cross members selectable in section");
         var bearing=vm.NetworkResult.CrossSupports[0].Bearings[0];Check(bearing.FillerHeightMm==150,"section filler uses the independently computed gap");
@@ -226,7 +239,7 @@ internal static class CrossSupportUiTests
         Check(jointWorkspace.SelectedResultText.Contains("Dedicated central span") && jointWorkspace.SelectedResultText.Contains("Concrete end zone on B1"),"selected crossing explains which load reaches the main beam");
         Check(jointWorkspace.SelectedResultText.Contains("existing side shutter") && jointWorkspace.SelectedResultText.Contains("100 mm"),"crossing inspector explains the same shutter load path as slab edges");
         Check(jointCanvas.LegTargets.Any(t=>t.Item2.Contains("side shutter")),"plan junction selection identifies the existing shutter support");
-        var jointSection=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true};jointSection.SetResult(junction.NetworkResult);jointSection.Measure(new Size(1200,420));jointSection.Arrange(new Rect(0,0,1200,420));jointSection.UpdateLayout();var jointSectionBitmap=new RenderTargetBitmap(1200,420,96,96,System.Windows.Media.PixelFormats.Pbgra32);jointSectionBitmap.Render(jointSection);Check(jointSection.MemberTargets.Any(t=>t.Item2<0),"junction central members are selectable in section");
+        var jointSection=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true};jointSection.SetResult(junction.NetworkResult);jointSection.Measure(new Size(1200,420));jointSection.Arrange(new Rect(0,0,1200,jointSection.DesiredSize.Height));jointSection.UpdateLayout();var jointSectionBitmap=new RenderTargetBitmap(1200,(int)Math.Ceiling(jointSection.ActualHeight),96,96,System.Windows.Media.PixelFormats.Pbgra32);jointSectionBitmap.Render(jointSection);Check(jointSection.MemberTargets.Any(t=>t.Item2<0),"junction central members are selectable in section");
         Check(jointSection.DrawnConcreteEndZoneCount==junction.NetworkResult.CrossSupports[0].Bearings.Where(b=>b.IsConcreteEndZone).Select(b=>b.Beam).Distinct().Count(),"section draws the direct and side-shutter end zones on the receiving beams");
         jointWorkspace.Drawing.Select(FormworkObject.Beam,0);Pump();jointWorkspace.Fields["DepthMm"].Text="1200";Check(jointWorkspace.CommitFields() && junction.NetworkBeams[0].BottomElevationMm==-1200,"workspace depth edit keeps the concrete top at zero");
         if(!string.IsNullOrEmpty(previewPath))
