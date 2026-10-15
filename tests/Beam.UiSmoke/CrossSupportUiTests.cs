@@ -142,7 +142,8 @@ internal static class CrossSupportUiTests
         var glyphs=plan.OfType<GlyphRunDrawing>().Select(g=>new {Text=new string(g.GlyphRun.Characters.ToArray()),Y=g.GlyphRun.BaselineOrigin.Y}).ToArray();
         Check(!glyphs.Any(g=>g.Text.Contains("Direct bearing")),"formwork omits direct-bearing annotations");
         // Shorter optimized overhangs are intentionally hidden at the overview scale.
-        // Inspect each primary at a readable zoom, just as a user would in the plan.
+        // Inspect each end at a readable zoom, just as a user would by panning.
+        // A long custom stock need not fit both ends inside the viewport at once.
         Capture(workspace.Drawing,2400,850);
         workspace.Drawing.ZoomAt(.35/workspace.Drawing.Zoom,new Point(1200,425));
         for(int index=0;index<vm.NetworkResult.Beams.Length;index++)
@@ -150,15 +151,20 @@ internal static class CrossSupportUiTests
             var beam=vm.NetworkResult.Beams[index];
             foreach(var piece in beam.StockPlan.Pieces)
             {
-                var focus=workspace.Drawing.Screen((piece.StartMm+piece.EndMm)/2,vm.NetworkResult.BeamCentresMm[index]+beam.TransverseOffsetMm+beam.WidthMm/2);
-                workspace.Drawing.PanBy(new Vector(1200-focus.X,350-focus.Y));
-                Capture(workspace.Drawing,2400,850);
-                var focused=Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).OfType<GlyphRunDrawing>()
-                    .Select(g=>new {Text=new string(g.GlyphRun.Characters.ToArray()),Y=g.GlyphRun.BaselineOrigin.Y}).ToArray();
                 string near=(beam.PositionsMm[piece.FirstSupport]-piece.StartMm).ToString("0.###");
                 string far=(piece.EndMm-beam.PositionsMm[piece.LastSupport]).ToString("0.###");
-                Check(focused.Any(g=>g.Text==near) && focused.Any(g=>g.Text==far),"actual optimized overhang dimensions are visible: "+near+" / "+far);
-                Check(focused.GroupBy(g=>Math.Round(g.Y,3)).Any(group=>near==far ? group.Count(g=>g.Text==near)>=2 : group.Any(g=>g.Text==near) && group.Any(g=>g.Text==far)),"near and far overhang labels share a single baseline");
+                Func<double,string,double[]> inspect=(station,value)=>
+                {
+                    var focus=workspace.Drawing.Screen(station,vm.NetworkResult.BeamCentresMm[index]+beam.TransverseOffsetMm+beam.WidthMm/2);
+                    workspace.Drawing.PanBy(new Vector(1200-focus.X,350-focus.Y));Capture(workspace.Drawing,2400,850);
+                    return Primitives(VisualTreeHelper.GetDrawing(workspace.Drawing)).OfType<GlyphRunDrawing>()
+                        .Where(g=>new string(g.GlyphRun.Characters.ToArray())==value && Math.Abs(g.GlyphRun.BaselineOrigin.X-1200)<100)
+                        .Select(g=>g.GlyphRun.BaselineOrigin.Y).ToArray();
+                };
+                var nearY=inspect((piece.StartMm+beam.PositionsMm[piece.FirstSupport])/2,near);
+                var farY=inspect((piece.EndMm+beam.PositionsMm[piece.LastSupport])/2,far);
+                Check(nearY.Length>0 && farY.Length>0,"actual optimized overhang dimensions are visible: "+near+" / "+far);
+                Check(nearY.Any(y=>farY.Any(z=>Math.Abs(y-z)<.001)),"near and far overhang labels share a single baseline");
             }
         }
         Check(workspace.Drawing.MemberTargets.All(t=>t.Item2<0 ? vm.NetworkResult.CrossSupports[-t.Item2-1].Members[t.Item3].H20Count==2 : t.Item3<vm.NetworkResult.Beams[t.Item2].StockPlan.Pieces.Length),"plan hides main and crossing secondaries; section keeps their selectable diagrams");
