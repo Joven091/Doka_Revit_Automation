@@ -23,6 +23,18 @@ namespace EngineeringDashboard
             for(int i=0;i<NetworkBays.Count;i++)text.AppendLine(FormattableString.Invariant($"S{i+1}: clear span={NetworkBays[i].WidthMm:R}; thickness={NetworkBays[i].ThicknessMm:R} mm"));
             for(int i=0;i<CrossingBeams.Count;i++) {var c=CrossingBeams[i];text.AppendLine(FormattableString.Invariant($"X{i+1}: slab bay={c.BayNumber}; centre={c.PositionMm:R}; width={c.WidthMm:R}; depth={c.DepthMm:R} mm; bottom={c.BottomElevationMm:R} mm; supports={c.SupportMode}"));}
             for(int i=0;i<IndependentBeams.Count;i++){var b=IndependentBeams[i];text.AppendLine(FormattableString.Invariant($"I{i+1}: independent; start=({b.StartXmm:R},{b.StartYmm:R}); end=({b.EndXmm:R},{b.EndYmm:R}); length={b.LengthMm:R}; width={b.WidthMm:R}; depth={b.DepthMm:R}; bottom={b.BottomElevationMm:R} mm; own beam load, no slab transfer"));}
+            if(!ReplayConstructionStages && UseBeamNetwork && NetworkBeams.Count>=2 && NetworkBays.Count==NetworkBeams.Count-1 && BeamLengthMm>0 && TowerLegCapacityKn>0)
+            {
+                try
+                {
+                    var n=new TransferNetworkInput {Beams=NetworkBeams.ToArray(),Bays=NetworkBays.ToArray(),CrossingBeams=CrossingBeams.ToArray(),CustomLoads=UseCustomLoads,LiveKnM2=CustomLiveLoad,FormworkKnM2=CustomFormworkLoad};
+                    var c=new TowerInput {LengthMm=BeamLengthMm,LegCapacityKn=TowerLegCapacityKn,PrimaryMaterial=PrimaryMaterial};
+                    text.AppendLine("Engineer primary planning (current inputs):");
+                    for(int i=0;i<n.Beams.Length;i++)text.AppendLine($"B{i+1}: "+EngineerPrimaryPlan.Create(c,n,i).Summary);
+                }
+                catch(ArgumentException) {text.AppendLine("Engineer planning awaits valid geometry.");}
+                catch(IndexOutOfRangeException) {text.AppendLine("Engineer planning awaits valid crossing bay references.");}
+            }
             return text.ToString();
         }
         // Read-only capture on the UI thread: no validation, recalculation, model API or input commits.

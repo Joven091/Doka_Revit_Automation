@@ -841,7 +841,7 @@ namespace EngineeringDashboard
                 // Shared shutter ledgers need receiving rows inside the crossing as well as
                 // slab rows outside it. Insert those anchors before filling the beam grid.
                 var crossing=input.UseCrossingSlabLedgers ? input.CrossingBeams.SelectMany((c,i)=>
-                    c.SupportMode==CrossBeamSupportMode.LegacySlabRows ? new double[0] : c.WidthMm>80
+                    c.SupportMode==CrossBeamSupportMode.LegacySlabRows || common.EngineerWorkflow && EngineerPrimaryPlan.Eligible(input,c) ? new double[0] : c.WidthMm>80
                         ? PlywoodSpacing.SheetSupportRows(c.PositionMm-c.WidthMm/2,c.PositionMm+c.WidthMm/2,input.CrossSpacing(i))
                         : new[] {c.PositionMm}) : Enumerable.Empty<double>();
                 return slab.Concat(crossing).Distinct().OrderBy(x=>x).ToArray();
@@ -925,10 +925,14 @@ namespace EngineeringDashboard
                 LeftEffectiveWidthsMm=left==null ? null : EffectiveWidthsMm(common,network,beam-1,cover,phase),RightEffectiveWidthsMm=right==null ? null : EffectiveWidthsMm(common,network,beam,cover,phase),
                 LeftBaselineWidthsMm=network.HasIndividualSpacings ? BayBaseline(common,network,beam-1,left,cover,phase) : null,RightBaselineWidthsMm=network.HasIndividualSpacings ? BayBaseline(common,network,beam,right,cover,phase) : null};
             var input=new TowerInput {EngineerSearch=common.EngineerSearch,EngineerMinimumStations=common.EngineerMinimumStations,FullLoadingOnly=common.FullLoadingOnly,DeferCrossingChecks=common.FullLoadingOnly && network.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && (c.BayNumber==beam || c.BayNumber==beam+1)),PrimaryMaterial=common.PrimaryMaterial,AllowLocalShutterExceptions=common.AllowLocalShutterExceptions,ReceiverTransverseOffsetMm=transverseOffset,IgnoreUplift=common.IgnoreUplift,Trace=common.Trace,ReuseSearchWork=common.ReuseSearchWork,PruneUneconomicCandidates=common.PruneUneconomicCandidates,StagePrimaryChecks=common.StagePrimaryChecks,ReuseNetworkNumerics=common.ReuseNetworkNumerics,ReuseTransverseNumerics=common.ReuseTransverseNumerics,LazySearchDiagnostics=common.LazySearchDiagnostics,DeferTransferLayout=common.DeferTransferLayout,SearchByLegTier=common.SearchByLegTier,NetworkLegCeiling=ceiling,AllowCustomH20Lengths=common.AllowCustomH20Lengths,CustomH20Scope=common.CustomH20Scope,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
+            if(common.EngineerWorkflow && EngineerPrimaryPlan.Adjacent(network,beam).Any())
+            {
+                t.EngineerNetwork=network;t.EngineerBeam=beam;input.EngineerPlan=EngineerPrimaryPlan.Create(common,network,beam);
+            }
             if(common.CoordinateCrossingLayouts)
             {
-                input.TransferLayoutAcceptance=layout=>CrossBeamSupportOptimizer.CheckJunctionReceiver(input,network,beam,layout);
-                if(common.EngineerSearch)input.TransferLowerAcceptance=layout=>CrossBeamSupportOptimizer.CheckJunctionLowerReceiver(input,network,beam,layout);
+                input.TransferLayoutAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout)) && CrossBeamSupportOptimizer.CheckJunctionReceiver(input,network,beam,layout);
+                if(common.EngineerSearch)input.TransferLowerAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout,true)) && CrossBeamSupportOptimizer.CheckJunctionLowerReceiver(input,network,beam,layout);
             }
             try {using(common.Trace?.Measure(BeamSearchStage.ReceivingBeams))return TransferredSlabOptimizer.Optimize(input,true);}
             catch(TowerOptimizationException){return null;}
