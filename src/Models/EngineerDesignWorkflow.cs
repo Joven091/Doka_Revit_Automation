@@ -33,8 +33,20 @@ namespace EngineeringDashboard
                 }
                 if(start<common.LengthMm)lines[line].Add(new BeamDistributedLoad {StartMm=start,EndMm=common.LengthMm,KnPerM=slab});
             }
-            var forces=lines.Select(l=>l.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000)).ToArray();
-            return new EngineerPrimaryPlan {Lines=lines.Select(l=>l.ToArray()).ToArray(),Forces=forces,InitialLegs=EngineerTowerSearch.InitialLegs(common,forces.Max())};
+            var merged=lines.Select(Merge).ToArray();
+            var forces=merged.Select(l=>l.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000)).ToArray();
+            return new EngineerPrimaryPlan {Lines=merged,Forces=forces,InitialLegs=EngineerTowerSearch.InitialLegs(common,forces.Max())};
+        }
+        private static BeamDistributedLoad[] Merge(List<BeamDistributedLoad> loads)
+        {
+            var cuts=loads.SelectMany(q=>new[] {q.StartMm,q.EndMm}).Distinct().OrderBy(x=>x).ToArray();var result=new List<BeamDistributedLoad>();
+            for(int i=1;i<cuts.Length;i++)
+            {
+                double middle=(cuts[i-1]+cuts[i])/2,q=loads.Where(b=>b.StartMm<middle && b.EndMm>middle).Sum(b=>b.KnPerM);
+                if(result.Count>0 && Math.Abs(result.Last().KnPerM-q)<1e-10)result.Last().EndMm=cuts[i];
+                else result.Add(new BeamDistributedLoad {StartMm=cuts[i-1],EndMm=cuts[i],KnPerM=q});
+            }
+            return result.ToArray();
         }
         internal static bool Eligible(TransferNetworkInput n,TransferCrossingBeamRow c)
         {
@@ -67,7 +79,8 @@ namespace EngineeringDashboard
             return result.OrderBy(x=>x).ToArray();
         }
         internal static bool Local(TransferredSlabInput t,double x)=>t.EngineerNetwork!=null && Adjacent(t.EngineerNetwork,t.EngineerBeam).Any(c=>Math.Abs(x-c.PositionMm)<=c.WidthMm/2-40+1e-7);
-        internal string Summary=>string.Format(CultureInfo.InvariantCulture,"Planning force L/R {0:0.###}/{1:0.###} kN; initial {2} legs per primary line. Full beam/slab/crossing zones; final bearing reactions and capacities independently checked.",Forces[0],Forces[1],InitialLegs);
+        internal string Summary=>string.Format(CultureInfo.InvariantCulture,"Planning force L/R {0:0.###}/{1:0.###} kN; initial {2} legs per primary line. Full beam/slab/crossing zones; final bearing reactions and capacities independently checked.",Forces[0],Forces[1],InitialLegs)
+            +" "+string.Join("; ",Lines.Select((line,i)=>(i==0 ? "L" : "R")+": "+string.Join(", ",line.Select(q=>string.Format(CultureInfo.InvariantCulture,"{0:0.###}–{1:0.###} mm @ {2:0.#####} kN/m",q.StartMm,q.EndMm,q.KnPerM)))));
     }
 
     public static partial class CrossBeamSupportOptimizer
