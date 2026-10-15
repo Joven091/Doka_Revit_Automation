@@ -20,6 +20,9 @@ namespace EngineeringDashboard
         public double SectionPositionMm {get;set;}=double.NaN;
         internal double ActualSectionPositionMm=>TowerBeamAnalysis.Finite(SectionPositionMm) ? Math.Max(0,Math.Min(result.Beams[0].LengthMm,SectionPositionMm)) : result.Beams[0].LengthMm/2;
         internal readonly List<Tuple<int,int,double>> SectionRows=new List<Tuple<int,int,double>>();
+        internal int DrawnSectionSupportCount {get;private set;}
+        internal double SectionHorizontalScale {get;private set;}
+        internal double SectionVerticalScale=>SectionHorizontalScale;
         private static int IntersectingRow(double[] rows,double position)
             =>Array.FindIndex(rows,x=>Math.Abs(x-position)<=40+1e-7);
 
@@ -71,7 +74,9 @@ namespace EngineeringDashboard
         protected override Size MeasureOverride(Size available)
         {
             double width=Math.Max(MinWidth,double.IsInfinity(available.Width) ? MinWidth : available.Width);
-            return new Size(width,SectionOnly && result!=null ? 30+SectionTopPadding(width)+190+220 : Height);
+            double height=Height;
+            if(SectionOnly && result!=null){SectionExtents(out var min,out var max,out var highest,out var lowest);height=30+SectionTopPadding(width)+(highest-lowest+750)*(width-80)/Math.Max(1,max-min)+260;}
+            return new Size(width,height);
         }
         private double[] Centres()
         {
@@ -264,16 +269,38 @@ namespace EngineeringDashboard
             }
             annotations.AddRange(leaders);annotations.AddRange(labels);
         }
+        private void SectionExtents(out double min,out double max,out double highest,out double lowest)
+        {
+            min=double.MaxValue;max=double.MinValue;
+            for(int b=0;b<result.Beams.Length;b++){var t=result.Beams[b].Transfer;min=Math.Min(min,result.BeamCentresMm[b]+t.LowerStockStartMm);max=Math.Max(max,result.BeamCentresMm[b]+t.LowerStockStartMm+t.LowerStockLengthMm);}
+            foreach(var support in result.CrossSupports)foreach(var solid in support.Solids){min=Math.Min(min,solid.Y0);max=Math.Max(max,solid.Y1);}
+            highest=result.Input.Beams.Max(b=>b.BottomElevationMm+b.DepthMm);lowest=result.Input.Beams.Min(b=>b.BottomElevationMm-400);
+            if(result.CrossSupports.Length>0){highest=Math.Max(highest,result.CrossSupports.Max(c=>c.Input.BottomElevationMm+c.Input.DepthMm));lowest=Math.Min(lowest,result.CrossSupports.Min(c=>c.Input.BottomElevationMm-400));}
+        }
+        private void DrawSectionSupport(DrawingContext dc,double left,double right,double head,double scale,bool rotated,bool projected)
+        {
+            var pen=new Pen(projected ? Brushes.DarkGray : Steel,projected ? 1 : 1.4);if(projected)pen.DashStyle=DashStyles.Dash;
+            double top=head+40*scale,bottom=top+650*scale,rail=top+100*scale;
+            foreach(double x in new[] {left,right})
+            {
+                dc.DrawLine(pen,new Point(x,head),new Point(x,bottom));
+                dc.DrawLine(pen,new Point(x-65*scale,head),new Point(x+65*scale,head));
+                dc.DrawLine(pen,new Point(x-25*scale,top),new Point(x-25*scale,bottom-60*scale));
+                dc.DrawLine(pen,new Point(x+25*scale,top),new Point(x+25*scale,bottom-60*scale));
+                dc.DrawLine(pen,new Point(x-45*scale,bottom-35*scale),new Point(x+45*scale,bottom-65*scale));
+                dc.DrawLine(pen,new Point(x-45*scale,bottom-10*scale),new Point(x+45*scale,bottom-40*scale));
+            }
+            dc.DrawLine(pen,new Point(left,rail),new Point(right,rail));dc.DrawLine(pen,new Point(left,bottom-100*scale),new Point(right,bottom-100*scale));
+            dc.DrawLine(pen,new Point(left,bottom-100*scale),new Point(right,rail));
+            if(rotated)dc.DrawLine(pen,new Point(left,rail),new Point(right,bottom-100*scale));
+            DrawnSectionSupportCount++;
+        }
         private void Section(DrawingContext dc,double y0)
         {
             double cut=ActualSectionPositionMm;
             Label(dc,$"Section A–A · x = {cut:0.###} mm from beam start",30,y0-22);
-            double min=double.MaxValue,max=double.MinValue;
-            for(int b=0;b<result.Beams.Length;b++) {var t=result.Beams[b].Transfer;min=Math.Min(min,result.BeamCentresMm[b]+t.LowerStockStartMm);max=Math.Max(max,result.BeamCentresMm[b]+t.LowerStockStartMm+t.LowerStockLengthMm);}
-            foreach(var support in result.CrossSupports)foreach(var solid in support.Solids) {min=Math.Min(min,solid.Y0);max=Math.Max(max,solid.Y1);}
-            double highest=result.Input.Beams.Max(b=>b.BottomElevationMm+b.DepthMm),lowest=result.Input.Beams.Min(b=>b.BottomElevationMm-400);
-            if(result.CrossSupports.Length>0) {highest=Math.Max(highest,result.CrossSupports.Max(c=>c.Input.BottomElevationMm+c.Input.DepthMm));lowest=Math.Min(lowest,result.CrossSupports.Min(c=>c.Input.BottomElevationMm-400));}
-            double scale=(ActualWidth-80)/(max-min),depthScale=150/Math.Max(200,highest-lowest);Func<double,double> xx=x=>40+(x-min)*scale;double top=y0+SectionTopPadding(ActualWidth);sectionTop=top;sectionBottom=top+190;
+            SectionExtents(out var min,out var max,out var highest,out var lowest);DrawnSectionSupportCount=0;
+            double scale=(ActualWidth-80)/Math.Max(1,max-min),depthScale=scale;SectionHorizontalScale=scale;Func<double,double> xx=x=>40+(x-min)*scale;double top=y0+SectionTopPadding(ActualWidth);sectionTop=top;sectionBottom=top+(highest-lowest+750)*scale;
             SectionGeometryBounds.Add(new Rect(0,sectionTop,ActualWidth,sectionBottom-sectionTop));
             for(int beam=0;beam<result.Beams.Length;beam++)
             {
@@ -292,6 +319,12 @@ namespace EngineeringDashboard
                     SectionDimension(start,end,sectionBottom+24,$"H20 {t.LowerStockLengthMm:0}",false);DrawnSecondaryLengthCount++;
                 }
                 else SectionNote($"B{beam+1} · D {input.DepthMm:0.###} · between H20s",xx(centre),top-26,true);
+                if(b.PositionsMm!=null && b.PositionsMm.Length>0)
+                {
+                    double station=b.PositionsMm.OrderBy(x=>Math.Abs(x-cut)).First();bool projected=Math.Abs(station-cut)>40+1e-7;
+                    DrawSectionSupport(dc,xx(centre+b.TransverseOffsetMm-b.WidthMm/2),xx(centre+b.TransverseOffsetMm+b.WidthMm/2),bottom+(200+b.Primary.DepthMm)*scale,scale,b.Rotated,projected);
+                    SectionNote($"B{beam+1} · D3 {(b.Rotated ? "cross braces" : "frame")}"+(projected ? $" · supports projected x {station:0.###}" : " · at cut"),xx(centre),sectionBottom+85,false);
+                }
                 int primaryRun=Array.FindIndex(b.StockPlan.Pieces,p=>cut>=p.StartMm-1e-7 && cut<=p.EndMm+1e-7);
                 if(primaryRun<0)continue;
                 foreach(double support in new[] {b.TransverseOffsetMm-b.WidthMm/2,b.TransverseOffsetMm+b.WidthMm/2})
@@ -306,7 +339,6 @@ namespace EngineeringDashboard
                         DrawnPrimarySectionCount++;
                         if(primaryRun>=0)MemberTargets.Add(Tuple.Create(primaryRect,beam,primaryRun,line));
                     }
-                    if(b.PositionsMm.Any(x=>Math.Abs(x-cut)<=40+1e-7))dc.DrawLine(new Pen(Steel,3),new Point(xx(centre+support),bottom+(200+b.Primary.DepthMm)*depthScale),new Point(xx(centre+support),bottom+(200+b.Primary.DepthMm)*depthScale+12));
                 }
 
             }

@@ -89,6 +89,14 @@ internal static class GeometryEditingUiTests
         double sourceX=model.CrossingBeams[0].PositionMm;baseScreen=drawing.Screen(sourceX,midBay);targetScreen=drawing.Screen(sourceX+400,midBay);target=drawing.SnapAt(targetScreen);
         drawing.SelectAt(baseScreen);drawing.SelectAt(targetScreen);Render(view.Surface);
         Check(model.CrossingBeams.Count==1 && model.CrossingBeams[0].PositionMm==target.X,"MV moves the selected crossing to its snapped point");Click(view,"Undo");
+        drawing.Select(FormworkObject.Crossing,0);Render(view.Surface);
+        int positionLabel=drawing.AnnotationLabels.FindIndex(t=>t==sourceX.ToString("0.###"));
+        Check(positionLabel>=0 && !drawing.AnnotationLabels.Contains("x "+sourceX.ToString("0.###")),"crossing position has an editable numeric label without x");
+        drawing.SelectAt(Centre(drawing.AnnotationBounds[positionLabel]));
+        Check(view.DimensionPopup.IsOpen,"clicking a dimension opens the canvas editor");
+        view.DimensionInput.Text=(sourceX+137).ToString("0.###");
+        view.DimensionInput.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(view.Surface),0,Key.Enter){RoutedEvent=Keyboard.PreviewKeyDownEvent});Pump();
+        Check(!view.DimensionPopup.IsOpen && model.CrossingBeams[0].PositionMm==sourceX+137,"Enter commits the inline dimension and moves X1 exactly");Click(view,"Undo");
         drawing.Select(FormworkObject.Crossing,0);view.BeginDrafting("CO");baseScreen=drawing.Screen(sourceX,midBay);targetScreen=drawing.Screen(sourceX+900,midBay);target=drawing.SnapAt(targetScreen);
         drawing.SelectAt(baseScreen);drawing.SelectAt(targetScreen);Render(view.Surface);
         Check(model.CrossingBeams.Count==2 && model.CrossingBeams[0].PositionMm==sourceX && model.CrossingBeams[1].PositionMm==target.X,"CO copies a crossing with base-point placement");Click(view,"Undo");

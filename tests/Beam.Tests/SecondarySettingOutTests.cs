@@ -42,6 +42,8 @@ internal static class SecondarySettingOutTests
         // crossing checks still run through the production solver before coordination.
         // Keep this historical setting-out fixture independent of the new default shared-coverage policy.
         c.IndependentNetworkPrimaryCoverage=true;
+        // Replay the historical crossing/secondary geometry; new ledger loads and setting-out are covered by CrossingSlabSupportTests.
+        n.UseCrossingSlabLedgers=false;
         var covers=TransferredSlabOptimizer.StockCovers(c);
         var scenario=typeof(TransferNetworkOptimizer).GetMethod("SearchScenario",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,new object[] {c,n,covers,new TransferredSlabOptimizer.GeometryCache(),null,8,6750.0,0.0,false});
         var candidates=(System.Collections.Generic.List<TransferNetworkResult>)scenario.GetType().GetField("Improvements",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(scenario);
