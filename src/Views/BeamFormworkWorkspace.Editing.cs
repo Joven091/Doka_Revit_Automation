@@ -79,7 +79,7 @@ namespace EngineeringDashboard
             if(!draftBase.HasValue || !double.TryParse(draftDistance,NumberStyles.Float,CultureInfo.CurrentCulture,out var distance) || !TowerBeamAnalysis.Finite(distance) || Math.Abs(distance)>1000000 || distance==0)
                 return false;
             var direction=pointer-draftBase.Value;
-            if(draftIndependent!=null && !draftFree)
+            if(!draftFree && (draftIndependent!=null || draftKind==FormworkObject.Crossing))
             {
                 if(direction.Length<1e-7)return false;
                 direction.Normalize();

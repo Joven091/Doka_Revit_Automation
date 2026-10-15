@@ -65,6 +65,9 @@ internal static class WorkspacePresentationTests
         Check(model.CrossingBeams[0].PositionMm==3350,"one undo restores the typed move");
         workspace.Drawing.Select(FormworkObject.Crossing,0);workspace.BeginDrafting("CO");workspace.Drawing.SelectAt(workspace.Drawing.Screen(3350,y));workspace.Drawing.UpdateDraftPointer(workspace.Drawing.Screen(4350,y));
         Check(workspace.AppendDraftDistance("637") && workspace.CommitDraftDistance() && model.CrossingBeams.Count==2 && model.CrossingBeams[1].PositionMm==3987,"typed copy retains the source and places the new beam at the exact offset");
+        model.AddNetworkBay();workspace.Drawing.Select(FormworkObject.Crossing,0);centres=workspace.Drawing.Centres();double nextY=(centres[1]+centres[2])/2;
+        workspace.BeginDrafting("CO");workspace.Drawing.SelectAt(workspace.Drawing.Screen(3350,y));workspace.Drawing.DraftPointerWorld=new Point(3350,nextY);
+        Check(workspace.AppendDraftDistance((nextY-y).ToString()) && workspace.CommitDraftDistance() && model.CrossingBeams.Count==3 && model.CrossingBeams[2].BayNumber==2,"typed crossing copy can follow a direction into another slab bay");
         workspace.Close();Console.WriteLine("Workspace presentation regressions passed.");
     }
 }
