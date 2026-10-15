@@ -217,6 +217,7 @@ namespace EngineeringDashboard
         internal bool FullLoadingOnly,DeferCrossingChecks;
         // Production uses the engineer search; old numerical fixtures can replay stock-first enumeration.
         internal bool EngineerSearch;
+        internal int EngineerStationLimit=40;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance;
         internal double ReceiverTransverseOffsetMm;
         internal BeamSearchTrace Trace;
@@ -414,7 +415,7 @@ namespace EngineeringDashboard
         internal static int CompareBracePreference(double[] positions,bool[] joined,double width,bool rotated,TowerLayout old)
             => CompareBracePreference(Standalone600Count(positions,joined,width,rotated),joined.Count(x=>x),StandaloneBracePenalty(positions,joined,width,rotated),old.Standalone600Count,old.BayCount,old.StandaloneBracePenalty);
         internal static int CompareBracePreference(TowerLayout a,TowerLayout b)
-            => CompareBracePreference(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty);
+            => a.EngineerSearch ? EngineerTowerSearch.Compare(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty) : CompareBracePreference(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty);
         private static bool Better(TowerLayout a,TowerLayout b)
             => a.LegCount<b.LegCount || a.LegCount==b.LegCount && (CompareBracePreference(a,b)<0
                 || CompareBracePreference(a,b)==0 && (a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
@@ -679,6 +680,11 @@ namespace EngineeringDashboard
     {
         internal static double AssumedLegKn(TowerInput input)=>Math.Min(input.Primary.IsWS10 ? 70 : 35,input.LegCapacityKn);
         internal static int InitialLegs(TowerInput input,double lineForceKn)=>Math.Max(2,(int)Math.Ceiling(lineForceKn/AssumedLegKn(input)-1e-10));
+        internal static int Compare(int narrow,int bays,double penalty,int oldNarrow,int oldBays,double oldPenalty)
+        {
+            int order=bays.CompareTo(oldBays);if(order!=0)return order;
+            order=penalty.CompareTo(oldPenalty);return order!=0 ? order : narrow.CompareTo(oldNarrow);
+        }
         internal static int TierOrder(int count,int initial)=>count<=initial ? initial-count : initial+count;
         internal static double BracePenalty(double[] positions,bool[] joined,double width,bool rotated)
         {
@@ -715,7 +721,7 @@ namespace EngineeringDashboard
         internal static IEnumerable<TransferredSlabOptimizer.Geometry> Geometries(double[] stocks,bool rotated,TowerInput input)
         {
             double length=stocks.Sum(),setback=input.StockEndSetbackMm;
-            int maximum=Math.Min(40,(int)(length/600)+2);
+            int maximum=Math.Min(input.EngineerStationLimit,(int)(length/600)+2);
             var seen=new HashSet<string>();
             for(int count=stocks.Length*2;count<=maximum;count++)foreach(var groups in Groups(count,rotated))
             {

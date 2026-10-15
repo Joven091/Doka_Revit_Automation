@@ -192,9 +192,11 @@ namespace EngineeringDashboard
         // Created for one pass only: stock, setback and exclusion settings are constant.
         internal sealed class GeometryCache
         {
+            internal Geometry[] Fixed;
             private readonly ConcurrentDictionary<string,Lazy<Geometry[]>> items = new ConcurrentDictionary<string,Lazy<Geometry[]>>();
             internal Geometry[] Get(string key,Func<Geometry[]> build,out bool hit)
             {
+                if(Fixed!=null){hit=true;return Fixed;}
                 if(items.TryGetValue(key,out var found)) {hit=true;return found.Value;}
                 var created=new Lazy<Geometry[]>(build,LazyThreadSafetyMode.ExecutionAndPublication);
                 found=items.GetOrAdd(key,created);hit=!ReferenceEquals(found,created);return found.Value;
@@ -449,7 +451,21 @@ namespace EngineeringDashboard
             internal CrossOption[] Crosses;internal RowGrid Grid;
         }
         private static TowerLayout OptimizeCore(TowerInput input,bool shareDiagnostics)
-            => input.EngineerSearch || input.SearchByLegTier ? OptimizeCoreByLegTier(input,shareDiagnostics) : OptimizeCoreReference(input,shareDiagnostics);
+            => input.EngineerSearch ? OptimizeEngineer(input,shareDiagnostics) : input.SearchByLegTier ? OptimizeCoreByLegTier(input,shareDiagnostics) : OptimizeCoreReference(input,shareDiagnostics);
+        private static TowerLayout OptimizeEngineer(TowerInput input,bool shareDiagnostics)
+        {
+            var t=input.TransferredSlab;t.Validate(input);
+            var widths=t.FixedTowerWidthMm.HasValue ? new[] {t.FixedTowerWidthMm.Value} : new[] {1524.0,1000,1500,2000};
+            var seeds=widths.SelectMany(width=>CrossOptions(input,width,t.UpperSpacingMm)).Select(c=>EngineerTowerSearch.InitialLegs(input,c.DesignCases.Max(stage=>c.Cases[stage].Reactions.Max())*input.LengthMm/1000)).ToArray();
+            if(seeds.Length==0)return OptimizeCoreByLegTier(input,shareDiagnostics);
+            int limit=Math.Min(40,Math.Max(4,seeds.Min()+2));
+            while(true)
+            {
+                var worker=input.CopyForSearch();worker.EngineerStationLimit=limit;
+                try{return OptimizeCoreByLegTier(worker,shareDiagnostics);}
+                catch(TowerOptimizationException) when(limit<40){limit=Math.Min(40,limit+4);}
+            }
+        }
         private static TowerLayout OptimizeCoreReference(TowerInput input,bool shareDiagnostics)
         {
             var t = input.TransferredSlab; t.Validate(input); TowerLayout best = null; int tested = 0;
@@ -500,7 +516,7 @@ namespace EngineeringDashboard
                         else input.Trace?.Increment(BeamSearchCounter.CrossCacheHits);
                         if (crosses.Length == 0) continue;
                         input.Trace?.Work("Transfer tower/support geometry");
-                        string geometryKey = (input.EngineerSearch ? "E:" : "")+(rotated ? "R:" : "N:") + Values(cover);
+                        string geometryKey = (input.EngineerSearch ? "E"+input.EngineerStationLimit+":" : "")+(rotated ? "R:" : "N:") + Values(cover);
                         input.Trace?.CheckCancellation();
                         Func<Geometry[]> buildGeometry=()=>
                         {
@@ -607,7 +623,7 @@ namespace EngineeringDashboard
                         else input.Trace?.Increment(BeamSearchCounter.CrossCacheHits);
                         if (crosses.Length == 0) continue;
                         input.Trace?.Work("Transfer tower/support geometry");
-                        string geometryKey = (input.EngineerSearch ? "E:" : "")+(rotated ? "R:" : "N:") + Values(cover);
+                        string geometryKey = (input.EngineerSearch ? "E"+input.EngineerStationLimit+":" : "")+(rotated ? "R:" : "N:") + Values(cover);
                         input.Trace?.CheckCancellation();
                         Func<Geometry[]> buildGeometry=()=>
                         {
@@ -622,7 +638,7 @@ namespace EngineeringDashboard
                         if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
                         foreach (var geometry in geometries)
                         {
-                            if(geometry.Positions.Length*2>input.NetworkLegCeiling)continue;
+                            if(geometry.Positions.Length*2>input.NetworkLegCeiling || input.EngineerSearch && geometry.Positions.Length>input.EngineerStationLimit)continue;
                             // Try centred rows and phase shifts. Independent primary coverage adds beam load
                             // at the end rows without increasing the shared slab tributaries.
                             foreach (double phase in t.PlywoodSheetLengthMm>0 ? new[] {0.0} : t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })
@@ -657,6 +673,11 @@ namespace EngineeringDashboard
                     input.Trace?.CheckCancellation();
                     var geometry=item.Geometry;var grid=item.Grid;
                     if(geometry.Positions.Length*2>input.NetworkLegCeiling || input.EngineerSearch && best!=null && geometry.Positions.Length>best.PositionsMm.Length)continue;
+                    if(input.EngineerSearch && best!=null && geometry.Positions.Length==best.PositionsMm.Length)
+                    {
+                        int bays=geometry.Joined.Count(j=>j);
+                        if(bays>best.BayCount || bays==best.BayCount && EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated)>best.StandaloneBracePenalty+1e-7)continue;
+                    }
                     foreach(var cross in item.Crosses)
                     {
                         input.Trace?.Increment(BeamSearchCounter.TransferCandidates);tested++;
@@ -800,6 +821,7 @@ namespace EngineeringDashboard
                     bool keep=p.Count%2!=0 || !rotated && bays.All(b=>TowerOptimizer.BaysMm.Contains(b)) && bays.Any(b=>b==600);
                     var joins=state.Joined.Concat(first==0 ? new bool[0] : new[] {false}).Concat(Enumerable.Range(1,p.Count-1).Select(i=>keep || i%2==1)).ToArray();
                     var positions=state.Positions.Concat(p).ToArray();
+                    if(input.EngineerSearch && positions.Length>input.EngineerStationLimit)continue;
                     joins=TowerOptimizer.RemoveRedundantJoins(joins,positions,input.Exclude600Standalone);
                     if(joins==null)continue;
                     next.Add(new Geometry { Stock=state.Stock.Concat(new[] {new TowerStockPiece {StartMm=start,StockLengthMm=length,FirstSupport=first,LastSupport=first+p.Count-1}}).ToArray(),Positions=positions,Joined=joins });
@@ -810,7 +832,7 @@ namespace EngineeringDashboard
             }
             // Keep fully mirrored regular groups even when the inset-based beam-search cap drops them.
             var symmetric=SymmetricGeometries(stock,rotated,input).GroupBy(g=>g.Positions.Length).SelectMany(g=>g.Take(24));
-            if(input.EngineerSearch)states=EngineerTowerSearch.Geometries(stock,rotated,input).Concat(states).ToList();
+            if(input.EngineerSearch)states=EngineerTowerSearch.Geometries(stock,rotated,input).Concat(states.Where(g=>g.Positions.Length<=input.EngineerStationLimit)).ToList();
             states=states.Concat(symmetric).GroupBy(g=>Values(g.Positions)+"|"+string.Join(";",g.Joined)).Select(g=>g.First()).ToList();
             if(input.TransferredSlab?.IsNetwork==true)states=states.SelectMany(g=>SiteGeometries(g,input.StockEndSetbackMm)).GroupBy(g=>Values(g.Positions)+"|"+string.Join(";",g.Joined)).Select(g=>g.First()).ToList();
             foreach(var geometry in states)geometry.MemberSupports=geometry.Stock.Select(s=>geometry.Positions.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(x=>x-s.StartMm).ToArray()).ToArray();
@@ -858,8 +880,7 @@ namespace EngineeringDashboard
             double origin=layout.StockPlan.Pieces[0].StartMm;
             var geometry=new Geometry {Stock=layout.StockPlan.Pieces.Select(p=>new TowerStockPiece {StartMm=p.StartMm-origin,StockLengthMm=p.StockLengthMm,IsCustomLength=p.IsCustomLength,FirstSupport=p.FirstSupport,LastSupport=p.LastSupport}).ToArray(),Positions=layout.PositionsMm.Select(x=>x-origin).ToArray(),Joined=layout.Joined};
             geometry.MemberSupports=geometry.Stock.Select(p=>geometry.Positions.Skip(p.FirstSupport).Take(p.LastSupport-p.FirstSupport+1).Select(x=>x-p.StartMm).ToArray()).ToArray();
-            var cache=new GeometryCache();bool hit;
-            cache.Get((layout.EngineerSearch ? "E:" : "")+(layout.Rotated ? "R:" : "N:")+Values(geometry.Stock.Select(p=>p.StockLengthMm).ToArray()),()=>new[] {geometry},out hit);
+            var cache=new GeometryCache {Fixed=new[] {geometry}};
             return cache;
         }
         private static IEnumerable<Geometry> SymmetricGeometries(double[] stock,bool rotated,TowerInput input)

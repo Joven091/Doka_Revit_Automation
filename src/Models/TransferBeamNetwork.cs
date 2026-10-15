@@ -284,8 +284,16 @@ namespace EngineeringDashboard
     {
         private sealed class State { public TowerLayout[] Beams; public UpperTransferPlan[] Bays; public int Legs,Separate,Narrow,BaysCount;public double Timber,BracePenalty; }
         private static bool Better(bool engineer,int legs,int narrow,int bays,double penalty,double timber,int oldLegs,int oldNarrow,int oldBays,double oldPenalty,double oldTimber)
-            => engineer && legs!=oldLegs ? legs<oldLegs : engineer && TowerOptimizer.CompareBracePreference(narrow,bays,penalty,oldNarrow,oldBays,oldPenalty)!=0 ? TowerOptimizer.CompareBracePreference(narrow,bays,penalty,oldNarrow,oldBays,oldPenalty)<0 : legs*TowerOptimizer.TowerLegTimberEquivalentMm+timber<oldLegs*TowerOptimizer.TowerLegTimberEquivalentMm+oldTimber-.01
-                || Math.Abs((legs-oldLegs)*TowerOptimizer.TowerLegTimberEquivalentMm+timber-oldTimber)<=.01 && TowerOptimizer.CompareBracePreference(narrow,bays,penalty,oldNarrow,oldBays,oldPenalty)<0;
+        {
+            if(engineer)
+            {
+                if(legs!=oldLegs)return legs<oldLegs;
+                int preference=EngineerTowerSearch.Compare(narrow,bays,penalty,oldNarrow,oldBays,oldPenalty);
+                if(preference!=0)return preference<0;
+            }
+            double difference=(legs-oldLegs)*TowerOptimizer.TowerLegTimberEquivalentMm+timber-oldTimber;
+            return difference<-.01 || Math.Abs(difference)<=.01 && TowerOptimizer.CompareBracePreference(narrow,bays,penalty,oldNarrow,oldBays,oldPenalty)<0;
+        }
         private static bool Better(TransferNetworkResult a,TransferNetworkResult b)=>a.SeparateSlabCount<b.SeparateSlabCount || a.SeparateSlabCount==b.SeparateSlabCount
             && (a.Beams.Any(l=>l.EngineerSearch) ? EngineerBetter(a,b) : (a.EconomyScoreMm<b.EconomyScoreMm-.01 || Math.Abs(a.EconomyScoreMm-b.EconomyScoreMm)<=.01
                 && (TowerOptimizer.CompareBracePreference(a.Standalone600Count,a.BracedBayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BracedBayCount,b.StandaloneBracePenalty)<0
@@ -293,7 +301,7 @@ namespace EngineeringDashboard
         private static bool EngineerBetter(TransferNetworkResult a,TransferNetworkResult b)
         {
             if(a.LegCount!=b.LegCount)return a.LegCount<b.LegCount;
-            int brace=TowerOptimizer.CompareBracePreference(a.Standalone600Count,a.BracedBayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BracedBayCount,b.StandaloneBracePenalty);
+            int brace=EngineerTowerSearch.Compare(a.Standalone600Count,a.BracedBayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BracedBayCount,b.StandaloneBracePenalty);
             if(brace!=0)return brace<0;
             return a.EconomyScoreMm<b.EconomyScoreMm-.01 || Math.Abs(a.EconomyScoreMm-b.EconomyScoreMm)<=.01 && a.SymmetryErrorMm<b.SymmetryErrorMm-1e-7;
         }
