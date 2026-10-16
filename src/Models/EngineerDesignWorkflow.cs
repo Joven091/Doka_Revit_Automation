@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Linq;
 
@@ -33,6 +34,7 @@ namespace EngineeringDashboard
         internal readonly Dictionary<int,double[]> CrossingTransfers=new Dictionary<int,double[]>();
         internal readonly Dictionary<int,double[]> CrossingResultantOffsetsMm=new Dictionary<int,double[]>();
         internal readonly Dictionary<int,double> SlabLedgerForces=new Dictionary<int,double>();
+        private readonly ConcurrentDictionary<string,EngineerPrimaryPlan> resolvedCache=new ConcurrentDictionary<string,EngineerPrimaryPlan>();
         internal bool HasPositionedLoads=>SecondaryBasis!=null;
         internal bool CarriesBay(int bay)=>(bay==Beam-1 && LeftSlab) || (bay==Beam && RightSlab);
         internal bool HasCrossings=>Adjacent(Network,Beam).Any();
@@ -144,7 +146,18 @@ namespace EngineeringDashboard
         internal bool Applies(CrossBeamSupportResult[] supports)=>UseDesignZones;
         internal EngineerPrimaryPlan Resolve(TowerInput common,TransferNetworkResult result,int receivingBeam,CrossBeamSupportResult[] supports,bool pendingAssignments=false)
         {
-            var plan=CopyBasis();plan.IsResolved=true;var t=result.Beams[receivingBeam].Transfer;
+            var t=result.Beams[receivingBeam].Transfer;string cacheKey=null;
+            if(common.ReuseSearchWork)
+            {
+                // Only identical transverse sources are reused. Longitudinal tower
+                // stations do not alter this statically determinate reaction split.
+                cacheKey=FormattableString.Invariant($"{receivingBeam}|{result.BeamCentresMm[receivingBeam]:R}|{pendingAssignments}|{common.LegCapacityKn:R}|{common.PrimaryMaterial}|")
+                    +string.Join(";",supports.Select(s=>FormattableString.Invariant($"{s.Input.BayNumber},{s.Input.PositionMm:R},{s.Input.WidthMm:R},{s.UsesSpreader}")+":"
+                        +string.Join(",",s.Bearings.Where(b=>b.Beam==receivingBeam).Select(b=>FormattableString.Invariant($"{b.Xmm:R}/{b.Ymm:R}/{b.ReactionKn:R}/{b.Label}/{b.IsConcreteEndZone}/{b.IsShutterEndZone}/{b.EndZoneStartMm:R}/{b.EndZoneEndMm:R}/{t.LowerCases[0][b.Row].StartMm:R}")))))
+                    +"|"+string.Join(";",Network.CrossingBeams.Select(c=>FormattableString.Invariant($"{c.BayNumber}/{c.PositionMm:R}/{c.WidthMm:R}")));
+                if(resolvedCache.TryGetValue(cacheKey,out var cached))return cached;
+            }
+            var plan=CopyBasis();plan.IsResolved=true;
             for(int i=0;i<Network.CrossingBeams.Length;i++)
                 if((Network.CrossingBeams[i].BayNumber==Beam || Network.CrossingBeams[i].BayNumber==Beam+1) && (pendingAssignments || !Eligible(Network,Network.CrossingBeams[i])))plan.CrossingTransfers[i]=new double[2];
             foreach(var support in supports.Where(s=>s.Input.BayNumber==Beam || s.Input.BayNumber==Beam+1))
@@ -177,7 +190,9 @@ namespace EngineeringDashboard
                 if(!support.UsesSpreader && plan.CarriesBay(bay) && support.SlabEdgeLoadKn>0)
                     plan.SlabLedgerForces[bay]=(plan.SlabLedgerForces.TryGetValue(bay,out double prior) ? prior : 0)+support.SlabEdgeLoadKn/2;
             }
-            plan.Refresh(common);return plan;
+            plan.Refresh(common);
+            if(cacheKey!=null && resolvedCache.Count<256)resolvedCache.TryAdd(cacheKey,plan);
+            return plan;
         }
         internal double ValueAt(double position,int line)=>Lines[line].Where(q=>q.StartMm<=position+1e-7 && q.EndMm>position+1e-7).Sum(q=>q.KnPerM);
         internal BeamDistributedLoad[] Loads(double start,double length,int line,IEnumerable<int> active=null,double selfWeight=0)

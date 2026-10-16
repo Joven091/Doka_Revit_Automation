@@ -18,9 +18,12 @@ internal static class PositionedTransferUiTests
     internal static void Run(string preview)
     {
         var layout=PositionedTransferTests.Fixture();var model=EquivalentTransferredLoading.Create(layout,0,0);var view=new EquivalentLoadingView(model,false);
+        var host=new Window {Content=view,Width=1140,Height=850,WindowStartupLocation=WindowStartupLocation.CenterScreen};host.Show();
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,new Action(()=>{}));
         Render(view,1100);Check(!view.IsDetailsOpen && model.HasPositionedLoads,"positioned diagram starts without cards");
         int foot=Array.FindIndex(model.Components,c=>c.Name.Contains("slab H20"));
-        var target=view.Plot.Targets.Last(t=>t.Component==foot);MemberLoadingUiTests.NativeClick(view.Plot,target.Bounds);Render(view,1100);
+        var target=view.Plot.Targets.Last(t=>t.Component==foot);MemberLoadingUiTests.NativeClick(view.Plot,target.Bounds);
+        host.Content=null;host.Close();Render(view,1100);
         Check(view.VisibleCalculation.Any(t=>t.Contains("3.26838")) && view.VisibleCalculation.Any(t=>t.Contains("1.425")) && view.VisibleCalculation.Any(t=>t.Contains("2125 mm")),"clicked slab-foot source and physical stock coordinate are explained");
         Check(view.VisibleCalculation.Any(t=>t.Contains("2.04274")),"conversion retains separate physical foot load");
         foreach(double width in new[] {1100.0,760,520})
