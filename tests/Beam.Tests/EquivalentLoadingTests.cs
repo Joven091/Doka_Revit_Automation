@@ -69,7 +69,7 @@ internal static class EquivalentLoadingTests
             layout.PrimaryMaterial=material;t.FullLoadingOnly=true;t.TributaryWidthsMm=new[] {305.0};
             var common=new TowerInput {EngineerSearch=true,FullLoadingOnly=true,LengthMm=6900,PrimaryMaterial=material};
             var network=new TransferNetworkInput {Beams=Enumerable.Range(0,3).Select(i=>new TransferBeamRow {WidthMm=650,DepthMm=1150}).ToArray(),Bays=Enumerable.Range(0,2).Select(i=>new TransferBayRow {WidthMm=2125,ThicknessMm=200}).ToArray()};
-            t.PrimaryPlan=EngineerPrimaryPlan.Create(common,network,1);
+            t.PrimaryPlan=EngineerPrimaryPlan.Create(common,network,1).WithGeometry(common,unit,t.UnitPointLabels[0]);
             var actual=new TransferMember {H20Count=1,LengthMm=unit.LengthMm,StartMm=-900,SupportsMm=unit.SupportsMm,
                 Uniform=unit.Uniform.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM*.305}).ToArray(),
                 Points=unit.Points.Select(p=>new BeamPointLoad {PositionMm=p.PositionMm,Kn=p.Kn*.488}).ToArray()};
@@ -83,10 +83,10 @@ internal static class EquivalentLoadingTests
             var view=EquivalentTransferredLoading.Create(layout,0,0);
             Check(view.IsAvailable && view.IsDesignSlice,"production primary plan always has a reference transfer diagram");
             var transfers=view.Components.Where(c=>!c.IsUniform).ToArray();
-            Near(transfers[0].NominalSpacingMm,407,"production left slab retains its own source pitch");Near(transfers[1].NominalSpacingMm,488,"production right slab retains its own source pitch");
+            Near(transfers[0].NominalSpacingMm,407,"production left slab retains its own source pitch");Near(transfers.Last().NominalSpacingMm,488,"production right slab retains its own source pitch");
             for(int line=0;line<2;line++)
             {
-                Near(view.Member.Analysis.Reactions[line]/.305,17.6175,"production reaction recovers prescribed own-beam plus half-bay slab UDL");
+                Near(view.Member.Analysis.Reactions[line]/.305,LoadedBeamAnalysis.AnalyzeDenseReference(unit.LengthMm,unit.SupportsMm,unit.Uniform,unit.Points,unit.EI,270).Reactions[line],"production reaction recovers physically positioned source UDL");
                 Near(view.PrimaryTransferKnM[line]+view.PrimarySelfWeightKnM[line],t.PrimaryCases[0][line].Uniform[0].KnPerM,"primary self-weight is added exactly once after secondary transfer");
             }
             foreach(var part in view.Components)Near(part.SourceValue*part.ReferenceSpacingMm/part.NominalSpacingMm,part.EquivalentValue,"production card conversion including independent slab pitches");

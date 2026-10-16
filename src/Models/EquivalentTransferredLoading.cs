@@ -21,6 +21,8 @@ namespace EngineeringDashboard
         public double NominalSpacingMm,ReferenceSpacingMm,SourceValue,EquivalentValue,PositionMm,EndMm;
         public bool IsUniform;
         public string SpacingLabel="Slab secondary spacing";
+        public string SourceCalculation;
+        public double AllocationFactor=1;
         public double[] ReactionsKn;
     }
     public sealed class EquivalentTransferredLoading
@@ -32,6 +34,7 @@ namespace EngineeringDashboard
         public double[] PrimarySelfWeightKnM;
         public string UnavailableReason;
         public bool IsDesignSlice;
+        public bool HasPositionedLoads;
         public bool IsAvailable=>Member!=null;
         public static EquivalentTransferredLoading Create(TowerLayout layout,int row,int stage)
         {
@@ -91,9 +94,47 @@ namespace EngineeringDashboard
         // at the receiving primary bearings. Physical secondary loads and their
         // response plots remain untouched. No scaling of an unrelated physical
         // row is used to manufacture the primary reaction/spacing identity.
+        private static EquivalentTransferredLoading PositionedSlice(TowerLayout layout,int row,int stage)
+        {
+            var t=layout.Transfer;var plan=t.PrimaryPlan;var actual=t.LowerCases[stage][row];
+            double pitch=t.EnteredUpperSpacingMm,reference=pitch/1000,x=t.RowsMm[row];
+            var target=new double[2];var weight=new double[2];
+            for(int line=0;line<2;line++)
+            {
+                var primary=t.PrimaryCases[stage].FirstOrDefault(m=>m.Name.EndsWith(line==0 ? " L" : " R",StringComparison.Ordinal) && x>=m.StartMm-1e-7 && x<m.StartMm+m.LengthMm-1e-7);
+                if(primary==null)return new EquivalentTransferredLoading {ReferenceSpacingMm=pitch,UnavailableReason="Outside primary coverage: external end supports."};
+                double local=x-primary.StartMm;weight[line]=primary.PrimarySelfWeightKnM;
+                target[line]=primary.Uniform.Where(q=>q.StartMm<=local+1e-7 && q.EndMm>local+1e-7).Sum(q=>q.KnPerM)-weight[line];
+            }
+            var components=new List<EquivalentLoadingComponent>();
+            foreach(var source in plan.LoadsAt(x))
+            {
+                double nominal=source.IsSlabFoot || source.IsSlabEdge ? t.SlabSpacing(source.Bay==plan.Beam-1) : pitch;
+                double sourceValue=source.ValuePerMetre*nominal/1000;
+                var component=new EquivalentLoadingComponent {Name=source.Name,IsUniform=source.IsUniform,PositionMm=source.PositionMm,EndMm=source.EndMm,
+                    NominalSpacingMm=nominal,ReferenceSpacingMm=pitch,SourceValue=sourceValue,EquivalentValue=source.ValuePerMetre*reference*source.AllocationFactor,AllocationFactor=source.AllocationFactor,
+                    SpacingLabel=source.IsSlabFoot || source.IsSlabEdge ? "Slab secondary spacing" : "Source reference spacing"};
+                if(source.IsSlabFoot || source.IsSlabEdge)
+                    component.SourceCalculation=$"{LoadValue.Format(source.AreaLoadKnM2,5)} × {source.SourceLengthMm/1000:0.#####} × {nominal/1000:0.#####}"+(source.IsSlabFoot ? " / 2" : "")+$" = {LoadValue.Format(sourceValue,5)} kN";
+                else if(source.Bay<0 && source.IsUniform)
+                    component.SourceCalculation=$"{LoadValue.Format(source.ValuePerMetre,5)} × {reference:0.#####} = {LoadValue.Format(component.EquivalentValue,5)} kN/m";
+                component.ReactionsKn=EngineerPrimaryPlan.Reactions(plan.SecondaryBasis,new[] {new PositionedSecondaryLoad {IsUniform=component.IsUniform,PositionMm=component.PositionMm,EndMm=component.EndMm,ValuePerMetre=component.EquivalentValue}});
+                components.Add(component);
+            }
+            var uniform=components.Where(c=>c.IsUniform).Select(c=>new BeamDistributedLoad {StartMm=c.PositionMm,EndMm=c.EndMm,KnPerM=c.EquivalentValue}).ToArray();
+            var points=components.Where(c=>!c.IsUniform).Select(c=>new BeamPointLoad {PositionMm=c.PositionMm,Kn=c.EquivalentValue}).ToArray();
+            var basis=plan.SecondaryBasis;
+            var analysis=LoadedBeamAnalysis.AnalyzeSigned(basis.LengthMm,basis.SupportsMm,uniform,points,actual.EI,layout.DeflectionDenominator);
+            for(int line=0;line<2;line++)
+                if(Math.Abs(analysis.Reactions[line]/reference-target[line])>1e-7*Math.Max(1,Math.Abs(target[line])))
+                    return new EquivalentTransferredLoading {ReferenceSpacingMm=pitch,UnavailableReason="The positioned reference loads do not match the selected primary transfer."};
+            return new EquivalentTransferredLoading {IsDesignSlice=true,HasPositionedLoads=true,ReferenceSpacingMm=pitch,PrimaryTransferKnM=target,PrimarySelfWeightKnM=weight,Components=components.ToArray(),
+                Member=new TransferMember {Name=actual.Name,LoadCase=actual.LoadCase,H20Count=1,StartMm=actual.StartMm,LengthMm=basis.LengthMm,SupportsMm=basis.SupportsMm,Uniform=uniform,Points=points,Analysis=analysis}};
+        }
         private static EquivalentTransferredLoading DesignSlice(TowerLayout layout,int row,int stage)
         {
             var t=layout.Transfer;var actual=t.LowerCases[stage][row];
+            if(t.PrimaryPlan?.HasPositionedLoads==true)return PositionedSlice(layout,row,stage);
             double pitch=t.EnteredUpperSpacingMm,reference=pitch/1000,x=t.RowsMm[row];
             var target=new double[2];var weight=new double[2];
             for(int line=0;line<2;line++)

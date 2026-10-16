@@ -44,7 +44,7 @@ internal static class UnifiedTransferTests
                 Check(view.IsAvailable && view.IsDesignSlice,"production reference diagram remains available on every row");
                 Near(view.ReferenceSpacingMm,t.EnteredUpperSpacingMm,"uses this beam's actual reference pitch");
                 for(int line=0;line<2;line++)Near(view.Member.Analysis.Reactions[line]/(view.ReferenceSpacingMm/1000),view.PrimaryTransferKnM[line],"one spacing division exactly reproduces checked primary transfer");
-                foreach(var c in view.Components)Near(c.SourceValue*c.ReferenceSpacingMm/c.NominalSpacingMm,c.EquivalentValue,"card conversion reproduces displayed equivalent load");
+                foreach(var c in view.Components)Near(c.SourceValue*c.ReferenceSpacingMm/c.NominalSpacingMm*c.AllocationFactor,c.EquivalentValue,"card conversion reproduces displayed equivalent load");
                 Check(ReferenceEquals(actual.Analysis,analysis) && ReferenceEquals(actual.Uniform,loads) && ReferenceEquals(actual.Points,points),"reference view does not change physical secondary checks");
             }
         }
