@@ -264,6 +264,8 @@ namespace EngineeringDashboard
             internal readonly System.Collections.Generic.List<Target> Targets=new System.Collections.Generic.List<Target>();
             internal event Action<int,int> Selected;
             private Target selected;
+            internal int SelectedKind=>selected?.Kind??-1;
+            internal int SelectedIndex=>selected?.Index??-1;
             internal bool SelectAt(Point point)
             {
                 var hit=Targets.LastOrDefault(t=>t.Bounds.Contains(point));if(hit==null)return false;
