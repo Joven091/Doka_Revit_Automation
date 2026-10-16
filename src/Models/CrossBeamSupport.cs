@@ -576,6 +576,15 @@ namespace EngineeringDashboard
                                 if(!Pass(lower[row],input,$"X{index+1} junction secondary")) {passing=false;break;}
                             }
                         }
+                        if(preferredBay.HasValue && !(common.ReuseSearchWork && common.OptimizeCrossingJunctions && common.PrecheckCrossingFootprints))
+                        {
+                            // The late/reference path has now evaluated receiving members.
+                            // A clash of these fixed legs cannot be repaired by another stock
+                            // or secondary pitch. Avoid repeating member work at the same pose;
+                            // the early path rejects it before any member evaluation.
+                            string legClash=Clash(ProjectedTowerLegs(footprint,$"X{index+1}",c.PositionMm+offset,face,c.BottomElevationMm-200-common.Primary.DepthMm),obstacles);
+                            if(legClash!=null){failure=legClash;return null;}
+                        }
                         if(!passing)continue;
                         // As in the existing end-strip model, distribute the full load on
                         // centred covered concrete, conserving force and its exact centroid.
