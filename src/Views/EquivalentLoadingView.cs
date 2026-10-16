@@ -13,68 +13,63 @@ namespace EngineeringDashboard
     {
         internal readonly EquivalentLoadingPlot Plot;
         internal readonly Border DetailsPanel;
-        internal readonly Button CloseDetailsButton;
-        internal readonly StackPanel Details=new StackPanel();
-        internal bool IsDetailsOpen=>DetailsPanel.Visibility==Visibility.Visible;
-        internal string[] VisibleCalculation=>Details.Children.OfType<TextBlock>().Select(t=>t.Text).ToArray();
+        internal readonly CalculationCard LoadCard=new CalculationCard(),ReactionCard=new CalculationCard();
+        private CalculationCard active;
+        internal Button CloseDetailsButton=>active==ReactionCard ? ReactionCard.CloseButton : LoadCard.CloseButton;
+        internal bool IsDetailsOpen=>LoadCard.IsOpen || ReactionCard.IsOpen;
+        internal string[] VisibleCalculation=>active?.Text??new string[0];
         private readonly EquivalentTransferredLoading model;
         internal EquivalentLoadingView(EquivalentTransferredLoading model,bool externalEnds)
         {
             this.model=model;Background=Brushes.White;
-            RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
+            for(int i=0;i<4;i++)RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             ColumnDefinitions.Add(new ColumnDefinition());ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
-            var header=new StackPanel {Margin=new Thickness(0,0,0,6)};
-            header.Children.Add(new TextBlock {Text=$"Reference spacing {model.ReferenceSpacingMm:0.###} mm",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap});SetColumnSpan(header,2);Children.Add(header);
-            var close=new Button {Content="×",Width=28,Height=28,MinWidth=0,MinHeight=0,Padding=new Thickness(0),FontSize=16,HorizontalAlignment=HorizontalAlignment.Right,ToolTip="Close calculation"};CloseDetailsButton=close;
-            var detailBody=new StackPanel();detailBody.Children.Add(close);detailBody.Children.Add(Details);
-            DetailsPanel=new Border {Width=244,Padding=new Thickness(12),Background=new SolidColorBrush(Color.FromRgb(247,250,253)),BorderBrush=Brushes.LightGray,BorderThickness=new Thickness(1,0,0,0),VerticalAlignment=VerticalAlignment.Top,Visibility=Visibility.Collapsed,Child=detailBody};
-            SetColumn(DetailsPanel,1);SetRow(DetailsPanel,1);Children.Add(DetailsPanel);
-            SizeChanged+=(s,e)=>LayoutDetails(ActualWidth);
-            close.Click+=(s,e)=> {DetailsPanel.Visibility=Visibility.Collapsed;Plot?.ClearSelection();};
+            var header=new TextBlock {Text=$"Reference spacing {model.ReferenceSpacingMm:0.###} mm",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,6),ToolTip=model.IsDesignSlice ? "Representative primary-transfer slice. Beam load is shared equally; assigned slab and crossing loads act at the receiving primary bearings. Actual physical secondary response is shown below." : "Loads converted from slab spacing to the beam reference spacing."};
+            SetColumnSpan(header,2);Children.Add(header);
+            var cards=new StackPanel();cards.Children.Add(LoadCard);cards.Children.Add(ReactionCard);
+            DetailsPanel=new Border {Width=290,Margin=new Thickness(12,0,0,0),VerticalAlignment=VerticalAlignment.Top,Visibility=Visibility.Collapsed,Child=cards};
+            SetColumn(DetailsPanel,1);SetRow(DetailsPanel,1);Children.Add(DetailsPanel);SizeChanged+=(s,e)=>LayoutDetails(ActualWidth);
+            LoadCard.CloseButton.Click+=(s,e)=> {LoadCard.Visibility=Visibility.Collapsed;Plot?.ClearLoadSelection();UpdateCards();};
+            ReactionCard.CloseButton.Click+=(s,e)=> {ReactionCard.Visibility=Visibility.Collapsed;Plot?.ClearReactionSelection();UpdateCards();};
             if(!model.IsAvailable)
             {
-                var body=new StackPanel {Margin=new Thickness(12)};body.Children.Add(new TextBlock {Text=model.UnavailableReason,TextWrapping=TextWrapping.Wrap});
-                SetRow(body,1);Children.Add(body);return;
+                var body=new TextBlock {Text=model.UnavailableReason,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(12)};SetRow(body,1);Children.Add(body);return;
             }
             Plot=new EquivalentLoadingPlot(model);SetRow(Plot,1);Children.Add(Plot);Plot.Selected+=(component,reaction)=>ShowCalculation(component,reaction);
-            var footer=new StackPanel {Margin=new Thickness(0,4,0,0)};
-            if(externalEnds) {var status=new TextBlock {Text="End supports unchecked",Foreground=Brushes.DarkGoldenrod,ToolTip="External column-side end supports are assumed; capacity requires separate verification."};status.FontSize=12;status.TextWrapping=TextWrapping.Wrap;footer.Children.Add(status);}
-            footer.Children.Add(new TextBlock {Text=$"Primary UDL L/R {model.PrimaryTransferKnM[0]+model.PrimarySelfWeightKnM[0]:0.###} / {model.PrimaryTransferKnM[1]+model.PrimarySelfWeightKnM[1]:0.###} kN/m",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap});SetRow(footer,3);SetColumnSpan(footer,2);Children.Add(footer);
+            if(externalEnds){var status=new TextBlock {Text="End supports unchecked",FontSize=12,Foreground=Brushes.DarkGoldenrod,ToolTip="External column-side end supports are assumed; capacity requires separate verification."};SetRow(status,3);SetColumnSpan(status,2);Children.Add(status);}
         }
-        protected override Size MeasureOverride(Size constraint)
-        {
-            LayoutDetails(double.IsInfinity(constraint.Width) ? ActualWidth : constraint.Width);
-            return base.MeasureOverride(constraint);
-        }
+        internal void CloseAllDetails(){LoadCard.Visibility=ReactionCard.Visibility=Visibility.Collapsed;Plot?.ClearSelection();UpdateCards();}
+        private void UpdateCards(){DetailsPanel.Visibility=IsDetailsOpen ? Visibility.Visible : Visibility.Collapsed;LayoutDetails(ActualWidth);}
+        protected override Size MeasureOverride(Size constraint){LayoutDetails(double.IsInfinity(constraint.Width) ? ActualWidth : constraint.Width);return base.MeasureOverride(constraint);}
         private void LayoutDetails(double width)
         {
-            bool narrow=width>0 && width<720;
-            DetailsPanel.Width=narrow ? double.NaN : 244;DetailsPanel.HorizontalAlignment=narrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+            bool narrow=width>0 && width<800;DetailsPanel.Width=narrow ? double.NaN : 290;DetailsPanel.Margin=narrow ? new Thickness(0,10,0,0) : new Thickness(12,0,0,0);
+            DetailsPanel.HorizontalAlignment=narrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
             SetColumn(DetailsPanel,narrow ? 0 : 1);SetRow(DetailsPanel,narrow ? 2 : 1);SetColumnSpan(DetailsPanel,narrow ? 2 : 1);
         }
-        private void Line(string text,bool strong=false,Brush color=null)
-            =>Details.Children.Add(new TextBlock {Text=text,TextWrapping=TextWrapping.Wrap,FontWeight=strong ? FontWeights.SemiBold : FontWeights.Normal,Foreground=color??Brushes.DimGray,Margin=new Thickness(0,5,0,5)});
         private void ShowCalculation(int component,int reaction)
         {
-            Details.Children.Clear();DetailsPanel.Visibility=Visibility.Visible;LayoutDetails(ActualWidth);
+            active=component>=0 ? LoadCard : ReactionCard;active.Begin();
             if(component>=0)
             {
                 var c=model.Components[component];string unit=c.IsUniform ? "kN/m" : "kN";
-                Line(c.Name,true,EquivalentLoadingPlot.Color(c));
-                Line($"{c.SourceValue:0.#####} {unit} · {c.NominalSpacingMm:0.###} mm");
-                Line($"× {c.ReferenceSpacingMm:0.###} / {c.NominalSpacingMm:0.###}");
-                Line($"= {c.EquivalentValue:0.#####} {unit}",true,EquivalentLoadingPlot.Color(c));
-                Line(c.IsUniform ? $"{c.PositionMm:0.###}–{c.EndMm:0.###} mm" : $"x {c.PositionMm:0.###} mm");
+                active.Line(c.Name,true,Brushes.Firebrick);
+                active.Line($"Source design load: {LoadValue.Format(c.SourceValue,5)} {unit}");
+                active.Line($"{c.SpacingLabel}: {c.NominalSpacingMm:0.###} mm");
+                active.Line($"Beam secondary spacing: {c.ReferenceSpacingMm:0.###} mm");
+                active.Line($"{LoadValue.Format(c.SourceValue,5)} × {c.ReferenceSpacingMm:0.###} / {c.NominalSpacingMm:0.###}");
+                active.Line($"Equivalent load = {LoadValue.Format(c.EquivalentValue,5)} {unit}",true,Brushes.Firebrick);
             }
             else
             {
-                Line(reaction==0 ? "Left reaction" : "Right reaction",true,Brushes.SeaGreen);
-                foreach(var c in model.Components.Where(c=>Math.Abs(c.ReactionsKn[reaction])>1e-10))Line($"{c.Name}: {c.ReactionsKn[reaction]:0.#####} kN",color:EquivalentLoadingPlot.Color(c));
                 double r=model.Member.Analysis.Reactions[reaction],reference=model.ReferenceSpacingMm/1000;
-                Line($"R = {r:0.#####} kN",true,Brushes.SeaGreen);
-                Line($"{r:0.#####} / {reference:0.###} = {model.PrimaryTransferKnM[reaction]:0.#####} kN/m",true,Brushes.SeaGreen);
-                if(model.PrimarySelfWeightKnM[reaction]!=0)Line($"+ {model.PrimarySelfWeightKnM[reaction]:0.#####} kN/m primary self-weight");
+                active.Line($"R{reaction+1} · Primary UDL",true,Brushes.SeaGreen);
+                active.Line($"Equivalent reaction: {LoadValue.Format(r,5)} kN");
+                active.Line($"Beam secondary spacing: {model.ReferenceSpacingMm:0.###} mm ({reference:0.###} m)");
+                active.Line($"UDL = {LoadValue.Format(r,5)} / {reference:0.###}");
+                active.Line($"Primary UDL = {LoadValue.Format(model.PrimaryTransferKnM[reaction],5)} kN/m",true,Brushes.SeaGreen);
             }
+            UpdateCards();
         }
     }
     // Presentation only: conversion and signed analysis are owned by the existing model.
@@ -89,13 +84,15 @@ namespace EngineeringDashboard
         private int selectedComponent=-1,selectedReaction=-1;
         internal static Brush Color(EquivalentLoadingComponent c)=>Brushes.Firebrick;
         internal EquivalentLoadingPlot(EquivalentTransferredLoading model)
-        {this.model=model;Focusable=true;Cursor=Cursors.Hand;MouseLeftButtonDown+=(s,e)=> {if(SelectAt(e.GetPosition(this)))e.Handled=true;};}
+        {this.model=model;Focusable=true;Cursor=Cursors.Hand;MouseLeftButtonUp+=(s,e)=> {if(SelectAt(e.GetPosition(this)))e.Handled=true;};}
         internal bool SelectAt(Point point)
         {
             var target=Targets.LastOrDefault(t=>t.Bounds.Contains(point));if(target==null)return false;
-            selectedComponent=target.Component;selectedReaction=target.Reaction;InvalidateVisual();Selected?.Invoke(target.Component,target.Reaction);return true;
+            if(target.Component>=0)selectedComponent=target.Component;else selectedReaction=target.Reaction;InvalidateVisual();Selected?.Invoke(target.Component,target.Reaction);return true;
         }
         internal void ClearSelection(){selectedComponent=selectedReaction=-1;InvalidateVisual();}
+        internal void ClearLoadSelection(){selectedComponent=-1;InvalidateVisual();}
+        internal void ClearReactionSelection(){selectedReaction=-1;InvalidateVisual();}
         private FormattedText Text(string value,Brush color)=>new FormattedText(value,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,color,VisualTreeHelper.GetDpi(this).PixelsPerDip);
         private sealed class Annotation
         {internal string Value;internal Rect Bounds;internal double Anchor;internal int Component=-1,Reaction=-1;}
@@ -121,9 +118,9 @@ namespace EngineeringDashboard
             for(int i=0;i<model.Components.Length;i++)
             {
                 var c=model.Components[i];
-                layout.Values.Add(Place(layout,$"{c.EquivalentValue:0.###} {(c.IsUniform ? "kN/m" : "kN")}",x(c.IsUniform ? (c.PositionMm+c.EndMm)/2 : c.PositionMm),8,width,i));
+                layout.Values.Add(Place(layout,$"{LoadValue.Format(c.EquivalentValue)} {(c.IsUniform ? "kN/m" : "kN")}",x(c.IsUniform ? (c.PositionMm+c.EndMm)/2 : c.PositionMm),8,width,i));
             }
-            layout.BeamY=Math.Max(95,layout.Values.Max(a=>a.Bounds.Bottom)+66);
+            layout.BeamY=Math.Max(95,layout.Values.Select(a=>a.Bounds.Bottom).DefaultIfEmpty(0).Max()+66);
             for(int i=0;i<model.Member.SupportsMm.Length;i++)
                 layout.Reactions.Add(Place(layout,$"R{i+1}: {model.Member.Analysis.Reactions[i]:0.##} kN",x(model.Member.SupportsMm[i]),layout.BeamY+94,width,reaction:i));
             layout.DimensionY=layout.Reactions.Max(a=>a.Bounds.Bottom)+18;
@@ -156,12 +153,17 @@ namespace EngineeringDashboard
                 {
                     Targets.Add(new Target {Bounds=a.Bounds,Component=a.Component,Reaction=a.Reaction});
                     if(a.Component>=0 && selectedComponent==a.Component || a.Reaction>=0 && selectedReaction==a.Reaction)
-                        dc.DrawRoundedRectangle(null,new Pen(color,1),a.Bounds,3,3);
+                        {
+                        bool reaction=a.Reaction>=0;var selectedColor=reaction ? Brushes.SeaGreen : Brushes.Firebrick;
+                        dc.DrawRoundedRectangle(new SolidColorBrush(reaction ? Color.FromRgb(230,248,235) : Color.FromRgb(255,236,236)),new Pen(selectedColor,1),a.Bounds,3,3);
+                        dc.DrawText(Text(a.Value,selectedColor),new Point(a.Bounds.Left+3,a.Bounds.Top+2));
+                    }
                 }
             };
+            double stroke=1.5;
             Action<double,double,double,Brush> arrow=(px,from,to,color)=>
             {
-                double sign=Math.Sign(to-from);var pen=new Pen(color,1.5);dc.DrawLine(pen,new Point(px,from),new Point(px,to));
+                double sign=Math.Sign(to-from);var pen=new Pen(color,stroke);dc.DrawLine(pen,new Point(px,from),new Point(px,to));
                 dc.DrawLine(pen,new Point(px,to),new Point(px-4,to-sign*7));dc.DrawLine(pen,new Point(px,to),new Point(px+4,to-sign*7));
             };
             Action<double,double,double> dimension=(a,b,y)=>
@@ -174,12 +176,12 @@ namespace EngineeringDashboard
             double maximum=model.Components.Where(c=>c.IsUniform).Select(c=>Math.Abs(c.EquivalentValue)).DefaultIfEmpty(1).Max();
             for(int i=0;i<model.Components.Length;i++)
             {
-                var c=model.Components[i];double sign=c.EquivalentValue>=0 ? 1 : -1,tip=beamY-sign*5;
+                var c=model.Components[i];stroke=i==selectedComponent ? 3 : 1.5;double sign=c.EquivalentValue>=0 ? 1 : -1,tip=beamY-sign*5;
                 double from=sign>0 ? beamY-57 : beamY+57;
                 if(c.IsUniform)
                 {
                     from=tip-sign*52*Math.Abs(c.EquivalentValue)/Math.Max(maximum,1e-10);
-                    double a=x(c.PositionMm),b=x(c.EndMm);dc.DrawLine(new Pen(Brushes.Firebrick,1),new Point(a,from),new Point(b,from));
+                    double a=x(c.PositionMm),b=x(c.EndMm);dc.DrawLine(new Pen(Brushes.Firebrick,i==selectedComponent ? 2.5 : 1),new Point(a,from),new Point(b,from));
                     int arrows=Math.Max(1,(int)((b-a)/45));for(int j=0;j<=arrows;j++)arrow(a+(b-a)*j/arrows,from,tip,Brushes.Firebrick);
                     Targets.Add(new Target {Bounds=new Rect(a-5,Math.Min(from,tip),b-a+10,Math.Abs(tip-from)+2),Component=i});
                 }
@@ -194,7 +196,7 @@ namespace EngineeringDashboard
             }
             for(int i=0;i<model.Member.SupportsMm.Length;i++)
             {
-                double px=x(model.Member.SupportsMm[i]);var triangle=new StreamGeometry();using(var g=triangle.Open()){g.BeginFigure(new Point(px,beamY+3),true,true);g.LineTo(new Point(px-7,beamY+15),true,false);g.LineTo(new Point(px+7,beamY+15),true,false);}dc.DrawGeometry(Brushes.SlateGray,null,triangle);
+                stroke=i==selectedReaction ? 3 : 1.5;double px=x(model.Member.SupportsMm[i]);var triangle=new StreamGeometry();using(var g=triangle.Open()){g.BeginFigure(new Point(px,beamY+3),true,true);g.LineTo(new Point(px-7,beamY+15),true,false);g.LineTo(new Point(px+7,beamY+15),true,false);}dc.DrawGeometry(Brushes.SlateGray,null,triangle);
                 dc.DrawLine(new Pen(Brushes.SlateGray,1),new Point(px-10,beamY+19),new Point(px+10,beamY+19));
                 double reaction=model.Member.Analysis.Reactions[i];arrow(px,reaction>=0 ? beamY+90 : beamY+60,reaction>=0 ? beamY+60 : beamY+90,Brushes.SeaGreen);
                 Targets.Add(new Target {Bounds=new Rect(px-8,beamY+58,16,34),Reaction=i});

@@ -342,7 +342,9 @@ namespace EngineeringDashboard
         public double ShearKn { get; internal set; }
         public double DeflectionMm { get; internal set; }
         public double Utilization { get; internal set; }
-        public double SymmetryErrorMm=>TowerOptimizer.SymmetryError(PositionsMm,StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray(),LengthMm/2);
+        public double CantileverImbalanceMm=>StockPlan?.Pieces==null || PositionsMm==null ? 0 : StockPlan.Pieces.Sum(p=>Math.Abs((PositionsMm[p.FirstSupport]-p.StartMm)-(p.EndMm-PositionsMm[p.LastSupport])));
+        public double SecondarySymmetryErrorMm=>Transfer==null ? 0 : Transfer.LowerCases.Take(1).SelectMany(c=>c).Concat(Transfer.UpperMembers).Select(m=>m.SupportsMm.Length<2 ? 0 : Math.Abs(m.SupportsMm.First()-(m.LengthMm-m.SupportsMm.Last()))).DefaultIfEmpty().Max();
+        public double SymmetryErrorMm=>TowerOptimizer.SymmetryError(PositionsMm,StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray(),LengthMm/2)+(EngineerSearch ? CantileverImbalanceMm+SecondarySymmetryErrorMm : 0);
         public string Governing { get; internal set; }
         public int Tested { get; internal set; }
         public bool MinimumLegCountProven { get; internal set; }
@@ -422,7 +424,7 @@ namespace EngineeringDashboard
             => a.EngineerSearch ? EngineerTowerSearch.Compare(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty) : CompareBracePreference(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty);
         private static bool Better(TowerLayout a,TowerLayout b)
             => a.LegCount<b.LegCount || a.LegCount==b.LegCount && (CompareBracePreference(a,b)<0
-                || CompareBracePreference(a,b)==0 && (a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
+                || CompareBracePreference(a,b)==0 && (a.EngineerSearch && Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7 ? a.SymmetryErrorMm<b.SymmetryErrorMm : a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
                 || a.StockPlan.TotalPrimaryCount==b.StockPlan.TotalPrimaryCount && a.Utilization<b.Utilization));
         public static TowerLayout Optimize(TowerInput input)
         {
@@ -737,8 +739,8 @@ namespace EngineeringDashboard
         }
         // Each stock run can have its own combined group and brace sequence.
         // In particular 3300 mm can use 400/1000/1500/400 while the adjacent
-        // 3600 mm run uses 300/1000/1000/1000/300. Do not impose one brace
-        // family or equal outside cantilevers on the complete primary line.
+        // 3600 mm run uses 300/1000/1000/1000/300. Keep per-member equal tails as a preference; do not impose one brace
+        // family on the complete primary line.
         internal static IEnumerable<TransferredSlabOptimizer.Geometry> StockRunGeometries(double[] stocks,TowerInput input)
         {
             if(stocks.Length>3 || input.EngineerPlan==null || !input.EngineerPlan.HasCrossings)yield break;

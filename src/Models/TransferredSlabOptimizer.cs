@@ -117,10 +117,10 @@ namespace EngineeringDashboard
         internal EngineerPrimaryPlan PrimaryPlan;
         internal string PrimarySupportNotice="";
         internal string PrimaryLoadBasis=>(PrimaryPlan!=null
-            ? "Concrete tributary UDLs: Beam + Slab outside crossings; Beam + Cross Beam over the full shared crossing width."
+            ? "Concrete tributary UDLs: Beam + Slab outside crossings; Beam + Cross Beam over each full crossing width."
             : "Bearing-derived UDLs from the actual selected support transfers.")
             +(string.IsNullOrEmpty(PrimarySupportNotice) ? "" : " "+PrimarySupportNotice)
-            +(PrimarySupportNotice.Contains("dedicated tower") ? " Dedicated crossing towers carry their own assigned loads; main primaries retain only their calculated bearing transfers." : "");
+            +(PrimarySupportNotice.Contains("dedicated tower") ? " Dedicated crossing towers carry their own assigned loads; remaining transfers are distributed within the crossing width." : "");
         internal ColumnEndStripLoad[][] LegacyColumnSupportLoads;
         internal int EngineerReceiverCount;
         internal TransferredSlabResult Copy() => (TransferredSlabResult)MemberwiseClone();
@@ -737,6 +737,7 @@ namespace EngineeringDashboard
         {
             if(a.LegCount!=b.LegCount)return a.LegCount<b.LegCount;
             int preference=TowerOptimizer.CompareBracePreference(a,b);if(preference!=0)return preference<0;
+            if(Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7)return a.SymmetryErrorMm<b.SymmetryErrorMm;
             return Economy(a)<Economy(b)-.01 || Math.Abs(Economy(a)-Economy(b))<=.01 && (a.SymmetryErrorMm<b.SymmetryErrorMm-1e-7 || Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)<1e-7 && a.Utilization<b.Utilization);
         }
         private static int InitialLegs(TowerInput input,CrossOption cross,double edge,TowerStockPiece[] stocks)
@@ -988,7 +989,7 @@ namespace EngineeringDashboard
                 var lowerStocks=lowerLengths.ToArray();
                 if(lowerStocks.Length==0)input.Diagnostics?.Geometry(input.DiagnosticScope+"lower stock",$"{input.DiagnosticScope}lower secondary needs at least {required:0.###} mm centred stock to reach bearings/feet with 150 mm end allowance; longest available {input.StockLengthsMm.Max():0} mm.","Review lower secondary stock lengths and upper-foot positions.",required-input.StockLengthsMm.Max());
                 foreach(double stock in lowerStocks)
-                    foreach(double start in new[] {t.BeamCentreOffsetMm-stock/2})
+                    foreach(double start in (input.EngineerSearch ? new[] {-stock/2,t.BeamCentreOffsetMm-stock/2} : new[] {t.BeamCentreOffsetMm-stock/2}).Distinct().Where(x=>x<=lo+1e-7 && x+stock>=hi-1e-7))
                     {
                         var cases=new List<LoadedBeamAnalysis>(); var names=new List<string>(); bool valid=true;
                         for(int mask=0;mask<4;mask++)
@@ -1296,7 +1297,7 @@ namespace EngineeringDashboard
             foreach(int c in cross.DesignCases)
             {
                 var checks=new PrimaryCheck[g.Stock.Length*2];
-                if(input.EngineerSearch && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
+                if(input.EngineerSearch && !input.DeferCrossingChecks && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {
@@ -1409,7 +1410,7 @@ namespace EngineeringDashboard
             foreach(int c in cross.DesignCases)
             {
                 var members=new List<TransferMember>();
-                if(input.EngineerSearch && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
+                if(input.EngineerSearch && !input.DeferCrossingChecks && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {

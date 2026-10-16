@@ -29,7 +29,7 @@ namespace EngineeringDashboard
                 {
                     var n=new TransferNetworkInput {Beams=NetworkBeams.ToArray(),Bays=NetworkBays.ToArray(),CrossingBeams=CrossingBeams.ToArray(),CustomLoads=UseCustomLoads,LiveKnM2=CustomLiveLoad,FormworkKnM2=CustomFormworkLoad};
                     var c=new TowerInput {LengthMm=BeamLengthMm,LegCapacityKn=TowerLegCapacityKn,PrimaryMaterial=PrimaryMaterial};
-                    text.AppendLine("Engineer primary planning (current inputs):");
+                    text.AppendLine("Provisional primary planning (before support allocation; selected result and search seed are reported below):");
                     for(int i=0;i<n.Beams.Length;i++)text.AppendLine($"B{i+1}: "+EngineerPrimaryPlan.Create(c,n,i).Summary);
                 }
                 catch(ArgumentException) {text.AppendLine("Engineer planning awaits valid geometry.");}
