@@ -130,7 +130,10 @@ internal static class EquivalentLoadingUiTests
         var primary=t.PrimaryCases[0][0];double original=primary.Uniform[0].KnPerM;
         primary.Uniform[0].KnPerM+=1;window.SelectMember(1,0,-1);
         Check(window.EquivalentView==null && window.LoadingDiagram!=null && !Controls<TextBlock>((DependencyObject)window.Content).Any(b=>b.Text.Contains("Secondary design checks")),"localized load fallback has one actual loading view and no removed-tab instruction");
-        RenderWindow(window,900);MemberLoadingUiTests.CheckWindow(window);CheckResponse(window,actual);primary.Uniform[0].KnPerM=original;
+        RenderWindow(window,900);MemberLoadingUiTests.CheckWindow(window);
+        var actualPoint=window.LoadingDiagram.Targets.First(tg=>tg.Kind==1 && tg.Index==0);
+        Check(window.LoadingDiagram.SelectAt(Centre(actualPoint.Bounds)) && window.MemberView.VisibleCalculation[0]==t.UnitPointLabels[0][0] && window.MemberView.VisibleCalculation.Any(line=>line.StartsWith("Actual tributary width:")),"actual secondary details preserve source names and unit-width calculations after reference conversion is unavailable");
+        CheckResponse(window,actual);primary.Uniform[0].KnPerM=original;
         Check(Snapshot(actual).SequenceEqual(originalValues) && Snapshot(beamActual).SequenceEqual(beamValues),"clicks, cases and member changes preserve numeric forces, signed reactions, moments, deflections and utilization exactly");
         window.Close();
         var both=EquivalentTransferredLoading.Create(EquivalentLoadingTests.BothFixture(),0,0);

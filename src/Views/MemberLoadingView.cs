@@ -29,11 +29,12 @@ namespace EngineeringDashboard
         private readonly double length,ei;
         private readonly double[] supports,reactions;
         private readonly Func<BeamDistributedLoad,LoadCalculation> describe;
+        private readonly Func<BeamPointLoad,LoadCalculation> describePoint;
         private double[][] contributions;
 
-        internal MemberLoadingView(TowerDiagramWindow.MemberLoadingPlot plot,double length,double[] supports,double[] reactions,double ei,string basis,Func<BeamDistributedLoad,LoadCalculation> describe=null)
+        internal MemberLoadingView(TowerDiagramWindow.MemberLoadingPlot plot,double length,double[] supports,double[] reactions,double ei,string basis,Func<BeamDistributedLoad,LoadCalculation> describe=null,Func<BeamPointLoad,LoadCalculation> describePoint=null)
         {
-            Plot=plot;this.length=length;this.supports=supports;this.reactions=reactions;this.ei=ei;Basis=basis;this.describe=describe;
+            Plot=plot;this.length=length;this.supports=supports;this.reactions=reactions;this.ei=ei;Basis=basis;this.describe=describe;this.describePoint=describePoint;
             Background=Brushes.White;
             RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             ColumnDefinitions.Add(new ColumnDefinition());ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});Children.Add(plot);
@@ -65,6 +66,7 @@ namespace EngineeringDashboard
             if(sources.Length>1)result.Lines.Add("Combined UDL: "+string.Join(" + ",sources.Select(s=>s.KnPerM.ToString("0.#####",CultureInfo.CurrentCulture)))+$" = {q.KnPerM:0.#####} kN/m");
             return result;
         }
+        private LoadCalculation PointLoad(int index)=>describePoint?.Invoke(Plot.PointLoads[index])??new LoadCalculation {Name="Point load "+(index+1)};
         private void ShowCalculation(int kind,int index)
         {
             details.Children.Clear();LastReactionContributions=null;DetailsPanel.Visibility=Visibility.Visible;LayoutDetails(ActualWidth);
@@ -80,7 +82,7 @@ namespace EngineeringDashboard
                 for(int i=0;i<contributions.Length;i++)
                 {
                     double value=contributions[i][index];if(Math.Abs(value)<=1e-10)continue;
-                    string source=i<Plot.CombinedUniform.Length ? Uniform(i).Name+$" ({Plot.CombinedUniform[i].StartMm:0.###}–{Plot.CombinedUniform[i].EndMm:0.###} mm)" : "Point load "+(i-Plot.CombinedUniform.Length+1)+$" ({Plot.PointLoads[i-Plot.CombinedUniform.Length].PositionMm:0.###} mm)";
+                    string source=i<Plot.CombinedUniform.Length ? Uniform(i).Name+$" ({Plot.CombinedUniform[i].StartMm:0.###}–{Plot.CombinedUniform[i].EndMm:0.###} mm)" : PointLoad(i-Plot.CombinedUniform.Length).Name+$" ({Plot.PointLoads[i-Plot.CombinedUniform.Length].PositionMm:0.###} mm)";
                     Line($"{source}: {value:0.#####} kN");
                 }
                 Line($"Σ load contributions = {LastReactionContributions.Sum():0.#####} kN",true,Brushes.SeaGreen);
@@ -97,7 +99,7 @@ namespace EngineeringDashboard
             }
             else
             {
-                var p=Plot.PointLoads[index];Line("Point load "+(index+1),true,Brushes.Firebrick);Line(Basis);
+                var p=Plot.PointLoads[index];var c=PointLoad(index);Line(c.Name,true,Brushes.Firebrick);Line(Basis);foreach(string line in c.Lines)Line(line);
                 Line($"P = {p.Kn:0.#####} kN",true,Brushes.Firebrick);Line($"Stock position {p.PositionMm:0.###} mm");
             }
         }

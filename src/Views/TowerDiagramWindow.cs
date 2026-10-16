@@ -223,11 +223,45 @@ namespace EngineeringDashboard
         {
             LoadingDiagram=new MemberLoadingPlot(member.LengthMm,member.SupportsMm,member.Analysis.Reactions,member.Uniform,member.Points);
             AddInteractiveLoading("Loading diagram"+(primary ? " · UDL design loads" : " · actual loads"),LoadingDiagram,member.EI,basis,
-                plan==null ? (Func<BeamDistributedLoad,LoadCalculation>)null : q=>MemberLoadingView.Tributary(member,plan,SelectedLine,q));
+                plan==null ? (Func<BeamDistributedLoad,LoadCalculation>)null : q=>MemberLoadingView.Tributary(member,plan,SelectedLine,q),
+                p=>DescribePoint(member,p));
         }
-        private void AddInteractiveLoading(string caption,MemberLoadingPlot plot,double ei,string basis,Func<BeamDistributedLoad,LoadCalculation> describe=null)
+        private LoadCalculation DescribePoint(TransferMember member,BeamPointLoad point)
         {
-            MemberView=new MemberLoadingView(plot,plot.LengthMm,plot.SupportPositions,plot.ReactionValues,ei,basis,describe);
+            var t=layout?.Transfer;int raw=Array.IndexOf(member.Points,point);
+            var units=t?.UnitLowerCases;bool lower=t!=null && SelectedRun>=layout.StockPlan.Pieces.Length && SelectedRun<layout.StockPlan.Pieces.Length+t.RowsMm.Length;
+            if(crossSupport==null && lower && raw>=0 && units!=null && t.UnitPointLabels!=null && member.H20Count==1)
+            {
+                var source=Enumerable.Range(0,units.Length).Where(i=>!string.IsNullOrEmpty(units[i].LoadCase) && (member.LoadCase??"").StartsWith(units[i].LoadCase,StringComparison.Ordinal))
+                    .OrderByDescending(i=>units[i].LoadCase.Length).DefaultIfEmpty(-1).First();
+                if(source>=0 && source<t.UnitPointLabels.Length && raw<t.UnitPointLabels[source].Length && raw<units[source].Points.Length)
+                {
+                    var unit=units[source].Points[raw];
+                    if(Math.Abs(unit.PositionMm-point.PositionMm)<1e-7 && Math.Abs(unit.Kn)>1e-10)
+                    {
+                        double width=point.Kn/unit.Kn;
+                        var result=new LoadCalculation {Name=t.UnitPointLabels[source][raw]};
+                        result.Lines.Add($"Unit-width reaction: {unit.Kn:0.#####} kN/m");
+                        result.Lines.Add($"Actual tributary width: {width*1000:0.###} mm");
+                        result.Lines.Add($"{unit.Kn:0.#####} × {width:0.#####} = {point.Kn:0.#####} kN");return result;
+                    }
+                }
+            }
+            if(network!=null && networkBeam>0 && networkBeam<=network.Beams.Length && ReferenceEquals(layout,network.Beams[networkBeam-1]) && crossSupport==null && lower && member.H20Count==1)
+            {
+                int row=SelectedRun-layout.StockPlan.Pieces.Length;
+                foreach(var support in network.CrossSupports)foreach(var bearing in support.Bearings.Where(b=>b.Beam==networkBeam-1 && b.Row==row))
+                    if(Math.Abs(bearing.Ymm-network.BeamCentresMm[networkBeam-1]-member.StartMm-point.PositionMm)<1e-7 && Math.Abs(bearing.ReactionKn-point.Kn)<1e-7)
+                    {
+                        var result=new LoadCalculation {Name=$"X{support.CrossingIndex+1} "+(bearing.IsShutterEndZone ? "side-shutter reaction" : "bearing reaction")};
+                        result.Lines.Add($"Checked crossing reaction: {bearing.ReactionKn:0.#####} kN");return result;
+                    }
+            }
+            return new LoadCalculation {Name="Point load "+(raw+1)};
+        }
+        private void AddInteractiveLoading(string caption,MemberLoadingPlot plot,double ei,string basis,Func<BeamDistributedLoad,LoadCalculation> describe=null,Func<BeamPointLoad,LoadCalculation> describePoint=null)
+        {
+            MemberView=new MemberLoadingView(plot,plot.LengthMm,plot.SupportPositions,plot.ReactionValues,ei,basis,describe,describePoint);
             AddChart(caption,MemberView,true);
         }
         private void AddChart(string caption,FrameworkElement plot,bool loading=false)
