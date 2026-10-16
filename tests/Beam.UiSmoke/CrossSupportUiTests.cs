@@ -275,7 +275,7 @@ internal static class CrossSupportUiTests
         jointWorkspace.Close();PrimaryZones(previewPath);ReportedWorkspace(previewPath);CoordinatedWorkspace(previewPath);Console.WriteLine("Cross UI: section, filler, actual diagrams, elevation editor and reported junctions passed.");return checks;
     }
 
-    static void PrimaryZones(string previewPath)
+    internal static void PrimaryZones(string previewPath)
     {
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,
             Depth=1750,Width=800,BeamLengthMm=6100,TowerLegCapacityKn=30,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,
