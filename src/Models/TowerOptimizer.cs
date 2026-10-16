@@ -325,7 +325,7 @@ namespace EngineeringDashboard
         public string MaterialQuantities=>$"{StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s"+(StockPlan.WS10Count==0 ? "" : $" · {StockPlan.WS10Count} WS10s");
         public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {MaterialQuantities}";
         public string LegLoadSummary => $"Peak leg: {MaxLegKn:0.00} / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
-        public string CapacityBasis => Transfer != null ? "Every leg is checked for beam, one-sided and combined slab loading. Search uses separately weighted tower legs, upper feet and material length, then brace preference, symmetry and utilization. Leg values are load-case envelopes." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then standalone-600 towers, braced bays, standalone brace penalties, primary quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
+        public string CapacityBasis => Transfer != null ? "Every leg is checked for the fully loaded configuration. Search ranks leg count, tower grouping, brace preference and symmetry before material economy. Signed leg reactions are retained." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then standalone-600 towers, braced bays, standalone brace penalties, primary quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
         public string StockSchedule => StockPlan.Schedule + (Transfer == null ? "" : "\n" + Transfer.Schedule);
         public int LegCount => PositionsMm.Length * 2;
         public int GroupCount => 1 + Joined.Count(x => !x);
@@ -343,7 +343,7 @@ namespace EngineeringDashboard
         public double DeflectionMm { get; internal set; }
         public double Utilization { get; internal set; }
         public double CantileverImbalanceMm=>StockPlan?.Pieces==null || PositionsMm==null ? 0 : StockPlan.Pieces.Sum(p=>Math.Abs((PositionsMm[p.FirstSupport]-p.StartMm)-(p.EndMm-PositionsMm[p.LastSupport])));
-        public double SecondarySymmetryErrorMm=>Transfer==null ? 0 : Transfer.LowerCases.Take(1).SelectMany(c=>c).Concat(Transfer.UpperMembers).Select(m=>m.SupportsMm.Length<2 ? 0 : Math.Abs(m.SupportsMm.First()-(m.LengthMm-m.SupportsMm.Last()))).DefaultIfEmpty().Max();
+        public double SecondarySymmetryErrorMm=>Transfer==null ? 0 : Transfer.LowerCases.Take(1).SelectMany(c=>c).Take(1).Concat(Transfer.UpperMembers).Select(m=>m.SupportsMm.Length<2 ? 0 : Math.Abs(m.SupportsMm.First()-(m.LengthMm-m.SupportsMm.Last()))).DefaultIfEmpty().Max();
         public double SymmetryErrorMm=>TowerOptimizer.SymmetryError(PositionsMm,StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray(),LengthMm/2)+(EngineerSearch ? CantileverImbalanceMm+SecondarySymmetryErrorMm : 0);
         public string Governing { get; internal set; }
         public int Tested { get; internal set; }

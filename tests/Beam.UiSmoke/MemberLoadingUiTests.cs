@@ -25,6 +25,14 @@ internal static class MemberLoadingUiTests
     {if(root is TextBlock t)yield return t;foreach(var c in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())foreach(var item in Text(c))yield return item;}
     static void Render(FrameworkElement view,double width)
     {view.Measure(new Size(width,double.PositiveInfinity));view.Arrange(new Rect(0,0,width,view.DesiredSize.Height));view.UpdateLayout();new RenderTargetBitmap((int)width,(int)Math.Ceiling(view.ActualHeight),96,96,PixelFormats.Pbgra32).Render(view);Pump();}
+    internal static void NativeClick(FrameworkElement plot,Rect bounds)
+    {
+        var screen=plot.PointToScreen(Centre(bounds));Check(SetCursorPos((int)Math.Round(screen.X),(int)Math.Round(screen.Y)),"mouse can reach reference target");
+        var source=(HwndSource)PresentationSource.FromVisual(plot);var client=new NativePoint {X=(int)Math.Round(screen.X),Y=(int)Math.Round(screen.Y)};
+        Check(ScreenToClient(source.Handle,ref client),"reference mouse maps to window");var packed=new IntPtr((client.Y<<16)|(client.X&0xffff));
+        SendMessage(source.Handle,0x0200,IntPtr.Zero,packed);Pump();Check(bounds.Contains(Mouse.GetPosition(plot)),"native pointer reaches reference value");
+        SendMessage(source.Handle,0x0201,new IntPtr(1),packed);SendMessage(source.Handle,0x0202,IntPtr.Zero,packed);Pump();
+    }
     internal static void Click(TowerDiagramWindow window,int kind,int index)
     {
         window.Activate();window.UpdateLayout();Pump();var plot=window.LoadingDiagram;
@@ -43,7 +51,7 @@ internal static class MemberLoadingUiTests
     }
     internal static void CheckWindow(TowerDiagramWindow window,bool nativeClick=false)
     {
-        window.UpdateLayout();Pump();var view=window.MemberView;var plot=window.LoadingDiagram;
+        window.UpdateLayout();Pump();if(window.EquivalentView!=null){EquivalentLoadingUiTests.CheckWindow(window,nativeClick);return;}var view=window.MemberView;var plot=window.LoadingDiagram;
         Check(view!=null && ReferenceEquals(view.Plot,plot),"the visible actual loading card has interaction attached");
         Check(!Text((DependencyObject)window.Content).Any(t=>t.Text.StartsWith("Fully loaded:") || t.Text.StartsWith("System stage:") || t.Text.Contains(" · score ")),"compact header has no system-score banner");
         var analysis=window.LoadedAnalysis;var member=window.DisplayedTransferMember;
@@ -63,7 +71,7 @@ internal static class MemberLoadingUiTests
                 }
             }
         }
-        view.CloseDetailsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Check(!view.IsDetailsOpen,"close restores the clean actual diagram");
+        view.CloseAllDetails();Pump();Check(!view.IsDetailsOpen,"close restores the clean actual diagram");
     }
     internal static void ReportedPrimary(TowerDiagramWindow window)
     {
@@ -92,8 +100,8 @@ internal static class MemberLoadingUiTests
             var overlap=Rect.Intersect(detail,chart);
             Check(overlap.IsEmpty || overlap.Width<1e-7 || overlap.Height<1e-7,"open details never obscure the loading diagram");
             Check(detail.Left>=0 && detail.Right<=width+1e-7 && detail.Bottom<=view.ActualHeight+1e-7,"responsive calculation panel remains inside its container");
-            Check(view.VisibleCalculation.Any(t=>t.Contains("Dedicated crossing support")),"fallback identifies its actual support path");
-            view.CloseDetailsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(view.Basis.Contains("Dedicated crossing support"),"fallback retains its checked support basis without adding it to the compact card");
+            view.CloseAllDetails();
         }
         Check(member.Points.Length==3 && member.Points[1].Kn==0,"presentation preserves original design arrays");
         Console.WriteLine($"Passed {checks} actual-member loading interaction checks.");

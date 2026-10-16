@@ -18,7 +18,7 @@ namespace EngineeringDashboard
         internal Button CloseDetailsButton=>active==ReactionCard ? ReactionCard.CloseButton : LoadCard.CloseButton;
         internal bool IsDetailsOpen=>LoadCard.IsOpen || ReactionCard.IsOpen;
         internal string[] VisibleCalculation=>active?.Text??new string[0];
-        private readonly EquivalentTransferredLoading model;
+        internal readonly EquivalentTransferredLoading model;
         internal EquivalentLoadingView(EquivalentTransferredLoading model,bool externalEnds)
         {
             this.model=model;Background=Brushes.White;
@@ -80,7 +80,7 @@ namespace EngineeringDashboard
         internal readonly List<Rect> TextBounds=new List<Rect>();
         internal readonly List<string> DrawnLabels=new List<string>();
         internal event Action<int,int> Selected;
-        private readonly EquivalentTransferredLoading model;
+        internal readonly EquivalentTransferredLoading model;
         private int selectedComponent=-1,selectedReaction=-1;
         internal static Brush Color(EquivalentLoadingComponent c)=>Brushes.Firebrick;
         internal EquivalentLoadingPlot(EquivalentTransferredLoading model)
@@ -155,7 +155,7 @@ namespace EngineeringDashboard
                     if(a.Component>=0 && selectedComponent==a.Component || a.Reaction>=0 && selectedReaction==a.Reaction)
                         {
                         bool reaction=a.Reaction>=0;var selectedColor=reaction ? Brushes.SeaGreen : Brushes.Firebrick;
-                        dc.DrawRoundedRectangle(new SolidColorBrush(reaction ? Color.FromRgb(230,248,235) : Color.FromRgb(255,236,236)),new Pen(selectedColor,1),a.Bounds,3,3);
+                        dc.DrawRoundedRectangle(new SolidColorBrush(reaction ? System.Windows.Media.Color.FromRgb(230,248,235) : System.Windows.Media.Color.FromRgb(255,236,236)),new Pen(selectedColor,1),a.Bounds,3,3);
                         dc.DrawText(Text(a.Value,selectedColor),new Point(a.Bounds.Left+3,a.Bounds.Top+2));
                     }
                 }

@@ -461,6 +461,7 @@ namespace EngineeringDashboard
             var result=new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.DedicatedTowers,Towers=l,Members=members.ToArray(),Solids=solids.ToArray(),Bearings=bearings.ToArray(),LoadKn=l.Transfer.BeamLoadKn,SlabEdgeLoadKn=SlabEdgeLoads(r,index).Sum(p=>p.Kn)*l.LengthMm/1000,TowerSpanOffsetMm=spanOffset,PrimaryNearExtensionMm=nearExtension,PrimaryFarExtensionMm=farExtension,NearShutterClearanceMm=allowance.Near,FarShutterClearanceMm=allowance.Far};
             failure=PrimaryShutterClash(r,index,result.Solids,allowance.Near,allowance.Far);
             if(failure!=null)return null;
+            if(common.EngineerWorkflow && l.CantileverImbalanceMm>1e-7)result.SymmetryNotice="Unequal stock-end cantilevers retained within the selected leg/brace tier after checking permitted stock, support geometry and member limits.";
             return result;
         }
         internal static string PrimaryShutterClash(TransferNetworkResult r,int index,IEnumerable<FormworkSolid> solids,double nearAllowance=SideShutterClearanceMm,double farAllowance=SideShutterClearanceMm)

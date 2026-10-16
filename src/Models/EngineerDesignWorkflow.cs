@@ -159,7 +159,9 @@ namespace EngineeringDashboard
             return result.OrderBy(x=>x).ToArray();
         }
         internal static bool Local(TransferredSlabInput t,double x)=>t.EngineerNetwork!=null && Adjacent(t.EngineerNetwork,t.EngineerBeam).Any(c=>Math.Abs(x-c.PositionMm)<=c.WidthMm/2-40+1e-7);
-        internal string Summary=>string.Format(CultureInfo.InvariantCulture,"{3} force L/R {0:0.###}/{1:0.###} kN; {4} {2} legs per primary line. Beam + slab outside crossings; assigned beam + crossing transfer over each full crossing width. Dedicated tower loads and slab edge transfers are counted once. Secondary bearings are checked separately.",Forces[0],Forces[1],InitialLegs,IsResolved ? "Selected primary-zone" : "Provisional full-tributary",IsResolved ? "selected-force estimate" : "provisional estimate")
+        internal string Summary=>Describe(IsResolved);
+        internal string SelectedSummary=>Describe(true);
+        private string Describe(bool selected)=>string.Format(CultureInfo.InvariantCulture,"{3} force L/R {0:0.###}/{1:0.###} kN; {4} {2} legs per primary line. Beam + slab outside crossings; assigned beam + crossing transfer over each full crossing width. Dedicated tower loads and slab edge transfers are counted once. Secondary bearings are checked separately.",Forces[0],Forces[1],InitialLegs,selected ? "Selected primary-zone" : "Provisional full-tributary",selected ? "selected-force estimate" : "provisional estimate")
             +" "+string.Join("; ",Lines.Select((line,i)=>(i==0 ? "L" : "R")+": "+string.Join(", ",line.Select(q=>string.Format(CultureInfo.InvariantCulture,"{0:0.###}–{1:0.###} mm @ {2:0.#####} kN/m",q.StartMm,q.EndMm,q.KnPerM)))));
     }
 

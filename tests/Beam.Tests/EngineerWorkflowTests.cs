@@ -85,7 +85,7 @@ internal static class EngineerWorkflowTests
         var result=TransferNetworkOptimizer.Optimize(common,network);
         Check(result.CrossSupports.Single().UsesSpreader && result.Bays.All(b=>b!=null),"exact reported model retains complete beam/slab/shared-X1 support");
         Check(result.Schedule.Contains("X1 · shared spreader support") && !result.Schedule.Contains("X1: dedicated cross-beam formwork"),"report identifies the calculated shared support instead of the requested automatic mode");
-        Check(result.Beams.All(b=>b.Transfer.PrimaryLoadBasis.Contains("full shared crossing width")),"reported primary basis identifies concrete tributary UDLs");
+        Check(result.Beams.All(b=>b.Transfer.PrimaryLoadBasis.Contains("full crossing width")),"reported primary basis identifies concrete tributary UDLs");
         Check(!CrossBeamSupportResult.Limitations.Contains("An eccentric resultant uses a shorter centred flat block"),"shared support explanation no longer describes the obsolete primary model");
         for(int beam=0;beam<2;beam++)
         {

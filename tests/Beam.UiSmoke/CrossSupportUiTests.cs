@@ -185,7 +185,7 @@ internal static class CrossSupportUiTests
             var window=workspace.Diagrams;Check(window!=null && window.IsVisible && window.SelectedTransferMember.H20Count==count,"selected crossing member displayed in the standard diagram window");
             Check(Descendants(window).Count(c=>c.GetType().Name=="LoadedResponsePlot")==3,"crossing has shear, moment and deflection plots");
             MemberLoadingUiTests.CheckWindow(window);
-            Check(window.LoadingDiagram.TranslatePoint(new Point(0,0),window).Y<300,"crossing loading chart is visible above its collapsed schedule");
+            Check((window.EquivalentView!=null ? (FrameworkElement)window.EquivalentView : window.LoadingDiagram).TranslatePoint(new Point(0,0),window).Y<300,"crossing loading chart is visible above its collapsed schedule");
             Check(!Descendants(window).OfType<Expander>().Any(),"crossing window omits removed explanatory sections");
             if(count==2)Check(window.DisplayedTransferMember.Points.Length==0 && window.DisplayedTransferMember.Uniform.Length>0,"primary diagram shows the checked UDL without secondary-row point loads");
             var body=(FrameworkElement)((ScrollViewer)window.Content).Content;body.Measure(new Size(900,double.PositiveInfinity));body.Arrange(new Rect(0,0,900,body.DesiredSize.Height));body.UpdateLayout();
