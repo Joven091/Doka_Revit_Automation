@@ -76,15 +76,16 @@ internal static class EngineerSearchTests
         foreach(var b in result.Beams)Console.WriteLine("ENGINEER positions="+string.Join(",",b.PositionsMm)+" joined="+string.Join(",",b.Joined)+" peak="+b.MaxLegKn);
         Check(result.Beams[0].LegCount<=12 && result.Beams[1].LegCount<=12,"reported B1 and B2 use at most six legs per line");
         Check(result.Beams.Take(2).All(b=>TowerOptimizer.StandaloneBraces(b.PositionsMm,b.Joined,b.WidthMm,b.Rotated).Count(brace=>Math.Abs(brace-1500)<1e-7)>=2),"B1/B2 retain a majority of 1500 mm separate towers");
-        common.NetworkSearchWorkers=Math.Min(4,Environment.ProcessorCount);common.ReuseSearchWork=false;
+        common.NetworkSearchWorkers=Math.Min(4,Environment.ProcessorCount);common.ReuseSearchWork=false;common.PruneUneconomicCandidates=false;
         var repeat=TransferNetworkOptimizer.Optimize(common,network);Verify(repeat);
-        Check(result.Schedule==repeat.Schedule && result.LayoutDiagnostics==repeat.LayoutDiagnostics,"serial/reused and parallel/uncached searches agree exactly");
+        Check(result.Schedule==repeat.Schedule && result.LayoutDiagnostics==repeat.LayoutDiagnostics,"serial/reused/pruned and parallel/uncached/unpruned searches agree exactly");
         // Dedicated/fallback end zones retain the original receiver cache; automatic
         // shared crossings now use the complete spreader path (EngineerWorkflowTests).
         // Compare reuse with a fresh calculation and invalidate on changed crossing load.
         var junction=network.WithSpacings();junction.CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3300,WidthMm=650,DepthMm=200,BottomElevationMm=-200,SupportMode=CrossBeamSupportMode.DedicatedTowers}};
         common.ReuseSearchWork=true;common.CrossLowerCases=null;
         bool original=CrossBeamSupportOptimizer.CheckJunctionReceiver(common,junction,0,result.Beams[0]);
+        Check(!original,"a primary plan from a different crossing network is rejected without throwing");
         Check(common.CrossLowerCases!=null && common.CrossLowerCases.Count>0,"crossing lower case is cached");
         Func<double[]> demands=()=>common.CrossLowerCases.Values.SelectMany(v=>v.Members.Where(m=>m!=null)).SelectMany(m=>new[] {m.Analysis.TotalLoadKn,m.Analysis.MomentKnM,m.Analysis.ShearKn,m.Analysis.DeflectionMm}.Concat(m.Analysis.Reactions)).ToArray();
         var checkedDemands=demands();

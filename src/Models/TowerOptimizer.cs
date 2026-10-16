@@ -325,7 +325,7 @@ namespace EngineeringDashboard
         public string MaterialQuantities=>$"{StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s"+(StockPlan.WS10Count==0 ? "" : $" · {StockPlan.WS10Count} WS10s");
         public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {MaterialQuantities}";
         public string LegLoadSummary => $"Peak leg: {MaxLegKn:0.00} / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
-        public string CapacityBasis => Transfer != null ? "Every leg is checked for beam, one-sided and combined slab loading. Search uses separately weighted tower legs, upper feet and material length, then brace preference, symmetry and utilization. Leg values are load-case envelopes." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then standalone-600 towers, braced bays, standalone brace penalties, primary quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
+        public string CapacityBasis => Transfer != null ? "Every leg is checked for the fully loaded configuration. Search ranks leg count, tower grouping, brace preference and symmetry before material economy. Signed leg reactions are retained." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then standalone-600 towers, braced bays, standalone brace penalties, primary quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
         public string StockSchedule => StockPlan.Schedule + (Transfer == null ? "" : "\n" + Transfer.Schedule);
         public int LegCount => PositionsMm.Length * 2;
         public int GroupCount => 1 + Joined.Count(x => !x);
@@ -342,7 +342,9 @@ namespace EngineeringDashboard
         public double ShearKn { get; internal set; }
         public double DeflectionMm { get; internal set; }
         public double Utilization { get; internal set; }
-        public double SymmetryErrorMm=>TowerOptimizer.SymmetryError(PositionsMm,StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray(),LengthMm/2);
+        public double CantileverImbalanceMm=>StockPlan?.Pieces==null || PositionsMm==null ? 0 : StockPlan.Pieces.Sum(p=>Math.Abs((PositionsMm[p.FirstSupport]-p.StartMm)-(p.EndMm-PositionsMm[p.LastSupport])));
+        public double SecondarySymmetryErrorMm=>Transfer==null ? 0 : Transfer.LowerCases.Take(1).SelectMany(c=>c).Take(1).Concat(Transfer.UpperMembers).Select(m=>m.SupportsMm.Length<2 ? 0 : Math.Abs(m.SupportsMm.First()-(m.LengthMm-m.SupportsMm.Last()))).DefaultIfEmpty().Max();
+        public double SymmetryErrorMm=>TowerOptimizer.SymmetryError(PositionsMm,StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray(),LengthMm/2)+(EngineerSearch ? CantileverImbalanceMm+SecondarySymmetryErrorMm : 0);
         public string Governing { get; internal set; }
         public int Tested { get; internal set; }
         public bool MinimumLegCountProven { get; internal set; }
@@ -371,7 +373,7 @@ namespace EngineeringDashboard
                 {
                     if (i > 0 && !Joined[i - 1]) group++;
                     lines.Add(string.Format(CultureInfo.CurrentCulture, "G{0} · x={1:0.###} mm · legs L/R={2:0.00}/{3:0.00} kN · utilization L/R={4:0.0}/{5:0.0}%", group, PositionsMm[i], LeftReactions[i], RightReactions[i], LeftReactions[i] / LegCapacityKn * 100, RightReactions[i] / LegCapacityKn * 100));
-                    if (IgnoreUplift) lines.Add($"  Minimum signed leg reactions L/R={MinimumLegReaction(true,i):0.######}/{MinimumLegReaction(false,i):0.######} kN across stages");
+                    if (IgnoreUplift) lines.Add($"  Minimum signed leg reactions L/R={MinimumLegReaction(true,i):0.######}/{MinimumLegReaction(false,i):0.######} kN"+(Transfer?.FullLoadingOnly==true ? " · fully loaded case" : " across stages"));
                     if (i < Joined.Length) lines.Add(string.Format(CultureInfo.CurrentCulture, "  {0}: {1:0.###} mm", Joined[i] ? (Rotated ? "Frame span" : "Cross bay") : "Clear gap between leg planes", PositionsMm[i + 1] - PositionsMm[i]));
                 }
                 lines.Add(string.Format(CultureInfo.CurrentCulture, "End overhangs: {0:0.###} / {1:0.###} mm", PositionsMm[0], LengthMm - PositionsMm.Last()));
@@ -422,7 +424,7 @@ namespace EngineeringDashboard
             => a.EngineerSearch ? EngineerTowerSearch.Compare(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty) : CompareBracePreference(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty);
         private static bool Better(TowerLayout a,TowerLayout b)
             => a.LegCount<b.LegCount || a.LegCount==b.LegCount && (CompareBracePreference(a,b)<0
-                || CompareBracePreference(a,b)==0 && (a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
+                || CompareBracePreference(a,b)==0 && (a.EngineerSearch && Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7 ? a.SymmetryErrorMm<b.SymmetryErrorMm : a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
                 || a.StockPlan.TotalPrimaryCount==b.StockPlan.TotalPrimaryCount && a.Utilization<b.Utilization));
         public static TowerLayout Optimize(TowerInput input)
         {
@@ -737,8 +739,8 @@ namespace EngineeringDashboard
         }
         // Each stock run can have its own combined group and brace sequence.
         // In particular 3300 mm can use 400/1000/1500/400 while the adjacent
-        // 3600 mm run uses 300/1000/1000/1000/300. Do not impose one brace
-        // family or equal outside cantilevers on the complete primary line.
+        // 3600 mm run uses 300/1000/1000/1000/300. Keep per-member equal tails as a preference; do not impose one brace
+        // family on the complete primary line.
         internal static IEnumerable<TransferredSlabOptimizer.Geometry> StockRunGeometries(double[] stocks,TowerInput input)
         {
             if(stocks.Length>3 || input.EngineerPlan==null || !input.EngineerPlan.HasCrossings)yield break;

@@ -77,7 +77,11 @@ namespace EngineeringDashboard
             if(network!=null && !network.DisplayStage.Crossings.Contains(crossSupport.CrossingIndex))m=ScaleDisplay(m,0);
             SelectedTransferMember=DisplayedTransferMember=m;ActualLoadedAnalysis=LoadedAnalysis=m.Analysis;
             AddMemberSummary(crossSupport.SecondarySpacingDescription,m.Utilization);
-            AddMemberLoading(m,primary,crossSupport.SupportDescription);
+            var crossingRows=crossSupport.Towers?.Transfer;
+            int row=crossingRows==null ? -1 : Array.IndexOf(crossingRows.LowerCases[0],m);
+            var equivalent=row<0 ? null : EquivalentTransferredLoading.Create(crossSupport.Towers,row,0);
+            if(equivalent?.IsAvailable==true){EquivalentView=new EquivalentLoadingView(equivalent,false);LoadingDiagram=null;AddChart("Loading diagram · equivalent loads",EquivalentView,true);}
+            else AddMemberLoading(m,primary,crossSupport.SupportDescription);
             AddResponseCharts(m,primary);
 
         }
@@ -175,7 +179,7 @@ namespace EngineeringDashboard
             }
             double spacing=upper ? t.SlabSpacing((SelectedRun-runs-t.RowsMm.Length)%2==0) : t.EnteredUpperSpacingMm;
             AddMemberSummary(spacing,m.Utilization);
-            var equivalent=!primary && !upper && t.UnitLowerCases.Length>0
+            var equivalent=!primary && !upper
                 ? EquivalentTransferredLoading.Create(layout,SelectedRun-runs,SelectedLoadCase) : null;
             LoadingDiagram=null;
             if(equivalent!=null && equivalent.IsAvailable)
@@ -297,15 +301,17 @@ namespace EngineeringDashboard
             internal sealed class Target {internal Rect Bounds;internal int Kind,Index;}
             internal readonly System.Collections.Generic.List<Target> Targets=new System.Collections.Generic.List<Target>();
             internal event Action<int,int> Selected;
-            private Target selected;
+            private Target selected,selectedLoad,selectedReaction;
             internal int SelectedKind=>selected?.Kind??-1;
             internal int SelectedIndex=>selected?.Index??-1;
             internal bool SelectAt(Point point)
             {
                 var hit=Targets.LastOrDefault(t=>t.Bounds.Contains(point));if(hit==null)return false;
-                selected=hit;InvalidateVisual();Selected?.Invoke(hit.Kind,hit.Index);return true;
+                selected=hit;if(hit.Kind==2)selectedReaction=hit;else selectedLoad=hit;InvalidateVisual();Selected?.Invoke(hit.Kind,hit.Index);return true;
             }
-            internal void ClearSelection(){selected=null;InvalidateVisual();}
+            internal void ClearSelection(){selected=selectedLoad=selectedReaction=null;InvalidateVisual();}
+            internal void ClearLoadSelection(){if(selected?.Kind!=2)selected=null;selectedLoad=null;InvalidateVisual();}
+            internal void ClearReactionSelection(){if(selected?.Kind==2)selected=null;selectedReaction=null;InvalidateVisual();}
             protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
             {base.OnMouseLeftButtonUp(e);if(SelectAt(e.GetPosition(this)))e.Handled=true;}
             internal BeamDistributedLoad[] SourceUniform {get;}
@@ -344,7 +350,7 @@ namespace EngineeringDashboard
                     while(result.Any(b=>b.Bounds.IntersectsWith(box)))box.Offset(0,text.Height+8);
                     result.Add(new LoadLabel {Text=value,Bounds=box,Kind=kind,Index=index});
                 };
-                for(int i=0;i<uniform.Length;i++)place($"{uniform[i].KnPerM:0.###} kN/m",(uniform[i].StartMm+uniform[i].EndMm)/2,0,i);
+                for(int i=0;i<uniform.Length;i++)place($"{LoadValue.Format(uniform[i].KnPerM)} kN/m",(uniform[i].StartMm+uniform[i].EndMm)/2,0,i);
                 for(int i=0;i<points.Length;i++)place((Math.Abs(points[i].Kn)<.005 ? (points[i].Kn>0 ? "<0.01" : "−<0.01") : points[i].Kn.ToString("0.##",CultureInfo.CurrentCulture))+" kN",points[i].PositionMm,1,i);
                 return result;
             }
@@ -384,17 +390,18 @@ namespace EngineeringDashboard
                     if(LabelBounds.Any(b=>b.IntersectsWith(box)))return;
                     LabelBounds.Add(box);dc.DrawText(text,new Point(x,y));if(kind>=0)Targets.Add(new Target {Bounds=box,Kind=kind,Index=index});
                 };
+                double stroke=1.5;
                 Action<double,double,double,Brush> arrow=(x,from,to,colour)=>
                 {
-                    double sign=Math.Sign(to-from);var pen=new Pen(colour,1.5);dc.DrawLine(pen,new Point(x,from),new Point(x,to));
+                    double sign=Math.Sign(to-from);var pen=new Pen(colour,stroke);dc.DrawLine(pen,new Point(x,from),new Point(x,to));
                     dc.DrawLine(pen,new Point(x,to),new Point(x-4,to-sign*7));dc.DrawLine(pen,new Point(x,to),new Point(x+4,to-sign*7));
                 };
                 dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
                 dc.DrawLine(new Pen(Brushes.DarkSlateGray,4),new Point(left,beamY),new Point(right,beamY));
                 for(int i=0;i<uniform.Length;i++)
                 {
-                    var q=uniform[i];double sign=Math.Sign(q.KnPerM),tip=beamY-sign*5,y=tip-sign*52*Math.Abs(q.KnPerM)/maximum,a=xx(q.StartMm),b=xx(q.EndMm);
-                    dc.DrawLine(new Pen(Brushes.Firebrick,1),new Point(a,y),new Point(b,y));
+                    stroke=selectedLoad?.Kind==0 && selectedLoad.Index==i ? 3 : 1.5;var q=uniform[i];double sign=Math.Sign(q.KnPerM),tip=beamY-sign*5,y=tip-sign*52*Math.Abs(q.KnPerM)/maximum,a=xx(q.StartMm),b=xx(q.EndMm);
+                    dc.DrawLine(new Pen(Brushes.Firebrick,stroke>2 ? 2.5 : 1),new Point(a,y),new Point(b,y));
                     int count=Math.Max(1,(int)((b-a)/45));
                     for(int k=0;k<=count;k++)arrow(a+(b-a)*k/count,y,tip,Brushes.Firebrick);
                     Targets.Add(new Target {Bounds=new Rect(a-5,Math.Min(y,tip),b-a+10,Math.Abs(tip-y)+2),Kind=0,Index=i});
@@ -402,7 +409,7 @@ namespace EngineeringDashboard
                 }
                 for(int pointIndex=0;pointIndex<points.Length;pointIndex++)
                 {
-                    var p=points[pointIndex];double x=xx(p.PositionMm),sign=Math.Sign(p.Kn),tip=beamY-sign*5,from=tip-sign*52;
+                    stroke=selectedLoad?.Kind==1 && selectedLoad.Index==pointIndex ? 3 : 1.5;var p=points[pointIndex];double x=xx(p.PositionMm),sign=Math.Sign(p.Kn),tip=beamY-sign*5,from=tip-sign*52;
                     arrow(x,from,tip,Brushes.Firebrick);
                     Targets.Add(new Target {Bounds=new Rect(x-7,Math.Min(from,tip),14,Math.Abs(from-tip)+2),Kind=1,Index=pointIndex});
                     DrawnPointCount++;
@@ -410,10 +417,11 @@ namespace EngineeringDashboard
                 var reactionBoxes=PlaceReactionLabels(ActualWidth,beamY);
                 for(int i=0;i<supports.Length;i++)
                 {
-                    double x=xx(supports[i]);var triangle=new StreamGeometry();using(var c=triangle.Open()){c.BeginFigure(new Point(x,beamY+3),true,true);c.LineTo(new Point(x-7,beamY+15),true,false);c.LineTo(new Point(x+7,beamY+15),true,false);}
+                    stroke=selectedReaction?.Index==i ? 3 : 1.5;double x=xx(supports[i]);var triangle=new StreamGeometry();using(var c=triangle.Open()){c.BeginFigure(new Point(x,beamY+3),true,true);c.LineTo(new Point(x-7,beamY+15),true,false);c.LineTo(new Point(x+7,beamY+15),true,false);}
                     dc.DrawGeometry(Brushes.SlateGray,null,triangle);dc.DrawLine(new Pen(Brushes.SlateGray,1),new Point(x-10,beamY+19),new Point(x+10,beamY+19));
                     arrow(x,beamY+(reactions[i]>=0 ? 90 : 60),beamY+(reactions[i]>=0 ? 60 : 90),Brushes.SeaGreen);
                     var box=reactionBoxes[i];dc.DrawText(ReactionText(i),new Point(box.Left+2,box.Top+1));
+                    if(selectedReaction?.Index==i){dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(230,248,235)),new Pen(Brushes.SeaGreen,1),box,3,3);dc.DrawText(ReactionText(i),new Point(box.Left+2,box.Top+1));}
                     ReactionLabelBounds.Add(box);LabelBounds.Add(box);Targets.Add(new Target {Bounds=box,Kind=2,Index=i});Targets.Add(new Target {Bounds=new Rect(x-8,beamY+58,16,34),Kind=2,Index=i});DrawnReactionLabelCount++;DrawnSupportCount++;
                 }
                 double dimensionY=Math.Max(beamY+130,reactionBoxes.Select(b=>b.Bottom).DefaultIfEmpty(210).Max()+15);
@@ -427,7 +435,10 @@ namespace EngineeringDashboard
                 label("0",left,dimensionY+25,-1,-1);label($"{length:0.###} mm",right,dimensionY+25,-1,-1);
                 foreach(var item in PlaceLoadLabels(ActualWidth))
                 {
-                    dc.DrawRectangle(Brushes.White,null,item.Bounds);
+                    double anchor=item.Kind==0 ? (uniform[item.Index].StartMm+uniform[item.Index].EndMm)/2 : points[item.Index].PositionMm;
+                    dc.DrawLine(new Pen(Brushes.LightGray,.7),new Point(item.Bounds.Left+item.Bounds.Width/2,item.Bounds.Bottom+2),new Point(xx(anchor),beamY-59));
+                    bool highlighted=selectedLoad?.Kind==item.Kind && selectedLoad.Index==item.Index;
+                    dc.DrawRoundedRectangle(highlighted ? new SolidColorBrush(Color.FromRgb(255,236,236)) : Brushes.White,highlighted ? new Pen(Brushes.Firebrick,1) : null,item.Bounds,3,3);
                     dc.DrawText(new FormattedText(item.Text,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,Brushes.DarkSlateGray,VisualTreeHelper.GetDpi(this).PixelsPerDip),new Point(item.Bounds.Left+2,item.Bounds.Top+1));
                     LabelBounds.Add(item.Bounds);Targets.Add(new Target {Bounds=item.Bounds,Kind=item.Kind,Index=item.Index});
                 }

@@ -49,6 +49,28 @@ internal static class EquivalentLoadingUiTests
         var m=new TransferMember {Name=line==0 ? "P1 L" : "P1 R",LoadCase="Beam",H20Count=2,LengthMm=6900,SupportsMm=new[] {400.0,6400},Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=6900,KnPerM=q}},Points=new BeamPointLoad[0]};
         m.Analysis=LoadedBeamAnalysis.AnalyzeSigned(m.LengthMm,m.SupportsMm,m.Uniform,m.Points,TowerOptimizer.PairEI,270);return m;
     }
+    internal static void CheckWindow(TowerDiagramWindow window,bool native=false)
+    {
+        RenderWindow(window,900);var view=window.EquivalentView;var actual=window.DisplayedTransferMember;var analysis=window.LoadedAnalysis;
+        Check(view!=null && view.model.IsAvailable,"secondary reference diagram exists");view.CloseAllDetails();Render(view,900);
+        Check(!view.IsDetailsOpen,"cards start hidden until clicked");
+        foreach(var component in view.Plot.Targets.Where(t=>t.Component>=0).Select(t=>t.Component).Distinct().ToArray())
+        {
+            Render(view,900);var target=view.Plot.Targets.Last(t=>t.Component==component);
+            if(native){MemberLoadingUiTests.NativeClick(view.Plot,target.Bounds);native=false;}else view.Plot.SelectAt(Centre(target.Bounds));
+            Check(view.LoadCard.IsOpen && view.VisibleCalculation.Any(s=>s.StartsWith("Equivalent load =")),"clicked load shows spacing conversion");
+        }
+        for(int reaction=0;reaction<2;reaction++)
+        {
+            Render(view,900);var target=view.Plot.Targets.Last(t=>t.Reaction==reaction);view.Plot.SelectAt(Centre(target.Bounds));
+            Check(view.ReactionCard.IsOpen && view.VisibleCalculation.Length==5 && view.VisibleCalculation.Any(s=>s.StartsWith("UDL =")) && view.VisibleCalculation.Any(s=>s.StartsWith("Primary UDL =")),"reaction click shows only the primary UDL calculation");
+            Check(Math.Abs(view.model.Member.Analysis.Reactions[reaction]/(view.model.ReferenceSpacingMm/1000)-view.model.PrimaryTransferKnM[reaction])<1e-7,"clicked displayed reaction produces the checked primary UDL");
+        }
+        Check(view.LoadCard.IsOpen && view.ReactionCard.IsOpen,"load and reaction cards remain open together");
+        view.LoadCard.CloseButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(!view.LoadCard.IsOpen && view.ReactionCard.IsOpen,"load closes independently");
+        view.ReactionCard.CloseButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(!view.IsDetailsOpen,"last close restores clean diagram");
+        Check(ReferenceEquals(window.LoadedAnalysis,analysis) && ReferenceEquals(window.DisplayedTransferMember,actual),"clicking does not change actual physical checks");
+    }
     internal static void Run(string preview=null)
     {
         MemberLoadingUiTests.Run();
@@ -86,9 +108,15 @@ internal static class EquivalentLoadingUiTests
         Render(view,900,Preview(preview,"foot"));
         Check(view.IsDetailsOpen && view.VisibleCalculation.Any(s=>s.Contains("3.44322")) && view.VisibleCalculation.Any(s=>s.Contains("305 / 407")) && view.VisibleCalculation.Any(s=>s.Contains("2.5803")),"compact foot panel shows source, nominal conversion and equivalent result");
         var reaction=view.Plot.Targets.First(x=>x.Reaction==0);Check(view.Plot.SelectAt(Centre(reaction.Bounds)),"reaction is selectable");Render(view,900,Preview(preview,"reaction"));
-        Check(view.VisibleCalculation.Any(s=>s.Contains("3.16345")) && view.VisibleCalculation.Any(s=>s.Contains("7.07316 / 0.305")) && view.VisibleCalculation.Any(s=>s.Contains("23.1907")),"reaction panel shows components and one final division");
+        Check(!view.VisibleCalculation.Any(s=>s.Contains("3.16345")) && view.VisibleCalculation.Length==5 && view.VisibleCalculation.Any(s=>s.Contains("7.07316 / 0.305")) && view.VisibleCalculation.Any(s=>s.Contains("23.1907")),"reaction card has only the reaction, pitch and UDL division");
         Check(ReferenceEquals(window.LoadedAnalysis,actual.Analysis),"clicks leave actual member checks intact");
-        view.CloseDetailsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Render(view,900);Check(!view.IsDetailsOpen,"close restores clean diagram");
+        Check(view.LoadCard.IsOpen && view.ReactionCard.IsOpen,"both cards remain open after the second selection");
+        Render(view,1100,Preview(preview,"equivalent-cards"));
+        var selectedStrokes=Primitives(VisualTreeHelper.GetDrawing(view.Plot)).OfType<GeometryDrawing>().Where(d=>d.Pen!=null && d.Pen.Thickness>=3).ToArray();
+        Check(selectedStrokes.Any(d=>d.Pen.Brush is SolidColorBrush b && b.Color==Colors.Firebrick) && selectedStrokes.Any(d=>d.Pen.Brush is SolidColorBrush b && b.Color==Colors.SeaGreen),"selected load and reaction arrows are both highlighted");
+        view.LoadCard.CloseButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(!view.LoadCard.IsOpen && view.ReactionCard.IsOpen,"each calculation has its own close button");
+
+        view.CloseAllDetails();Render(view,900);Check(!view.IsDetailsOpen,"close restores clean diagram");
         foreach(double width in new[] {900.0,760,700,520,360})
         {
             Render(view,width);view.Plot.SelectAt(Centre(view.Plot.Targets.First(x=>x.Component==1).Bounds));Render(view,width,Preview(preview,"open-"+width));
@@ -101,13 +129,13 @@ internal static class EquivalentLoadingUiTests
             foreach(var box in view.Plot.TextBounds)Check(box.Left>=-1e-7 && box.Right<=view.Plot.ActualWidth+1e-7 && box.Top>=0 && box.Bottom<=view.Plot.ActualHeight+1e-7,"rendered text remains inside actual plot");
             for(int i=0;i<view.Plot.TextBounds.Count;i++)for(int j=i+1;j<view.Plot.TextBounds.Count;j++)
                 Check(!view.Plot.TextBounds[i].IntersectsWith(view.Plot.TextBounds[j]),"actual rendered value/dimension labels do not overlap");
-            view.CloseDetailsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            view.CloseAllDetails();
         }
         Check(ReferenceEquals(window.SelectedTransferMember.Uniform,actual.Uniform) && ReferenceEquals(window.SelectedTransferMember.Points,actual.Points),"actual higher nominal slab forces still generate the response plots");
         CheckResponse(window,actual);
         window.SelectMember(1,0,-1);Check(!window.EquivalentView.IsDetailsOpen,"repeated selection clears stale calculation selection");
         Render(window.EquivalentView,900);window.EquivalentView.Plot.SelectAt(Centre(window.EquivalentView.Plot.Targets.First(x=>x.Reaction==1).Bounds));
-        Check(window.EquivalentView.VisibleCalculation.Any(s=>s.StartsWith("Right reaction")),"repeated selection uses current reaction");
+        Check(window.EquivalentView.VisibleCalculation.Any(s=>s.StartsWith("R2 · Primary UDL")),"repeated selection uses current reaction");
         foreach(int index in Enumerable.Range(0,t.UnitLowerCases[0].Uniform.Length+t.UnitLowerCases[0].Points.Length))
         {
             Render(window.EquivalentView,900);
@@ -142,11 +170,11 @@ internal static class EquivalentLoadingUiTests
         {
             Render(bothView,width);bothView.Plot.SelectAt(Centre(bothView.Plot.Targets.First(x=>x.Reaction==0).Bounds));Render(bothView,width);
             Check(Math.Abs(bothView.ActualWidth-width)<1e-7,"both-sided checks exercise the requested width");
-            Check(bothView.VisibleCalculation.Count(s=>s.Contains(" kN"))==7,"both-sided reaction panel includes every source and final division");
+            Check(bothView.VisibleCalculation.Length==5 && !bothView.VisibleCalculation.Any(s=>s.Contains("slab foot")),"both-sided reaction card remains compact with one final division");
             foreach(var box in bothView.Plot.TextBounds)Check(box.Left>=0 && box.Right<=bothView.Plot.ActualWidth+1e-7 && box.Bottom<=bothView.Plot.ActualHeight,"both-sided labels stay inside plot");
             for(int i=0;i<bothView.Plot.TextBounds.Count;i++)for(int j=i+1;j<bothView.Plot.TextBounds.Count;j++)
                 Check(!bothView.Plot.TextBounds[i].IntersectsWith(bothView.Plot.TextBounds[j]),"both-sided load/reaction labels remain separate");
-            bothView.CloseDetailsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            bothView.CloseAllDetails();
         }
         Console.WriteLine($"Passed {checks} equivalent loading WPF interaction/render checks.");
     }
