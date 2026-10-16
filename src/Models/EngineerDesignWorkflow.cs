@@ -86,7 +86,12 @@ namespace EngineeringDashboard
                     double right=bearing.ReactionKn*(position-lower.SupportsMm[0])/(lower.SupportsMm[1]-lower.SupportsMm[0]);
                     force[0]+=bearing.ReactionKn-right;force[1]+=right;
                 }
-                plan.CrossingTransfers[support.CrossingIndex]=force.Select(f=>f*1000/support.Input.WidthMm).ToArray();
+                // Prefix network checks can renumber crossings. Resolve against the
+                // planning network's actual crossing object, not a temporary index.
+                int crossingIndex=Array.IndexOf(Network.CrossingBeams,support.Input);
+                if(crossingIndex<0)crossingIndex=Array.FindIndex(Network.CrossingBeams,c=>c.BayNumber==support.Input.BayNumber && Math.Abs(c.PositionMm-support.Input.PositionMm)<1e-7 && Math.Abs(c.WidthMm-support.Input.WidthMm)<1e-7);
+                if(crossingIndex<0)throw new ArgumentException("Selected crossing does not belong to the primary plan.");
+                plan.CrossingTransfers[crossingIndex]=force.Select(f=>f*1000/support.Input.WidthMm).ToArray();
                 int bay=support.Input.BayNumber-1;
                 if(plan.CarriesBay(bay) && support.SlabEdgeLoadKn>0)
                     plan.SlabLedgerForces[bay]=(plan.SlabLedgerForces.TryGetValue(bay,out double prior) ? prior : 0)+support.SlabEdgeLoadKn/2;

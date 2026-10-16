@@ -24,7 +24,7 @@ namespace EngineeringDashboard
             this.model=model;Background=Brushes.White;
             for(int i=0;i<4;i++)RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             ColumnDefinitions.Add(new ColumnDefinition());ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
-            var header=new TextBlock {Text=$"Reference spacing {model.ReferenceSpacingMm:0.###} mm",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,6),ToolTip=model.IsDesignSlice ? "Representative primary-transfer slice. Beam load is shared equally; assigned slab and crossing loads act at the receiving primary bearings. Actual physical secondary response is shown below." : "Loads converted from slab spacing to the beam reference spacing."};
+            var header=new TextBlock {Text=$"Reference spacing {model.ReferenceSpacingMm:0.###} mm"+(model.IsDesignSlice ? " · transfer at primary bearings" : ""),FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,6),ToolTip=model.IsDesignSlice ? "Representative primary-transfer slice. Beam load is shared equally; assigned slab and crossing loads act at the receiving primary bearings. Actual physical secondary response is shown below." : "Loads converted from slab spacing to the beam reference spacing."};
             SetColumnSpan(header,2);Children.Add(header);
             var cards=new StackPanel();cards.Children.Add(LoadCard);cards.Children.Add(ReactionCard);
             DetailsPanel=new Border {Width=290,Margin=new Thickness(12,0,0,0),VerticalAlignment=VerticalAlignment.Top,Visibility=Visibility.Collapsed,Child=cards};
