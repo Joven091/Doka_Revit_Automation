@@ -581,7 +581,19 @@ namespace EngineeringDashboard
                     candidate.UpperSpacingMm=allowed[step];
                 }
                 try {return OptimizeCore(common,candidate,true);}
-                catch(TowerOptimizationException ex){failure=ex;}
+                catch(TowerOptimizationException ex)
+                {
+                    failure=ex;
+                    // A changed reaction split can need a different receiver at the
+                    // same leg tier. Compare the complete crossing before excluding
+                    // another bay or reducing a permitted nominal spacing.
+                    if(common.EngineerWorkflow && !common.CoordinateCrossingLayouts && candidate.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows))
+                    {
+                        var coordinated=common.CopyForSearch();coordinated.CoordinateCrossingLayouts=true;
+                        try {return OptimizeCore(coordinated,candidate,true);}
+                        catch(TowerOptimizationException coordinatedFailure){failure=coordinatedFailure;}
+                    }
+                }
             }
             throw failure;
         }
@@ -801,7 +813,7 @@ namespace EngineeringDashboard
                         }
                         foreach(var receiver in receivers)
                         {
-                            outcome.Tested++;var candidate=new State {Beams=previous.Beams.Concat(new[] {receiver}).ToArray(),Bays=right==null ? previous.Bays : previous.Bays.Concat(new[] {right}).ToArray(),Legs=previous.Legs+receiver.LegCount,Narrow=previous.Narrow+receiver.Standalone600Count,BaysCount=previous.BaysCount+receiver.BayCount,BracePenalty=previous.BracePenalty+receiver.StandaloneBracePenalty,Symmetry=previous.Symmetry+receiver.SymmetryErrorMm,Timber=previous.Timber+LowerTimber(receiver)+(right==null ? 0 : right.StockLengthMm*EffectiveWidthsMm(common,input,beam,cover,phase).Count(x=>x>0))};
+                            outcome.Tested++;var candidate=new State {Beams=previous.Beams.Concat(new[] {receiver}).ToArray(),Bays=beam==input.Bays.Length ? previous.Bays : previous.Bays.Concat(new[] {right}).ToArray(),Separate=previous.Separate+(beam<input.Bays.Length && right==null ? 1 : 0),Legs=previous.Legs+receiver.LegCount,Narrow=previous.Narrow+receiver.Standalone600Count,BaysCount=previous.BaysCount+receiver.BayCount,BracePenalty=previous.BracePenalty+receiver.StandaloneBracePenalty,Symmetry=previous.Symmetry+receiver.SymmetryErrorMm,Timber=previous.Timber+LowerTimber(receiver)+(right==null ? 0 : right.StockLengthMm*EffectiveWidthsMm(common,input,beam,cover,phase).Count(x=>x>0))};
                             if(beam>0)
                             {
                                 var network=input.HasIndividualSpacings ? input.WithSpacings(beamCount:beam+1) : new TransferNetworkInput {LocalRowGapMm=input.LocalRowGapMm,PlywoodSheetLengthMm=input.PlywoodSheetLengthMm,Beams=input.Beams.Take(beam+1).ToArray(),Bays=input.Bays.Take(beam).ToArray(),CrossingBeams=input.CrossingBeams.Where(c=>c.BayNumber<=beam).ToArray(),UpperSpacingMm=input.UpperSpacingMm,RequestedUpperSpacingMm=input.RequestedUpperSpacingMm,CustomLoads=input.CustomLoads,LiveKnM2=input.LiveKnM2,FormworkKnM2=input.FormworkKnM2};
@@ -822,7 +834,7 @@ namespace EngineeringDashboard
                     }
                     // Keep geometrically different current receivers until their next junction is
                     // known. Economy is applied only among prefixes that already pass their crossings.
-                    states=next.Values.SelectMany(list=>list.GroupBy(s=>Tuple.Create(s.Beams.Last().WidthMm,s.Beams.Last().TransverseOffsetMm)).SelectMany(g=>g.OrderBy(s=>common.EngineerSearch ? s.Legs : s.Legs*TowerOptimizer.TowerLegTimberEquivalentMm+s.Timber).ThenBy(s=>s.Narrow).ThenBy(s=>s.BaysCount).ThenBy(s=>s.BracePenalty).ThenBy(s=>s.Symmetry).ThenBy(s=>s.Timber).Take(common.EngineerSearch ? 3 : 2))).Concat(closed).ToList();
+                    states=next.Values.SelectMany(list=>list.GroupBy(s=>Tuple.Create(s.Beams.Last().WidthMm,s.Beams.Last().TransverseOffsetMm)).SelectMany(g=>g.OrderBy(s=>s.Separate).ThenBy(s=>common.EngineerSearch ? s.Legs : s.Legs*TowerOptimizer.TowerLegTimberEquivalentMm+s.Timber).ThenBy(s=>s.Narrow).ThenBy(s=>s.BaysCount).ThenBy(s=>s.BracePenalty).ThenBy(s=>s.Symmetry).ThenBy(s=>s.Timber).Take(common.EngineerSearch ? 3 : 2))).Concat(closed).ToList();
                 }
             }
             catch(BeamSearchDeadlineException) {common.Trace?.CheckUserCancellation();}

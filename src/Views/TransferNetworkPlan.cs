@@ -243,6 +243,19 @@ namespace EngineeringDashboard
                 var text=new FormattedText(note.Value,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),11,note.Colour,VisualTreeHelper.GetDpi(this).PixelsPerDip);
                 double x=Math.Max(5,Math.Min(ActualWidth-text.Width-5,note.TextX??(note.Anchor-text.Width/2)));
                 var box=new Rect(x-2,note.Y-1,text.Width+4,text.Height+2);
+                Func<Rect,bool> clear=r=>r.Left>=2 && r.Right<=ActualWidth-2 && r.Top>=2 && r.Bottom<=ActualHeight-2
+                    && !AnnotationBounds.Any(a=>a.IntersectsWith(r)) && !SectionGeometryBounds.Any(g=>g.IntersectsWith(r));
+                if(note.Target.HasValue && !clear(box))
+                {
+                    var candidates=new List<Rect>();
+                    foreach(double dy in Enumerable.Range(0,9).SelectMany(i=>i==0 ? new[] {0.0} : new[] {-24.0*i,24.0*i}))
+                    foreach(double dx in new[] {0.0,-text.Width-12,text.Width+12})
+                    {
+                        var candidate=new Rect(Math.Max(2,Math.Min(ActualWidth-text.Width-6,box.X+dx)),box.Y+dy,box.Width,box.Height);
+                        if(clear(candidate))candidates.Add(candidate);
+                    }
+                    if(candidates.Count>0)box=candidates.OrderBy(r=>Math.Abs(r.Top-box.Top)+.5*Math.Abs(r.Left-box.Left)).First();
+                }
                 while(AnnotationBounds.Any(r=>r.IntersectsWith(box)) || SectionGeometryBounds.Any(r=>r.IntersectsWith(box)))
                     box.Offset(0,note.Above ? -28 : 28);
                 // Exceptional out-of-range annotations stay off the detail.
@@ -327,7 +340,8 @@ namespace EngineeringDashboard
                 {
                     var lowerRect=new Rect(start,bottom,end-start,200*depthScale);
                     H20Drawing.Longitudinal(dc,lowerRect,beam==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;SectionGeometryBounds.Add(lowerRect);
-                    SectionCallout("Beam secondary H20",new Point(start+Math.Min(140,lowerRect.Width/4),bottom+4),start+5,bottom-24,true);
+                    bool outsideRight=beam==result.Beams.Length-1;
+                    SectionCallout("Beam secondary H20",new Point(outsideRight ? end-Math.Min(100,lowerRect.Width/4) : start+Math.Min(140,lowerRect.Width/4),bottom+4),outsideRight ? end-145 : start+5,bottom-24,true);
                     MemberTargets.Add(Tuple.Create(lowerRect,beam,encoded,0));
                     SectionRows.Add(Tuple.Create(beam,row,t.PhysicalRowPosition(physical)));
                     SectionNote($"B{beam+1} · D {input.DepthMm:0.###} · T{row+1}",xx(centre),top-26,true);
@@ -338,7 +352,9 @@ namespace EngineeringDashboard
                 {
                     double station=b.PositionsMm.OrderBy(x=>Math.Abs(x-cut)).First();bool projected=Math.Abs(station-cut)>40+1e-7;
                     DrawSectionSupport(dc,xx(centre+b.TransverseOffsetMm-b.WidthMm/2),xx(centre+b.TransverseOffsetMm+b.WidthMm/2),bottom+(200+b.Primary.DepthMm)*scale,scale,b.Rotated,projected);
-                    SectionNote($"B{beam+1} · D3 support · {(b.Rotated ? "cross braces" : "frame")}"+(projected ? $" · supports projected x {station:0.###}" : " · at cut"),xx(centre),sectionBottom+85,false);
+                    double leg=xx(centre+b.TransverseOffsetMm+(beam==result.Beams.Length-1 ? 1 : -1)*b.WidthMm/2),head=bottom+(200+b.Primary.DepthMm)*scale;
+                    SectionCallout($"D3 support · {(b.Rotated ? "cross braces" : "frame")}",new Point(leg,head+250*scale),beam==result.Beams.Length-1 ? leg+14 : leg-135,head+235*scale);
+                    SectionNote($"B{beam+1} · "+(projected ? $"supports projected x {station:0.###}" : "supports at cut"),xx(centre),sectionBottom+85,false);
                 }
                 int primaryRun=Array.FindIndex(b.StockPlan.Pieces,p=>cut>=p.StartMm-1e-7 && cut<=p.EndMm+1e-7);
                 if(primaryRun<0)continue;
