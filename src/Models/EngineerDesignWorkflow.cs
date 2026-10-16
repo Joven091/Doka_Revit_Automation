@@ -57,7 +57,6 @@ namespace EngineeringDashboard
         }
         internal EngineerPrimaryPlan WithGeometry(TowerInput common,TransferMember unit,string[] labels)
         {
-            if(common.ReplayTributaryPrimaryAllocation)return this;
             var plan=CopyBasis();plan.SecondaryBasis=unit;plan.ReferenceSpacingMm=common.TransferredSlab?.UpperSpacingMm??Network.BeamSpacing(Beam);
             plan.OwnLoads=unit.Uniform.Select(q=>new PositionedSecondaryLoad {Name="Beam concrete",IsUniform=true,PositionMm=q.StartMm,EndMm=q.EndMm,ValuePerMetre=q.KnPerM}).ToArray();
             for(int side=0;side<2;side++)
