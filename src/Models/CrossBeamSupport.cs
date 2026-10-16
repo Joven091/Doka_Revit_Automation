@@ -746,7 +746,7 @@ namespace EngineeringDashboard
                 best=JunctionResult(r.Input.CrossingBeams[index],index,result,zones,shutters,near,far,span,placement.Offset,placement.Shift);bestBrace=placement.Brace;bestSymmetry=symmetry;
                 break; // Coarser passing pitch already uses the fewest rows at this placement.
             }
-            if(best!=null && bestSymmetry>1e-7)best.SymmetryNotice="Unequal cantilevers retained after comparing more balanced permitted arrangements. "+(balancedFailure??"More balanced stock/support positions failed the available-length, clearance or member checks.");
+            if(best!=null && bestSymmetry>1e-7)best.SymmetryNotice="Offset support arrangement retained after comparing more balanced permitted arrangements. "+(balancedFailure??"More balanced stock/support positions failed the available-length, clearance or member checks.");
             return best;
         }
         private static CrossBeamSupportResult JunctionResult(TransferCrossingBeamRow c,int index,CrossBeamSupportResult central,List<CrossBeamBearing> zones,FormworkSolid[] shutters,double near,double far,double span,double offset,double shift)

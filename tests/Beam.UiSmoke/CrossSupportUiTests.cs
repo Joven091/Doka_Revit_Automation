@@ -254,7 +254,20 @@ internal static class CrossSupportUiTests
         junction.NetworkBeams[0].WidthMm=650;junction.NetworkBeams[0].DepthMm=1150;junction.NetworkBeams[0].BottomElevationMm=-1150;
         junction.NetworkBeams[1].WidthMm=800;junction.NetworkBeams[1].DepthMm=1750;junction.NetworkBeams[1].BottomElevationMm=-1750;
         junction.NetworkBays[0].WidthMm=2575;junction.NetworkBays[0].ThicknessMm=300;junction.AddCrossingBeam();junction.CrossingBeams[0].PositionMm=5375;junction.CrossingBeams[0].WidthMm=650;junction.CrossingBeams[0].DepthMm=1150;junction.CrossingBeams[0].BottomElevationMm=-1150;
-        task=junction.OptimizeTowersAsync(false);timer.Restart();while(!task.IsCompleted) {Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>90)throw new Exception("Junction UI search timeout");}task.GetAwaiter().GetResult();
+        // The full primary allocation and symmetry search runs under .NET Framework
+        // here. Match the other reported UI fixture's completion allowance; the
+        // separate .NET 10 engineer-junction regression retains its 90 s budget.
+        task=junction.OptimizeTowersAsync(false);timer.Restart();
+        while(!task.IsCompleted)
+        {
+            Pump();Thread.Sleep(1);
+            if(timer.Elapsed.TotalSeconds>180)
+            {
+                Console.WriteLine(junction.BuildDiagnosticReport("Junction UI timeout"));junction.CancelOptimization();
+                throw new Exception("Junction UI search timeout");
+            }
+        }
+        task.GetAwaiter().GetResult();Console.WriteLine("Junction UI solve seconds="+timer.Elapsed.TotalSeconds);
         Check(junction.IsCalculationValid,junction.WarningMessage+" "+junction.TowerFailureDetails);
         var jointWorkspace=new BeamFormworkWorkspace(junction,null,null,null);jointWorkspace.Show();jointWorkspace.Drawing.Formwork=true;jointWorkspace.Drawing.Select(FormworkObject.Crossing,0);Pump();
         var jointCanvas=jointWorkspace.Drawing;jointCanvas.Measure(new Size(1200,600));jointCanvas.Arrange(new Rect(0,0,1200,600));jointCanvas.Fit();jointCanvas.UpdateLayout();
