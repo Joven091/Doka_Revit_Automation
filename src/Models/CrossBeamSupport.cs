@@ -961,7 +961,7 @@ namespace EngineeringDashboard
             for(int beam=0;beam<r.Beams.Length;beam++)
             {
                 var l=r.Beams[beam];var t=originals[beam].Transfer;int runs=l.StockPlan.Pieces.Length;
-                var resolvedPlan=common.EngineerWorkflow && t.PrimaryPlan?.UseDesignZones==true ? t.PrimaryPlan.Resolve(common,r,beam,supports) : null;
+                EngineerPrimaryPlan resolvedPlan=null;
                 var relevant=shared.Where(s=>s.Bearings.Any(b=>b.Beam==beam)).ToArray();
                 var columnLoads=new List<ColumnEndStripLoad[]>();var cases=new List<TransferMember[]>();var lowerCases=new List<TransferMember[]>();var names=new List<string>();var left=Enumerable.Repeat(double.NegativeInfinity,l.PositionsMm.Length).ToArray();var right=Enumerable.Repeat(double.NegativeInfinity,left.Length).ToArray();
                 var minLeft=Enumerable.Repeat(double.PositiveInfinity,left.Length).ToArray();var minRight=Enumerable.Repeat(double.PositiveInfinity,left.Length).ToArray();
@@ -1011,7 +1011,13 @@ namespace EngineeringDashboard
                         if(!lowerPassed)return false;
                     }
                     if(lowerOnly)continue;
-                    if(common.EngineerWorkflow && t.PrimaryPlan?.UseDesignZones==true && resolvedPlan==null)return false;
+                    if(common.EngineerWorkflow && t.PrimaryPlan?.UseDesignZones==true && resolvedPlan==null)
+                    {
+                        // Lower-only screening must not allocate/rebuild primary zones.
+                        // Resolve only after the physical receiving H20s have passed.
+                        resolvedPlan=t.PrimaryPlan.Resolve(common,r,beam,supports);
+                        if(resolvedPlan==null)return false;
+                    }
                     var primary=new TransferMember[runs*2];
                     for(int line=0;line<2;line++)for(int run=0;run<runs;run++)
                     {

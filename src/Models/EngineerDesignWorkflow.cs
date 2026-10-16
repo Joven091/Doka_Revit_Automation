@@ -73,7 +73,9 @@ namespace EngineeringDashboard
         internal bool Applies(CrossBeamSupportResult[] supports)=>UseDesignZones;
         internal EngineerPrimaryPlan Resolve(TowerInput common,TransferNetworkResult result,int receivingBeam,CrossBeamSupportResult[] supports)
         {
-            var plan=Create(common,Network,Beam,LeftSlab,RightSlab);plan.IsResolved=true;
+            // Build once after allocation; the provisional full-bay zones are not
+            // used during resolution and need not be allocated on every check.
+            var plan=new EngineerPrimaryPlan {Network=Network,Beam=Beam,LengthMm=LengthMm,LeftSlab=LeftSlab,RightSlab=RightSlab,UseDesignZones=UseDesignZones,IsResolved=true};
             var t=result.Beams[receivingBeam].Transfer;
             // A dedicated crossing's full bay load belongs to its own towers.
             // Until the arrangement is known, only the assigned receiving end
