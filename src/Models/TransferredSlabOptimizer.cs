@@ -1273,20 +1273,25 @@ namespace EngineeringDashboard
             bool unresolved=input.DeferCrossingChecks && plan!=null && plan.Network.CrossingBeams.Any(c=>(c.BayNumber==plan.Beam || c.BayNumber==plan.Beam+1) && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows);
             if(unresolved)
                 unknown=unknown.Concat(plan.Network.CrossingBeams.Where(c=>c.BayNumber==plan.Beam || c.BayNumber==plan.Beam+1).Select(c=>new BeamDistributedLoad {StartMm=c.PositionMm-c.WidthMm/2,EndMm=c.PositionMm+c.WidthMm/2})).ToArray();
+            double[] minimum=null;
+            if(unresolved)
+            {
+                // This transverse lower bound is identical for every stock piece.
+                // Do not build the provisional zones only to discard them below.
+                var beam=plan.Network.Beams[plan.Beam];
+                minimum=plan.HasPositionedLoads ? EngineerPrimaryPlan.Reactions(plan.SecondaryBasis,plan.OwnLoads)
+                    : new[] {plan.Network.AreaLoad(beam.DepthMm)*beam.WidthMm/2000,plan.Network.AreaLoad(beam.DepthMm)*beam.WidthMm/2000};
+                if(plan.HasPositionedLoads)foreach(var slab in plan.SlabLoads.Values)
+                {
+                    var reaction=EngineerPrimaryPlan.Reactions(plan.SecondaryBasis,slab);
+                    for(int line=0;line<2;line++)minimum[line]+=Math.Min(0,reaction[line]);
+                }
+            }
             foreach(var stock in geometry.Stock)for(int line=0;line<2;line++)
             {
-                var loads=PrimaryUniformLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,stage,edge);
+                var loads=unresolved ? new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock.StockLengthMm,KnPerM=Math.Max(0,minimum[line])+input.Primary.SelfWeightKnM(stock.StockLengthMm)}}
+                    : PrimaryUniformLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,stage,edge);
                 if(loads==null)continue;
-                if(unresolved)
-                {
-                    // Dedicated towers and slab ledgers have not been allocated.
-                    // Own beam load outside crossing footprints is a true lower
-                    // bound; the provisional full-bay crossing force is not.
-                    var beam=plan.Network.Beams[plan.Beam];
-                    double lower=plan.HasPositionedLoads ? EngineerPrimaryPlan.Reactions(plan.SecondaryBasis,plan.OwnLoads)[line]
-                        +plan.SlabLoads.Values.Sum(q=>Math.Min(0,EngineerPrimaryPlan.Reactions(plan.SecondaryBasis,q)[line])) : plan.Network.AreaLoad(beam.DepthMm)*beam.WidthMm/2000;
-                    loads=new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock.StockLengthMm,KnPerM=Math.Max(0,lower)+input.Primary.SelfWeightKnM(stock.StockLengthMm)}};
-                }
                 var supports=geometry.MemberSupports[Array.IndexOf(geometry.Stock,stock)];
                 foreach(bool far in new[] {false,true})
                 {
