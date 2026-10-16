@@ -126,7 +126,7 @@ namespace EngineeringDashboard
         internal TransferredSlabResult Copy() => (TransferredSlabResult)MemberwiseClone();
         public double[] RowsMm, TributaryWidthsMm;
         public bool FullLoadingOnly;
-        // Physical setting-out can move/add beam-only bearers. Design rows and nominal loads stay fixed.
+        // Physical setting-out can move/add lower bearers independently of slab feet. Design rows and nominal loads stay fixed.
         public double[] SettingOutRowsMm;
         public int[] SettingOutDesignRows;
         public int PhysicalRowCount=>SettingOutRowsMm?.Length??RowsMm.Length;

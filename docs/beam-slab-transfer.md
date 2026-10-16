@@ -280,3 +280,10 @@ Load cards show the physical source formula, source spacing, beam reference spac
 Section A–A is labelled as the physical arrangement. Leaders identify concrete slab, slab H20, beam secondary H20, double primary H20 (or WS10) and D3 supports. Load arrows keep their physical positions and carry no equivalent-load magnitude. Member callouts avoid member profiles, transfer arrows, bracing and dimension labels, and use the existing drawing theme and camera.
 
 Run `--positioned-transfer` on both numerical runtimes for the independent reported-coordinate reactions, mirrored transfer, nominal pitch combinations, source arithmetic and short closing-gap invariants. The WPF equivalent-loading suite renders the new cards and labelled sections at wide and narrow widths. Existing reported/mixed network checks continue verifying force accounting, complete passing members and unchanged primary-zone boundaries.
+
+
+## Crossing-frame centring with independent lower setting-out
+
+Production centres a dedicated crossing frame across the concrete beam width after selecting its checked load-transfer arrangement. The crossing secondary bearings and the crossing primary/leg responses are recalculated at the centred positions with the existing load model. Main-beam primary UDL arrays, slab-foot design loads, slab-H20 rows and crossing-end allocations are retained. Lower receiving H20s can move or be added within the existing spacing, stock, plywood-joint and physical-clearance limits. Slab feet do not lock those lower-member stations: the site timber bearer is outside this calculator's design scope, and no bearer load-sharing rules or member design are added. Actual timber/leg intersections remain prohibited.
+
+Run `--centred-crossings` on both numerical runtimes for the reported 150 mm offset, 1524 mm frame, 1250 mm stock geometry of X1/X2. It checks centred primary coordinates, independent recalculated crossing responses and capacities, preserved main-primary arrays and slab/end allocations, clear receiving geometry, and repeat-call stability. Historical setting-out calls retain their existing row-locking policy.

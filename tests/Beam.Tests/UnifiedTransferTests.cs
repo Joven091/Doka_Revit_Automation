@@ -75,7 +75,12 @@ internal static class UnifiedTransferTests
             var middle=result.Beams[1].Transfer.PrimaryPlan;
             Check(middle.CrossingLoads.ContainsKey(0) && middle.CrossingTransfers.ContainsKey(1),"dedicated side does not disable the shared crossing model on the other side");
         }
-        else Check(result.CrossSupports.All(c=>c.Towers!=null),"exact reported equal-soffit crossings take their dedicated fallback");
+        else
+        {
+            Check(result.CrossSupports.All(c=>c.Towers!=null),"exact reported equal-soffit crossings take their dedicated fallback");
+            foreach(var c in result.CrossSupports)
+                Near(c.Bearings.Where(b=>b.IsDedicated && b.Label.StartsWith("Dedicated P")).Average(b=>b.Xmm),c.Input.PositionMm,"reported crossing frame centred across the concrete beam");
+        }
         Verify(result);Symmetry();PendingAssignments();
         Console.WriteLine($"Passed {checks} unified transfer acceptance checks.");
     }

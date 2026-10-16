@@ -11,6 +11,7 @@ namespace EngineeringDashboard
         internal static void BalanceSettingOut(TowerInput common,TransferNetworkResult result)
         {
             if(result.CrossSupports.Length==0)return;
+            if(common.EngineerWorkflow)CentreCrossingFrames(common,result);
             var check=common.CopyForSearch();check.Trace=null;check.Diagnostics=null;
             for(int index=0;index<result.CrossSupports.Length;index++)
             {
@@ -39,11 +40,78 @@ namespace EngineeringDashboard
                 // Only receiving secondaries may change. Frames, slab feet, concrete,
                 // other crossings and plywood-joint rows remain fixed.
                 var otherCrossings=result.CrossSupports.Where((s,i)=>i!=index).SelectMany(s=>s.Solids).ToArray();
-                if(!TryAdjustSecondaries(result,balanced.Solids,otherCrossings,out TowerLayout[] beams))continue;
+                if(!TryAdjustSecondaries(result,balanced.Solids,otherCrossings,out TowerLayout[] beams,common.EngineerWorkflow))continue;
                 balanced.MovementMm=DedicatedMovement(layout);
-                balanced.JunctionNotice=$"Balanced primary overhangs {layout.PositionsMm[0]-stock.StartMm:0.###}/{stock.EndMm-layout.PositionsMm[1]:0.###} mm. Local receiving H20s are repositioned and added where necessary; plywood-joint supports, design spacing and main-primary UDLs remain unchanged. "
+                balanced.JunctionNotice=(Math.Abs(centre-original.Input.PositionMm)<1e-7 ? "Frame centred across the cross beam. " : "")
+                    +$"Balanced primary overhangs {layout.PositionsMm[0]-stock.StartMm:0.###}/{stock.EndMm-layout.PositionsMm[1]:0.###} mm. Local receiving H20s are repositioned and added where necessary; plywood-joint supports, design spacing and main-primary UDLs remain unchanged. "
                     +$"Tower leg offset {balanced.TowerSpanOffsetMm:0.###} mm along the crossing span. Existing junction end zones and their checked load paths are retained.";
                 result.Beams=beams;result.CrossSupports=(CrossBeamSupportResult[])result.CrossSupports.Clone();result.CrossSupports[index]=balanced;
+            }
+        }
+
+        // The site bearer permits slab feet and receiving secondaries to have
+        // independent longitudinal stations. It is outside this member calculator:
+        // no new bearer sharing model or slab/primary load allocation is introduced.
+        internal static void CentreCrossingFrames(TowerInput common,TransferNetworkResult result)
+        {
+            var check=common.CopyForSearch();check.Trace=null;check.Diagnostics=null;
+            for(int index=0;index<result.CrossSupports.Length;index++)
+            {
+                common.Trace?.CheckUserCancellation();
+                var original=result.CrossSupports[index];var tower=original.Towers;
+                if(tower==null)continue;
+                var legs=original.Bearings.Where(b=>b.IsDedicated && b.Label.StartsWith("Dedicated P")).ToArray();
+                if(legs.Length==0)continue;
+                double offset=legs.Average(b=>b.Xmm)-original.Input.PositionMm;
+                if(Math.Abs(offset)<1e-7)continue;
+                var layout=Copy(tower);layout.Transfer=tower.Transfer.Copy();layout.TransverseOffsetMm=0;
+                var t=layout.Transfer;bool passes=true;
+                Func<TransferMember,TransferMember> centred=m=>
+                {
+                    var source=new TransferMember {PrimaryMaterial=m.PrimaryMaterial,Name=m.Name,LoadCase=m.LoadCase,H20Count=m.H20Count,
+                        StartMm=m.StartMm+offset,LengthMm=m.LengthMm,SupportsMm=m.SupportsMm.Select(x=>x-offset).ToArray(),Points=m.Points,Uniform=m.Uniform};
+                    return Analyze(source,source.Points,source.Uniform,check,m.LoadCase);
+                };
+                t.LowerCases=tower.Transfer.LowerCases.Select(stage=>stage.Select(centred).ToArray()).ToArray();
+                foreach(var m in t.LowerCases.SelectMany(stage=>stage))if(!Pass(m,check,"Centred crossing secondary"))passes=false;
+                if(!passes)continue;
+                t.UnitLowerCases=tower.Transfer.UnitLowerCases.Select(centred).ToArray();
+                t.LowerStockStartMm+=offset;
+                t.PrimaryCases=new TransferMember[tower.Transfer.PrimaryCases.Length][];
+                for(int stage=0;stage<t.PrimaryCases.Length && passes;stage++)
+                {
+                    var oldReaction=tower.Transfer.LowerCases[stage][0].Analysis.Reactions;
+                    var newReaction=t.LowerCases[stage][0].Analysis.Reactions;
+                    int runs=tower.StockPlan.Pieces.Length;
+                    t.PrimaryCases[stage]=tower.Transfer.PrimaryCases[stage].Select((m,i)=>
+                    {
+                        int line=i/runs;
+                        if(Math.Abs(oldReaction[line])<1e-9){passes=false;return m;}
+                        double factor=newReaction[line]/oldReaction[line];
+                        int selfWeight=m.PrimarySelfWeightKnM>0 ? m.Uniform.Length-1 : -1;
+                        return new TransferMember {PrimaryMaterial=m.PrimaryMaterial,Name=m.Name,LoadCase=m.LoadCase,H20Count=m.H20Count,
+                            StartMm=m.StartMm,LengthMm=m.LengthMm,SupportsMm=m.SupportsMm,PrimarySelfWeightKnM=m.PrimarySelfWeightKnM,
+                            Uniform=m.Uniform.Select((q,j)=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM*(j==selfWeight ? 1 : factor)}).ToArray(),
+                            Points=m.Points.Select(p=>new BeamPointLoad {PositionMm=p.PositionMm,Kn=p.Kn*factor}).ToArray()};
+                    }).ToArray();
+                }
+                if(!passes)continue;
+                var previous=tower.Transfer.LowerCases[0][0].Analysis.Reactions;
+                var revised=t.LowerCases[0][0].Analysis.Reactions;
+                layout.LeftLineLoad*=revised[0]/previous[0];layout.RightLineLoad*=revised[1]/previous[1];
+                double origin=legs.First().Ymm-tower.PositionsMm[0];
+                var allowance=new CrossShutterAllowance(original.NearShutterClearanceMm,original.FarShutterClearanceMm);
+                var candidate=FinishDedicated(check,result,original.CrossingIndex,origin,0,original.TowerSpanOffsetMm,layout,check,out string failure,
+                    original.PrimaryNearExtensionMm,original.PrimaryFarExtensionMm,allowance:allowance);
+                if(candidate==null)continue;
+                candidate.Solids=candidate.Solids.Concat(original.Solids.Where(s=>s.Member==null && !s.IsLeg && !s.IsTowerEnvelope)).ToArray();
+                candidate.Bearings=candidate.Bearings.Concat(original.Bearings.Where(b=>!b.IsDedicated)).ToArray();
+                candidate.LoadKn=original.LoadKn;candidate.SlabEdgeLoadKn=original.SlabEdgeLoadKn;candidate.SharedFailure=original.SharedFailure;
+                var others=result.CrossSupports.Where((s,i)=>i!=index).SelectMany(s=>s.Solids).ToArray();
+                if(!TryAdjustSecondaries(result,candidate.Solids,others,out var beams,true))continue;
+                candidate.MovementMm=DedicatedMovement(layout);
+                candidate.JunctionNotice="Frame centred across the cross beam. Existing slab-foot loads, end-zone transfers and main-primary UDLs are retained; local lower-secondary setting-out clears the tower legs.";
+                result.Beams=beams;result.CrossSupports=(CrossBeamSupportResult[])result.CrossSupports.Clone();result.CrossSupports[index]=candidate;
             }
         }
 
@@ -53,7 +121,7 @@ namespace EngineeringDashboard
             internal double X;
         }
 
-        internal static bool TryAdjustSecondaries(TransferNetworkResult result,FormworkSolid[] crossing,FormworkSolid[] otherCrossings,out TowerLayout[] adjusted)
+        internal static bool TryAdjustSecondaries(TransferNetworkResult result,FormworkSolid[] crossing,FormworkSolid[] otherCrossings,out TowerLayout[] adjusted,bool independentSlabFeet=false)
         {
             adjusted=null;
             var existing=NetworkSolids(result).ToArray();
@@ -69,9 +137,9 @@ namespace EngineeringDashboard
                 if(!changes.TryGetValue(beam,out var rows))
                     changes[beam]=rows=Enumerable.Range(0,t.PhysicalRowCount).Select(i=>new SettingOutRow {Design=t.PhysicalRowDesignIndex(i),X=t.PhysicalRowPosition(i)}).ToList();
                 var row=rows.FirstOrDefault(v=>v.Design==design && Math.Abs(v.X-(hit.X0+hit.X1)/2)<1e-7);
-                if(row==null || ProtectedRow(result,beam,design,row.X))return false;
+                if(row==null || ProtectedRow(result,beam,design,row.X,independentSlabFeet))return false;
                 var excluded=crossing.Concat(otherCrossings).Concat(concrete).ToArray();
-                if(!MoveAndFill(result,beam,row,rows,excluded))return false;
+                if(!MoveAndFill(result,beam,row,rows,excluded,independentSlabFeet))return false;
             }
             adjusted=result.Beams.Select(Copy).ToArray();
             foreach(var change in changes)
@@ -88,11 +156,11 @@ namespace EngineeringDashboard
                 && Clash(changed,physical.Except(changed).Concat(concrete).Concat(crossing))==null;
         }
 
-        private static bool ProtectedRow(TransferNetworkResult r,int beam,int row,double x)
+        private static bool ProtectedRow(TransferNetworkResult r,int beam,int row,double x,bool independentSlabFeet)
         {
             var t=r.Beams[beam].Transfer;
-            if(row==0 || row==t.RowsMm.Length-1 || t.SlabRowIndices?.Contains(row)==true)return true;
-            if((t.LeftUpperScales?[row]??0)>0 || (t.RightUpperScales?[row]??0)>0)return true;
+            if(row==0 || row==t.RowsMm.Length-1)return true;
+            if(!independentSlabFeet && (t.SlabRowIndices?.Contains(row)==true || (t.LeftUpperScales?[row]??0)>0 || (t.RightUpperScales?[row]??0)>0))return true;
             if(r.Input.PlywoodSheetLengthMm<=0)return true; // No sheet-joint information: keep the checked geometry.
             double sheet=r.Input.PlywoodSheetLengthMm;
             if(Math.Abs(x/sheet-Math.Round(x/sheet))<1e-7)return true;
@@ -101,7 +169,7 @@ namespace EngineeringDashboard
             return r.Input.CrossingBeams.Any(c=>(c.BayNumber==beam || c.BayNumber==beam+1) && Math.Abs(x-c.PositionMm)<c.WidthMm/2+80);
         }
 
-        private static bool MoveAndFill(TransferNetworkResult r,int beam,SettingOutRow moving,List<SettingOutRow> current,FormworkSolid[] obstacles)
+        private static bool MoveAndFill(TransferNetworkResult r,int beam,SettingOutRow moving,List<SettingOutRow> current,FormworkSolid[] obstacles,bool independentSlabFeet)
         {
             var l=r.Beams[beam];var t=l.Transfer;double original=moving.X;
             var stock=l.StockPlan.Pieces.FirstOrDefault(p=>original>=p.StartMm && original<p.EndMm);
@@ -113,7 +181,7 @@ namespace EngineeringDashboard
                 .OrderBy(x=>Math.Abs(x-original)).Distinct().ToArray();
             foreach(double target in candidates)
             {
-                if(target<stock.StartMm+40 || target>stock.EndMm-40 || ProtectedRow(r,beam,moving.Design,target) || !clear(target))continue;
+                if(target<stock.StartMm+40 || target>stock.EndMm-40 || ProtectedRow(r,beam,moving.Design,target,independentSlabFeet) || !clear(target))continue;
                 var trial=current.Select(v=>new SettingOutRow {Design=v.Design,X=ReferenceEquals(v,moving) ? target : v.X}).OrderBy(v=>v.X).ToList();
                 if(trial.Zip(trial.Skip(1),(a,b)=>b.X-a.X).Any(g=>g<80-1e-7))continue;
                 bool failed=false;
@@ -123,7 +191,7 @@ namespace EngineeringDashboard
                     if(b-a<=t.EnteredUpperSpacingMm+1e-7)continue;
                     double low=Math.Max(a+80,b-t.EnteredUpperSpacingMm),high=Math.Min(b-80,a+t.EnteredUpperSpacingMm);
                     var extras=new[] {(low+high)/2,low,high}.Concat(candidates).Where(x=>x>=low && x<=high && x>=stock.StartMm+40 && x<=stock.EndMm-40);
-                    double? added=extras.Where(x=>!ProtectedRow(r,beam,moving.Design,x) && clear(x)).Select(x=>(double?)x).FirstOrDefault();
+                    double? added=extras.Where(x=>!ProtectedRow(r,beam,moving.Design,x,independentSlabFeet) && clear(x)).Select(x=>(double?)x).FirstOrDefault();
                     if(!added.HasValue){failed=true;break;}
                     trial.Insert(i,new SettingOutRow {Design=moving.Design,X=added.Value});i++;
                 }
