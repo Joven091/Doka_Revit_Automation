@@ -37,7 +37,7 @@ namespace EngineeringDashboard
             Background=Brushes.White;
             RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             ColumnDefinitions.Add(new ColumnDefinition());ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});Children.Add(plot);
-            CloseDetailsButton=new Button {Content="×",Width=28,Height=26,HorizontalAlignment=HorizontalAlignment.Right,ToolTip="Close calculation"};
+            CloseDetailsButton=new Button {Content="×",Width=28,Height=28,MinWidth=0,MinHeight=0,Padding=new Thickness(0),FontSize=16,HorizontalAlignment=HorizontalAlignment.Right,ToolTip="Close calculation"};
             var body=new StackPanel();body.Children.Add(CloseDetailsButton);body.Children.Add(details);
             DetailsPanel=new Border {Width=260,Padding=new Thickness(12),Background=new SolidColorBrush(Color.FromRgb(247,250,253)),BorderBrush=Brushes.LightGray,BorderThickness=new Thickness(1,0,0,0),VerticalAlignment=VerticalAlignment.Top,Visibility=Visibility.Collapsed,Child=body};
             SetColumn(DetailsPanel,1);Children.Add(DetailsPanel);
