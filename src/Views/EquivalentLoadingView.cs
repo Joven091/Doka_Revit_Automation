@@ -25,7 +25,7 @@ namespace EngineeringDashboard
             ColumnDefinitions.Add(new ColumnDefinition());ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
             var header=new StackPanel {Margin=new Thickness(0,0,0,6)};
             header.Children.Add(new TextBlock {Text=$"Reference spacing {model.ReferenceSpacingMm:0.###} mm",FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap});SetColumnSpan(header,2);Children.Add(header);
-            var close=new Button {Content="×",Width=28,Height=26,HorizontalAlignment=HorizontalAlignment.Right,ToolTip="Close calculation"};CloseDetailsButton=close;
+            var close=new Button {Content="×",Width=28,Height=28,MinWidth=0,MinHeight=0,Padding=new Thickness(0),FontSize=16,HorizontalAlignment=HorizontalAlignment.Right,ToolTip="Close calculation"};CloseDetailsButton=close;
             var detailBody=new StackPanel();detailBody.Children.Add(close);detailBody.Children.Add(Details);
             DetailsPanel=new Border {Width=244,Padding=new Thickness(12),Background=new SolidColorBrush(Color.FromRgb(247,250,253)),BorderBrush=Brushes.LightGray,BorderThickness=new Thickness(1,0,0,0),VerticalAlignment=VerticalAlignment.Top,Visibility=Visibility.Collapsed,Child=detailBody};
             SetColumn(DetailsPanel,1);SetRow(DetailsPanel,1);Children.Add(DetailsPanel);

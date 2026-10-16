@@ -50,7 +50,7 @@ internal static class Program
    if(args.Contains("--preview"))return StandalonePreview.Run();
    WorkspacePresentationTests.Run();
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));
-   if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
+   if(args.Contains("--actual-loading-ui")){MemberLoadingUiTests.Run();CrossSupportUiTests.PrimaryZones(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    if(args.Contains("--drawing-ui")){D3WorkspaceUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));PresentationUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));DimensionLaneUiTests.Run();return 0;}
    window=new BeamCalculatorWindow();vm=new BeamCalculatorViewModel {ReplayConstructionStages=true};window.DataContext=vm;Render();
    var secondaryText=(TextBlock)window.FindName("SecondarySpacingText");
@@ -331,7 +331,7 @@ internal static class Program
     var original=layout.Transfer.UpperMembers.Single(m=>m.Name=="Upper right");var selected=window.TowerDiagrams.SelectedTransferMember;
     Check(window.TowerDiagrams.Title.Contains("single H20") && selected.H20Count==1 && selected.ShearLimitKn==11 && selected.MomentLimitKnM==5,"slab diagram title and capacities are single H20");
     Check(Math.Abs(window.TowerDiagrams.LoadedAnalysis.DeflectionMm-original.Analysis.DeflectionMm)<1e-8 && Math.Abs(selected.Uniform[0].KnPerM-original.Uniform[0].KnPerM)<1e-8,"slab diagram uses the optimizer's loaded row and single-member deflection");
-    Check(!Find<Button>(window.TowerDiagrams).Any(),"slab selection clears lower-member loading-stage buttons");
+    Check(window.TowerDiagrams.LoadCaseSelector==null && window.TowerDiagrams.MemberView!=null && Find<Button>(window.TowerDiagrams).All(b=>ReferenceEquals(b,window.TowerDiagrams.MemberView.CloseDetailsButton)),"slab selection clears lower-member stage controls and retains only the calculation close button");
    }
    if(args.Length>0){var bitmap=new RenderTargetBitmap((int)Math.Ceiling(networkPlan.ActualWidth),(int)Math.Ceiling(networkPlan.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(networkPlan);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.ChangeExtension(args[0],"network-plan.png")))encoder.Save(file);File.WriteAllText(Path.ChangeExtension(args[0],"network-report.html"),networkReport);}
    Find<Expander>(window).Single(e=>Equals(e.Header,"Crossing beams")).IsExpanded=true;Render();

@@ -29,7 +29,7 @@ namespace EngineeringDashboard
             if(row<0 || row>=t.RowsMm.Length || stage<0 || stage>=t.CaseNames.Length || view.ReferenceSpacingMm<=0)
                 return unavailable("Select a checked secondary case.");
             int source=Array.FindIndex(t.UnitLowerCases,m=>m.LoadCase==t.CaseNames[stage]);
-            if(source<0 || source>=t.UnitPointLabels.Length)return unavailable("Local crossing stage: use Secondary design checks.");
+            if(source<0 || source>=t.UnitPointLabels.Length)return unavailable("This case uses the actual checked member loading.");
             var unit=t.UnitLowerCases[source];double reference=view.ReferenceSpacingMm/1000;
             bool slabSupported=t.RowsMm[row]>=t.SlabSupportStartMm-1e-7 && t.RowsMm[row]<=t.SlabSupportEndMm+1e-7;
             var components=new List<EquivalentLoadingComponent>();
@@ -60,7 +60,7 @@ namespace EngineeringDashboard
                 // A localized crossing or unmatched stage must never be relabelled
                 // as baseline equivalent loading merely to force an identity.
                 if(Math.Abs(analysis.Reactions[line]/reference-primary[line])>1e-7*Math.Max(1,Math.Abs(primary[line])))
-                    return unavailable("Localized crossing loads: use Secondary design checks.");
+                    return unavailable("The actual primary model differs from the reference-spacing conversion; show actual checked member loads.");
             }
             foreach(var c in components)
             {

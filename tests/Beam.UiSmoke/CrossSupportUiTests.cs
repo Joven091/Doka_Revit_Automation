@@ -184,6 +184,7 @@ internal static class CrossSupportUiTests
             Check(workspace.Section.SelectAt(new Point(target.Item1.X+target.Item1.Width/2,target.Item1.Y+target.Item1.Height/2)),"section member click opens crossing diagrams");Pump();
             var window=workspace.Diagrams;Check(window!=null && window.IsVisible && window.SelectedTransferMember.H20Count==count,"selected crossing member displayed in the standard diagram window");
             Check(Descendants(window).Count(c=>c.GetType().Name=="LoadedResponsePlot")==3,"crossing has shear, moment and deflection plots");
+            MemberLoadingUiTests.CheckWindow(window);
             Check(window.LoadingDiagram.TranslatePoint(new Point(0,0),window).Y<300,"crossing loading chart is visible above its collapsed schedule");
             Check(!Descendants(window).OfType<Expander>().Any(),"crossing window omits removed explanatory sections");
             if(count==2)Check(window.DisplayedTransferMember.Points.Length==0 && window.DisplayedTransferMember.Uniform.Length>0,"primary diagram shows the checked UDL without secondary-row point loads");
@@ -274,7 +275,7 @@ internal static class CrossSupportUiTests
         jointWorkspace.Close();PrimaryZones(previewPath);ReportedWorkspace(previewPath);CoordinatedWorkspace(previewPath);Console.WriteLine("Cross UI: section, filler, actual diagrams, elevation editor and reported junctions passed.");return checks;
     }
 
-    static void PrimaryZones(string previewPath)
+    internal static void PrimaryZones(string previewPath)
     {
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,
             Depth=1750,Width=800,BeamLengthMm=6100,TowerLegCapacityKn=30,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,
@@ -292,7 +293,13 @@ internal static class CrossSupportUiTests
         var member=window.DisplayedTransferMember;
         Check(ReferenceEquals(member.Analysis,window.LoadedAnalysis) && member.Points.Length==0,"two-zone loading diagram uses the checked primary analysis");
         Check(member.Uniform.All(q=>Math.Abs(q.KnPerM-25.99125)<1e-7 || Math.Abs(q.KnPerM-52.288125)<1e-7),"primary plot has only Beam + Slab and Beam + X1 load intensities");
-        Capture(window.LoadingDiagram,1000,290,Preview(previewPath,"engineer-primary-zones"));window.Close();
+        MemberLoadingUiTests.ReportedPrimary(window);
+        Capture(window.LoadingDiagram,1000,290,Preview(previewPath,"engineer-primary-zones"));
+        window.LoadingDiagram.SelectAt(new Point(window.LoadingDiagram.Targets.First(t=>t.Kind==0 && t.Index==1).Bounds.X+2,window.LoadingDiagram.Targets.First(t=>t.Kind==0 && t.Index==1).Bounds.Y+2));
+        Capture(window.MemberView,1000,700,Preview(previewPath,"engineer-primary-calculation"));
+        window.SelectMember(layout.StockPlan.Pieces.Length,0,-1);Pump();window.UpdateLayout();
+        MemberLoadingUiTests.CheckWindow(window);
+        window.Close();
         Console.WriteLine("Reported primary zones WPF preview passed: 25.991 / 52.288 kN/m.");
     }
 }

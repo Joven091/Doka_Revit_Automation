@@ -119,12 +119,14 @@ internal static class CrossSupportTests
         var dedicatedCommon=Common();dedicatedCommon.MaximumConcreteEndOverhangMm=300;
         var dedicated=TransferNetworkOptimizer.Optimize(dedicatedCommon,Input(CrossBeamSupportMode.DedicatedTowers,-1400));
         Check(dedicated.CrossSupports[0].Towers!=null,"requested dedicated tower arrangement calculated");
+        Check(dedicated.Schedule.Contains("X1 · dedicated tower support") && dedicated.Beams.All(l=>l.Transfer.PrimaryLoadBasis.Contains("Bearing-derived") && l.Transfer.PrimaryLoadBasis.Contains("Dedicated crossing towers carry their own assigned loads")),"dedicated fallback explicitly reports the distinct main-primary load model");
         Check(dedicated.LegCount==dedicated.Beams.Sum(l=>l.LegCount)+dedicated.CrossSupports[0].Towers.LegCount,"dedicated legs included in ranking and totals");
         Check(dedicated.CrossSupports[0].Members.All(m=>m.Utilization<=1+1e-8 && m.Analysis.Reactions.All(r=>r>=-1e-7)),"dedicated single secondaries and primary pairs checked");
         Near(dedicated.CrossSupports[0].LoadKn,input.AreaLoad(150)*.4*3.9,"dedicated clear-bay concrete load conserved");
         var fallbackInput=Input(CrossBeamSupportMode.Automatic,-1400);
         var fallback=TransferNetworkOptimizer.Optimize(dedicatedCommon,fallbackInput);
         Check(fallback.CrossSupports[0].Towers!=null && fallback.CrossSupports[0].SharedFailure.Contains("negative filler"),"Automatic falls back to towers for negative gap");
+        Check(fallback.Schedule.Contains("X1 · dedicated tower support") && !fallback.Schedule.Contains("X1: dedicated cross-beam formwork"),"automatic fallback reports its actual selected support path");
         var capacityCommon=Common();capacityCommon.Exclude600Standalone=true;
         // The two checked shutter strips leave an exact 3500 mm central span.
         capacityCommon.StockLengthsMm=capacityCommon.StockLengthsMm.Concat(new[] {3500.0}).Distinct().ToArray();
