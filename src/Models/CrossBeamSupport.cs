@@ -724,22 +724,33 @@ namespace EngineeringDashboard
             }
             var ordered=placements.OrderBy(p=>p.Brace).ThenBy(p=>p.Symmetry).ThenBy(p=>Math.Abs(p.Offset)).ThenBy(p=>Math.Abs(p.Shift)).ToArray();
             CrossBeamSupportResult best=null;double bestBrace=double.PositiveInfinity,bestSymmetry=double.PositiveInfinity;string balancedFailure=null;
-            foreach(double spacing in spacings)
             foreach(var placement in ordered)
+            foreach(double spacing in spacings)
             {
                 common.Trace?.CheckCancellation();
-                if(best!=null && (placement.Brace>bestBrace || placement.Brace==bestBrace && placement.Symmetry>bestSymmetry+1e-7))continue;
+                // Placements are ordered by their exact geometric lower bound.
+                // A passing layout protects equal-score ties; only a strictly more
+                // balanced remaining placement can improve this bounded candidate.
+                // This also avoids repeating footprint rejections at every pitch.
+                if(best!=null && (placement.Brace>bestBrace || placement.Brace==bestBrace && placement.Symmetry>=bestSymmetry-1e-7))continue;
                 var result=ProjectedJunction(common,r,index,spacing,placement.Width,placement.Offset,placement.Shift,near,far,collisions,out string reason,placement.Bay,allowance,prepared);
-                if(result==null){if(reason!=null){failure=reason;if(balancedFailure==null)balancedFailure=reason;}continue;}
+                if(result==null)
+                {
+                    if(reason!=null){failure=reason;if(balancedFailure==null)balancedFailure=reason;}
+                    // These exact footprints do not depend on secondary spacing.
+                    if(reason!=null && reason.StartsWith("Physical overlap:",StringComparison.Ordinal))break;
+                    continue;
+                }
                 double symmetry=result.Towers.SymmetryErrorMm;
                 if(best!=null && placement.Brace==bestBrace && (symmetry>bestSymmetry+1e-7 || Math.Abs(symmetry-bestSymmetry)<=1e-7 && result.TimberMm>=best.TimberMm-1e-7))continue;
                 best=JunctionResult(r.Input.CrossingBeams[index],index,result,zones,shutters,near,far,span,placement.Offset,placement.Shift);bestBrace=placement.Brace;bestSymmetry=symmetry;
+                break; // Coarser passing pitch already uses the fewest rows at this placement.
             }
             if(best!=null && bestSymmetry>1e-7)best.SymmetryNotice="Unequal cantilevers retained after comparing more balanced permitted arrangements. "+(balancedFailure??"More balanced stock/support positions failed the available-length, clearance or member checks.");
             return best;
         }
         private static CrossBeamSupportResult JunctionResult(TransferCrossingBeamRow c,int index,CrossBeamSupportResult central,List<CrossBeamBearing> zones,FormworkSolid[] shutters,double near,double far,double span,double offset,double shift)
-            =>new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.DedicatedTowers,Towers=central.Towers,Members=central.Members,Solids=central.Solids.Concat(shutters).ToArray(),Bearings=central.Bearings.Concat(zones).ToArray(),LoadKn=central.LoadKn+zones.Sum(b=>b.ReactionKn),SlabEdgeLoadKn=central.SlabEdgeLoadKn*(span/(span-near-far)),SymmetryNotice=central.SymmetryNotice,TowerSpanOffsetMm=shift,PrimaryNearExtensionMm=central.PrimaryNearExtensionMm,PrimaryFarExtensionMm=central.PrimaryFarExtensionMm,NearShutterClearanceMm=central.NearShutterClearanceMm,FarShutterClearanceMm=central.FarShutterClearanceMm,JunctionNotice=$"Dedicated central span {span-near-far:0.###} mm; near end zone {near:0.###} mm, far end zone {far:0.###} mm carried by existing receiving H20s"+(shutters.Length==0 ? "." : " through the existing side shutters where soffits differ. Each shutter strip reacts at its midpoint outside the concrete face, using the selected local allowance; shutter/connection strength requires separate design.")+$" Every end-zone load is included in receiving H20, primary and individual leg stage checks. Tower centre offset {offset:0.###} mm along the main beam, leg offset {shift:0.###} mm along the crossing span; eccentric concrete loads are included. Crossing primary stock ends keep at least {central.NearShutterClearanceMm:0.###}/{central.FarShutterClearanceMm:0.###} mm near/far clearance from parallel concrete faces for side shutters. Complete independent tower footprints remain separate."};
+            =>new CrossBeamSupportResult {CrossingIndex=index,Input=c,Arrangement=CrossBeamSupportMode.DedicatedTowers,Towers=central.Towers,Members=central.Members,Solids=central.Solids.Concat(shutters).ToArray(),Bearings=central.Bearings.Concat(zones).ToArray(),LoadKn=central.LoadKn+zones.Sum(b=>b.ReactionKn),SlabEdgeLoadKn=central.SlabEdgeLoadKn*(span/(span-near-far)),SymmetryNotice=central.SymmetryNotice,TowerSpanOffsetMm=shift,PrimaryNearExtensionMm=central.PrimaryNearExtensionMm,PrimaryFarExtensionMm=central.PrimaryFarExtensionMm,NearShutterClearanceMm=central.NearShutterClearanceMm,FarShutterClearanceMm=central.FarShutterClearanceMm,JunctionNotice=$"Dedicated central span {span-near-far:0.###} mm; near end zone {near:0.###} mm, far end zone {far:0.###} mm carried by existing receiving H20s"+(shutters.Length==0 ? "." : " through the existing side shutters where soffits differ. Each shutter strip reacts at its midpoint outside the concrete face, using the selected local allowance; shutter/connection strength requires separate design.")+$" Every end-zone load is included in receiving H20, primary and individual leg checks. Tower centre offset {offset:0.###} mm along the main beam, leg offset {shift:0.###} mm along the crossing span; eccentric concrete loads are included. Crossing primary stock ends keep at least {central.NearShutterClearanceMm:0.###}/{central.FarShutterClearanceMm:0.###} mm near/far clearance from parallel concrete faces for side shutters. Complete independent tower footprints remain separate."};
         // Exact simply supported strip reactions, including signed cantilever-end influence.
         // Closing tributary rectangles alone conserve force but shift the physical load centroid.
         internal static double[] EndZoneWidths(double start,double end,double[] rows)
@@ -781,7 +792,7 @@ namespace EngineeringDashboard
                     if(support!=null)
                     {
                         sharedFailure=Clash(support.Solids,existing.Concat(concrete).Concat(accepted.SelectMany(a=>a.Solids)));
-                        if(sharedFailure==null && !Recheck(common,r,original,accepted.Concat(new[] {support}).ToArray()))sharedFailure=$"X{index+1}: combined receiving-secondary, primary or leg construction-stage checks fail.";
+                        if(sharedFailure==null && !Recheck(common,r,original,accepted.Concat(new[] {support}).ToArray()))sharedFailure=$"X{index+1}: combined receiving-secondary, primary or leg checks fail.";
                         if(sharedFailure==null)
                         {
                             accepted.Add(support);if(arrange(index+1))return true;accepted.RemoveAt(accepted.Count-1);
@@ -1055,7 +1066,7 @@ namespace EngineeringDashboard
             {
                 var members=l.Transfer.PrimaryCases.SelectMany(c=>new[] {c[i],c[i+runs]}).ToArray();
                 var d=members.OrderByDescending(m=>m.Analysis.DeflectionUtilization).First().Analysis;
-                return new TowerStockPiece {StartMm=p.StartMm,StockLengthMm=p.StockLengthMm,FirstSupport=p.FirstSupport,LastSupport=p.LastSupport,IsCustomLength=p.IsCustomLength,StrengthUtilization=members.Max(m=>m.StrengthUtilization),MomentKnM=members.Max(m=>m.Analysis.MomentKnM),ShearKn=members.Max(m=>m.Analysis.ShearKn),DeflectionMm=members.Max(m=>m.Analysis.DeflectionMm),DeflectionUtilization=d.DeflectionUtilization,GoverningDeflectionMm=d.DeflectionUtilization*d.GoverningLengthMm/l.DeflectionDenominator,GoverningDeflectionLimitMm=d.GoverningLengthMm/l.DeflectionDenominator,GoverningDeflectionRegion="Envelope of primary UDL construction stages"};
+                return new TowerStockPiece {StartMm=p.StartMm,StockLengthMm=p.StockLengthMm,FirstSupport=p.FirstSupport,LastSupport=p.LastSupport,IsCustomLength=p.IsCustomLength,StrengthUtilization=members.Max(m=>m.StrengthUtilization),MomentKnM=members.Max(m=>m.Analysis.MomentKnM),ShearKn=members.Max(m=>m.Analysis.ShearKn),DeflectionMm=members.Max(m=>m.Analysis.DeflectionMm),DeflectionUtilization=d.DeflectionUtilization,GoverningDeflectionMm=d.DeflectionUtilization*d.GoverningLengthMm/l.DeflectionDenominator,GoverningDeflectionLimitMm=d.GoverningLengthMm/l.DeflectionDenominator,GoverningDeflectionRegion=l.Transfer.FullLoadingOnly ? "Fully loaded primary UDL" : "Envelope of primary UDL construction stages"};
             }).ToArray();
             l.StockPlan=new TowerStockPlan {PrimaryMaterial=l.PrimaryMaterial,Pieces=pieces,Reactions=l.LeftReactions.Zip(l.RightReactions,Math.Max).ToArray()};
         }

@@ -373,7 +373,7 @@ namespace EngineeringDashboard
                 {
                     if (i > 0 && !Joined[i - 1]) group++;
                     lines.Add(string.Format(CultureInfo.CurrentCulture, "G{0} · x={1:0.###} mm · legs L/R={2:0.00}/{3:0.00} kN · utilization L/R={4:0.0}/{5:0.0}%", group, PositionsMm[i], LeftReactions[i], RightReactions[i], LeftReactions[i] / LegCapacityKn * 100, RightReactions[i] / LegCapacityKn * 100));
-                    if (IgnoreUplift) lines.Add($"  Minimum signed leg reactions L/R={MinimumLegReaction(true,i):0.######}/{MinimumLegReaction(false,i):0.######} kN across stages");
+                    if (IgnoreUplift) lines.Add($"  Minimum signed leg reactions L/R={MinimumLegReaction(true,i):0.######}/{MinimumLegReaction(false,i):0.######} kN"+(Transfer?.FullLoadingOnly==true ? " · fully loaded case" : " across stages"));
                     if (i < Joined.Length) lines.Add(string.Format(CultureInfo.CurrentCulture, "  {0}: {1:0.###} mm", Joined[i] ? (Rotated ? "Frame span" : "Cross bay") : "Clear gap between leg planes", PositionsMm[i + 1] - PositionsMm[i]));
                 }
                 lines.Add(string.Format(CultureInfo.CurrentCulture, "End overhangs: {0:0.###} / {1:0.###} mm", PositionsMm[0], LengthMm - PositionsMm.Last()));

@@ -8,12 +8,14 @@ internal static class UnifiedTransferTests
     static void Check(bool ok,string message){checks++;if(!ok)throw new Exception("Unified transfer: "+message);}
     static void Near(double a,double b,string message)=>Check(Math.Abs(a-b)<1e-6*Math.Max(1,Math.Abs(b)),message+$" ({a:R} / {b:R})");
     static TowerInput Common()=>new TowerInput {EngineerSearch=true,FullLoadingOnly=true,LengthMm=6900,LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=150,AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.SlabSupports,IgnoreUplift=true,DeflectionDenominator=270};
+    // The shared side uses a 2125 mm clear bay: catalogue 1800 mm H20
+    // leaves two valid bearing/end allowances. The exact automatic report stays unchanged.
     static TransferNetworkInput Network(bool mixed=false)=>new TransferNetworkInput
     {
         PlywoodProfileId=PlywoodCatalog.Default.Id,PlywoodDeflectionDenominator=350,PlywoodSheetLengthMm=2440,
         UpperSpacingMm=305,BeamSpacingsMm=mixed ? new[] {305.0,275,305} : new[] {350.0,275,350},SlabSpacingsMm=new[] {488.0,488},CrossingSpacingsMm=new[] {350.0,350},
         Beams=Enumerable.Range(0,3).Select(i=>new TransferBeamRow {WidthMm=i==1 || mixed ? 800 : 650,DepthMm=i==1 || mixed ? 1750 : 1150,BottomElevationMm=i==1 || mixed ? -1750 : -1150}).ToArray(),
-        Bays=new[] {new TransferBayRow {WidthMm=2272,ThicknessMm=300},new TransferBayRow {WidthMm=2252,ThicknessMm=300}},
+        Bays=new[] {new TransferBayRow {WidthMm=mixed ? 2125 : 2272,ThicknessMm=mixed ? 200 : 300},new TransferBayRow {WidthMm=2252,ThicknessMm=300}},
         CrossingBeams=Enumerable.Range(0,2).Select(i=>new TransferCrossingBeamRow {BayNumber=i+1,PositionMm=3450,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150,SupportMode=mixed ? i==0 ? CrossBeamSupportMode.ExistingSupportsOnly : CrossBeamSupportMode.DedicatedTowers : CrossBeamSupportMode.Automatic}).ToArray()
     };
     static void Verify(TransferNetworkResult result)
