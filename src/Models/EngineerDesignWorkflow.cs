@@ -152,9 +152,9 @@ namespace EngineeringDashboard
                 // Only identical transverse sources are reused. Longitudinal tower
                 // stations do not alter this statically determinate reaction split.
                 cacheKey=FormattableString.Invariant($"{receivingBeam}|{result.BeamCentresMm[receivingBeam]:R}|{pendingAssignments}|{common.LegCapacityKn:R}|{common.PrimaryMaterial}|")
-                    +string.Join(";",supports.Select(s=>FormattableString.Invariant($"{s.Input.BayNumber},{s.Input.PositionMm:R},{s.Input.WidthMm:R},{s.UsesSpreader}")+":"
+                    +string.Join(";",supports.Select(s=>FormattableString.Invariant($"{s.Input.BayNumber},{s.Input.PositionMm:R},{s.Input.WidthMm:R},{s.UsesSpreader},{s.SlabEdgeLoadKn:R}")+":"
                         +string.Join(",",s.Bearings.Where(b=>b.Beam==receivingBeam).Select(b=>FormattableString.Invariant($"{b.Xmm:R}/{b.Ymm:R}/{b.ReactionKn:R}/{b.Label}/{b.IsConcreteEndZone}/{b.IsShutterEndZone}/{b.EndZoneStartMm:R}/{b.EndZoneEndMm:R}/{t.LowerCases[0][b.Row].StartMm:R}")))))
-                    +"|"+string.Join(";",Network.CrossingBeams.Select(c=>FormattableString.Invariant($"{c.BayNumber}/{c.PositionMm:R}/{c.WidthMm:R}")));
+                    +"|"+string.Join(";",Network.CrossingBeams.Select(c=>FormattableString.Invariant($"{c.BayNumber}/{c.PositionMm:R}/{c.WidthMm:R}/{c.DepthMm:R}/{c.BottomElevationMm:R}/{c.SupportMode}")));
                 if(resolvedCache.TryGetValue(cacheKey,out var cached))return cached;
             }
             var plan=CopyBasis();plan.IsResolved=true;

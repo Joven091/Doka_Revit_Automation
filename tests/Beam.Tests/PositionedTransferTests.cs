@@ -91,5 +91,14 @@ internal static class PositionedTransferTests
         double transverse=bearings.Sum(b=>b.ReactionKn*b.Ymm),allocated=resolved.CrossingTransfers[0][0]*.65*(-762)+resolved.CrossingTransfers[0][1]*.65*762;
         Near(allocated,transverse,"crossing transfer preserves transverse first moment");
         Near(bearings.Sum(b=>b.ReactionKn*(b.Xmm-3350)),0,"centred full-width crossing retains longitudinal resultant");
+        // The same receiving end forces can accompany a different amount of slab
+        // ledger load carried by dedicated towers. That separate allocation input
+        // must invalidate reuse, even when this receiver's bearing list is identical.
+        support.UsesSpreader=false;
+        var withoutLedger=plan.Resolve(common,result,0,new[] {support});
+        support.SlabEdgeLoadKn=2;
+        var withLedger=plan.Resolve(common,result,0,new[] {support});
+        Near(withoutLedger.Forces.Sum()-withLedger.Forces.Sum(),1,"changed dedicated ledger allocation cannot reuse stale normal slab zones");
+        Check(ReferenceEquals(withLedger,plan.Resolve(common,result,0,new[] {support})),"identical complete transfer input can reuse the resolved allocation");
     }
 }
