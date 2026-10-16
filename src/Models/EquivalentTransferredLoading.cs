@@ -89,11 +89,9 @@ namespace EngineeringDashboard
                 SupportsMm=unit.SupportsMm,Uniform=uniform,Points=points,Analysis=analysis};
             view.Components=components.ToArray();view.PrimaryTransferKnM=primary;view.PrimarySelfWeightKnM=selfWeight;return view;
         }
-        // This is a representative design slice of the checked primary zones.
-        // Beam concrete is shared equally; assigned slab/crossing transfers act
-        // at the receiving primary bearings. Physical secondary loads and their
-        // response plots remain untouched. No scaling of an unrelated physical
-        // row is used to manufacture the primary reaction/spacing identity.
+        // Scale the positioned source model to one beam reference pitch.
+        // The two reactions follow those loads and reproduce the selected primary
+        // zones; actual secondary capacity/response analyses retain their real rows.
         private static EquivalentTransferredLoading PositionedSlice(TowerLayout layout,int row,int stage)
         {
             var t=layout.Transfer;var plan=t.PrimaryPlan;var actual=t.LowerCases[stage][row];

@@ -1039,7 +1039,7 @@ namespace EngineeringDashboard
                         if(increment==null){Reject(common,"Crossing resultant cannot be represented by a flat UDL inside its physical footprint.");return false;}
                         var uniform=direct ? resolvedPlan.Loads(original.StartMm,original.LengthMm,line,selfWeight:original.PrimarySelfWeightKnM) : baseline.Concat(increment).ToArray();
                         var m=EngineerPrimaryPlan.SameLoads(original.Uniform,uniform) ? StageCopy(original,name) : Analyze(original,new BeamPointLoad[0],uniform,common,name);primary[run+line*runs]=m;
-                        if(!Pass(m,common,name+$" · B{beam+1}/{m.Name} stock {m.LengthMm:0.###} mm · "+string.Join("; ",m.Uniform.Select(q=>$"{q.StartMm:0.###}–{q.EndMm:0.###} @ {q.KnPerM:0.#####}"))))return false;
+                        if(!Pass(m,common,name))return false;
                         common.Diagnostics?.Legs(m.Analysis.Reactions,common.LegCapacityKn,$"B{beam+1} cross stage legs",name);
                         if(m.Analysis.Reactions.Max()>common.LegCapacityKn+1e-8)return false;
                         if(conservative && mask==1 && !common.FullLoadingOnly)
