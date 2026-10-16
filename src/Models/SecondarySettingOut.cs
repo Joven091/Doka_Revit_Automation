@@ -55,6 +55,7 @@ namespace EngineeringDashboard
         internal static void CentreCrossingFrames(TowerInput common,TransferNetworkResult result,Action<string> rejected=null)
         {
             var check=common.CopyForSearch();check.Trace=null;check.Diagnostics=null;
+            var selected=(CrossBeamSupportResult[])result.CrossSupports.Clone();bool changed=false;
             for(int index=0;index<result.CrossSupports.Length;index++)
             {
                 common.Trace?.CheckUserCancellation();
@@ -107,12 +108,16 @@ namespace EngineeringDashboard
                 candidate.Solids=candidate.Solids.Concat(original.Solids.Where(s=>s.Member==null && !s.IsLeg && !s.IsTowerEnvelope)).ToArray();
                 candidate.Bearings=candidate.Bearings.Concat(original.Bearings.Where(b=>!b.IsDedicated)).ToArray();
                 candidate.LoadKn=original.LoadKn;candidate.SlabEdgeLoadKn=original.SlabEdgeLoadKn;candidate.SharedFailure=original.SharedFailure;
-                var others=result.CrossSupports.Where((s,i)=>i!=index).SelectMany(s=>s.Solids).ToArray();
-                if(!TryAdjustSecondaries(result,candidate.Solids,others,out var beams,true,rejected))continue;
                 candidate.MovementMm=DedicatedMovement(layout);
                 candidate.JunctionNotice="Frame centred across the cross beam. Existing slab-foot loads, end-zone transfers and main-primary UDLs are retained; local lower-secondary setting-out clears the tower legs.";
-                result.Beams=beams;result.CrossSupports=(CrossBeamSupportResult[])result.CrossSupports.Clone();result.CrossSupports[index]=candidate;
+                selected[index]=candidate;changed=true;
             }
+            if(!changed)return;
+            // Both ends of a receiving H20 can meet crossing legs. Coordinate all
+            // target frames together; an obsolete offset pose must not obstruct
+            // the same row needed by another crossing's centred pose.
+            if(!TryAdjustSecondaries(result,selected.SelectMany(s=>s.Solids).ToArray(),new FormworkSolid[0],out var beams,true,rejected))return;
+            result.Beams=beams;result.CrossSupports=selected;
         }
 
         private sealed class SettingOutRow
