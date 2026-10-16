@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -16,6 +17,9 @@ internal static class MemberLoadingUiTests
     static void Check(bool value,string message){checks++;if(!value)throw new Exception("Member loading UI: "+message);}
     static void Pump()=>Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
+    [DllImport("user32.dll")] static extern bool ScreenToClient(IntPtr hwnd,ref NativePoint point);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern IntPtr SendMessage(IntPtr hwnd,uint message,IntPtr wParam,IntPtr lParam);
+    [StructLayout(LayoutKind.Sequential)] struct NativePoint {internal int X,Y;}
     static Point Centre(Rect r)=>new Point(r.Left+r.Width/2,r.Top+r.Height/2);
     static IEnumerable<TextBlock> Text(DependencyObject root)
     {if(root is TextBlock t)yield return t;foreach(var c in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())foreach(var item in Text(c))yield return item;}
@@ -25,10 +29,16 @@ internal static class MemberLoadingUiTests
     {
         window.Activate();window.UpdateLayout();Pump();var plot=window.LoadingDiagram;
         var target=plot.Targets.Last(t=>t.Kind==kind && t.Index==index);var screen=plot.PointToScreen(Centre(target.Bounds));
-        Check(SetCursorPos((int)Math.Round(screen.X),(int)Math.Round(screen.Y)),"mouse can reach the displayed calculation target");Pump();
-        var click=new MouseButtonEventArgs(Mouse.PrimaryDevice,Environment.TickCount,MouseButton.Left){RoutedEvent=UIElement.MouseLeftButtonUpEvent};
-        plot.RaiseEvent(click);Pump();
-        Check(click.Handled && window.MemberView.IsDetailsOpen,"routed mouse release opens actual member details");
+        Check(SetCursorPos((int)Math.Round(screen.X),(int)Math.Round(screen.Y)),"mouse can reach the displayed calculation target");
+        var source=(HwndSource)PresentationSource.FromVisual(plot);var client=new NativePoint {X=(int)Math.Round(screen.X),Y=(int)Math.Round(screen.Y)};
+        Check(ScreenToClient(source.Handle,ref client),"mouse target maps to window client coordinates");
+        var packed=new IntPtr((client.Y<<16)|(client.X&0xffff));
+        // Deliver the normal native move/down/up sequence. A synthetic routed up
+        // immediately after SetCursorPos can use WPF's previous cached position.
+        SendMessage(source.Handle,0x0200,IntPtr.Zero,packed);Pump();
+        Check(target.Bounds.Contains(Mouse.GetPosition(plot)),"native mouse move reaches target "+kind+"/"+index+"; pointer "+Mouse.GetPosition(plot)+"; bounds "+target.Bounds);
+        SendMessage(source.Handle,0x0201,new IntPtr(1),packed);SendMessage(source.Handle,0x0202,IntPtr.Zero,packed);Pump();
+        Check(window.MemberView.IsDetailsOpen,"mouse release opens actual member details");
         Check(plot.SelectedKind==kind && plot.SelectedIndex==index,"mouse selected the requested target "+kind+"/"+index+"; actual "+plot.SelectedKind+"/"+plot.SelectedIndex+"; pointer "+Mouse.GetPosition(plot)+"; bounds "+target.Bounds+"; panel "+string.Join(" | ",window.MemberView.VisibleCalculation));
     }
     internal static void CheckWindow(TowerDiagramWindow window,bool nativeClick=false)
