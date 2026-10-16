@@ -124,7 +124,7 @@ namespace EngineeringDashboard
                 double transfer=target[line]*reference-beamForce/2;
                 if(Math.Abs(transfer)<=1e-10)continue;
                 int bay=plan==null ? -1 : line==0 ? plan.Beam-1 : plan.Beam;
-                var crossings=plan?.Network.CrossingBeams.Select((c,i)=>new {C=c,I=i}).Where(c=>(c.C.BayNumber==plan.Beam || c.C.BayNumber==plan.Beam+1) && x>=c.C.PositionMm-c.C.WidthMm/2-1e-7 && x<=c.C.PositionMm+c.C.WidthMm/2+1e-7).ToArray();
+                var crossings=plan?.Network.CrossingBeams.Select((c,i)=>new {C=c,I=i}).Where(c=>(c.C.BayNumber==plan.Beam || c.C.BayNumber==plan.Beam+1) && x>=c.C.PositionMm-c.C.WidthMm/2-1e-7 && x<c.C.PositionMm+c.C.WidthMm/2-1e-7).ToArray();
                 bool crossing=crossings!=null && crossings.Length>0;
                 double sourcePitch=crossing || plan==null ? pitch : t.SlabSpacing(line==0);
                 string name=crossing ? string.Join(" + ",crossings.Select(c=>"X"+(c.I+1)))+" transfer" : plan!=null && bay>=0 && bay<plan.Network.Bays.Length ? $"S{bay+1} slab transfer" : "End-strip transfer";

@@ -121,6 +121,7 @@ namespace EngineeringDashboard
                 result.Lines.Add($"Assigned {(at.Length>0 ? "crossing" : "slab")} transfer: {LoadValue.Format(q.KnPerM-member.PrimarySelfWeightKnM-own,5)} kN/m");
                 foreach(var c in at)result.Lines.Add($"X{c.I+1} footprint: {c.C.PositionMm-c.C.WidthMm/2:0.###}–{c.C.PositionMm+c.C.WidthMm/2:0.###} mm · full width {c.C.WidthMm:0.###} mm");
                 if(at.Length>0)result.Lines.Add("Dedicated tower loads are allocated separately and counted once.");
+                if(Math.Abs(member.PrimarySelfWeightKnM)>1e-10)result.Lines.Add($"Primary self-weight: {LoadValue.Format(member.PrimarySelfWeightKnM,5)} kN/m");
                 return result;
             }
             result.Lines.Add(Pressure(n,$"B{plan.Beam+1}",beam.DepthMm));
