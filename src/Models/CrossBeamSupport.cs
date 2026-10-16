@@ -1011,6 +1011,7 @@ namespace EngineeringDashboard
                         if(!lowerPassed)return false;
                     }
                     if(lowerOnly)continue;
+                    if(common.EngineerWorkflow && t.PrimaryPlan?.UseDesignZones==true && resolvedPlan==null)return false;
                     var primary=new TransferMember[runs*2];
                     for(int line=0;line<2;line++)for(int run=0;run<runs;run++)
                     {

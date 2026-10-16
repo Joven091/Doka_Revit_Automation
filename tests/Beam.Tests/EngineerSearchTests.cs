@@ -85,6 +85,7 @@ internal static class EngineerSearchTests
         var junction=network.WithSpacings();junction.CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3300,WidthMm=650,DepthMm=200,BottomElevationMm=-200,SupportMode=CrossBeamSupportMode.DedicatedTowers}};
         common.ReuseSearchWork=true;common.CrossLowerCases=null;
         bool original=CrossBeamSupportOptimizer.CheckJunctionReceiver(common,junction,0,result.Beams[0]);
+        Check(!original,"a primary plan from a different crossing network is rejected without throwing");
         Check(common.CrossLowerCases!=null && common.CrossLowerCases.Count>0,"crossing lower case is cached");
         Func<double[]> demands=()=>common.CrossLowerCases.Values.SelectMany(v=>v.Members.Where(m=>m!=null)).SelectMany(m=>new[] {m.Analysis.TotalLoadKn,m.Analysis.MomentKnM,m.Analysis.ShearKn,m.Analysis.DeflectionMm}.Concat(m.Analysis.Reactions)).ToArray();
         var checkedDemands=demands();
