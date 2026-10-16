@@ -80,7 +80,7 @@ namespace EngineeringDashboard
                 for(int i=0;i<contributions.Length;i++)
                 {
                     double value=contributions[i][index];if(Math.Abs(value)<=1e-10)continue;
-                    string source=i<Plot.CombinedUniform.Length ? Uniform(i).Name+$" ({Plot.CombinedUniform[i].StartMm:0.###}–{Plot.CombinedUniform[i].EndMm:0.###} mm)" : "Point load "+(i-Plot.CombinedUniform.Length+1);
+                    string source=i<Plot.CombinedUniform.Length ? Uniform(i).Name+$" ({Plot.CombinedUniform[i].StartMm:0.###}–{Plot.CombinedUniform[i].EndMm:0.###} mm)" : "Point load "+(i-Plot.CombinedUniform.Length+1)+$" ({Plot.PointLoads[i-Plot.CombinedUniform.Length].PositionMm:0.###} mm)";
                     Line($"{source}: {value:0.#####} kN");
                 }
                 Line($"Σ load contributions = {LastReactionContributions.Sum():0.#####} kN",true,Brushes.SeaGreen);
@@ -121,6 +121,7 @@ namespace EngineeringDashboard
                 result.Lines.Add($"Tributary width: {n.Bays[bay].WidthMm:0.###} ÷ 2 = {width*1000:0.###} mm");
                 result.Lines.Add($"{name}: {n.AreaLoad(depth):0.#####} × {width:0.#####} = {n.AreaLoad(depth)*width:0.#####} kN/m");
             }
+            if(crossing!=null)result.Lines.Add($"X{crossing.I+1} footprint: {crossing.C.PositionMm-crossing.C.WidthMm/2:0.###}–{crossing.C.PositionMm+crossing.C.WidthMm/2:0.###} mm · full width {crossing.C.WidthMm:0.###} mm");
             if(Math.Abs(member.PrimarySelfWeightKnM)>1e-10)result.Lines.Add($"Primary self-weight: {member.PrimarySelfWeightKnM:0.#####} kN/m");
             result.Lines.Add($"Beam position {member.StartMm+q.StartMm:0.###}–{member.StartMm+q.EndMm:0.###} mm");return result;
         }
