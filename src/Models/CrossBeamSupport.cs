@@ -271,9 +271,10 @@ namespace EngineeringDashboard
             var lengths=common.StockLengthsMm.Where(s=>s<=span+1e-7);
             if(common.AllowCustomBeamLengths)lengths=lengths.Concat(new[] {Math.Floor(span/25)*25}).Distinct();
             foreach(double stock in lengths.OrderBy(x=>x))
+            foreach(double edge in (common.EngineerWorkflow ? new[] {(near+span-far-stock)/2,(span-stock)/2} : new[] {(span-stock)/2}).Distinct())
             {
-                double edge=(span-stock)/2;
-                if(near-edge<150 || far-edge<150)continue;
+                double farEdge=span-edge-stock;
+                if(edge< -1e-7 || farEdge< -1e-7 || near-edge<150 || far-farEdge<150)continue;
                 var members=new List<TransferMember>();var bearings=new List<CrossBeamBearing>();var solids=new List<FormworkSolid>();bool valid=true;
                 var ledgerRows=LedgerRowLineLoads(r,index,positions);var ledgerBearings=new List<CrossBeamBearing>();var endBearings=new List<CrossBeamBearing>();
                 for(int k=0;k<positions.Length;k++)
@@ -299,16 +300,17 @@ namespace EngineeringDashboard
                             var extra=bearing.Copy();extra.Label="Slab edge ledger";extra.ReactionKn=ledgerForce;extra.FootprintStartMm=x-40;extra.FootprintEndMm=x+40;ledgerBearings.Add(extra);
                         }
                         bearings.Add(bearing);
-                        if(edge>1e-7)
+                        double endWidth=side==0 ? edge : farEdge;
+                        if(endWidth>1e-7)
                         {
-                            double start=face+(side==0 ? 0 : span-edge),end=start+edge;
+                            double start=face+(side==0 ? 0 : span-endWidth),end=start+endWidth;
                             var strip=new CrossBeamBearing {Beam=beam,Row=bearing.Row,Label="Crossing end strip",IsConcreteEndZone=true,IsShutterEndZone=true,
                                 EndZoneStartMm=start,EndZoneEndMm=end,EndZoneTributaryWidthMm=hi-lo,Xmm=x,Ymm=(start+end)/2,
                                 ReceivingTopMm=bearing.ReceivingTopMm,H20UndersideMm=c.BottomElevationMm,
-                                FootprintStartMm=lo,FootprintEndMm=hi,ReactionKn=r.Input.AreaLoad(c.DepthMm)*(hi-lo)*edge/1e6};
+                                FootprintStartMm=lo,FootprintEndMm=hi,ReactionKn=r.Input.AreaLoad(c.DepthMm)*(hi-lo)*endWidth/1e6};
                             endBearings.Add(strip);
                             if(Math.Abs(ledgerRows[k])>1e-10)
-                            {var extra=strip.Copy();extra.Label="Slab edge ledger";extra.ReactionKn=ledgerRows[k]*edge/1000;extra.FootprintStartMm=x-40;extra.FootprintEndMm=x+40;endBearings.Add(extra);}
+                            {var extra=strip.Copy();extra.Label="Slab edge ledger";extra.ReactionKn=ledgerRows[k]*endWidth/1000;extra.FootprintStartMm=x-40;extra.FootprintEndMm=x+40;endBearings.Add(extra);}
                         }
                         if(!spreader && bearing.FillerHeightMm>1e-7)solids.Add(new FormworkSolid {Name=$"X{index+1} filler B{beam+1}/T{rows[k]+1}",X0=x-40,X1=x+40,Y0=y-40,Y1=y+40,Z0=bearing.ReceivingTopMm,Z1=bearing.H20UndersideMm});
                     }
@@ -698,7 +700,7 @@ namespace EngineeringDashboard
                 double start=Math.Max(earliest,Math.Min(latest,(first+last-stock)/2));
                 double edge=Math.Max(0,Math.Max(start,span-start-stock));
                 if(edge>common.MaximumConcreteEndOverhangMm+1e-7 || 2*edge>=span)continue;
-                best=Math.Min(best,Math.Abs(first+last-2*start-stock));
+                best=Math.Min(best,Math.Abs(first+last-2*start-stock)+2*Math.Abs(shift));
             }
             return best;
         }
@@ -729,7 +731,7 @@ namespace EngineeringDashboard
                 if(best!=null && (placement.Brace>bestBrace || placement.Brace==bestBrace && placement.Symmetry>bestSymmetry+1e-7))continue;
                 var result=ProjectedJunction(common,r,index,spacing,placement.Width,placement.Offset,placement.Shift,near,far,collisions,out string reason,placement.Bay,allowance,prepared);
                 if(result==null){if(reason!=null){failure=reason;if(balancedFailure==null)balancedFailure=reason;}continue;}
-                double symmetry=result.Towers.CantileverImbalanceMm+result.Towers.SecondarySymmetryErrorMm;
+                double symmetry=result.Towers.SymmetryErrorMm;
                 if(best!=null && placement.Brace==bestBrace && (symmetry>bestSymmetry+1e-7 || Math.Abs(symmetry-bestSymmetry)<=1e-7 && result.TimberMm>=best.TimberMm-1e-7))continue;
                 best=JunctionResult(r.Input.CrossingBeams[index],index,result,zones,shutters,near,far,span,placement.Offset,placement.Shift);bestBrace=placement.Brace;bestSymmetry=symmetry;
             }
@@ -798,7 +800,7 @@ namespace EngineeringDashboard
                     if(detail!=null)towerFailure=(towerFailure??"")+ $" X{index+1} allowance near {allowance.Near:0} mm / far {allowance.Far:0} mm: "+detail;
                     if(support!=null)
                     {
-                        support=new CrossBeamSupportResult {CrossingIndex=support.CrossingIndex,Input=support.Input,Arrangement=support.Arrangement,Towers=support.Towers,Members=support.Members,SecondaryStationsMm=support.SecondaryStationsMm,Solids=support.Solids,Bearings=support.Bearings,LoadKn=support.LoadKn,SlabEdgeLoadKn=support.SlabEdgeLoadKn,SharedFailure=sharedFailure,JunctionNotice=support.JunctionNotice,TowerSpanOffsetMm=support.TowerSpanOffsetMm,PrimaryNearExtensionMm=support.PrimaryNearExtensionMm,PrimaryFarExtensionMm=support.PrimaryFarExtensionMm,NearShutterClearanceMm=support.NearShutterClearanceMm,FarShutterClearanceMm=support.FarShutterClearanceMm};
+                        support=new CrossBeamSupportResult {CrossingIndex=support.CrossingIndex,Input=support.Input,Arrangement=support.Arrangement,Towers=support.Towers,Members=support.Members,SecondaryStationsMm=support.SecondaryStationsMm,Solids=support.Solids,Bearings=support.Bearings,LoadKn=support.LoadKn,SlabEdgeLoadKn=support.SlabEdgeLoadKn,SymmetryNotice=support.SymmetryNotice,SharedFailure=sharedFailure,JunctionNotice=support.JunctionNotice,TowerSpanOffsetMm=support.TowerSpanOffsetMm,PrimaryNearExtensionMm=support.PrimaryNearExtensionMm,PrimaryFarExtensionMm=support.PrimaryFarExtensionMm,NearShutterClearanceMm=support.NearShutterClearanceMm,FarShutterClearanceMm=support.FarShutterClearanceMm};
                         accepted.Add(support);if(arrange(index+1))return true;accepted.RemoveAt(accepted.Count-1);
                         towerFailure=(towerFailure??"")+$" X{index+1}: dedicated towers with {allowance.Near:0}/{allowance.Far:0} mm allowances do not permit a complete passing cross-beam combination.";
                         break;
@@ -948,7 +950,7 @@ namespace EngineeringDashboard
             for(int beam=0;beam<r.Beams.Length;beam++)
             {
                 var l=r.Beams[beam];var t=originals[beam].Transfer;int runs=l.StockPlan.Pieces.Length;
-                var resolvedPlan=common.EngineerWorkflow && t.PrimaryPlan?.UseDesignZones==true ? t.PrimaryPlan.Resolve(common,r,beam,shared) : null;
+                var resolvedPlan=common.EngineerWorkflow && t.PrimaryPlan?.UseDesignZones==true ? t.PrimaryPlan.Resolve(common,r,beam,supports) : null;
                 var relevant=shared.Where(s=>s.Bearings.Any(b=>b.Beam==beam)).ToArray();
                 var columnLoads=new List<ColumnEndStripLoad[]>();var cases=new List<TransferMember[]>();var lowerCases=new List<TransferMember[]>();var names=new List<string>();var left=Enumerable.Repeat(double.NegativeInfinity,l.PositionsMm.Length).ToArray();var right=Enumerable.Repeat(double.NegativeInfinity,left.Length).ToArray();
                 var minLeft=Enumerable.Repeat(double.PositiveInfinity,left.Length).ToArray();var minRight=Enumerable.Repeat(double.PositiveInfinity,left.Length).ToArray();

@@ -75,6 +75,11 @@ namespace EngineeringDashboard
         {
             var plan=Create(common,Network,Beam,LeftSlab,RightSlab);plan.IsResolved=true;
             var t=result.Beams[receivingBeam].Transfer;
+            // A dedicated crossing's full bay load belongs to its own towers.
+            // Until the arrangement is known, only the assigned receiving end
+            // zones can be a necessary check on a parallel primary.
+            for(int i=0;i<Network.CrossingBeams.Length;i++)
+                if((Network.CrossingBeams[i].BayNumber==Beam || Network.CrossingBeams[i].BayNumber==Beam+1) && !Eligible(Network,Network.CrossingBeams[i]))plan.CrossingTransfers[i]=new double[2];
             foreach(var support in supports.Where(s=>s.Input.BayNumber==Beam || s.Input.BayNumber==Beam+1))
             {
                 if(support.UsesSpreader)continue;
