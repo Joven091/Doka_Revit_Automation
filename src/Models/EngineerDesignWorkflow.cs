@@ -71,7 +71,7 @@ namespace EngineeringDashboard
             return lines.Select(Merge).ToArray();
         }
         internal bool Applies(CrossBeamSupportResult[] supports)=>UseDesignZones;
-        internal EngineerPrimaryPlan Resolve(TowerInput common,TransferNetworkResult result,int receivingBeam,CrossBeamSupportResult[] supports)
+        internal EngineerPrimaryPlan Resolve(TowerInput common,TransferNetworkResult result,int receivingBeam,CrossBeamSupportResult[] supports,bool pendingAssignments=false)
         {
             // Build once after allocation; the provisional full-bay zones are not
             // used during resolution and need not be allocated on every check.
@@ -81,10 +81,16 @@ namespace EngineeringDashboard
             // Until the arrangement is known, only the assigned receiving end
             // zones can be a necessary check on a parallel primary.
             for(int i=0;i<Network.CrossingBeams.Length;i++)
-                if((Network.CrossingBeams[i].BayNumber==Beam || Network.CrossingBeams[i].BayNumber==Beam+1) && !Eligible(Network,Network.CrossingBeams[i]))plan.CrossingTransfers[i]=new double[2];
+                if((Network.CrossingBeams[i].BayNumber==Beam || Network.CrossingBeams[i].BayNumber==Beam+1) && (pendingAssignments || !Eligible(Network,Network.CrossingBeams[i])))plan.CrossingTransfers[i]=new double[2];
             foreach(var support in supports.Where(s=>s.Input.BayNumber==Beam || s.Input.BayNumber==Beam+1))
             {
-                if(support.UsesSpreader)continue;
+                // Prefix checks know only their assigned support paths. Restore
+                // full tributary sharing for a known spreader; leave unassigned
+                // crossings out of a partial primary check until their path is known.
+                int crossingIndex=Array.IndexOf(Network.CrossingBeams,support.Input);
+                if(crossingIndex<0)crossingIndex=Array.FindIndex(Network.CrossingBeams,c=>c.BayNumber==support.Input.BayNumber && Math.Abs(c.PositionMm-support.Input.PositionMm)<1e-7 && Math.Abs(c.WidthMm-support.Input.WidthMm)<1e-7);
+                if(crossingIndex<0)return null;
+                if(support.UsesSpreader){plan.CrossingTransfers.Remove(crossingIndex);continue;}
                 var force=new double[2];
                 foreach(var bearing in support.Bearings.Where(b=>b.Beam==receivingBeam))
                 {
@@ -93,11 +99,6 @@ namespace EngineeringDashboard
                     double right=bearing.ReactionKn*(position-lower.SupportsMm[0])/(lower.SupportsMm[1]-lower.SupportsMm[0]);
                     force[0]+=bearing.ReactionKn-right;force[1]+=right;
                 }
-                // Prefix network checks can renumber crossings. Resolve against the
-                // planning network's actual crossing object, not a temporary index.
-                int crossingIndex=Array.IndexOf(Network.CrossingBeams,support.Input);
-                if(crossingIndex<0)crossingIndex=Array.FindIndex(Network.CrossingBeams,c=>c.BayNumber==support.Input.BayNumber && Math.Abs(c.PositionMm-support.Input.PositionMm)<1e-7 && Math.Abs(c.WidthMm-support.Input.WidthMm)<1e-7);
-                if(crossingIndex<0)return null; // Changed/stale planning context cannot approve this arrangement.
                 plan.CrossingTransfers[crossingIndex]=force.Select(f=>f*1000/support.Input.WidthMm).ToArray();
                 int bay=support.Input.BayNumber-1;
                 if(plan.CarriesBay(bay) && support.SlabEdgeLoadKn>0)

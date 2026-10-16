@@ -782,7 +782,7 @@ namespace EngineeringDashboard
             arrange=index=>
             {
                 common.Trace?.CheckCancellation();
-                if(index==r.Input.CrossingBeams.Length)return Recheck(common,r,original,accepted.ToArray());
+                if(index==r.Input.CrossingBeams.Length)return Recheck(common,r,original,accepted.ToArray(),pendingAssignments:partial);
                 common.Trace?.Work("Cross-beam support arrangements");
                 var c=r.Input.CrossingBeams[index];if(c.SupportMode==CrossBeamSupportMode.LegacySlabRows)return arrange(index+1);
                 string sharedFailure=null,towerFailure=null;
@@ -792,7 +792,7 @@ namespace EngineeringDashboard
                     if(support!=null)
                     {
                         sharedFailure=Clash(support.Solids,existing.Concat(concrete).Concat(accepted.SelectMany(a=>a.Solids)));
-                        if(sharedFailure==null && !Recheck(common,r,original,accepted.Concat(new[] {support}).ToArray()))sharedFailure=$"X{index+1}: combined receiving-secondary, primary or leg checks fail.";
+                        if(sharedFailure==null && !Recheck(common,r,original,accepted.Concat(new[] {support}).ToArray(),lowerOnly:true))sharedFailure=$"X{index+1}: combined receiving-secondary checks fail.";
                         if(sharedFailure==null)
                         {
                             accepted.Add(support);if(arrange(index+1))return true;accepted.RemoveAt(accepted.Count-1);
@@ -821,7 +821,7 @@ namespace EngineeringDashboard
             };
             if(!arrange(0))return false;
             r.CrossSupports=accepted.ToArray();
-            if(!Recheck(common,r,original,r.CrossSupports))return false;
+            if(!Recheck(common,r,original,r.CrossSupports,pendingAssignments:partial))return false;
             // A prefix may include the next bay's slab loading on its final receiver.
             // Full-network conservation and movements are checked after the chain closes.
             if(partial)return true;
@@ -954,7 +954,7 @@ namespace EngineeringDashboard
             var local=new TransferNetworkResult {Input=new TransferNetworkInput {Beams=new[] {input}},Beams=new[] {layout},BeamCentresMm=new[] {0.0}};
             return Recheck(common,local,new[] {layout},supports.ToArray(),lowerOnly);
         }
-        private static bool Recheck(TowerInput common,TransferNetworkResult r,TowerLayout[] originals,CrossBeamSupportResult[] supports,bool lowerOnly=false)
+        private static bool Recheck(TowerInput common,TransferNetworkResult r,TowerLayout[] originals,CrossBeamSupportResult[] supports,bool lowerOnly=false,bool pendingAssignments=false)
         {
             var shared=supports.Where(s=>s.Bearings.Any(b=>b.Beam>=0)).ToArray();
             r.Beams=originals.Select(Copy).ToArray();
@@ -1015,7 +1015,7 @@ namespace EngineeringDashboard
                     {
                         // Lower-only screening must not allocate/rebuild primary zones.
                         // Resolve only after the physical receiving H20s have passed.
-                        resolvedPlan=t.PrimaryPlan.Resolve(common,r,beam,supports);
+                        resolvedPlan=t.PrimaryPlan.Resolve(common,r,beam,supports,pendingAssignments);
                         if(resolvedPlan==null)return false;
                     }
                     var primary=new TransferMember[runs*2];

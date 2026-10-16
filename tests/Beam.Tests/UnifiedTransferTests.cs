@@ -76,8 +76,25 @@ internal static class UnifiedTransferTests
             Check(!middle.CrossingTransfers.ContainsKey(0) && middle.CrossingTransfers.ContainsKey(1),"dedicated side does not disable the shared crossing model on the other side");
         }
         else Check(result.CrossSupports.All(c=>c.Towers!=null),"exact reported equal-soffit crossings take their dedicated fallback");
-        Verify(result);Symmetry();
+        Verify(result);Symmetry();PendingAssignments();
         Console.WriteLine($"Passed {checks} unified transfer acceptance checks.");
+    }
+    static void PendingAssignments()
+    {
+        var common=Common();var network=Network(true);
+        foreach(var crossing in network.CrossingBeams)crossing.SupportMode=CrossBeamSupportMode.Automatic;
+        var plan=EngineerPrimaryPlan.Create(common,network,1);
+        var result=new TransferNetworkResult {Beams=new[] {new TowerLayout {Transfer=new TransferredSlabResult()}},BeamCentresMm=new[] {0.0}};
+        var first=new CrossBeamSupportResult {Input=network.CrossingBeams[0],UsesSpreader=true};
+        var second=new CrossBeamSupportResult {Input=network.CrossingBeams[1],UsesSpreader=true};
+        var partial=plan.Resolve(common,result,0,new[] {first},pendingAssignments:true);
+        double x=network.CrossingBeams[0].PositionMm,own=network.AreaLoad(network.Beams[1].DepthMm)*network.Beams[1].WidthMm/2000;
+        Near(partial.ValueAt(x,0),plan.ValueAt(x,0),"assigned shared crossing retains its complete tributary load in a prefix");
+        Near(partial.ValueAt(x,1),own,"unassigned automatic crossing is not prematurely charged as full shared load");
+        var complete=plan.Resolve(common,result,0,new[] {first,second});
+        for(int line=0;line<2;line++)Near(complete.ValueAt(x,line),plan.ValueAt(x,line),"complete shared system restores every assigned crossing before final checks");
+        var planning=plan.Resolve(common,result,0,new[] {first});
+        Near(planning.ValueAt(x,1),plan.ValueAt(x,1),"local shared-receiver planning retains the known full-tributary design basis");
     }
     static void Symmetry()
     {
