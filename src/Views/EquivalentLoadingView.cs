@@ -24,7 +24,7 @@ namespace EngineeringDashboard
             this.model=model;Background=Brushes.White;
             for(int i=0;i<4;i++)RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
             ColumnDefinitions.Add(new ColumnDefinition());ColumnDefinitions.Add(new ColumnDefinition {Width=GridLength.Auto});
-            var header=new TextBlock {Text=$"Reference spacing {model.ReferenceSpacingMm:0.###} mm"+(model.IsDesignSlice ? " · transfer at primary bearings" : ""),FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,6),ToolTip=model.IsDesignSlice ? "Representative primary-transfer slice. Beam load is shared equally; assigned slab and crossing loads act at the receiving primary bearings. Actual physical secondary response is shown below." : "Loads converted from slab spacing to the beam reference spacing."};
+            var header=new TextBlock {Text=$"Reference spacing {model.ReferenceSpacingMm:0.###} mm"+(model.HasPositionedLoads ? " · physical load positions" : model.IsDesignSlice ? " · transfer at primary bearings" : ""),FontSize=12,Foreground=Brushes.DimGray,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,6),ToolTip=model.HasPositionedLoads ? "Each source is converted to the beam reference spacing at its physical transverse position. The calculated bearing reactions determine the primary UDL. Actual row loads remain in the member checks below." : model.IsDesignSlice ? "Representative primary-transfer slice. Beam load is shared equally; assigned slab and crossing loads act at the receiving primary bearings. Actual physical secondary response is shown below." : "Loads converted from slab spacing to the beam reference spacing."};
             SetColumnSpan(header,2);Children.Add(header);
             var cards=new StackPanel();cards.Children.Add(LoadCard);cards.Children.Add(ReactionCard);
             DetailsPanel=new Border {Width=290,Margin=new Thickness(12,0,0,0),VerticalAlignment=VerticalAlignment.Top,Visibility=Visibility.Collapsed,Child=cards};
@@ -54,10 +54,13 @@ namespace EngineeringDashboard
             {
                 var c=model.Components[component];string unit=c.IsUniform ? "kN/m" : "kN";
                 active.Line(c.Name,true,Brushes.Firebrick);
+                if(!string.IsNullOrEmpty(c.SourceCalculation))active.Line(c.SourceCalculation);
                 active.Line($"Source design load: {LoadValue.Format(c.SourceValue,5)} {unit}");
                 active.Line($"{c.SpacingLabel}: {c.NominalSpacingMm:0.###} mm");
                 active.Line($"Beam secondary spacing: {c.ReferenceSpacingMm:0.###} mm");
-                active.Line($"{LoadValue.Format(c.SourceValue,5)} × {c.ReferenceSpacingMm:0.###} / {c.NominalSpacingMm:0.###}");
+                if(model.HasPositionedLoads)active.Line($"Load position: {c.PositionMm:0.###} mm from H20 end");
+                if(Math.Abs(c.AllocationFactor-1)>1e-9)active.Line($"Remaining normal-zone slab allocation: {c.AllocationFactor*100:0.###}%");
+                active.Line($"{LoadValue.Format(c.SourceValue,5)} × {c.ReferenceSpacingMm:0.###} / {c.NominalSpacingMm:0.###}"+(Math.Abs(c.AllocationFactor-1)>1e-9 ? $" × {c.AllocationFactor:0.#####}" : ""));
                 active.Line($"Equivalent load = {LoadValue.Format(c.EquivalentValue,5)} {unit}",true,Brushes.Firebrick);
             }
             else

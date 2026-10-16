@@ -50,7 +50,7 @@ internal static class Program
    if(args.Contains("--preview"))return StandalonePreview.Run();
    WorkspacePresentationTests.Run();
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));
-   if(args.Contains("--actual-loading-ui")){MemberLoadingUiTests.Run();CrossSupportUiTests.PrimaryZones(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
+   if(args.Contains("--actual-loading-ui")){MemberLoadingUiTests.Run();CrossSupportUiTests.PrimaryZones(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--positioned-ui")){PositionedTransferUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    if(args.Contains("--drawing-ui")){D3WorkspaceUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));PresentationUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));DimensionLaneUiTests.Run();return 0;}
    window=new BeamCalculatorWindow();vm=new BeamCalculatorViewModel {ReplayConstructionStages=true};window.DataContext=vm;Render();
    var secondaryText=(TextBlock)window.FindName("SecondarySpacingText");

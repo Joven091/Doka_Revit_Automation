@@ -86,7 +86,7 @@ internal static class NetworkFallbackTests
         Console.WriteLine($"Passed {checks} network fallback checks.");
     }
 
-    private static void ReportedEngineerFallback()
+    internal static void ReportedEngineerFallback()
     {
         // Exact 2026-10-15 report: the copied coordinated search failed full
         // slab transfer, then a valid separate-formwork result crashed on apply.

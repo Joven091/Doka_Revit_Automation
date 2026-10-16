@@ -33,7 +33,7 @@ namespace EngineeringDashboard
         private readonly List<SectionAnnotation> sectionAnnotations=new List<SectionAnnotation>();
         private double sectionTop,sectionBottom;
         private sealed class SectionAnnotation
-        {internal string Value;internal double Anchor,Y,A,B;internal bool Above,Dimension;internal Brush Colour;}
+        {internal string Value;internal double Anchor,Y,A,B;internal bool Above,Dimension;internal Brush Colour;internal Point? Target;internal double? TextX;}
         internal readonly List<Tuple<int,double>> AcrossDimensions=new List<Tuple<int,double>>();
         internal readonly List<Rect> AnnotationBounds=new List<Rect>();
         public event Action<int,int,int> MemberSelected;
@@ -70,7 +70,7 @@ namespace EngineeringDashboard
             if(hit!=null){BeamOptionsRequested?.Invoke(hit.Item2);e.Handled=true;}
         }
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e) {base.OnMouseLeftButtonDown(e);if(SelectAt(e.GetPosition(this)))e.Handled=true;}
-        private double SectionTopPadding(double width)=>110+28*Math.Max(0,Math.Ceiling(result.Beams.Length*360/Math.Max(100,width-80))-2);
+        private double SectionTopPadding(double width)=>130+28*Math.Max(0,Math.Ceiling(result.Beams.Length*520/Math.Max(100,width-80))-2);
         protected override Size MeasureOverride(Size available)
         {
             double width=Math.Max(MinWidth,double.IsInfinity(available.Width) ? MinWidth : available.Width);
@@ -229,6 +229,8 @@ namespace EngineeringDashboard
         }
         private void SectionNote(string value,double anchor,double y,bool above)
             =>sectionAnnotations.Add(new SectionAnnotation {Value=value,Anchor=anchor,Y=y,Above=above,Colour=Steel});
+        private void SectionCallout(string value,Point target,double x,double y,bool above=false)
+            =>sectionAnnotations.Add(new SectionAnnotation {Value=value,Anchor=target.X,Y=y,Above=above,Colour=Brushes.DarkSlateGray,Target=target,TextX=x});
         private void SectionDimension(double a,double b,double y,string value,bool above,Brush colour=null)
             {if(!HideDimensions)sectionAnnotations.Add(new SectionAnnotation {Value=value,Anchor=(a+b)/2,A=a,B=b,Y=y-19,Above=above,Dimension=true,Colour=colour??Steel});}
         private void DrawSectionAnnotations(DrawingContext dc)
@@ -236,11 +238,24 @@ namespace EngineeringDashboard
             // Allocate annotation rows outside the entire detail, including crossing
             // supports. Labels no longer erase flanges, webs, bearing zones or leaders.
             var leaders=new List<DrawingGroup>();var labels=new List<DrawingGroup>();
-            foreach(var note in sectionAnnotations.OrderBy(n=>n.Above ? -n.Y : n.Y))
+            foreach(var note in sectionAnnotations.OrderBy(n=>n.Target.HasValue ? 1 : 0).ThenBy(n=>n.Above ? -n.Y : n.Y))
             {
                 var text=new FormattedText(note.Value,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),11,note.Colour,VisualTreeHelper.GetDpi(this).PixelsPerDip);
-                double x=Math.Max(5,Math.Min(ActualWidth-text.Width-5,note.Anchor-text.Width/2));
+                double x=Math.Max(5,Math.Min(ActualWidth-text.Width-5,note.TextX??(note.Anchor-text.Width/2)));
                 var box=new Rect(x-2,note.Y-1,text.Width+4,text.Height+2);
+                Func<Rect,bool> clear=r=>r.Left>=2 && r.Right<=ActualWidth-2 && r.Top>=2 && r.Bottom<=ActualHeight-2
+                    && !AnnotationBounds.Any(a=>a.IntersectsWith(r)) && !SectionGeometryBounds.Any(g=>g.IntersectsWith(r));
+                if(note.Target.HasValue && !clear(box))
+                {
+                    var candidates=new List<Rect>();
+                    foreach(double dy in Enumerable.Range(0,9).SelectMany(i=>i==0 ? new[] {0.0} : new[] {-24.0*i,24.0*i}))
+                    foreach(double dx in new[] {0.0,-text.Width-12,text.Width+12})
+                    {
+                        var candidate=new Rect(Math.Max(2,Math.Min(ActualWidth-text.Width-6,box.X+dx)),box.Y+dy,box.Width,box.Height);
+                        if(clear(candidate))candidates.Add(candidate);
+                    }
+                    if(candidates.Count>0)box=candidates.OrderBy(r=>Math.Abs(r.Top-box.Top)+.5*Math.Abs(r.Left-box.Left)).First();
+                }
                 while(AnnotationBounds.Any(r=>r.IntersectsWith(box)) || SectionGeometryBounds.Any(r=>r.IntersectsWith(box)))
                     box.Offset(0,note.Above ? -28 : 28);
                 // Exceptional out-of-range annotations stay off the detail.
@@ -257,9 +272,17 @@ namespace EngineeringDashboard
                     }
                     else
                     {
-                        double detailEdge=note.Above ? sectionTop-4 : sectionBottom+4;
-                        overlay.DrawLine(pen,new Point(note.Anchor,detailEdge),new Point(note.Anchor,rowY));
-                        overlay.DrawLine(pen,new Point(note.Anchor,rowY),new Point(box.Left+box.Width/2,rowY));
+                        if(note.Target.HasValue)
+                        {
+                            var target=note.Target.Value;var edge=new Point(Math.Max(box.Left,Math.Min(box.Right,target.X)),target.Y<box.Top ? box.Top : box.Bottom);
+                            overlay.DrawLine(pen,target,edge);overlay.DrawEllipse(note.Colour,null,target,2,2);
+                        }
+                        else
+                        {
+                            double detailEdge=note.Above ? sectionTop-4 : sectionBottom+4;
+                            overlay.DrawLine(pen,new Point(note.Anchor,detailEdge),new Point(note.Anchor,rowY));
+                            overlay.DrawLine(pen,new Point(note.Anchor,rowY),new Point(box.Left+box.Width/2,rowY));
+                        }
                     }
                 }
                 leaders.Add(drawing);
@@ -293,26 +316,32 @@ namespace EngineeringDashboard
             dc.DrawLine(pen,new Point(left,rail),new Point(right,rail));dc.DrawLine(pen,new Point(left,bottom-100*scale),new Point(right,bottom-100*scale));
             dc.DrawLine(pen,new Point(left,bottom-100*scale),new Point(right,rail));
             if(rotated)dc.DrawLine(pen,new Point(left,rail),new Point(right,bottom-100*scale));
+            // Reserve legs and bracing, leaving the clear space immediately below
+            // the primary available for a short labelled leader.
+            SectionGeometryBounds.Add(new Rect(Math.Min(left,right)-3,rail-2,Math.Abs(right-left)+6,bottom-rail+4));
+            foreach(double x in new[] {left,right})SectionGeometryBounds.Add(new Rect(x-3,head,6,bottom-head));
             DrawnSectionSupportCount++;
         }
         private void Section(DrawingContext dc,double y0)
         {
             double cut=ActualSectionPositionMm;
-            Label(dc,$"Section A–A · x = {cut:0.###} mm from beam start",30,y0-22);
+            Label(dc,$"Section A–A · physical arrangement · x = {cut:0.###} mm from beam start",30,y0-22);
             SectionExtents(out var min,out var max,out var highest,out var lowest);DrawnSectionSupportCount=0;
             double scale=(ActualWidth-80)/Math.Max(1,max-min),depthScale=scale;SectionHorizontalScale=scale;Func<double,double> xx=x=>40+(x-min)*scale;double top=y0+SectionTopPadding(ActualWidth);sectionTop=top;sectionBottom=top+(highest-lowest+750)*scale;
-            SectionGeometryBounds.Add(new Rect(0,sectionTop,ActualWidth,sectionBottom-sectionTop));
             for(int beam=0;beam<result.Beams.Length;beam++)
             {
                 var b=result.Beams[beam];var input=result.Input.Beams[beam];var t=b.Transfer;double centre=result.BeamCentresMm[beam],bottom=top+(highest-input.BottomElevationMm)*depthScale,beamTop=top+(highest-input.BottomElevationMm-input.DepthMm)*depthScale;
-                dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(xx(centre-input.WidthMm/2),beamTop,input.WidthMm*scale,bottom-beamTop));
+                var concreteRect=new Rect(xx(centre-input.WidthMm/2),beamTop,input.WidthMm*scale,bottom-beamTop);
+                dc.DrawRectangle(Concrete,new Pen(Steel,1),concreteRect);SectionGeometryBounds.Add(concreteRect);
                 int physical=IntersectingRow(Enumerable.Range(0,t.PhysicalRowCount).Select(t.PhysicalRowPosition).ToArray(),cut);
                 int row=physical<0 ? -1 : t.PhysicalRowDesignIndex(physical),encoded=b.StockPlan.Pieces.Length+row;
                 double start=xx(centre+t.LowerStockStartMm),end=xx(centre+t.LowerStockStartMm+t.LowerStockLengthMm);
                 if(row>=0)
                 {
                     var lowerRect=new Rect(start,bottom,end-start,200*depthScale);
-                    H20Drawing.Longitudinal(dc,lowerRect,beam==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;
+                    H20Drawing.Longitudinal(dc,lowerRect,beam==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;SectionGeometryBounds.Add(lowerRect);
+                    bool outsideRight=beam==result.Beams.Length-1;
+                    SectionCallout("Beam secondary H20",new Point(outsideRight ? end-Math.Min(100,lowerRect.Width/4) : start+Math.Min(140,lowerRect.Width/4),bottom+4),outsideRight ? end-145 : start+5,bottom-24,true);
                     MemberTargets.Add(Tuple.Create(lowerRect,beam,encoded,0));
                     SectionRows.Add(Tuple.Create(beam,row,t.PhysicalRowPosition(physical)));
                     SectionNote($"B{beam+1} · D {input.DepthMm:0.###} · T{row+1}",xx(centre),top-26,true);
@@ -323,7 +352,9 @@ namespace EngineeringDashboard
                 {
                     double station=b.PositionsMm.OrderBy(x=>Math.Abs(x-cut)).First();bool projected=Math.Abs(station-cut)>40+1e-7;
                     DrawSectionSupport(dc,xx(centre+b.TransverseOffsetMm-b.WidthMm/2),xx(centre+b.TransverseOffsetMm+b.WidthMm/2),bottom+(200+b.Primary.DepthMm)*scale,scale,b.Rotated,projected);
-                    SectionNote($"B{beam+1} · D3 {(b.Rotated ? "cross braces" : "frame")}"+(projected ? $" · supports projected x {station:0.###}" : " · at cut"),xx(centre),sectionBottom+85,false);
+                    double leg=xx(centre+b.TransverseOffsetMm+(beam==result.Beams.Length-1 ? 1 : -1)*b.WidthMm/2),head=bottom+(200+b.Primary.DepthMm)*scale;
+                    SectionCallout($"D3 support · {(b.Rotated ? "cross braces" : "frame")}",new Point(leg,head+250*scale),beam==result.Beams.Length-1 ? leg+14 : leg-135,head+235*scale);
+                    SectionNote($"B{beam+1} · "+(projected ? $"supports projected x {station:0.###}" : "supports at cut"),xx(centre),sectionBottom+85,false);
                 }
                 int primaryRun=Array.FindIndex(b.StockPlan.Pieces,p=>cut>=p.StartMm-1e-7 && cut<=p.EndMm+1e-7);
                 if(primaryRun<0)continue;
@@ -336,7 +367,9 @@ namespace EngineeringDashboard
                         bool selected=beam==selectedBeam && selectedRun==primaryRun && selectedLine==line;
                         if(b.Primary.IsWS10) {PrimaryDrawing.EndSection(dc,primaryRect,selected);DrawnWS10ProfileCount++;}
                         else {H20Drawing.EndSection(dc,primaryRect,selected);DrawnH20ProfileCount++;}
-                        DrawnPrimarySectionCount++;
+                        DrawnPrimarySectionCount++;SectionGeometryBounds.Add(primaryRect);
+                        if(pair==(b.Primary.IsWS10 ? 0 : 1) && support==b.TransverseOffsetMm+b.WidthMm/2)
+                            SectionCallout(b.Primary.IsWS10 ? "WS10 primary" : "Double primary H20",new Point(primaryRect.Left+primaryRect.Width/2,primaryRect.Bottom-2),xx(centre)-45,primaryRect.Bottom+4);
                         if(primaryRun>=0)MemberTargets.Add(Tuple.Create(primaryRect,beam,primaryRun,line));
                     }
                 }
@@ -353,7 +386,7 @@ namespace EngineeringDashboard
                 {
                     double faceX=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2;
                     var separateRect=new Rect(xx(faceX),slabTop,slab.WidthMm*scale,slab.ThicknessMm*depthScale);
-                    dc.DrawRectangle(Brushes.Moccasin,new Pen(Brushes.Goldenrod,.6),separateRect);
+                    dc.DrawRectangle(Brushes.Moccasin,new Pen(Brushes.Goldenrod,.6),separateRect);SectionGeometryBounds.Add(separateRect);
                     SeparateBayTargets.Add(Tuple.Create(separateRect,bay));
                     double midpoint=faceX+slab.WidthMm/2;
                     SectionNote($"S{bay+1}: separate formwork · not calculated",xx(midpoint),top-85,true);
@@ -361,20 +394,25 @@ namespace EngineeringDashboard
                 }
                 double face=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2,other=face+slab.WidthMm;
                 double a=face+plan.EdgeMm,b=a+plan.StockLengthMm,near=face+plan.NearFootMm,far=other-plan.FarFootMm,soffit=top+(highest-Math.Max(result.Input.Beams[bay].BottomElevationMm+result.Input.Beams[bay].DepthMm,result.Input.Beams[bay+1].BottomElevationMm+result.Input.Beams[bay+1].DepthMm)+slab.ThicknessMm)*depthScale;
-                dc.DrawRectangle(Brushes.LightSteelBlue,null,new Rect(xx(face),slabTop,slab.WidthMm*scale,slab.ThicknessMm*depthScale));
+                var slabRect=new Rect(xx(face),slabTop,slab.WidthMm*scale,slab.ThicknessMm*depthScale);
+                dc.DrawRectangle(Brushes.LightSteelBlue,null,slabRect);SectionGeometryBounds.Add(slabRect);
+                SectionCallout("Concrete slab",new Point(slabRect.Left+slabRect.Width/2,slabRect.Top+3),slabRect.Left+slabRect.Width/2-35,slabTop-25,true);
                 var receiving=result.Beams[bay].Transfer;
                 int row=Array.FindIndex(receiving.RowsMm,x=>Math.Abs(x-cut)<=40+1e-7 && receiving.RightUpperScales[Array.IndexOf(receiving.RowsMm,x)]>0);
                 if(row<0 || result.SlabRowCount(bay)==0)continue;
                 SectionNote($"S{bay+1} · T{row+1} · x {receiving.RowsMm[row]:0.###} mm",xx((a+b)/2),top-105,true);
                 int encoded=result.Beams[bay].StockPlan.Pieces.Length+result.Beams[bay].Transfer.RowsMm.Length+row*2+1;
                 var upperRect=new Rect(xx(a),soffit,plan.StockLengthMm*scale,200*depthScale);
-                H20Drawing.Longitudinal(dc,upperRect,bay==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;
+                H20Drawing.Longitudinal(dc,upperRect,bay==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;SectionGeometryBounds.Add(upperRect);
+                SectionCallout("Slab H20",new Point(upperRect.Left+upperRect.Width*.7,upperRect.Bottom-2),upperRect.Left+upperRect.Width/2,upperRect.Bottom+16);
                 MemberTargets.Add(Tuple.Create(upperRect,bay,encoded,0));
                 for(int side=0;side<2;side++)
                 {
                     int beam=bay+side;double bottom=top+(highest-result.Input.Beams[beam].BottomElevationMm)*depthScale,x=side==0 ? near : far;
                     dc.DrawLine(new Pen(Brushes.DarkRed,2),new Point(xx(x),soffit+200*depthScale),new Point(xx(x),bottom));Arrow(dc,xx(x),bottom,Brushes.DarkRed);
+                    SectionGeometryBounds.Add(new Rect(xx(x)-4,soffit+200*depthScale,8,Math.Max(0,bottom-soffit-200*depthScale)));
                     double shutter=side==0 ? face+100 : other-100;dc.DrawLine(new Pen(Brushes.SteelBlue,2),new Point(xx(shutter),soffit),new Point(xx(shutter),bottom));Arrow(dc,xx(shutter),bottom,Brushes.SteelBlue);
+                    SectionGeometryBounds.Add(new Rect(xx(shutter)-4,soffit,8,Math.Max(0,bottom-soffit)));
                     if(ShowAllDimensions || selectedBeam==beam)
                     {
                         SectionDimension(xx(side==0 ? face : far),xx(side==0 ? near : other),sectionBottom+54,$"Foot {(side==0 ? plan.NearFootMm : plan.FarFootMm):0}",false);
@@ -383,18 +421,23 @@ namespace EngineeringDashboard
                 SectionDimension(xx(a),xx(b),top-85,$"S{bay+1} H20 {plan.StockLengthMm:0}{(plan.IsCustomLength ? " custom" : "")}",true);
             }
             DrawCrossSection(dc,xx,z=>top+(highest-z)*depthScale);
+            SectionNote("Arrows show physical load-transfer positions.",ActualWidth/2,sectionBottom+185,false);
         }
         private void DrawCrossSection(DrawingContext dc,Func<double,double> xx,Func<double,double> zz)
         {
             foreach(var support in result.CrossSupports.Where(c=>c.Solids.Any(s=>!s.IsTowerEnvelope && ActualSectionPositionMm>=s.X0-1e-7 && ActualSectionPositionMm<=s.X1+1e-7) || ActualSectionPositionMm>=c.Input.PositionMm-c.Input.WidthMm/2-1e-7 && ActualSectionPositionMm<=c.Input.PositionMm+c.Input.WidthMm/2+1e-7))
             {
             int bay=support.Input.BayNumber-1;double face=result.BeamCentresMm[bay]+result.Input.Beams[bay].WidthMm/2;
-            if(Math.Abs(ActualSectionPositionMm-support.Input.PositionMm)<=support.Input.WidthMm/2+1e-7)dc.DrawRectangle(Concrete,new Pen(Steel,1),new Rect(new Point(xx(face),zz(support.Input.BottomElevationMm+support.Input.DepthMm)),new Point(xx(face+result.Input.Bays[bay].WidthMm),zz(support.Input.BottomElevationMm))));
+            if(Math.Abs(ActualSectionPositionMm-support.Input.PositionMm)<=support.Input.WidthMm/2+1e-7)
+            {
+                var concrete=new Rect(new Point(xx(face),zz(support.Input.BottomElevationMm+support.Input.DepthMm)),new Point(xx(face+result.Input.Bays[bay].WidthMm),zz(support.Input.BottomElevationMm)));
+                dc.DrawRectangle(Concrete,new Pen(Steel,1),concrete);SectionGeometryBounds.Add(concrete);
+            }
             SectionNote($"X{support.CrossingIndex+1} · x {support.Input.PositionMm:0.###} · bottom {support.Input.BottomElevationMm:0.###} mm",xx(face+result.Input.Bays[bay].WidthMm/2),sectionBottom+100,false);
             foreach(var solid in support.Solids.Where(s=>!s.IsTowerEnvelope && (s.Member!=null || s.IsLeg || s.IsSideShutter) && ActualSectionPositionMm>=s.X0-1e-7 && ActualSectionPositionMm<=s.X1+1e-7))
             {
                 if(solid.IsLeg) {dc.DrawLine(new Pen(Steel,2),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)),new Point(xx((solid.Y0+solid.Y1)/2),zz(solid.Z1)+35));continue;}
-                var rect=new Rect(new Point(xx(solid.Y0),zz(solid.Z1)),new Point(xx(solid.Y1),zz(solid.Z0)));int member=Array.IndexOf(support.Members,solid.Member);
+                var rect=new Rect(new Point(xx(solid.Y0),zz(solid.Z1)),new Point(xx(solid.Y1),zz(solid.Z0)));SectionGeometryBounds.Add(rect);int member=Array.IndexOf(support.Members,solid.Member);
                 bool selected=selectedBeam==-support.CrossingIndex-1 && selectedRun==member;
                 if(solid.Member==null)dc.DrawRectangle(solid.IsSideShutter ? Brushes.LightSteelBlue : Brushes.SandyBrown,new Pen(solid.IsSideShutter ? Brushes.SteelBlue : Brushes.SaddleBrown,1),rect);
                 else

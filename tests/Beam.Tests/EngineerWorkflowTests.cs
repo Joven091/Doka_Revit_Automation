@@ -94,13 +94,24 @@ internal static class EngineerWorkflowTests
             for(int line=0;line<2;line++)for(int run=0;run<runs;run++)
             {
                 var m=layout.Transfer.PrimaryCases.Last()[run+line*runs];
-                bool inner=beam==0 ? line==1 : line==0;
                 var cuts=new[] {m.StartMm,m.StartMm+m.LengthMm,3025.0,3675}.Where(x=>x>=m.StartMm && x<=m.StartMm+m.LengthMm).Distinct().OrderBy(x=>x).ToArray();
                 Check(m.Points.Length==0,"primary uses UDLs only");
                 for(int j=1;j<cuts.Length;j++)
                 {
-                    double x=(cuts[j-1]+cuts[j])/2,q=18.66+(inner ? (x>=3025 && x<=3675 ? 33.628125 : 7.33125) : 0);
-                    Near(m.Uniform.Where(u=>x-m.StartMm>=u.StartMm && x-m.StartMm<=u.EndMm).Sum(u=>u.KnPerM),q,"actual selected primary intensity matches the concrete tributary zone");
+                    double x=(cuts[j-1]+cuts[j])/2;
+                    var units=layout.Transfer.UnitLowerCases;double q=units.Last().Analysis.Reactions[line];
+                    if(x>=3025 && x<=3675)
+                    {
+                        q=units[0].Analysis.Reactions[line];
+                        foreach(var bearing in result.CrossSupports.Single().Bearings.Where(b=>b.Beam==beam && b.Label!="Slab edge ledger"))
+                        {
+                            var lower=layout.Transfer.LowerCases[0][bearing.Row];
+                            double y=(bearing.IsConcreteEndZone && !bearing.IsShutterEndZone ? (bearing.EndZoneStartMm+bearing.EndZoneEndMm)/2 : bearing.Ymm)-result.BeamCentresMm[beam]-lower.StartMm;
+                            double right=bearing.ReactionKn*(y-lower.SupportsMm[0])/(lower.SupportsMm[1]-lower.SupportsMm[0]);
+                            q+=(line==0 ? bearing.ReactionKn-right : right)/.65;
+                        }
+                    }
+                    Near(m.Uniform.Where(u=>x-m.StartMm>=u.StartMm && x-m.StartMm<=u.EndMm).Sum(u=>u.KnPerM),q,"selected primary intensity follows positioned secondary reactions");
                 }
                 Check(m.Uniform.All(u=>Math.Abs(u.StartMm)<1e-7 || Math.Abs(u.StartMm+m.StartMm-3025)<1e-7 || Math.Abs(u.StartMm+m.StartMm-3675)<1e-7),"no sheet-joint/ledger/flange steps on the primary");
                 var manual=LoadedBeamAnalysis.AnalyzeSigned(m.LengthMm,m.SupportsMm,m.Uniform,new BeamPointLoad[0],TowerOptimizer.PairEI,270);
@@ -121,7 +132,7 @@ internal static class EngineerWorkflowTests
         double firstMoment=result.Beams.Sum(b=>b.Transfer.PrimaryCases.Last().Sum(m=>m.Uniform.Sum(q=>q.KnPerM*(q.EndMm-q.StartMm)/1000*(m.StartMm+(q.StartMm+q.EndMm)/2)/1000)))
             +result.Beams.Sum(b=>b.Transfer.ColumnSupportLoads.SelectMany(c=>c).Sum(c=>c.LeftLineMomentKnM+c.RightLineMomentKnM));
         Near(firstMoment,(2*37.32+6.9*2.125)*6.1*6.1/2+(31.65-6.9)*2.125*.65*3.35,"primary and end-support loads preserve the concrete longitudinal first moment");
-        Console.WriteLine("Reported primary zones passed: 25.99125 / 52.288125 kN/m; complete 6100 mm network.");
+        Console.WriteLine("Reported primary zones passed: positioned reaction split and full crossing width; complete 6100 mm network.");
         Console.WriteLine(result.LayoutDiagnostics);
     }
 }

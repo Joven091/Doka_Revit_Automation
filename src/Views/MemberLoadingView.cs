@@ -112,6 +112,21 @@ namespace EngineeringDashboard
             var crossing=n.CrossingBeams.Select((c,i)=>new {C=c,I=i}).FirstOrDefault(x=>x.C.BayNumber==bay+1 && position>=x.C.PositionMm-x.C.WidthMm/2 && position<=x.C.PositionMm+x.C.WidthMm/2);
             bool slab=bay>=0 && bay<n.Bays.Length && plan.CarriesBay(bay);
             var result=new LoadCalculation {Name=crossing!=null ? $"Beam + X{crossing.I+1}" : slab ? "Beam + Slab" : "Beam"};
+            if(plan.HasPositionedLoads)
+            {
+                var at=n.CrossingBeams.Select((c,i)=>new {C=c,I=i}).Where(c=>(c.C.BayNumber==plan.Beam || c.C.BayNumber==plan.Beam+1) && position>=c.C.PositionMm-c.C.WidthMm/2 && position<c.C.PositionMm+c.C.WidthMm/2).ToArray();
+                result.Name=at.Length>0 ? "Beam + "+string.Join(" + ",at.Select(c=>"X"+(c.I+1))) : plan.SlabLoads.Count>0 ? "Beam + Slab" : "Beam";
+                double pitch=plan.ReferenceSpacingMm/1000;
+                double reaction=EngineerPrimaryPlan.Reactions(plan.SecondaryBasis,plan.LoadsAt(position))[line]*pitch;
+                result.Lines.Add($"Positioned beam-secondary reaction: {LoadValue.Format(reaction,5)} kN");
+                result.Lines.Add($"Beam secondary spacing: {plan.ReferenceSpacingMm:0.###} mm ({pitch:0.###} m)");
+                result.Lines.Add($"UDL = {LoadValue.Format(reaction,5)} / {pitch:0.###} = {LoadValue.Format(reaction/pitch,5)} kN/m");
+                foreach(var c in at)result.Lines.Add($"X{c.I+1} footprint: {c.C.PositionMm-c.C.WidthMm/2:0.###}–{c.C.PositionMm+c.C.WidthMm/2:0.###} mm · full width {c.C.WidthMm:0.###} mm");
+                foreach(var c in at)if(plan.CrossingResultantOffsetsMm.TryGetValue(c.I,out var offsets) && Math.Abs(offsets[line])>.001)
+                    result.Lines.Add($"Physical transfer resultant offset: {offsets[line]:0.###} mm; full-width UDL design zone.");
+                if(Math.Abs(member.PrimarySelfWeightKnM)>1e-10)result.Lines.Add($"Primary self-weight: {LoadValue.Format(member.PrimarySelfWeightKnM,5)} kN/m");
+                return result;
+            }
             if(plan.IsResolved && plan.CrossingTransfers.Count>0)
             {
                 double own=n.AreaLoad(beam.DepthMm)*beam.WidthMm/2000;
