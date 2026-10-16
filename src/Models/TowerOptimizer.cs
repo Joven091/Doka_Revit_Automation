@@ -218,6 +218,7 @@ namespace EngineeringDashboard
         internal bool FullLoadingOnly,DeferCrossingChecks;
         // Production uses the engineer search; old numerical fixtures can replay stock-first enumeration.
         internal bool EngineerSearch;
+        internal bool ReplayTributaryPrimaryAllocation;
         internal bool EngineerWorkflow=>EngineerSearch && FullLoadingOnly;
         internal EngineerPrimaryPlan EngineerPlan;
         internal bool EngineerDedicatedFallback;

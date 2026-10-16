@@ -67,6 +67,24 @@ internal static class PositionedTransferTests
         Near(sample.Member.Points.Sum(p=>p.Kn),3.0461875,"combined 3.046 remains the sum of two positioned loads");
         Crossing();Console.WriteLine($"Passed {checks} positioned transfer checks.");
     }
+    internal static void FallbackReference()
+    {
+        var common=new TowerInput {LengthMm=6100,EngineerSearch=true,FullLoadingOnly=true,CoordinateCrossingLayouts=true,IgnoreUplift=true,LegCapacityKn=30,Exclude600Standalone=true,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=150,DeflectionDenominator=270,ReplayTributaryPrimaryAllocation=true};
+        var network=new TransferNetworkInput {PlywoodProfileId=PlywoodCatalog.Default.Id,PlywoodDeflectionDenominator=350,PlywoodSheetLengthMm=2440,UpperSpacingMm=305,BeamSpacingsMm=new[] {305.0,305},SlabSpacingsMm=new[] {488.0},CrossingSpacingsMm=new[] {350.0},
+            Beams=Enumerable.Range(0,2).Select(i=>new TransferBeamRow {WidthMm=800,DepthMm=1750,BottomElevationMm=-1750}).ToArray(),Bays=new[] {new TransferBayRow {WidthMm=2125,ThicknessMm=200}},
+            CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=3350,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150}}};
+        var result=TransferNetworkOptimizer.Optimize(common,network);Console.WriteLine("REFERENCE OLD ALLOCATION\n"+result.LayoutDiagnostics);common.ReplayTributaryPrimaryAllocation=false;
+        for(int beam=0;beam<result.Beams.Length;beam++)
+        {
+            var layout=result.Beams[beam];var t=layout.Transfer;var plan=EngineerPrimaryPlan.Create(common,result.Input,beam,false,false).WithGeometry(common,t.UnitLowerCases.Last(),t.UnitPointLabels.Last()).Resolve(common,result,beam,result.CrossSupports);
+            foreach(var m in t.PrimaryCases[0])
+            {
+                int line=m.Name.EndsWith(" L") ? 0 : 1;var q=plan.Loads(m.StartMm,m.LengthMm,line);
+                var a=LoadedBeamAnalysis.AnalyzeDenseReference(m.LengthMm,m.SupportsMm,q,null,m.EI,270);
+                Console.WriteLine($"REFERENCE GEOMETRY B{beam+1} {m.Name} width={layout.WidthMm} offset={layout.TransverseOffsetMm} stock={m.StartMm}/{m.LengthMm} supports={string.Join(",",m.SupportsMm)} old M/V/d/leg={m.Analysis.MomentKnM}/{m.Analysis.ShearKn}/{m.Analysis.DeflectionUtilization}/{m.Analysis.Reactions.Max()} new={a.MomentKnM}/{a.ShearKn}/{a.DeflectionUtilization}/{a.Reactions.Max()} zones="+string.Join(";",q.Select(v=>$"{v.StartMm}-{v.EndMm}@{v.KnPerM}")));
+            }
+        }
+    }
     static void Crossing()
     {
         var layout=Fixture();var original=layout.Transfer.PrimaryPlan;var network=original.Network;

@@ -41,3 +41,12 @@ jobs:
         with:
           name: positioned-transfer-ui-preview
           path: tests/positioned-preview/*.png
+  positioned-fallback-reference:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/Beam.Tests -c Release -- --positioned-fallback-reference
