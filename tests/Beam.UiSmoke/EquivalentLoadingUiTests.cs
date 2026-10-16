@@ -51,6 +51,7 @@ internal static class EquivalentLoadingUiTests
     }
     internal static void Run(string preview=null)
     {
+        MemberLoadingUiTests.Run();
         var layout=EquivalentLoadingTests.Fixture();var t=layout.Transfer;var unit=t.UnitLowerCases[0];
         var actual=new TransferMember {Name="T1",LoadCase=unit.LoadCase,H20Count=1,LengthMm=1800,StartMm=-900,SupportsMm=unit.SupportsMm,
             Uniform=new[] {new BeamDistributedLoad {StartMm=575,EndMm=1225,KnPerM=9.65325}},
@@ -121,7 +122,7 @@ internal static class EquivalentLoadingUiTests
         Check(window.SelectedTransferMember==beamActual && window.EquivalentView!=null && !window.EquivalentView.IsDetailsOpen,"case change updates equivalent view and closes prior calculation panel");
         Check(window.ResponseBasis.Text.EndsWith("Beam"),"response basis identifies the selected design case");CheckResponse(window,beamActual);
         window.LoadCaseSelector.SelectedIndex=0;CheckResponse(window,actual);
-        window.SelectMember(0,0,-1);Check(window.EquivalentView==null && window.ResponseBasis==null && window.LoadingDiagram!=null,"changing to primary clears equivalent panel and basis");
+        window.SelectMember(0,0,-1);RenderWindow(window,900);MemberLoadingUiTests.CheckWindow(window);Check(window.EquivalentView==null && window.ResponseBasis==null && window.LoadingDiagram!=null,"changing to primary clears equivalent panel and basis");
         window.SelectMember(1,0,-1);Check(window.EquivalentView!=null && !window.EquivalentView.IsDetailsOpen,"returning to lower member starts with a clean panel");
         RenderWindow(window,520,Preview(preview,"unified-narrow"));
         Check(window.EquivalentView.ActualWidth<=520,"unified window loading card fits the requested narrow layout");CheckResponse(window,actual);
@@ -129,7 +130,7 @@ internal static class EquivalentLoadingUiTests
         var primary=t.PrimaryCases[0][0];double original=primary.Uniform[0].KnPerM;
         primary.Uniform[0].KnPerM+=1;window.SelectMember(1,0,-1);
         Check(window.EquivalentView==null && window.LoadingDiagram!=null && !Controls<TextBlock>((DependencyObject)window.Content).Any(b=>b.Text.Contains("Secondary design checks")),"localized load fallback has one actual loading view and no removed-tab instruction");
-        CheckResponse(window,actual);primary.Uniform[0].KnPerM=original;
+        RenderWindow(window,900);MemberLoadingUiTests.CheckWindow(window);CheckResponse(window,actual);primary.Uniform[0].KnPerM=original;
         Check(Snapshot(actual).SequenceEqual(originalValues) && Snapshot(beamActual).SequenceEqual(beamValues),"clicks, cases and member changes preserve numeric forces, signed reactions, moments, deflections and utilization exactly");
         window.Close();
         var both=EquivalentTransferredLoading.Create(EquivalentLoadingTests.BothFixture(),0,0);
