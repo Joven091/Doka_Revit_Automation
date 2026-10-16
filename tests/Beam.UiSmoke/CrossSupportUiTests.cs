@@ -300,12 +300,12 @@ internal static class CrossSupportUiTests
         while(!task.IsCompleted){Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>120)throw new Exception("Primary zones UI timeout");}
         task.GetAwaiter().GetResult();Check(vm.IsCalculationValid,"reported two-zone UI case solves");
         vm.SelectNetworkBeam(1);var layout=vm.NetworkResult.Beams[1];
-        int run=Array.FindIndex(layout.Transfer.PrimaryCases.Last().Take(layout.StockPlan.Pieces.Length).ToArray(),m=>m.Uniform.Any(q=>Math.Abs(q.KnPerM-25.99125)<1e-7) && m.Uniform.Any(q=>Math.Abs(q.KnPerM-52.288125)<1e-7));
+        int run=Array.FindIndex(layout.Transfer.PrimaryCases.Last().Take(layout.StockPlan.Pieces.Length).ToArray(),m=>m.Uniform.Any(q=>m.StartMm+q.StartMm<3025 && m.StartMm+q.EndMm<=3025+1e-7) && m.Uniform.Any(q=>m.StartMm+q.StartMm>=3025-1e-7 && m.StartMm+q.StartMm<3675));
         Check(run>=0,"selected inner primary contains both concrete tributary zones");
         var window=new TowerDiagramWindow(vm);window.SelectMember(run,0,-1);window.Show();Pump();
         var member=window.DisplayedTransferMember;
         Check(ReferenceEquals(member.Analysis,window.LoadedAnalysis) && member.Points.Length==0,"two-zone loading diagram uses the checked primary analysis");
-        Check(member.Uniform.All(q=>Math.Abs(q.KnPerM-25.99125)<1e-7 || Math.Abs(q.KnPerM-52.288125)<1e-7),"primary plot has only Beam + Slab and Beam + X1 load intensities");
+        Check(member.Uniform.Select(q=>q.KnPerM).Distinct().Count()==2 && member.Uniform.All(q=>Math.Abs(q.StartMm)<1e-7 || Math.Abs(member.StartMm+q.StartMm-3025)<1e-7 || Math.Abs(member.StartMm+q.StartMm-3675)<1e-7),"primary plot has only positioned Beam + Slab and Beam + X1 zones");
         MemberLoadingUiTests.ReportedPrimary(window);
         Capture(window.LoadingDiagram,1000,290,Preview(previewPath,"engineer-primary-zones"));
         window.LoadingDiagram.SelectAt(new Point(window.LoadingDiagram.Targets.First(t=>t.Kind==0 && t.Index==1).Bounds.X+2,window.LoadingDiagram.Targets.First(t=>t.Kind==0 && t.Index==1).Bounds.Y+2));
@@ -313,6 +313,6 @@ internal static class CrossSupportUiTests
         window.SelectMember(layout.StockPlan.Pieces.Length,0,-1);Pump();window.UpdateLayout();
         MemberLoadingUiTests.CheckWindow(window);
         window.Close();
-        Console.WriteLine("Reported primary zones WPF preview passed: 25.991 / 52.288 kN/m.");
+        Console.WriteLine("Reported primary zones WPF preview passed: positioned transfer and two flat intensities.");
     }
 }

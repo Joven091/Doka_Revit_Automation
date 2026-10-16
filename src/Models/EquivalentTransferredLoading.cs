@@ -109,6 +109,7 @@ namespace EngineeringDashboard
             var components=new List<EquivalentLoadingComponent>();
             foreach(var source in plan.LoadsAt(x))
             {
+                if(source.ValuePerMetre==0 || source.AllocationFactor==0)continue;
                 double nominal=source.IsSlabFoot || source.IsSlabEdge ? t.SlabSpacing(source.Bay==plan.Beam-1) : pitch;
                 double sourceValue=source.ValuePerMetre*nominal/1000;
                 var component=new EquivalentLoadingComponent {Name=source.Name,IsUniform=source.IsUniform,PositionMm=source.PositionMm,EndMm=source.EndMm,

@@ -24,13 +24,14 @@ namespace EngineeringDashboard
         internal bool UseDesignZones;
         internal TransferNetworkInput Network;
         internal int Beam;
-        internal double LengthMm;
+        internal double LengthMm,ReferenceSpacingMm;
         internal bool LeftSlab,RightSlab,IsResolved;
         internal TransferMember SecondaryBasis;
         internal PositionedSecondaryLoad[] OwnLoads=new PositionedSecondaryLoad[0];
         internal readonly Dictionary<int,PositionedSecondaryLoad[]> SlabLoads=new Dictionary<int,PositionedSecondaryLoad[]>();
         internal readonly Dictionary<int,PositionedSecondaryLoad[]> CrossingLoads=new Dictionary<int,PositionedSecondaryLoad[]>();
         internal readonly Dictionary<int,double[]> CrossingTransfers=new Dictionary<int,double[]>();
+        internal readonly Dictionary<int,double[]> CrossingResultantOffsetsMm=new Dictionary<int,double[]>();
         internal readonly Dictionary<int,double> SlabLedgerForces=new Dictionary<int,double>();
         internal bool HasPositionedLoads=>SecondaryBasis!=null;
         internal bool CarriesBay(int bay)=>(bay==Beam-1 && LeftSlab) || (bay==Beam && RightSlab);
@@ -43,7 +44,7 @@ namespace EngineeringDashboard
         }
         private EngineerPrimaryPlan CopyBasis()
         {
-            var copy=new EngineerPrimaryPlan {Network=Network,Beam=Beam,LengthMm=LengthMm,LeftSlab=LeftSlab,RightSlab=RightSlab,UseDesignZones=UseDesignZones,SecondaryBasis=SecondaryBasis,OwnLoads=OwnLoads};
+            var copy=new EngineerPrimaryPlan {Network=Network,Beam=Beam,LengthMm=LengthMm,LeftSlab=LeftSlab,RightSlab=RightSlab,UseDesignZones=UseDesignZones,ReferenceSpacingMm=ReferenceSpacingMm,SecondaryBasis=SecondaryBasis,OwnLoads=OwnLoads};
             foreach(var source in SlabLoads)copy.SlabLoads[source.Key]=source.Value;
             return copy;
         }
@@ -54,7 +55,7 @@ namespace EngineeringDashboard
         }
         internal EngineerPrimaryPlan WithGeometry(TowerInput common,TransferMember unit,string[] labels)
         {
-            var plan=CopyBasis();plan.SecondaryBasis=unit;
+            var plan=CopyBasis();plan.SecondaryBasis=unit;plan.ReferenceSpacingMm=common.TransferredSlab?.UpperSpacingMm??Network.BeamSpacing(Beam);
             plan.OwnLoads=unit.Uniform.Select(q=>new PositionedSecondaryLoad {Name="Beam concrete",IsUniform=true,PositionMm=q.StartMm,EndMm=q.EndMm,ValuePerMetre=q.KnPerM}).ToArray();
             for(int side=0;side<2;side++)
             {
@@ -152,7 +153,7 @@ namespace EngineeringDashboard
                 if(index<0)index=Array.FindIndex(Network.CrossingBeams,c=>c.BayNumber==support.Input.BayNumber && Math.Abs(c.PositionMm-support.Input.PositionMm)<1e-7 && Math.Abs(c.WidthMm-support.Input.WidthMm)<1e-7);
                 if(index<0)return null;
                 if(!plan.HasPositionedLoads && support.UsesSpreader){plan.CrossingTransfers.Remove(index);continue;}
-                var sources=new List<PositionedSecondaryLoad>();var force=new double[2];
+                var sources=new List<PositionedSecondaryLoad>();var force=new double[2];var longitudinalMoment=new double[2];
                 // Shared ledger loads stay in the normal slab design allocation, once.
                 // The physical secondary checks still include every ledger reaction.
                 foreach(var bearing in support.Bearings.Where(b=>b.Beam==receivingBeam && (!support.UsesSpreader || b.Label!="Slab edge ledger")))
@@ -165,11 +166,13 @@ namespace EngineeringDashboard
                     sources.Add(load);
                     double position=uniform ? (load.PositionMm+load.EndMm)/2 : load.PositionMm;
                     double right=bearing.ReactionKn*(position-lower.SupportsMm[0])/(lower.SupportsMm[1]-lower.SupportsMm[0]);force[0]+=bearing.ReactionKn-right;force[1]+=right;
+                    longitudinalMoment[0]+=(bearing.ReactionKn-right)*(bearing.Xmm-support.Input.PositionMm);longitudinalMoment[1]+=right*(bearing.Xmm-support.Input.PositionMm);
                 }
                 // Equal-position reactions from spreader receiving rows form a per-metre source.
                 var grouped=sources.GroupBy(q=>Tuple.Create(q.Name,q.PositionMm,q.EndMm,q.IsUniform)).Select(g=>new PositionedSecondaryLoad {Name=g.Key.Item1,Bay=g.First().Bay,PositionMm=g.Key.Item2,EndMm=g.Key.Item3,IsUniform=g.Key.Item4,ValuePerMetre=g.Sum(q=>q.ValuePerMetre)}).ToArray();
                 plan.CrossingLoads[index]=grouped;
                 plan.CrossingTransfers[index]=force.Select(f=>f*1000/support.Input.WidthMm).ToArray();
+                plan.CrossingResultantOffsetsMm[index]=Enumerable.Range(0,2).Select(line=>Math.Abs(force[line])<1e-9 ? 0 : longitudinalMoment[line]/force[line]).ToArray();
                 int bay=support.Input.BayNumber-1;
                 if(!support.UsesSpreader && plan.CarriesBay(bay) && support.SlabEdgeLoadKn>0)
                     plan.SlabLedgerForces[bay]=(plan.SlabLedgerForces.TryGetValue(bay,out double prior) ? prior : 0)+support.SlabEdgeLoadKn/2;
@@ -244,7 +247,8 @@ namespace EngineeringDashboard
         internal string Summary=>Describe(IsResolved);
         internal string SelectedSummary=>Describe(true);
         private string Describe(bool selected)=>string.Format(CultureInfo.InvariantCulture,"{3} force L/R {0:0.###}/{1:0.###} kN; {4} {2} legs per primary line. Beam + slab outside crossings; assigned beam + crossing transfer over each full crossing width. Dedicated tower loads and slab edge transfers are counted once. Positioned secondary loads determine the primary reaction split; local row spacing does not change the per-metre UDL.",Forces[0],Forces[1],InitialLegs,selected ? "Selected primary-zone" : "Provisional full-tributary",selected ? "selected-force estimate" : "provisional estimate")
-            +" "+string.Join("; ",Lines.Select((line,i)=>(i==0 ? "L" : "R")+": "+string.Join(", ",line.Select(q=>string.Format(CultureInfo.InvariantCulture,"{0:0.###}–{1:0.###} mm @ {2:0.#####} kN/m",q.StartMm,q.EndMm,q.KnPerM)))));
+            +" "+string.Join("; ",Lines.Select((line,i)=>(i==0 ? "L" : "R")+": "+string.Join(", ",line.Select(q=>string.Format(CultureInfo.InvariantCulture,"{0:0.###}–{1:0.###} mm @ {2:0.#####} kN/m",q.StartMm,q.EndMm,q.KnPerM)))))
+            +string.Join("",CrossingResultantOffsetsMm.Where(c=>c.Value.Any(x=>Math.Abs(x)>.001)).Select(c=>string.Format(CultureInfo.InvariantCulture,"; X{0} physical transfer resultant offset L/R {1:0.###}/{2:0.###} mm; full-width primary UDL remains the longitudinal design idealization",c.Key+1,c.Value[0],c.Value[1])));
     }
 
     public static partial class CrossBeamSupportOptimizer

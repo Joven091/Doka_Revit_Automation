@@ -76,9 +76,9 @@ internal static class MemberLoadingUiTests
     internal static void ReportedPrimary(TowerDiagramWindow window)
     {
         CheckWindow(window,true);Click(window,0,0);
-        Check(window.MemberView.VisibleCalculation.Any(t=>t=="Beam + Slab") && window.MemberView.VisibleCalculation.Any(t=>t.Contains("1062.5")) && window.MemberView.VisibleCalculation.Any(t=>t.Contains("25.99125")),"reported slab UDL exposes the actual formula and tributary width");
+        Check(window.MemberView.VisibleCalculation.Any(t=>t=="Beam + Slab") && window.MemberView.VisibleCalculation.Any(t=>t.Contains("Positioned beam-secondary reaction:")) && window.MemberView.VisibleCalculation.Any(t=>t.StartsWith("UDL =") && t.Contains(" / 0.305")),"reported slab UDL exposes the actual formula and tributary width");
         Click(window,0,1);
-        Check(window.MemberView.VisibleCalculation.Any(t=>t=="Beam + X1") && window.MemberView.VisibleCalculation.Any(t=>t.Contains("31.65")) && window.MemberView.VisibleCalculation.Any(t=>t.Contains("full width 650 mm")) && window.MemberView.VisibleCalculation.Any(t=>t.Contains("52.2881")),"reported crossing UDL exposes the actual formula: "+string.Join(" | ",window.MemberView.VisibleCalculation));
+        Check(window.MemberView.VisibleCalculation.Any(t=>t=="Beam + X1") && window.MemberView.VisibleCalculation.Any(t=>t.Contains("Positioned beam-secondary reaction:")) && window.MemberView.VisibleCalculation.Any(t=>t.Contains("full width 650 mm")) && window.MemberView.VisibleCalculation.Any(t=>t.StartsWith("UDL =") && t.Contains(" / 0.305")),"reported crossing UDL exposes the actual formula: "+string.Join(" | ",window.MemberView.VisibleCalculation));
         int last=window.LoadingDiagram.ReactionValues.Length-1;Click(window,2,last);Check(window.MemberView.VisibleCalculation.Any(t=>t.StartsWith("Reaction R"+(last+1))),"last reaction is routed to its own calculation");
         var old=window.MemberView;window.SelectMember(window.SelectedRun,window.SelectedLine,-1);Pump();
         Check(!ReferenceEquals(old,window.MemberView) && !window.MemberView.IsDetailsOpen,"reselection cannot retain a stale calculation panel");

@@ -117,7 +117,7 @@ namespace EngineeringDashboard
         internal EngineerPrimaryPlan PrimaryPlan;
         internal string PrimarySupportNotice="";
         internal string PrimaryLoadBasis=>(PrimaryPlan!=null
-            ? "Concrete tributary UDLs: Beam + Slab outside crossings; Beam + Cross Beam over each full crossing width."
+            ? "Positioned secondary reactions: Beam + Slab UDL outside crossings; Beam + Cross Beam UDL over each full crossing width."
             : "Bearing-derived UDLs from the actual selected support transfers.")
             +(string.IsNullOrEmpty(PrimarySupportNotice) ? "" : " "+PrimarySupportNotice)
             +(PrimarySupportNotice.Contains("dedicated tower") ? " Dedicated crossing towers carry their own assigned loads; remaining transfers are distributed within the crossing width." : "");

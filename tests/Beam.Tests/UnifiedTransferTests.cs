@@ -73,7 +73,7 @@ internal static class UnifiedTransferTests
         {
             Check(result.CrossSupports[0].UsesSpreader && result.CrossSupports[1].Towers!=null,"explicit shared and dedicated supports coexist");
             var middle=result.Beams[1].Transfer.PrimaryPlan;
-            Check(!middle.CrossingTransfers.ContainsKey(0) && middle.CrossingTransfers.ContainsKey(1),"dedicated side does not disable the shared crossing model on the other side");
+            Check(middle.CrossingLoads.ContainsKey(0) && middle.CrossingTransfers.ContainsKey(1),"dedicated side does not disable the shared crossing model on the other side");
         }
         else Check(result.CrossSupports.All(c=>c.Towers!=null),"exact reported equal-soffit crossings take their dedicated fallback");
         Verify(result);Symmetry();PendingAssignments();
