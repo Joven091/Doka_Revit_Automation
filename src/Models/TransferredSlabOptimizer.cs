@@ -711,8 +711,19 @@ namespace EngineeringDashboard
                         int bays=geometry.Joined.Count(j=>j);
                         if(bays>best.BayCount || bays==best.BayCount && EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated)>best.StandaloneBracePenalty+1e-7)continue;
                     }
+                    double geometrySymmetry=input.EngineerSearch ? TowerOptimizer.SymmetryError(geometry.Positions,geometry.Stock.Select(s=>s.StockLengthMm).ToArray(),input.LengthMm/2-item.Edge)
+                        +geometry.Stock.Sum(s=>Math.Abs((geometry.Positions[s.FirstSupport]-s.StartMm)-(s.EndMm-geometry.Positions[s.LastSupport]))) : 0;
                     foreach(var cross in item.Crosses)
                     {
+                        if(input.EngineerSearch && input.PruneUneconomicCandidates && best!=null && geometry.Positions.Length==best.PositionsMm.Length
+                            && EngineerTowerSearch.Compare(TowerOptimizer.Standalone600Count(geometry.Positions,geometry.Joined,item.Width,item.Rotated),geometry.Joined.Count(j=>j),EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated),best.Standalone600Count,best.BayCount,best.StandaloneBracePenalty)==0
+                            && geometrySymmetry+Math.Abs(2*cross.Start+cross.Stock)>best.SymmetryErrorMm+1e-7)
+                        {
+                            // This exact geometric lower bound already ranks worse.
+                            // Capacity checks cannot improve fixed stock/support symmetry;
+                            // upper-member imbalance can only add to the lower bound.
+                            continue;
+                        }
                         input.Trace?.Increment(BeamSearchCounter.TransferCandidates);tested++;
                         if(!input.EngineerSearch && input.PruneUneconomicCandidates && best!=null)
                         {
