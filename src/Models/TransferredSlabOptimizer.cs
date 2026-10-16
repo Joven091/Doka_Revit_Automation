@@ -1248,10 +1248,22 @@ namespace EngineeringDashboard
             // bounds, independent of end moments. Unknown crossing increments
             // are confined to their footprints, which are excluded from this filter.
             var unknown=input.TransferredSlab.LeftCrossingBands.Concat(input.TransferredSlab.RightCrossingBands).Where(b=>b.KnPerM<0).ToArray();
+            var plan=input.EngineerPlan;
+            bool unresolved=input.DeferCrossingChecks && plan!=null && plan.Network.CrossingBeams.Any(c=>(c.BayNumber==plan.Beam || c.BayNumber==plan.Beam+1) && !EngineerPrimaryPlan.Eligible(plan.Network,c));
+            if(unresolved)
+                unknown=unknown.Concat(plan.Network.CrossingBeams.Where(c=>c.BayNumber==plan.Beam || c.BayNumber==plan.Beam+1).Select(c=>new BeamDistributedLoad {StartMm=c.PositionMm-c.WidthMm/2,EndMm=c.PositionMm+c.WidthMm/2})).ToArray();
             foreach(var stock in geometry.Stock)for(int line=0;line<2;line++)
             {
                 var loads=PrimaryUniformLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,stage,edge);
                 if(loads==null)continue;
+                if(unresolved)
+                {
+                    // Dedicated towers and slab ledgers have not been allocated.
+                    // Own beam load outside crossing footprints is a true lower
+                    // bound; the provisional full-bay crossing force is not.
+                    var beam=plan.Network.Beams[plan.Beam];
+                    loads=new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock.StockLengthMm,KnPerM=plan.Network.AreaLoad(beam.DepthMm)*beam.WidthMm/2000+input.Primary.SelfWeightKnM(stock.StockLengthMm)}};
+                }
                 var supports=geometry.MemberSupports[Array.IndexOf(geometry.Stock,stock)];
                 foreach(bool far in new[] {false,true})
                 {
@@ -1297,7 +1309,7 @@ namespace EngineeringDashboard
             foreach(int c in cross.DesignCases)
             {
                 var checks=new PrimaryCheck[g.Stock.Length*2];
-                if(input.EngineerSearch && !input.DeferCrossingChecks && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
+                if(input.EngineerSearch && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {
@@ -1410,7 +1422,7 @@ namespace EngineeringDashboard
             foreach(int c in cross.DesignCases)
             {
                 var members=new List<TransferMember>();
-                if(input.EngineerSearch && !input.DeferCrossingChecks && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
+                if(input.EngineerSearch && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {
