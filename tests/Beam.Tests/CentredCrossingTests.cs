@@ -22,12 +22,12 @@ internal static class CentredCrossingTests
                 Uniform=new[] {new BeamDistributedLoad {StartMm=1225-input.Beams[b].WidthMm/2,EndMm=1225+input.Beams[b].WidthMm/2,KnPerM=9.0}},Points=new BeamPointLoad[0]};lower.Analysis=Solve(lower);
             var primary=Enumerable.Range(0,2).Select(line=>
             {
-                var p=new TransferMember {Name=line==0 ? "P1 L" : "P1 R",H20Count=2,StartMm=0,LengthMm=6900,SupportsMm=new[] {400.0,6400},
+                var p=new TransferMember {PrimaryMaterial=common.PrimaryMaterial,Name=line==0 ? "P1 L" : "P1 R",H20Count=2,StartMm=0,LengthMm=6900,SupportsMm=new[] {400.0,6400},
                     Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=6900,KnPerM=.2}},Points=new BeamPointLoad[0]};p.Analysis=Solve(p);return p;
             }).ToArray();
             var slab=rows.Select((x,i)=>new {X=x,I=i}).Where(x=>new[] {2637.0,2718,4182,4263}.Contains(x.X)).Select(x=>x.I).ToArray();
-            return new TowerLayout {EngineerSearch=true,LengthMm=6900,WidthMm=1524,DeflectionDenominator=270,LegCapacityKn=70,PositionsMm=new[] {400.0,6400},Joined=new[] {false},
-                StockPlan=new TowerStockPlan {Pieces=new[] {new TowerStockPiece {StartMm=0,StockLengthMm=6900,FirstSupport=0,LastSupport=1}}},
+            return new TowerLayout {EngineerSearch=true,PrimaryMaterial=common.PrimaryMaterial,LengthMm=6900,WidthMm=1524,DeflectionDenominator=270,LegCapacityKn=70,PositionsMm=new[] {400.0,6400},Joined=new[] {false},
+                StockPlan=new TowerStockPlan {PrimaryMaterial=common.PrimaryMaterial,Pieces=new[] {new TowerStockPiece {StartMm=0,StockLengthMm=6900,FirstSupport=0,LastSupport=1}}},
                 Transfer=new TransferredSlabResult {FullLoadingOnly=true,RowsMm=(double[])rows.Clone(),EnteredUpperSpacingMm=275,LowerStockStartMm=-1225,LowerStockLengthMm=2450,
                     SlabRowIndices=slab,LeftUpperScales=rows.Select((x,i)=>slab.Contains(i) ? .488 : 0).ToArray(),RightUpperScales=new double[rows.Length],
                     TributaryWidthsMm=Enumerable.Repeat(275.0,rows.Length).ToArray(),CaseNames=new[] {"Beam + Slab"},PrimaryCases=new[] {primary},LowerCases=new[] {rows.Select(x=>lower).ToArray()},UpperMembers=new TransferMember[0]}};
@@ -47,10 +47,10 @@ internal static class CentredCrossingTests
                     Points=unit.Points.Select(p=>new BeamPointLoad {PositionMm=p.PositionMm,Kn=p.Kn*.35}).ToArray()};m.Analysis=Solve(m);return m;
             }).ToArray();
             var positions=new[] {start+325,start+925};
-            var primary=Enumerable.Range(0,2).Select(line=>new TransferMember {Name=line==0 ? "P1 L" : "P1 R",H20Count=2,StartMm=start,LengthMm=1250,SupportsMm=new[] {325.0,925},Points=new BeamPointLoad[0],
+            var primary=Enumerable.Range(0,2).Select(line=>new TransferMember {PrimaryMaterial=common.PrimaryMaterial,Name=line==0 ? "P1 L" : "P1 R",H20Count=2,StartMm=start,LengthMm=1250,SupportsMm=new[] {325.0,925},Points=new BeamPointLoad[0],
                 Uniform=new[] {new BeamDistributedLoad {StartMm=-start,EndMm=span-start,KnPerM=unit.Analysis.Reactions[line]}}}).ToArray();
-            var tower=new TowerLayout {EngineerSearch=true,LengthMm=span,WidthMm=1524,PositionsMm=positions,Joined=new[] {true},DeflectionDenominator=270,LegCapacityKn=70,
-                StockPlan=new TowerStockPlan {Pieces=new[] {new TowerStockPiece {StartMm=start,StockLengthMm=1250,FirstSupport=0,LastSupport=1}}},
+            var tower=new TowerLayout {EngineerSearch=true,PrimaryMaterial=common.PrimaryMaterial,LengthMm=span,WidthMm=1524,PositionsMm=positions,Joined=new[] {true},DeflectionDenominator=270,LegCapacityKn=70,
+                StockPlan=new TowerStockPlan {PrimaryMaterial=common.PrimaryMaterial,Pieces=new[] {new TowerStockPiece {StartMm=start,StockLengthMm=1250,FirstSupport=0,LastSupport=1}}},
                 Transfer=new TransferredSlabResult {FullLoadingOnly=true,RowsMm=crossRows,TributaryWidthsMm=Enumerable.Repeat(350.0,crossRows.Length).ToArray(),EnteredUpperSpacingMm=350,LowerStockStartMm=-1375,LowerStockLengthMm=2450,
                     CaseNames=new[] {"Cross concrete + construction/formwork"},PrimaryCases=new[] {primary},LowerCases=new[] {lower},UnitLowerCases=new[] {unit},UpperMembers=new TransferMember[0],BeamLoadKn=unit.Analysis.TotalLoadKn*span/1000}};
             var args=new object[] {common,result,i,face,150.0,i==0 ? -39.0 : 49.0,tower,common,null,i==0 ? 78.0 : 0.0,i==0 ? 0.0 : 98.0,false,CrossShutterAllowance.Standard};
@@ -64,8 +64,13 @@ internal static class CentredCrossingTests
     }
     internal static void Run()
     {
-        var common=new TowerInput {EngineerSearch=true,FullLoadingOnly=true,LengthMm=6900,LegCapacityKn=70,IgnoreUplift=true,DeflectionDenominator=270};
+        foreach(var material in new[] {PrimaryBeamMaterial.DoubleH20,PrimaryBeamMaterial.WS10})RunForMaterial(material);
+    }
+    static void RunForMaterial(PrimaryBeamMaterial material)
+    {
+        var common=new TowerInput {PrimaryMaterial=material,EngineerSearch=true,FullLoadingOnly=true,LengthMm=6900,LegCapacityKn=70,IgnoreUplift=true,DeflectionDenominator=270};
         var r=Fixture(common);var originalBeams=r.Beams.Select(b=>b.Transfer).ToArray();var originalCross=r.CrossSupports;
+        CrossBeamSupportOptimizer.CentreCrossingFrames(common,r,Console.WriteLine);
         CrossBeamSupportOptimizer.BalanceSettingOut(common,r);
         for(int i=0;i<2;i++)
         {
@@ -95,6 +100,6 @@ internal static class CentredCrossingTests
         foreach(var c in r.CrossSupports)Check(c.Solids.All(s=>solids.All(o=>!s.Conflicts(o))),"centred frame clears all actual receiving timber, concrete and tower envelopes");
         int h20=r.H20Count;var centred=r.CrossSupports;CrossBeamSupportOptimizer.BalanceSettingOut(common,r);
         Check(r.H20Count==h20 && r.CrossSupports.SequenceEqual(centred),"centred setting-out is idempotent");
-        Console.WriteLine($"Passed {checks} centred crossing checks; B1/B2/B3 primary arrays retained exactly.");
+        Console.WriteLine($"Passed {checks} centred crossing checks ({material}); B1/B2/B3 primary arrays retained exactly.");
     }
 }

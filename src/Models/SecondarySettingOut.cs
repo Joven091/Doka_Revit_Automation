@@ -52,7 +52,7 @@ namespace EngineeringDashboard
         // The site bearer permits slab feet and receiving secondaries to have
         // independent longitudinal stations. It is outside this member calculator:
         // no new bearer sharing model or slab/primary load allocation is introduced.
-        internal static void CentreCrossingFrames(TowerInput common,TransferNetworkResult result)
+        internal static void CentreCrossingFrames(TowerInput common,TransferNetworkResult result,Action<string> rejected=null)
         {
             var check=common.CopyForSearch();check.Trace=null;check.Diagnostics=null;
             for(int index=0;index<result.CrossSupports.Length;index++)
@@ -74,7 +74,7 @@ namespace EngineeringDashboard
                 };
                 t.LowerCases=tower.Transfer.LowerCases.Select(stage=>stage.Select(centred).ToArray()).ToArray();
                 foreach(var m in t.LowerCases.SelectMany(stage=>stage))if(!Pass(m,check,"Centred crossing secondary"))passes=false;
-                if(!passes)continue;
+                if(!passes){rejected?.Invoke($"X{index+1}: centred secondary capacity check failed.");continue;}
                 t.UnitLowerCases=tower.Transfer.UnitLowerCases.Select(centred).ToArray();
                 t.LowerStockStartMm+=offset;
                 t.PrimaryCases=new TransferMember[tower.Transfer.PrimaryCases.Length][];
@@ -95,7 +95,7 @@ namespace EngineeringDashboard
                             Points=m.Points.Select(p=>new BeamPointLoad {PositionMm=p.PositionMm,Kn=p.Kn*factor}).ToArray()};
                     }).ToArray();
                 }
-                if(!passes)continue;
+                if(!passes){rejected?.Invoke($"X{index+1}: zero reference reaction cannot be rescaled.");continue;}
                 var previous=tower.Transfer.LowerCases[0][0].Analysis.Reactions;
                 var revised=t.LowerCases[0][0].Analysis.Reactions;
                 layout.LeftLineLoad*=revised[0]/previous[0];layout.RightLineLoad*=revised[1]/previous[1];
@@ -103,12 +103,12 @@ namespace EngineeringDashboard
                 var allowance=new CrossShutterAllowance(original.NearShutterClearanceMm,original.FarShutterClearanceMm);
                 var candidate=FinishDedicated(check,result,original.CrossingIndex,origin,0,original.TowerSpanOffsetMm,layout,check,out string failure,
                     original.PrimaryNearExtensionMm,original.PrimaryFarExtensionMm,allowance:allowance);
-                if(candidate==null)continue;
+                if(candidate==null){rejected?.Invoke($"X{index+1}: "+failure);continue;}
                 candidate.Solids=candidate.Solids.Concat(original.Solids.Where(s=>s.Member==null && !s.IsLeg && !s.IsTowerEnvelope)).ToArray();
                 candidate.Bearings=candidate.Bearings.Concat(original.Bearings.Where(b=>!b.IsDedicated)).ToArray();
                 candidate.LoadKn=original.LoadKn;candidate.SlabEdgeLoadKn=original.SlabEdgeLoadKn;candidate.SharedFailure=original.SharedFailure;
                 var others=result.CrossSupports.Where((s,i)=>i!=index).SelectMany(s=>s.Solids).ToArray();
-                if(!TryAdjustSecondaries(result,candidate.Solids,others,out var beams,true))continue;
+                if(!TryAdjustSecondaries(result,candidate.Solids,others,out var beams,true,rejected))continue;
                 candidate.MovementMm=DedicatedMovement(layout);
                 candidate.JunctionNotice="Frame centred across the cross beam. Existing slab-foot loads, end-zone transfers and main-primary UDLs are retained; local lower-secondary setting-out clears the tower legs.";
                 result.Beams=beams;result.CrossSupports=(CrossBeamSupportResult[])result.CrossSupports.Clone();result.CrossSupports[index]=candidate;
@@ -121,7 +121,7 @@ namespace EngineeringDashboard
             internal double X;
         }
 
-        internal static bool TryAdjustSecondaries(TransferNetworkResult result,FormworkSolid[] crossing,FormworkSolid[] otherCrossings,out TowerLayout[] adjusted,bool independentSlabFeet=false)
+        internal static bool TryAdjustSecondaries(TransferNetworkResult result,FormworkSolid[] crossing,FormworkSolid[] otherCrossings,out TowerLayout[] adjusted,bool independentSlabFeet=false,Action<string> rejected=null)
         {
             adjusted=null;
             var existing=NetworkSolids(result).ToArray();
@@ -130,16 +130,16 @@ namespace EngineeringDashboard
             var changes=new Dictionary<int,List<SettingOutRow>>();
             foreach(var hit in hits)
             {
-                if(!hit.Name.StartsWith("B") || !hit.Name.Contains("/T"))return false;
+                if(!hit.Name.StartsWith("B") || !hit.Name.Contains("/T")){rejected?.Invoke("Fixed clash: "+hit.Name);return false;}
                 var ids=hit.Name.Substring(1).Split(new[] {"/T"},StringSplitOptions.None);
                 if(!int.TryParse(ids[0],out int beamId) || !int.TryParse(ids[1],out int rowId))return false;
                 int beam=beamId-1,design=rowId-1;var t=result.Beams[beam].Transfer;
                 if(!changes.TryGetValue(beam,out var rows))
                     changes[beam]=rows=Enumerable.Range(0,t.PhysicalRowCount).Select(i=>new SettingOutRow {Design=t.PhysicalRowDesignIndex(i),X=t.PhysicalRowPosition(i)}).ToList();
                 var row=rows.FirstOrDefault(v=>v.Design==design && Math.Abs(v.X-(hit.X0+hit.X1)/2)<1e-7);
-                if(row==null || ProtectedRow(result,beam,design,row.X,independentSlabFeet))return false;
+                if(row==null || ProtectedRow(result,beam,design,row.X,independentSlabFeet)){rejected?.Invoke($"Protected row: {hit.Name} at {(hit.X0+hit.X1)/2}");return false;}
                 var excluded=crossing.Concat(otherCrossings).Concat(concrete).ToArray();
-                if(!MoveAndFill(result,beam,row,rows,excluded,independentSlabFeet))return false;
+                if(!MoveAndFill(result,beam,row,rows,excluded,independentSlabFeet)){rejected?.Invoke($"No clear lower setting-out: {hit.Name} at {row.X}");return false;}
             }
             adjusted=result.Beams.Select(Copy).ToArray();
             foreach(var change in changes)
@@ -152,8 +152,9 @@ namespace EngineeringDashboard
             // Final checks cover complete physical stock, legs, frames and added H20s.
             var physical=NetworkSolids(trial).ToArray();
             var changed=physical.Where(s=>s.Name.Contains("/T") && !existing.Any(old=>old.Name==s.Name && old.X0==s.X0 && old.X1==s.X1)).ToArray();
-            return Clash(crossing,physical.Concat(concrete))==null
-                && Clash(changed,physical.Except(changed).Concat(concrete).Concat(crossing))==null;
+            var failure=Clash(crossing,physical.Concat(concrete))??Clash(changed,physical.Except(changed).Concat(concrete).Concat(crossing));
+            if(failure!=null)rejected?.Invoke(failure);
+            return failure==null;
         }
 
         private static bool ProtectedRow(TransferNetworkResult r,int beam,int row,double x,bool independentSlabFeet)
