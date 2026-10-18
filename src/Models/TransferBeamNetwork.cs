@@ -390,7 +390,7 @@ namespace EngineeringDashboard
                 double plywoodMaximum=input.LegacyBayPlywoodLimitsMm.Where(x=>x>0).DefaultIfEmpty(source.UpperSpacingMm).Min();
                 input.UpperSpacingMm=PlywoodSpacing.ListedSpacingAtOrBelow(Math.Min(source.UpperSpacingMm,plywoodMaximum));
             }
-            try {return PreferredShutterDetail(common,input);}
+            try {return FullTransferWithAlternatives(common,input);}
             catch(TowerOptimizationException fullFailure) when (!common.AllowCustomH20Lengths && common.AllowSeparateSlabFallback)
             {
                 var fullDiagnostics=common.Diagnostics;
@@ -424,9 +424,9 @@ namespace EngineeringDashboard
                 {throw new TowerOptimizationException(standardFailure.Message,standardFailure.Details+"\n\nLocal 175 mm side-shutter fallback also failed:\n"+reducedFailure.Details);}
             }
         }
-        private static TransferNetworkResult FullTransfer(TowerInput common,TransferNetworkInput input)
+        private static TransferNetworkResult FullTransferWithAlternatives(TowerInput common,TransferNetworkInput input)
         {
-            try {return FullTransferCore(common,input);}
+            try {return PreferredShutterDetail(common,input);}
             catch(TowerOptimizationException boundedFailure) when (!common.RetainAllSlabSupportOptions)
             {
                 // A larger plywood allowance introduces shorter stock and moves
@@ -434,12 +434,12 @@ namespace EngineeringDashboard
                 // stock/setback option rather than relying on representative bands.
                 var worker=common.CopyForSearch();worker.RetainAllSlabSupportOptions=true;
                 common.Trace?.Work("Slab stock and support alternatives");
-                try {var result=FullTransferCore(worker,input);common.Diagnostics=worker.Diagnostics;return result;}
+                try {var result=PreferredShutterDetail(worker,input);common.Diagnostics=worker.Diagnostics;return result;}
                 catch(TowerOptimizationException expandedFailure)
                 {throw new TowerOptimizationException(boundedFailure.Message,boundedFailure.Details+"\n\nFull slab stock/support alternatives also failed:\n"+expandedFailure.Details);}
             }
         }
-        private static TransferNetworkResult FullTransferCore(TowerInput common,TransferNetworkInput input)
+        private static TransferNetworkResult FullTransfer(TowerInput common,TransferNetworkInput input)
         {
             if(input.HasIndividualSpacings)
             {
