@@ -87,15 +87,17 @@ internal static class IndependentSpacingSearchTests
     }
     internal static void Controls()
     {
-        // The first passing category seed is available at vector 3. Expire only
-        // when recovery starts another vector, rather than during initial search.
+        // Expire only when recovery starts a new vector after an actual complete
+        // seed. Stock eligibility can change which spacing vector first passes.
         foreach(bool cancel in new[] {false,true})using(var source=new CancellationTokenSource())
         {
             var common=Common(false);common.NetworkSearchWorkers=1;
-            BeamSearchTrace trace=null;
+            BeamSearchTrace trace=null;long seedVector=0;
             trace=new BeamSearchTrace("spacing recovery control",source.Token,TimeSpan.FromSeconds(1),()=>
             {
-                if(trace!=null && trace.Count(BeamSearchCounter.NetworkSpacingTrials)>=4)
+                long vector=trace?.Count(BeamSearchCounter.NetworkSpacingTrials)??0;
+                if(seedVector==0 && trace?.Count(BeamSearchCounter.CompleteNetworkCandidates)>0)seedVector=vector;
+                if(seedVector>0 && vector>seedVector)
                 {
                     if(cancel) {source.Cancel();return 0;}
                     return 2*Stopwatch.Frequency;
