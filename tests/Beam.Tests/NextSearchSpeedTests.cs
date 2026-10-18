@@ -63,6 +63,18 @@ internal static class NextSearchSpeedTests
             Same(actual,expected,2450);
             Check((actual.MomentKnM<=10+1e-8)==(expected.MomentKnM<=10+1e-8) && (actual.ShearKn<=22+1e-8)==(expected.ShearKn<=22+1e-8) && (actual.DeflectionUtilization<=1+1e-8)==(expected.DeflectionUtilization<=1+1e-8),"capacity-boundary decisions match");
         }
+        // Receiving-beam checks carry their worker cache on TransferredSlab,
+        // whereas complete-network checks carry it directly on TowerInput.
+        var receiving=new TowerInput {IgnoreUplift=true,DeflectionDenominator=270,Trace=new BeamSearchTrace("receiving primary reuse"),TransferredSlab=new TransferredSlabInput {SharedSearchWork=new TransferredSlabOptimizer.SearchWorkCache()}};
+        var analyze=typeof(CrossBeamSupportOptimizer).GetMethod("Analyze",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
+        foreach(double q in new[] {20.0,25})
+        {
+            var loads=new[] {new BeamDistributedLoad {StartMm=0,EndMm=2450,KnPerM=q}};
+            var source=new TransferMember {LengthMm=2450,SupportsMm=stations,H20Count=2,Uniform=loads,Points=new BeamPointLoad[0]};
+            var result=(TransferMember)analyze.Invoke(null,new object[] {source,source.Points,loads,receiving,"fully loaded"});
+            Same(result.Analysis,LoadedBeamAnalysis.AnalyzeSigned(2450,stations,loads,source.Points,control.Primary.EI,270),2450);
+        }
+        Check(receiving.Trace.Count(BeamSearchCounter.UniformPrimaryCacheHits)>0,"receiving primary checks reuse the attached worker's shape cache");
         var lru=new TransferredSlabOptimizer.ResponseCache<int,string>(2);lru.Store(1,"first");lru.Store(2,"second");Check(lru.TryGetValue(1,out var first),"read retained");lru.Store(3,"third");
         Check(lru.TryGetValue(1,out first) && !lru.TryGetValue(2,out var second) && lru.Count==2,"recent response survives bounded replacement");
         Check(TransferNetworkOptimizer.SearchWorkers(8,12)==8 && TransferNetworkOptimizer.SearchWorkers(6,12)==6 && TransferNetworkOptimizer.SearchWorkers(8,4)==4,"worker experiments respect available processors");

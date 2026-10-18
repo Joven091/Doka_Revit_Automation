@@ -890,11 +890,11 @@ namespace EngineeringDashboard
         private static void Reject(TowerInput common,string message)=>common.Diagnostics?.Geometry("cross support",message,"Review elevations, cross position, stock availability, bearing/end allowances and tower geometry.",blocker:true);
         private static TransferMember Analyze(TransferMember source,BeamPointLoad[] points,BeamDistributedLoad[] uniform,TowerInput common,string stage)
         {
-            LoadedBeamAnalysis analysis;
-            if(source.IsPrimary && common.OptimizePrimaryResponses && common.NetworkNumerics!=null && points.Length==0 && uniform.Length==1 && uniform[0].StartMm==0 && uniform[0].EndMm==source.LengthMm && uniform[0].KnPerM>=0)
+            LoadedBeamAnalysis analysis;var work=common.NetworkNumerics??common.TransferredSlab?.SharedSearchWork;
+            if(source.IsPrimary && common.OptimizePrimaryResponses && common.ReuseSearchWork && common.ReuseNetworkNumerics && work!=null && points.Length==0 && uniform.Length==1 && uniform[0].StartMm==0 && uniform[0].EndMm==source.LengthMm && uniform[0].KnPerM>=0)
             {
                 var check=common.CopyForSearch();check.PrimaryMaterial=source.PrimaryMaterial;check.StagePrimaryChecks=false;
-                analysis=TransferredSlabOptimizer.AnalyzePrimary(check,source.LengthMm,source.SupportsMm,uniform,points,common.NetworkNumerics.Matrix,common.NetworkNumerics);
+                analysis=TransferredSlabOptimizer.AnalyzePrimary(check,source.LengthMm,source.SupportsMm,uniform,points,work.Matrix,work);
             }
             else analysis=TransferredSlabOptimizer.AnalyzeTransverse(common,source.IsPrimary ? BeamSearchCounter.PrimaryAnalyses : BeamSearchCounter.LowerAnalyses,source.LengthMm,source.SupportsMm,uniform,points,source.EI,common.DeflectionDenominator,signed:true);
             return new TransferMember {PrimaryMaterial=source.PrimaryMaterial,Name=source.Name,LoadCase=stage,StartMm=source.StartMm,LengthMm=source.LengthMm,H20Count=source.H20Count,PrimarySelfWeightKnM=source.PrimarySelfWeightKnM,SupportsMm=source.SupportsMm,Points=points,Uniform=uniform,LegacyPrimaryUniform=source.LegacyPrimaryUniform,Analysis=analysis};
