@@ -228,9 +228,10 @@ namespace EngineeringDashboard
         internal bool EngineerWorkflow=>EngineerSearch && FullLoadingOnly;
         internal EngineerPrimaryPlan EngineerPlan;
         internal bool EngineerDedicatedFallback;
-        internal bool SeedNetworkSearch=true,OptimizePrimaryResponses=true;
+        internal bool SeedNetworkSearch=true,OptimizePrimaryResponses=true,PrepareReceiverChecks=true;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
+        internal Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> TransferReceiverPreparation;
         internal Dictionary<double,TowerLayout> ReceiverAlternatives;
         internal double ReceiverTransverseOffsetMm;
         internal BeamSearchTrace Trace;

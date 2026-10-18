@@ -228,6 +228,10 @@ namespace EngineeringDashboard
             // Only the latest grid is retained, keeping memory bounded in single-beam searches.
             public string RowKey,TransverseKey;
             public bool TransversePassed;
+            internal Func<Geometry,double,bool> PreparedReceiver;
+            internal bool SpanPrepared;
+            internal double[] MinimumLineLoads;
+            internal BeamDistributedLoad[] UnknownSpans;
             public int[] DesignCases;
             public TransferMember[][] LowerByCase;
             public bool[] LowerCaseComputed;
@@ -1366,7 +1370,7 @@ namespace EngineeringDashboard
         private static bool AcceptTransverseCases(TowerInput input,CrossOption cross,double width,RowGrid grid,double edge)
         {
             if(input.ReuseSearchWork && cross.TransverseKey==grid.Key)return cross.TransversePassed;
-            cross.TransverseKey=grid.Key;cross.TransversePassed=false;
+            cross.TransverseKey=grid.Key;cross.TransversePassed=false;cross.PreparedReceiver=null;
             var ls=grid.LeftScales;var rs=grid.RightScales;
             if(cross.Left!=null && !Pass(input,cross.Left.Analysis,Math.Max(ls.Max(),input.TransferredSlab.SlabSpacing(true)/1000),1,input.Diagnostics,input.DiagnosticScope+"Left slab H20",1,()=> $"governing row T{Array.IndexOf(ls,ls.Max())+1} · stock {cross.Left.Stock:0} mm")
                 || cross.Right!=null && !Pass(input,cross.Right.Analysis,Math.Max(rs.Max(),input.TransferredSlab.SlabSpacing(false)/1000),1,input.Diagnostics,input.DiagnosticScope+"Right slab H20",1,()=> $"governing row T{Array.IndexOf(rs,rs.Max())+1} · stock {cross.Right.Stock:0} mm"))return false;
@@ -1376,12 +1380,59 @@ namespace EngineeringDashboard
             var probe=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,PositionsMm=new double[0],Joined=new bool[0],WidthMm=width,LengthMm=input.LengthMm,
                 StockPlan=new TowerStockPlan {Pieces=new TowerStockPiece[0]},
                 Transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerReceiverCount,RowsMm=grid.Rows.Select(x=>x+edge).ToArray(),LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,CaseNames=cross.DesignCases.Select(c=>cross.Names[c]).ToArray(),LowerCases=lower}};
-            return cross.TransversePassed=input.TransferLowerAcceptance(OffsetReceiver(input,probe));
+            probe=OffsetReceiver(input,probe);
+            if(!input.TransferLowerAcceptance(probe))return false;
+            cross.PreparedReceiver=input.TransferReceiverPreparation?.Invoke(probe);
+            return cross.TransversePassed=true;
+        }
+        private static bool PreparedSpanScreen(TowerInput input,Geometry geometry,CrossOption cross,double edge,EngineerPrimaryPlan plan)
+        {
+            if(!cross.SpanPrepared)
+            {
+                cross.UnknownSpans=input.TransferredSlab.LeftCrossingBands.Concat(input.TransferredSlab.RightCrossingBands).Where(b=>b.KnPerM<0)
+                    .Concat(plan.Network.CrossingBeams.Where(c=>c.BayNumber==plan.Beam || c.BayNumber==plan.Beam+1).Select(c=>new BeamDistributedLoad {StartMm=c.PositionMm-c.WidthMm/2,EndMm=c.PositionMm+c.WidthMm/2})).OrderBy(q=>q.StartMm).ToArray();
+                var beam=plan.Network.Beams[plan.Beam];
+                cross.MinimumLineLoads=plan.HasPositionedLoads ? EngineerPrimaryPlan.Reactions(plan.SecondaryBasis,plan.OwnLoads)
+                    : new[] {plan.Network.AreaLoad(beam.DepthMm)*beam.WidthMm/2000,plan.Network.AreaLoad(beam.DepthMm)*beam.WidthMm/2000};
+                if(plan.HasPositionedLoads)foreach(var slab in plan.SlabLoads.Values)
+                {var reaction=EngineerPrimaryPlan.Reactions(plan.SecondaryBasis,slab);for(int line=0;line<2;line++)cross.MinimumLineLoads[line]+=Math.Min(0,reaction[line]);}
+                cross.SpanPrepared=true;
+            }
+            double largest=Math.Max(0,Math.Max(cross.MinimumLineLoads[0],cross.MinimumLineLoads[1]));
+            for(int run=0;run<geometry.Stock.Length;run++)
+            {
+                var stock=geometry.Stock[run];var supports=geometry.MemberSupports[run];double origin=stock.StartMm+edge;
+                double q=largest+input.Primary.SelfWeightKnM(stock.StockLengthMm);
+                for(int tail=0;tail<2;tail++)
+                {
+                    double a=tail==0 ? 0 : supports[supports.Length-1],b=tail==0 ? supports[0] : stock.StockLengthMm;
+                    bool unknown=false;foreach(var band in cross.UnknownSpans)if(band.EndMm>origin+a && band.StartMm<origin+b){unknown=true;break;}
+                    if(unknown)continue;
+                    double length=(b-a)/1000;
+                    if(q*length>input.Primary.ShearLimitKn+1e-7 || q*length*length/2>input.Primary.MomentLimitKnM+1e-7)return false;
+                }
+                for(int span=0;span<=supports.Length;span++)
+                {
+                    double a=origin+(span==0 ? 0 : supports[span-1]),b=origin+(span==supports.Length ? stock.StockLengthMm : supports[span]);
+                    foreach(var band in cross.UnknownSpans)
+                    {
+                        if(band.EndMm<=a)continue;if(band.StartMm>=b)break;
+                        double length=(Math.Min(b,band.StartMm)-a)/1000;
+                        if(length>0 && (q*length>2*input.Primary.ShearLimitKn+1e-7 || q*length*length>16*input.Primary.MomentLimitKnM+1e-7))return false;
+                        a=Math.Max(a,band.EndMm);if(a>=b)break;
+                    }
+                    double last=(b-a)/1000;
+                    if(last>0 && (q*last>2*input.Primary.ShearLimitKn+1e-7 || q*last*last>16*input.Primary.MomentLimitKnM+1e-7))return false;
+                }
+            }
+            return true;
         }
         private static bool NecessaryPrimarySpans(TowerInput input,Geometry geometry,CrossOption cross,double edge,int stage)
         {
             using(var hot=input.Trace?.Hot(BeamHotStage.SpanScreen))
             {
+            var preparedPlan=cross.PositionedPlan??input.EngineerPlan;
+            if(input.PrepareReceiverChecks && input.DeferCrossingChecks && preparedPlan!=null && preparedPlan.Network.CrossingBeams.Any(c=>(c.BayNumber==preparedPlan.Beam || c.BayNumber==preparedPlan.Beam+1) && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows))return PreparedSpanScreen(input,geometry,cross,edge,preparedPlan);
             // Between supports, a constant UDL changes shear by qL and needs a
             // moment range qL²/8. With |V|<=Vlim and |M|<=Mlim these are necessary
             // bounds, independent of end moments. Unknown crossing increments
@@ -1460,6 +1511,7 @@ namespace EngineeringDashboard
         {
             if(!input.DeferTransferLayout)return EvaluateReference(input,g,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared);
             if(input.EngineerSearch && !AcceptTransverseCases(input,cross,width,grid,edge))return null;
+            if(cross.PreparedReceiver!=null && !cross.PreparedReceiver(g,edge)){input.Trace?.Increment(BeamSearchCounter.TransferLayoutsDeferred);return null;}
             var rows=grid.Rows;var trib=grid.Tributaries;var ls=grid.LeftScales;var rs=grid.RightScales;
             if(ls.Length!=rows.Length || rs.Length!=rows.Length)throw new ArgumentException("Crossing beam row loads do not match the support rows.");
             if(!input.EngineerSearch && (cross.Left!=null && !Pass(input,cross.Left.Analysis,Math.Max(ls.Max(),input.TransferredSlab.SlabSpacing(true)/1000),1,input.Diagnostics,input.DiagnosticScope+"Left slab H20",1,()=> $"governing row T{Array.IndexOf(ls,ls.Max())+1} · stock {cross.Left.Stock:0} mm") || cross.Right!=null && !Pass(input,cross.Right.Analysis,Math.Max(rs.Max(),input.TransferredSlab.SlabSpacing(false)/1000),1,input.Diagnostics,input.DiagnosticScope+"Right slab H20",1,()=> $"governing row T{Array.IndexOf(rs,rs.Max())+1} · stock {cross.Right.Stock:0} mm")))return null;
@@ -1517,7 +1569,7 @@ namespace EngineeringDashboard
                 }
                 primaryCases.Add(members);
             }
-            if(input.EngineerSearch && input.TransferLayoutAcceptance!=null)
+            if(input.EngineerSearch && input.TransferLayoutAcceptance!=null && cross.PreparedReceiver==null)
             {
                 var provisional=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,IgnoreUplift=input.IgnoreUplift,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=g.Joined,WidthMm=width,Rotated=rotated,LengthMm=input.LengthMm,DeflectionDenominator=input.DeflectionDenominator,DeflectionLimitMm=input.DeflectionLimitMm,LegCapacityKn=input.LegCapacityKn,
                     StockPlan=new TowerStockPlan {PrimaryMaterial=input.PrimaryMaterial,Pieces=g.Stock.Select(p=>new TowerStockPiece {StartMm=p.StartMm+edge,StockLengthMm=p.StockLengthMm,FirstSupport=p.FirstSupport,LastSupport=p.LastSupport}).ToArray()},

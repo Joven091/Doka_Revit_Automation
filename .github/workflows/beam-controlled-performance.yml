@@ -1,22 +1,39 @@
 name: Controlled beam performance
 on: [pull_request]
+concurrency:
+  group: controlled-beam-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   profile:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - run: dotnet run --project tests/Beam.Tests -c Release -- --next-search-speed
-      - run: dotnet run --project tests/Beam.Tests -c Release --no-build -- --controlled-performance --model reported --profile --seconds 120
+      - run: dotnet run --project tests/Beam.Tests -c Release --no-build -- --prepared-receivers
       - run: dotnet build tests/Beam.Net48 -c Release --warnaserror
-      - name: Profile production-runtime search
+      - name: Optimized complete production-runtime search
         run: |
           New-Item -ItemType Directory -Force work/performance | Out-Null
-          tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --controlled-performance --model reported --profile --seconds 240 | Tee-Object -FilePath work/performance/profile-net48.txt
+          tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --controlled-performance --model reported | Tee-Object -FilePath work/performance/optimized-net48.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Reference complete search on the same runner
+        run: |
+          tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --controlled-performance --model reported --variant reference | Tee-Object -FilePath work/performance/reference-net48.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compare complete layouts and calculated loads
+        shell: python
+        run: |
+          from pathlib import Path
+          a=Path('work/performance/optimized-net48.txt').read_text()
+          b=Path('work/performance/reference-net48.txt').read_text()
+          def fingerprint(s):
+              return s.split('FINGERPRINT BEGIN\n',1)[1].split('FINGERPRINT END',1)[0]
+          assert fingerprint(a)==fingerprint(b), 'Selected layouts or calculated forces changed'
+          print('Complete optimized/reference layout and force fingerprints match.')
       - uses: actions/upload-artifact@v4
         if: always()
         with:

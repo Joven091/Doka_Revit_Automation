@@ -27,7 +27,7 @@ namespace EngineeringDashboard
         private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred","Network branches pruned by exact bounds","Network transverse response cache hits","Complete network candidates","Crossing leg clashes rejected before member checks","Network spacing vectors searched","Uniform primary shape cache hits","Primary load-data cache hits","Seed network candidates"};
         // Sampling is opt-in for benchmark runs. No per-check stopwatch,
         // timer allocation or profiling collection is used by normal calculation.
-        internal bool EnableHotProfiling;
+        internal bool EnableHotProfiling=false;
         internal sealed class HotBucket {internal long Calls,Samples,Ticks;internal uint Random=31973;}
         private readonly ThreadLocal<HotBucket[]> hotBuckets=new ThreadLocal<HotBucket[]>(()=>Enum.GetValues(typeof(BeamHotStage)).Cast<BeamHotStage>().Select(x=>new HotBucket {Random=31973+(uint)x*7111}).ToArray(),true);
         internal struct HotTimer : IDisposable
