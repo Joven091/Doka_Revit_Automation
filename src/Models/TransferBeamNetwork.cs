@@ -426,6 +426,21 @@ namespace EngineeringDashboard
         }
         private static TransferNetworkResult FullTransfer(TowerInput common,TransferNetworkInput input)
         {
+            try {return FullTransferCore(common,input);}
+            catch(TowerOptimizationException boundedFailure) when (!common.RetainAllSlabSupportOptions)
+            {
+                // A larger plywood allowance introduces shorter stock and moves
+                // its feet. Before excluding a slab, retry every passing discrete
+                // stock/setback option rather than relying on representative bands.
+                var worker=common.CopyForSearch();worker.RetainAllSlabSupportOptions=true;
+                common.Trace?.Work("Slab stock and support alternatives");
+                try {var result=FullTransferCore(worker,input);common.Diagnostics=worker.Diagnostics;return result;}
+                catch(TowerOptimizationException expandedFailure)
+                {throw new TowerOptimizationException(boundedFailure.Message,boundedFailure.Details+"\n\nFull slab stock/support alternatives also failed:\n"+expandedFailure.Details);}
+            }
+        }
+        private static TransferNetworkResult FullTransferCore(TowerInput common,TransferNetworkInput input)
+        {
             if(input.HasIndividualSpacings)
             {
                 // Spacing retries retain exact geometry/response work within this one stock pass.
@@ -924,6 +939,9 @@ namespace EngineeringDashboard
                 }
             }
             if(result.Count==0)common.Diagnostics.Geometry("S"+(bay+1)+" symmetric supports",$"S{bay+1}: no permitted slab H20 passes with equal support setbacks on both sides.","Review stock, spacing and receiving geometry, or provide separately designed slab supports.");
+            if(common.RetainAllSlabSupportOptions)
+                return result.OrderBy(r=>r.Item1.StockLengthMm).ThenBy(r=>r.Item1.NearFootMm)
+                    .GroupBy(r=>Tuple.Create(r.Item1.StockLengthMm,r.Item1.NearFootMm)).Select(g=>g.First().Item1).ToArray();
             // The chain DP compares only passing symmetric arrangements from this bounded set.
             // A shorter slab stock can move its foot farther along the receiving
             // secondary and increase that member's demand. Retain the closest-foot

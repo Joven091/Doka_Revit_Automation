@@ -233,6 +233,7 @@ namespace EngineeringDashboard
         // Production networks share slab/primary extents. Retained internally for historical regression fixtures.
         internal bool IndependentNetworkPrimaryCoverage = false;
         internal bool CoordinateCrossingLayouts;
+        internal bool RetainAllSlabSupportOptions;
         internal int NetworkSearchWorkers = Math.Min(4,Environment.ProcessorCount);
         internal bool PruneUneconomicCandidates = true;
         internal bool StagePrimaryChecks = true;
