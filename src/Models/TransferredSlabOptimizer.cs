@@ -479,13 +479,17 @@ namespace EngineeringDashboard
             int maximum=Math.Min(EngineerTowerSearch.MaximumStations(input),input.NetworkLegCeiling/2);
             int limit=Math.Min(maximum,Math.Max(input.EngineerMinimumStations,Math.Max(4,input.EngineerPlan?.InitialLegs??(seeds.Min()+2))));
             var cache=t.SharedGeometryCache??new GeometryCache();
+            // Receiver-count refinement only changes eligible shared-spreader rows.
+            // Dedicated/negative-gap crossings have identical geometry and checks
+            // at counts 3 through 8; do not repeat a failed search six times.
+            bool refineReceivers=t.EngineerNetwork!=null && EngineerPrimaryPlan.Adjacent(t.EngineerNetwork,t.EngineerBeam).Any();
             int receiverCount=3;
             while(true)
             {
                 var worker=input.CopyForSearch();worker.EngineerStationLimit=limit;
                 worker.TransferredSlab=t.Copy();worker.TransferredSlab.SharedGeometryCache=cache;worker.TransferredSlab.EngineerReceiverCount=receiverCount;
                 try{return OptimizeCoreByLegTier(worker,shareDiagnostics);}
-                catch(TowerOptimizationException) when(t.EngineerNetwork!=null && receiverCount<8){receiverCount++;}
+                catch(TowerOptimizationException) when(refineReceivers && receiverCount<8){receiverCount++;}
                 catch(TowerOptimizationException) when(limit<maximum){limit=Math.Min(maximum,limit+(input.EngineerPlan==null ? 4 : 2));receiverCount=3;}
             }
         }
