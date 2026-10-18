@@ -434,7 +434,13 @@ namespace EngineeringDashboard
             => a.EngineerSearch ? EngineerTowerSearch.Compare(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty) : CompareBracePreference(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty);
         private static bool Better(TowerLayout a,TowerLayout b)
         {
-            if(a.EngineerSearch)return TransferredSlabOptimizer.Better(a,b);
+            if(a.EngineerSearch)
+            {
+                if(a.LegCount!=b.LegCount)return a.LegCount<b.LegCount;
+                int brace=CompareBracePreference(a,b);if(brace!=0)return brace<0;
+                if(Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7)return a.SymmetryErrorMm<b.SymmetryErrorMm;
+                if(Math.Abs(a.BraceLocationPenalty-b.BraceLocationPenalty)>1e-7)return a.BraceLocationPenalty<b.BraceLocationPenalty;
+            }
             return a.LegCount<b.LegCount || a.LegCount==b.LegCount && (CompareBracePreference(a,b)<0
                 || CompareBracePreference(a,b)==0 && (a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
                 || a.StockPlan.TotalPrimaryCount==b.StockPlan.TotalPrimaryCount && a.Utilization<b.Utilization));
