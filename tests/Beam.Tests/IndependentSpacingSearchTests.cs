@@ -53,10 +53,12 @@ internal static class IndependentSpacingSearchTests
             Check(input.BeamSpacingsMm.SequenceEqual(fresh ? new[] {350.0,305,350} : Enumerable.Repeat(275.0,8)),"source maxima remain unchanged");
             if(!baseline)
             {
-                // The wider plywood-based end allowance changes eligible slab stocks
-                // and their actual receiving reactions; keep the checked spacing regression.
-                Check(result.Input.BeamSpacingsMm.SequenceEqual(fresh ? new[] {350.0,275,350} : new[] {275.0,275,250,275,275,275,275,275}),"passing beam maxima retained");
-                Check(result.Input.SlabSpacingsMm.SequenceEqual(fresh ? new[] {488.0,488} : new[] {250.0,275,250,275,275,275,275}),"only necessary slab reductions retained");
+                // More passing stock/support alternatives can restore a higher pitch.
+                // Retain the verified floors while allowing a checked improvement.
+                var beamFloors=fresh ? new[] {350.0,275,350} : new[] {275.0,275,250,275,275,275,275,275};
+                var slabFloors=fresh ? new[] {488.0,488} : new[] {250.0,275,250,275,275,275,275};
+                Check(result.Input.BeamSpacingsMm.Zip(beamFloors,(selected,floor)=>selected>=floor).All(ok=>ok) && result.Input.BeamSpacingsMm.Zip(input.BeamSpacingsMm,(selected,maximum)=>selected<=maximum).All(ok=>ok),"known passing beam pitch floors and plywood maxima retained");
+                Check(result.Input.SlabSpacingsMm.Zip(slabFloors,(selected,floor)=>selected>=floor).All(ok=>ok) && result.Input.SlabSpacingsMm.Zip(input.SlabSpacingsMm,(selected,maximum)=>selected<=maximum).All(ok=>ok),"known passing slab pitch floors and plywood maxima retained");
                 Check(result.Input.CrossingSpacingsMm.SequenceEqual(fresh ? new[] {350.0,350} : Enumerable.Repeat(275.0,7)),"passing crossing maxima retained");
                 int elements=input.Beams.Length+input.Bays.Length+input.CrossingBeams.Length;
                 Check(common.Trace.Count(BeamSearchCounter.NetworkSpacingTrials)<=10+7*elements,"search vector count is linear in elements, never a Cartesian product");
@@ -107,7 +109,11 @@ internal static class IndependentSpacingSearchTests
             common.Trace=trace;
             try
             {
-                var result=TransferNetworkOptimizer.Optimize(common,Reported());
+                var control=Reported();
+                control.BeamSpacingsMm=control.Beams.Select(b=>b.DepthMm==1750 ? 305.0 : 350).ToArray();
+                control.SlabSpacingsMm=Enumerable.Repeat(350.0,control.Bays.Length).ToArray();
+                control.CrossingSpacingsMm=Enumerable.Repeat(350.0,control.CrossingBeams.Length).ToArray();control.UpperSpacingMm=305;
+                var result=TransferNetworkOptimizer.Optimize(common,control);
                 Check(!cancel && trace.BudgetReached && result.SearchTimeLimitReached,"deadline recovery retains complete checked seed");
                 Engineering(result);
                 Check(result.Beams.All(b=>b.SearchTimeLimitReached && !b.MinimumLegCountProven),"deadline cannot claim proven optimum");

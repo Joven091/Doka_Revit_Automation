@@ -13,6 +13,7 @@ jobs:
       - run: dotnet run --project tests/Beam.Tests -c Release --no-build -- --custom-h20-scope
       - run: dotnet run --project tests/Beam.Tests -c Release --no-build -- --independent-spacing-search
       - run: dotnet run --project tests/Beam.Tests -c Release --no-build -- --independent-spacing-controls
+      - run: dotnet run --project tests/Beam.Tests -c Release --no-build -- --uplift-reported
       - run: dotnet build tests/Beam.Net48 -c Release --warnaserror
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --slab-plywood-edges
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --slab-plywood-report

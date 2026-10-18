@@ -925,8 +925,13 @@ namespace EngineeringDashboard
             }
             if(result.Count==0)common.Diagnostics.Geometry("S"+(bay+1)+" symmetric supports",$"S{bay+1}: no permitted slab H20 passes with equal support setbacks on both sides.","Review stock, spacing and receiving geometry, or provide separately designed slab supports.");
             // The chain DP compares only passing symmetric arrangements from this bounded set.
+            // A shorter slab stock can move its foot farther along the receiving
+            // secondary and increase that member's demand. Retain the closest-foot
+            // alternative as well as the least-timber choice in each setback band.
             return result.OrderBy(r=>r.Item1.StockLengthMm).ThenBy(r=>r.Item1.NearFootMm+r.Item1.FarFootMm).ThenBy(r=>r.Item2)
-                .GroupBy(r=>Math.Round(r.Item1.NearFootMm/250)).Select(g=>g.First().Item1).Take(10).ToArray();
+                .GroupBy(r=>Math.Round(r.Item1.NearFootMm/250))
+                .SelectMany(g=>new[] {g.First(),g.OrderBy(r=>r.Item1.NearFootMm).ThenBy(r=>r.Item1.StockLengthMm).ThenBy(r=>r.Item2).First()}.Distinct())
+                .Select(r=>r.Item1).Take(20).ToArray();
         }
         private static double[] BayBaseline(TowerInput common,TransferNetworkInput input,int bay,UpperTransferPlan plan,double cover,double phase)
         {
