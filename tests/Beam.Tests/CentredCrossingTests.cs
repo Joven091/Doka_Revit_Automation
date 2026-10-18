@@ -71,7 +71,6 @@ internal static class CentredCrossingTests
         var common=new TowerInput {PrimaryMaterial=material,EngineerSearch=true,FullLoadingOnly=true,LengthMm=6900,LegCapacityKn=70,IgnoreUplift=true,DeflectionDenominator=270};
         var r=Fixture(common);var originalBeams=r.Beams.Select(b=>b.Transfer).ToArray();var originalCross=r.CrossSupports;
         CrossBeamSupportOptimizer.CentreCrossingFrames(common,r,Console.WriteLine);
-        CrossBeamSupportOptimizer.BalanceSettingOut(common,r);
         for(int i=0;i<2;i++)
         {
             var old=originalCross[i];var cross=r.CrossSupports[i];var legs=cross.Bearings.Where(b=>b.IsDedicated && b.Label.StartsWith("Dedicated P")).ToArray();
@@ -98,7 +97,7 @@ internal static class CentredCrossingTests
         Check(r.Beams[1].Transfer.SettingOutRowsMm!=null,"B2 slab-carrying lower rows can clear centred legs independently of the slab feet");
         var solids=CrossBeamSupportOptimizer.NetworkSolids(r).Concat(CrossBeamSupportOptimizer.Concrete(r)).ToArray();
         foreach(var c in r.CrossSupports)Check(c.Solids.All(s=>solids.All(o=>!s.Conflicts(o))),"centred frame clears all actual receiving timber, concrete and tower envelopes");
-        int h20=r.H20Count;var centred=r.CrossSupports;CrossBeamSupportOptimizer.BalanceSettingOut(common,r);
+        int h20=r.H20Count;var centred=r.CrossSupports;CrossBeamSupportOptimizer.CentreCrossingFrames(common,r);
         Check(r.H20Count==h20 && r.CrossSupports.SequenceEqual(centred),"centred setting-out is idempotent");
         Console.WriteLine($"Passed {checks} centred crossing checks ({material}); B1/B2/B3 primary arrays retained exactly.");
     }

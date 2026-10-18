@@ -49,6 +49,12 @@ internal static class CentredSearchSpeedTests
         Near(fixture.CrossSupports[0].Bearings.Where(b=>b.IsDedicated && b.Label.StartsWith("Dedicated P")).Average(b=>b.Xmm),5675,"centred leg can clear the 4880 plywood-joint row");
         Check(fixture.Beams[1].Transfer.HasCustomPlywoodJoints,"relocated joint requires local plywood cuts");
         Check(ReferenceEquals(fixture.Beams[1].Transfer.PrimaryCases,original.PrimaryCases) && ReferenceEquals(fixture.Beams[1].Transfer.LowerCases,original.LowerCases),"joint relocation retains the existing design calculations");
+        var primary=fixture.Beams[0].Transfer.PrimaryCases[0][0];
+        CrossBeamSupportOptimizer.BalanceSettingOut(common,fixture);
+        Check(fixture.Beams[0].CantileverImbalanceMm<1e-7,"main-beam stock is also centred");
+        var centredPrimary=fixture.Beams[0].Transfer.PrimaryCases[0][0];
+        Check(ReferenceEquals(primary.Uniform,centredPrimary.Uniform) && !ReferenceEquals(primary.Analysis,centredPrimary.Analysis),"main centring retains UDL and recomputes support responses");
+        Near(primary.Analysis.TotalLoadKn,centredPrimary.Analysis.TotalLoadKn,"main centring retains primary force");
         var trace=new BeamSearchTrace("batched counters");
         Parallel.For(0,8,i=>{for(int j=0;j<1001;j++)trace.Increment(BeamSearchCounter.NumericalChecks);});
         Near(trace.Count(BeamSearchCounter.NumericalChecks),8008,"live counter includes pending worker events");trace.Complete("Succeeded");

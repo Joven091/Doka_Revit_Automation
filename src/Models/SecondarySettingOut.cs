@@ -57,8 +57,14 @@ namespace EngineeringDashboard
             var check=common.CopyForSearch();check.Trace=null;check.Diagnostics=null;
             for(int beam=0;beam<result.Beams.Length;beam++)
             {
+                common.Trace?.CheckUserCancellation();
                 var original=result.Beams[beam];
                 if(original.CantileverImbalanceMm<1e-7)continue;
+                Action<string> retain=notice=>
+                {
+                    var copy=Copy(original);copy.CentringNotice=notice;
+                    var beams=(TowerLayout[])result.Beams.Clone();beams[beam]=copy;result.Beams=beams;
+                };
                 var layout=Copy(original);layout.Transfer=original.Transfer.Copy();
                 var shifts=new double[layout.PositionsMm.Length];
                 foreach(var stock in layout.StockPlan.Pieces)
@@ -67,26 +73,32 @@ namespace EngineeringDashboard
                     for(int i=stock.FirstSupport;i<=stock.LastSupport;i++)shifts[i]=shift;
                 }
                 if(Enumerable.Range(0,original.Joined.Length).Any(i=>original.Joined[i] && Math.Abs(shifts[i]-shifts[i+1])>1e-7))
-                {original.CentringNotice="Unequal primary overhangs retained: the linked brace spans a stock joint and prevents independent centring of these pieces.";continue;}
+                {retain("Unequal primary overhangs retained: the linked brace spans a stock joint and prevents independent centring of these pieces.");continue;}
                 layout.PositionsMm=original.PositionsMm.Select((x,i)=>x+shifts[i]).ToArray();
-                int runs=layout.StockPlan.Pieces.Length;bool passes=true;
+                int runs=layout.StockPlan.Pieces.Length;bool passes=true;string checkFailure=null;
                 layout.Transfer.PrimaryCases=original.Transfer.PrimaryCases.Select(stage=>stage.Select((m,i)=>
                 {
                     var stock=layout.StockPlan.Pieces[i%runs];
                     var member=new TransferMember {PrimaryMaterial=m.PrimaryMaterial,Name=m.Name,LoadCase=m.LoadCase,H20Count=m.H20Count,StartMm=m.StartMm,LengthMm=m.LengthMm,PrimarySelfWeightKnM=m.PrimarySelfWeightKnM,Uniform=m.Uniform,Points=m.Points,LegacyPrimaryUniform=m.LegacyPrimaryUniform,
                         SupportsMm=layout.PositionsMm.Skip(stock.FirstSupport).Take(stock.LastSupport-stock.FirstSupport+1).Select(x=>x-stock.StartMm).ToArray()};
                     member.Analysis=LoadedBeamAnalysis.AnalyzeSigned(member.LengthMm,member.SupportsMm,member.Uniform,member.Points,member.EI,common.DeflectionDenominator);
-                    if(!Pass(member,check,"Centred main primary") || member.Analysis.Reactions.Max()>common.LegCapacityKn+1e-8)passes=false;
+                    if(!Pass(member,check,"Centred main primary") || member.Analysis.Reactions.Max()>common.LegCapacityKn+1e-8)
+                    {
+                        passes=false;
+                        if(checkFailure==null)checkFailure=member.Analysis.Reactions.Max()>common.LegCapacityKn+1e-8
+                            ? $"{member.Name} centred leg load {member.Analysis.Reactions.Max():0.###}/{common.LegCapacityKn:0.###} kN."
+                            : $"{member.Name} centred check: M {member.Analysis.MomentKnM:0.###}/{member.MomentLimitKnM:0.###} kNm, V {member.Analysis.ShearKn:0.###}/{member.ShearLimitKn:0.###} kN, deflection utilization {member.Analysis.DeflectionUtilization*100:0.#}%, minimum bearing reaction {member.MinimumReactionKn:0.###} kN.";
+                    }
                     return member;
                 }).ToArray()).ToArray();
-                if(!passes){original.CentringNotice="Unequal primary overhangs retained: equal overhangs fail a primary strength, deflection, bearing or individual-leg check.";continue;}
+                if(!passes){retain("Unequal primary overhangs retained: "+checkFailure);continue;}
                 string reason=null,owner=$"B{beam+1}";
                 // Main towers run along x; use their actual production solids.
                 var trialBeams=(TowerLayout[])result.Beams.Clone();trialBeams[beam]=layout;
                 var trial=new TransferNetworkResult {Input=result.Input,Beams=trialBeams,Bays=result.Bays,BeamCentresMm=result.BeamCentresMm,SlabCoveredLengthMm=result.SlabCoveredLengthMm,RowPhaseMm=result.RowPhaseMm};
                 var targets=NetworkSolids(trial).Where(s=>s.TowerOwner==owner && (s.IsLeg || s.IsTowerEnvelope)).ToArray();
                 if(!TryAdjustSecondaries(result,targets,result.CrossSupports.SelectMany(c=>c.Solids).ToArray(),out var adjusted,true,message=>reason=message,owner))
-                {original.CentringNotice="Unequal primary overhangs retained: "+(reason??"centred tower clearance check failed.");continue;}
+                {retain("Unequal primary overhangs retained: "+(reason??"centred tower clearance check failed."));continue;}
                 layout.Transfer.SettingOutRowsMm=adjusted[beam].Transfer.SettingOutRowsMm;layout.Transfer.SettingOutDesignRows=adjusted[beam].Transfer.SettingOutDesignRows;layout.Transfer.HasCustomPlywoodJoints=adjusted[beam].Transfer.HasCustomPlywoodJoints;
                 int count=layout.PositionsMm.Length;
                 layout.LeftReactions=Enumerable.Repeat(double.NegativeInfinity,count).ToArray();layout.RightReactions=(double[])layout.LeftReactions.Clone();layout.MinimumLeftReactions=Enumerable.Repeat(double.PositiveInfinity,count).ToArray();layout.MinimumRightReactions=(double[])layout.MinimumLeftReactions.Clone();

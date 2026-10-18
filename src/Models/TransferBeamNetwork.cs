@@ -635,7 +635,16 @@ namespace EngineeringDashboard
         private sealed class EngineerBound
         {
             private int legs=int.MaxValue;
-            internal int Ceiling(int used,int remaining,int minimum)=>Math.Max(0,Volatile.Read(ref legs)-used-remaining*minimum);
+            private readonly int minimumDedicatedLegs;
+            internal EngineerBound(TransferNetworkInput input)
+            {
+                // Dedicated formwork needs at least one four-leg tower. A negative
+                // filler gap makes the shared mode impossible at every receiver pose.
+                minimumDedicatedLegs=4*input.CrossingBeams.Count(c=>c.SupportMode==CrossBeamSupportMode.DedicatedTowers
+                    || c.SupportMode==CrossBeamSupportMode.Automatic && (!CrossBeamSupportOptimizer.ValidFillerGap(c.BottomElevationMm,input.Beams[c.BayNumber-1].BottomElevationMm,out var near)
+                        || !CrossBeamSupportOptimizer.ValidFillerGap(c.BottomElevationMm,input.Beams[c.BayNumber].BottomElevationMm,out var far)));
+            }
+            internal int Ceiling(int used,int remaining,int minimum)=>Math.Max(0,Volatile.Read(ref legs)-used-remaining*minimum-minimumDedicatedLegs);
             internal void Publish(TransferNetworkResult result)
             {
                 int value=result.LegCount,old;
@@ -648,7 +657,7 @@ namespace EngineeringDashboard
             common.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};var diag=common.Diagnostics;
             var geometryCache=common.ReuseSearchWork ? common.NetworkGeometryWork ?? new TransferredSlabOptimizer.GeometryCache() : null;
             var incumbent=!common.EngineerSearch && common.PruneNetworkBounds && !separate && input.CrossingBeams.All(c=>c.SupportMode==CrossBeamSupportMode.LegacySlabRows) ? new Incumbent() : null;
-            var engineerBound=common.EngineerSearch && common.PruneNetworkBounds && !separate ? new EngineerBound() : null;
+            var engineerBound=common.EngineerSearch && common.PruneNetworkBounds && !separate ? new EngineerBound(input) : null;
             common.Trace?.Work("Network primary cover generation");
             double[][] stockCovers;
             using(common.Trace?.Measure(BeamSearchStage.StockCovers))stockCovers=TransferredSlabOptimizer.StockCovers(common);
