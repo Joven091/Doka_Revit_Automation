@@ -1,6 +1,18 @@
 name: Positioned secondary transfer
 on: [pull_request]
 jobs:
+  centred-search-speed:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/Beam.Tests -c Release -- --centred-search-speed
+      - run: dotnet build tests/Beam.Net48 -c Release --warnaserror
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --centred-search-speed
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --centred-speed-report
   slab-plywood-edges:
     runs-on: windows-latest
     timeout-minutes: 12

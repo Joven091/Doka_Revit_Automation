@@ -138,6 +138,8 @@ namespace EngineeringDashboard
             uniform = uniform ?? new BeamDistributedLoad[0]; points = points ?? new BeamPointLoad[0];
             if (uniform.Any(v => v == null || !Finite(v.StartMm) || !Finite(v.EndMm) || v.StartMm < 0 || v.EndMm > lengthMm || v.EndMm <= v.StartMm || !Finite(v.KnPerM) || !allowSigned && v.KnPerM < 0)
                 || points.Any(v => v == null || !Finite(v.PositionMm) || v.PositionMm < 0 || v.PositionMm > lengthMm || !Finite(v.Kn) || !allowSigned && v.Kn < 0)) throw new ArgumentException("Invalid beam loads.");
+            if(banded && supportMm.Length==2 && Math.Abs(supportMm[1]-supportMm[0])>1e-4)
+                return AnalyzeTwoSupports(lengthMm,supportMm,uniform,points,ei,denominator,reactionCapacity,rejectFailedPrimary,ignoreUplift);
             // Primary pairs reuse only their immutable structure. Each load vector and
             // displacement solution is new; forces are never rounded or omitted from checks.
             var shapeKey=matrixCache==null ? null : new MatrixKey(lengthMm,supportMm,points,ei,uniform);
@@ -198,13 +200,15 @@ namespace EngineeringDashboard
             for (int index = 0; index < nodes.Count - 1; index++)
             {
                 double l = (nodes[index + 1] - nodes[index]) / 1000, u = d[2 * index], v = d[2 * index + 2], t = d[2 * index + 1], z = d[2 * index + 3];
-                double q = uniform.Where(w => w.StartMm < (nodes[index] + nodes[index + 1]) / 2 && w.EndMm > (nodes[index] + nodes[index + 1]) / 2).Sum(w => w.KnPerM);
+                double q = uniform.Where(w => w.StartMm < (nodes[index]+nodes[index+1])/2 && w.EndMm > (nodes[index]+nodes[index+1])/2).Sum(w => w.KnPerM);
                 var e = new Element { X = nodes[index] / 1000, L = l, Q = q, U = u, T = t, C2 = (-3 * u + 3 * v) / (l * l) - (2 * t + z) / l + q * l * l / (24 * ei), C3 = (2 * u - 2 * v) / (l * l * l) + (t + z) / (l * l) - q * l / (12 * ei), C4 = q / (24 * ei) };
                 result.elements.Add(e);
-                var momentPoints = new List<double> { 0, l }; if (Math.Abs(e.C4) > 1e-20) { double x = -e.C3 / (4 * e.C4); if (x > 0 && x < l) momentPoints.Add(x); }
-                result.MomentKnM = Math.Max(result.MomentKnM, momentPoints.Max(x => Math.Abs(ei * (2 * e.C2 + 6 * e.C3 * x + 12 * e.C4 * x * x))));
-                result.ShearKn = Math.Max(result.ShearKn, Math.Max(Math.Abs(ei * 6 * e.C3), Math.Abs(ei * (6 * e.C3 + 24 * e.C4 * l))));
+                result.AddForcePeaks(e);
             }
+            return FinishAnalysis(result,lengthMm,supports,denominator,reactionCapacity,rejectFailedPrimary,ignoreUplift,banded && uniform.Length==0);
+        }
+        private static LoadedBeamAnalysis FinishAnalysis(LoadedBeamAnalysis result,double lengthMm,double[] supports,int denominator,double reactionCapacity,bool rejectFailedPrimary,bool ignoreUplift,bool pointOnly)
+        {
             if (Math.Abs(result.Reactions.Sum() - result.TotalLoadKn) > 1e-6 * Math.Max(1, result.TotalLoadKn)) throw new ArgumentException("Beam load equilibrium failed.");
             if(rejectFailedPrimary && (result.MomentKnM>TowerOptimizer.PairMoment+1e-8 || result.ShearKn>TowerOptimizer.PairShear+1e-8 || result.Reactions.Any(r=>(!ignoreUplift && r< -1e-7) || r>reactionCapacity+1e-8)))return result;
             for(int index=0;index<result.elements.Count;index++)
@@ -222,18 +226,58 @@ namespace EngineeringDashboard
                     // Point-only members have a quadratic slope. Use stable roots of the
                     // same displacement polynomial; retain bisection for UDLs or an
                     // ill-conditioned root that fails its residual/interval checks.
-                    if(banded && uniform.Length==0 && TryQuadraticRoot(3*e.C3,2*e.C2,e.T,lo,hi,out double root)) {peaks.Add(root);continue;}
+                    if(pointOnly && TryQuadraticRoot(3*e.C3,2*e.C2,e.T,lo,hi,out double root)) {peaks.Add(root);continue;}
                     for(int j=0;j<42;j++) {double middle=(lo+hi)/2;if(sign*slope(middle)>0)lo=middle;else hi=middle;}
                     peaks.Add((lo+hi)/2);
                 }
                 double peak = peaks.Max(x => Math.Abs(e.U + e.T * x + e.C2 * x * x + e.C3 * x * x * x + e.C4 * x * x * x * x)) * 1000;
-                double middleMm = (nodes[index] + nodes[index + 1]) / 2; int span = Array.FindLastIndex(supports, s => s < middleMm);
+                double middleMm = (e.X+e.L/2)*1000; int span = Array.FindLastIndex(supports, s => s < middleMm);
                 double region = span < 0 ? supports[0] : span == supports.Length - 1 ? lengthMm - supports.Last() : supports[span + 1] - supports[span];
                 double use = peak / (region / denominator); if (use > result.DeflectionUtilization) { result.DeflectionUtilization = use; result.GoverningLengthMm = region; }
                 result.DeflectionMm = Math.Max(result.DeflectionMm, peak);
             }
             result.DeflectionEvaluated=true;
             return result;
+        }
+        private void AddForcePeaks(Element e)
+        {
+            double end=e.L;
+            MomentKnM=Math.Max(MomentKnM,Math.Max(Math.Abs(2*e.C2*rigidity),Math.Abs((2*e.C2+6*e.C3*end+12*e.C4*end*end)*rigidity)));
+            if(Math.Abs(e.C4)>1e-20)
+            {
+                double x=-e.C3/(4*e.C4);
+                if(x>0 && x<end)MomentKnM=Math.Max(MomentKnM,Math.Abs((2*e.C2+6*e.C3*x+12*e.C4*x*x)*rigidity));
+            }
+            ShearKn=Math.Max(ShearKn,Math.Max(Math.Abs(6*e.C3*rigidity),Math.Abs((6*e.C3+24*e.C4*end)*rigidity)));
+        }
+        private static LoadedBeamAnalysis AnalyzeTwoSupports(double lengthMm,double[] supportMm,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,double reactionCapacity,bool rejectFailedPrimary,bool ignoreUplift)
+        {
+            var supports=supportMm.OrderBy(x=>x).ToArray();double a=supports[0]/1000,b=supports[1]/1000;
+            double force=0,moment=0;
+            foreach(var q in uniform){double p=q.KnPerM*(q.EndMm-q.StartMm)/1000;force+=p;moment+=p*(q.StartMm+q.EndMm)/2000;}
+            foreach(var p in points){force+=p.Kn;moment+=p.Kn*p.PositionMm/1000;}
+            double right=(moment-force*a)/(b-a);
+            var result=new LoadedBeamAnalysis {rigidity=ei,TotalLoadKn=force,Reactions=new[] {force-right,right}};
+            var nodes=new[] {0.0,lengthMm}.Concat(supports).Concat(uniform.SelectMany(q=>new[] {q.StartMm,q.EndMm})).Concat(points.Select(p=>p.PositionMm)).OrderBy(x=>x).ToList();
+            for(int i=nodes.Count-1;i>0;i--)if(nodes[i]-nodes[i-1]<1e-7)nodes.RemoveAt(i);
+            double v=0,m=0,u=0,t=0,ua=0,ub=0;
+            for(int i=0;i<nodes.Count-1;i++)
+            {
+                double x=nodes[i],l=(nodes[i+1]-x)/1000,mid=(x+nodes[i+1])/2;
+                if(Math.Abs(x-supports[0])<1e-7){v+=result.Reactions[0];ua=u;}
+                if(Math.Abs(x-supports[1])<1e-7){v+=result.Reactions[1];ub=u;}
+                foreach(var p in points)if(Math.Abs(p.PositionMm-x)<1e-7)v-=p.Kn;
+                double q=0;foreach(var load in uniform)if(load.StartMm<mid && load.EndMm>mid)q+=load.KnPerM;
+                var e=new Element {X=x/1000,L=l,Q=q,U=u,T=t,C2=-m/(2*ei),C3=-v/(6*ei),C4=q/(24*ei)};
+                result.elements.Add(e);result.AddForcePeaks(e);
+                u=e.U+e.T*l+e.C2*l*l+e.C3*l*l*l+e.C4*l*l*l*l;
+                t=e.T+2*e.C2*l+3*e.C3*l*l+4*e.C4*l*l*l;
+                m+=v*l-q*l*l/2;v-=q*l;
+            }
+            if(Math.Abs(supports[1]-lengthMm)<1e-7)ub=u;
+            double slope=(ub-ua)/(b-a),offset=ua-slope*a;
+            foreach(var e in result.elements){e.U-=offset+slope*e.X;e.T-=slope;}
+            return FinishAnalysis(result,lengthMm,supports,denominator,reactionCapacity,rejectFailedPrimary,ignoreUplift,uniform.Length==0);
         }
         internal static bool TryQuadraticRoot(double a,double b,double c,double lo,double hi,out double root)
         {

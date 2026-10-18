@@ -27,15 +27,22 @@ namespace EngineeringDashboard
             if(!failures.TryGetValue(key,out var f)) failures[key]=f=new Failure {Stage=stage,Score=double.PositiveInfinity};
             f.Count++;if(score<f.Score) {f.Score=score;f.Text=text;f.Advice=advice;f.Summary=summary??text;f.Blocker=blocker;}
         }
+        private bool RepeatedFailure(string key,double score)
+        {
+            if(!failures.TryGetValue(key,out var failure) || score<failure.Score)return false;
+            trace?.Increment(BeamSearchCounter.RejectionChecks);failure.Count++;return true;
+        }
         public void Geometry(string key,string text,string advice,double score=0,string summary=null,bool blocker=false)=>Add(key,0,score,text,advice,summary,blocker);
         public void Limit(string scope,string check,int stage,double demand,double limit,string units,string location,string advice,double tolerance=1e-8)
         {
             trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(demand<=limit+tolerance)return;
+            if(RepeatedFailure(scope+"/"+check,demand/limit))return;
             Add(scope+"/"+check,stage,demand/limit,$"{scope} · {check}: {demand:0.###} / {limit:0.###} {units} ({demand/limit*100:0.0}%). {location}",advice,$"{scope} · {check}: {demand:0.###} / {limit:0.###} {units} ({demand/limit*100:0.0}%).");
         }
         public void Bearing(string scope,int stage,double reaction,string location,double tolerance=1e-7)
         {
             trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(ignoreUplift || reaction>=-tolerance)return;
+            if(RepeatedFailure(scope+"/uplift",Math.Abs(reaction)))return;
             Add(scope+"/uplift",stage,Math.Abs(reaction),$"{scope} · uplift: reaction {reaction:G6} kN; minimum 0 kN. {location}","Review foot positions, primary-line/tower width and one-sided loading balance.");
         }
         internal bool LazyLocations=true;
@@ -223,6 +230,7 @@ namespace EngineeringDashboard
         internal bool EngineerDedicatedFallback;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
+        internal Dictionary<double,TowerLayout> ReceiverAlternatives;
         internal double ReceiverTransverseOffsetMm;
         internal BeamSearchTrace Trace;
         // Tests can replay the original search without reuse; production searches reuse work.
@@ -343,6 +351,7 @@ namespace EngineeringDashboard
         public double ShearKn { get; internal set; }
         public double DeflectionMm { get; internal set; }
         public double Utilization { get; internal set; }
+        public double BraceLocationPenalty=>EngineerTowerSearch.BraceLocationPenalty(PositionsMm,Joined,WidthMm,Rotated);
         public double CantileverImbalanceMm=>StockPlan?.Pieces==null || PositionsMm==null ? 0 : StockPlan.Pieces.Sum(p=>Math.Abs((PositionsMm[p.FirstSupport]-p.StartMm)-(p.EndMm-PositionsMm[p.LastSupport])));
         public double SecondarySymmetryErrorMm=>Transfer==null ? 0 : Transfer.LowerCases.Take(1).SelectMany(c=>c).Take(1).Concat(Transfer.UpperMembers).Select(m=>m.SupportsMm.Length<2 ? 0 : Math.Abs(m.SupportsMm.First()-(m.LengthMm-m.SupportsMm.Last()))).DefaultIfEmpty().Max();
         public double SymmetryErrorMm=>TowerOptimizer.SymmetryError(PositionsMm,StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray(),LengthMm/2)+(EngineerSearch ? CantileverImbalanceMm+SecondarySymmetryErrorMm : 0);
@@ -424,9 +433,12 @@ namespace EngineeringDashboard
         internal static int CompareBracePreference(TowerLayout a,TowerLayout b)
             => a.EngineerSearch ? EngineerTowerSearch.Compare(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty) : CompareBracePreference(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty);
         private static bool Better(TowerLayout a,TowerLayout b)
-            => a.LegCount<b.LegCount || a.LegCount==b.LegCount && (CompareBracePreference(a,b)<0
-                || CompareBracePreference(a,b)==0 && (a.EngineerSearch && Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7 ? a.SymmetryErrorMm<b.SymmetryErrorMm : a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
+        {
+            if(a.EngineerSearch)return TransferredSlabOptimizer.Better(a,b);
+            return a.LegCount<b.LegCount || a.LegCount==b.LegCount && (CompareBracePreference(a,b)<0
+                || CompareBracePreference(a,b)==0 && (a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
                 || a.StockPlan.TotalPrimaryCount==b.StockPlan.TotalPrimaryCount && a.Utilization<b.Utilization));
+        }
         public static TowerLayout Optimize(TowerInput input)
         {
             if(input?.Network!=null)return TransferNetworkOptimizer.Optimize(input,input.Network).Beams[0];
@@ -708,14 +720,21 @@ namespace EngineeringDashboard
         internal static int TierOrder(int count,int initial)=>count<=initial ? initial-count : initial+count;
         internal static double BracePenalty(double[] positions,bool[] joined,double width,bool rotated)
         {
-            double penalty=0,centre=(positions.First()+positions.Last())/2;
+            double penalty=0;
             for(int i=0;i<joined.Length;i++)if(joined[i])
             {
                 double brace=rotated ? width : positions[i+1]-positions[i];
                 // 1.50 m first, then 1.00 m, then other manufactured braces.
-                penalty+=Math.Abs(brace-1500)<1e-6 ? 0 : Math.Abs(brace-1000)<1e-6 ? 500+Math.Abs((positions[i]+positions[i+1])/2-centre)/100 : Math.Abs(brace-2000)<1e-6 ? 1500 : 2000;
+                penalty+=Math.Abs(brace-1500)<1e-6 ? 0 : Math.Abs(brace-1000)<1e-6 ? 500 : Math.Abs(brace-2000)<1e-6 ? 1500 : 2000;
             }
             return penalty;
+        }
+        internal static double BraceLocationPenalty(double[] positions,bool[] joined,double width,bool rotated)
+        {
+            double centre=(positions.First()+positions.Last())/2,result=0;
+            for(int i=0;i<joined.Length;i++)if(joined[i] && Math.Abs((rotated ? width : positions[i+1]-positions[i])-1000)<1e-6)
+                result+=Math.Abs((positions[i]+positions[i+1])/2-centre)/100;
+            return result;
         }
         private static IEnumerable<int[]> Groups(int count,bool rotated)
         {

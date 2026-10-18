@@ -130,6 +130,7 @@ namespace EngineeringDashboard
         public double[] RowsMm, TributaryWidthsMm;
         public bool FullLoadingOnly;
         // Physical setting-out can move/add lower bearers independently of slab feet. Design rows and nominal loads stay fixed.
+        public bool HasCustomPlywoodJoints;
         public double[] SettingOutRowsMm;
         public int[] SettingOutDesignRows;
         public int PhysicalRowCount=>SettingOutRowsMm?.Length??RowsMm.Length;
@@ -191,7 +192,7 @@ namespace EngineeringDashboard
         public int AdditionalH20Count => PhysicalRowCount+UpperFootCount/2;
         public double AdditionalTimberMm => PhysicalRowCount*LowerStockLengthMm+(LeftUpperScales?.Count(s=>s>0)??RowsMm.Length)*LeftUpperStockMm+(RightUpperScales?.Count(s=>s>0)??RowsMm.Length)*RightUpperStockMm;
         public string Summary => (ColumnSupportLoads.Length==0 ? "" : "External column-side end supports require separate capacity verification.\n")+(HasIndividualSpacings ? $"Nominal beam spacing {EnteredUpperSpacingMm:0} mm · slab L/R {(LeftUpperStockMm>0 ? SlabSpacing(true).ToString("0") : "—")}/{(RightUpperStockMm>0 ? SlabSpacing(false).ToString("0") : "—")} mm" : $"Nominal secondary spacing {EnteredUpperSpacingMm:0} mm")+$" · {PhysicalRowCount} bearer rows\nPeak upper foot L/R {LeftFootReactionKn:0.00}/{RightFootReactionKn:0.00} kN\nEstimated slab soffit movement {SlabMovementMm:0.00} mm";
-        public string Schedule => (ColumnSupportNotice=="" ? "" : ColumnSupportNotice+"\n")+(SettingOutRowsMm==null ? "" : $"Local H20 setting-out: {AddedSecondaryCount} extra H20(s); design spacing remains {EnteredUpperSpacingMm:0.###} mm and primary UDL is unchanged.\n")+(BeamOnlyRowCount>0 ? $"{BeamOnlyRowCount} local beam-only secondary rows; no additional slab feet or slab tributary.\n" : "")+(UpperMembers.Length>0 ? UpperTransferPlan.SiteArrangement+(HasIndividualSpacings ? " Maximum slab row spacing: "+string.Join("; ",new[] {LeftSlabSpacingMm>0 ? $"left {LeftSlabSpacingMm:0.###} mm" : null,RightSlabSpacingMm>0 ? $"right {RightSlabSpacingMm:0.###} mm" : null}.Where(s=>s!=null))+".\n" : $" Maximum row spacing {EnteredUpperSpacingMm:0.###} mm.\n") : "")+(CrossFormwork ? "Cross-beam footprints exclude slab H20 rows and their upper feet. Remaining rows use their assigned tributaries; main beam concrete retains the full-spacing design.\n" : "")+(SettingOutRowsMm==null ? string.Join("\n",RowsMm.Select((x,i)=>$"T{i+1}: x={x:0.###} mm · actual local beam tributary {TributaryWidthsMm[i]:0.###} mm · effective beam design width {Math.Max(TributaryWidthsMm[i],EnteredUpperSpacingMm):0.###} mm · 1 × {LowerStockLengthMm:0} mm")) : string.Join("\n",SettingOutRowsMm.Select((x,i)=>$"T{i+1}: x={x:0.###} mm · 1 × {LowerStockLengthMm:0} mm")))
+        public string Schedule => (ColumnSupportNotice=="" ? "" : ColumnSupportNotice+"\n")+(SettingOutRowsMm==null ? "" : $"Local H20 setting-out: {AddedSecondaryCount} extra H20(s); design spacing remains {EnteredUpperSpacingMm:0.###} mm and primary UDL is unchanged.\n")+(HasCustomPlywoodJoints ? "Local plywood cuts/joints accommodate the relocated receiving H20s.\n" : "")+(BeamOnlyRowCount>0 ? $"{BeamOnlyRowCount} local beam-only secondary rows; no additional slab feet or slab tributary.\n" : "")+(UpperMembers.Length>0 ? UpperTransferPlan.SiteArrangement+(HasIndividualSpacings ? " Maximum slab row spacing: "+string.Join("; ",new[] {LeftSlabSpacingMm>0 ? $"left {LeftSlabSpacingMm:0.###} mm" : null,RightSlabSpacingMm>0 ? $"right {RightSlabSpacingMm:0.###} mm" : null}.Where(s=>s!=null))+".\n" : $" Maximum row spacing {EnteredUpperSpacingMm:0.###} mm.\n") : "")+(CrossFormwork ? "Cross-beam footprints exclude slab H20 rows and their upper feet. Remaining rows use their assigned tributaries; main beam concrete retains the full-spacing design.\n" : "")+(SettingOutRowsMm==null ? string.Join("\n",RowsMm.Select((x,i)=>$"T{i+1}: x={x:0.###} mm · actual local beam tributary {TributaryWidthsMm[i]:0.###} mm · effective beam design width {Math.Max(TributaryWidthsMm[i],EnteredUpperSpacingMm):0.###} mm · 1 × {LowerStockLengthMm:0} mm")) : string.Join("\n",SettingOutRowsMm.Select((x,i)=>$"T{i+1}: x={x:0.###} mm · 1 × {LowerStockLengthMm:0} mm")))
             + "\n"+string.Join("\n",Enumerable.Range(0,RowsMm.Length).SelectMany(row=>new[] {true,false}.Where(left=>(left ? LeftUpperStockMm : RightUpperStockMm)>0 && UpperScale(left,row)>0).Select(left=>$"T{row+1} {(left ? "left" : "right")}: "+UpperSpacingDescription(left,row))))
             + $"\nLower transverse stock{(LowerCustom ? " (custom, 25 mm increments)" : "")}: {LowerStockStartMm:0.###} to {LowerStockStartMm+LowerStockLengthMm:0.###} mm from beam centre"
             + (LeftUpperStockMm > 0 ? $"\nLeft slab H20: 1 × {LeftUpperStockMm:0} mm{(LeftUpperCustom ? " custom" : "")} per row · edge {LeftUpperEdgeMm:0} mm · equal foot setback {LeftFootMm:0.###} mm at both faces" : "")
@@ -705,23 +706,25 @@ namespace EngineeringDashboard
                 // Stable order within a leg tier keeps all original timber/utilization ties.
                 // Economic bounds, rather than a leg-only cutoff, retain valid timber/support trade-offs.
                 int initial=input.EngineerSearch && work.Count>0 ? work.GroupBy(w=>Tuple.Create(w.Crosses,w.Edge)).Min(group=>group.First().Crosses.Min(c=>InitialLegs(input,c,group.First().Edge,group.First().Geometry.Stock))) : 2;
-                foreach(var item in input.EngineerSearch ? work.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Geometry.Positions.Length,initial)).ThenBy(w=>w.Geometry.Joined.Count(j=>j)) : work.OrderBy(w=>w.Geometry.Positions.Length))
+                foreach(var item in input.EngineerSearch ? work.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Geometry.Positions.Length,initial)).ThenBy(w=>w.Geometry.Joined.Count(j=>j)).ThenBy(w=>EngineerTowerSearch.BracePenalty(w.Geometry.Positions,w.Geometry.Joined,w.Width,w.Rotated)).ThenBy(w=>w.Geometry.Stock.Sum(p=>Math.Abs((w.Geometry.Positions[p.FirstSupport]-p.StartMm)-(p.EndMm-w.Geometry.Positions[p.LastSupport])))) : work.OrderBy(w=>w.Geometry.Positions.Length))
                 {
                     input.Trace?.CheckCancellation();
                     var geometry=item.Geometry;var grid=item.Grid;
-                    if(geometry.Positions.Length*2>input.NetworkLegCeiling || input.EngineerSearch && best!=null && geometry.Positions.Length>best.PositionsMm.Length)continue;
-                    if(input.EngineerSearch && best!=null && geometry.Positions.Length==best.PositionsMm.Length)
+                    TowerLayout widthBest=best;
+                    if(input.ReceiverAlternatives!=null)input.ReceiverAlternatives.TryGetValue(item.Width,out widthBest);
+                    if(geometry.Positions.Length*2>input.NetworkLegCeiling || input.EngineerSearch && widthBest!=null && geometry.Positions.Length>widthBest.PositionsMm.Length)continue;
+                    if(input.EngineerSearch && widthBest!=null && geometry.Positions.Length==widthBest.PositionsMm.Length)
                     {
                         int bays=geometry.Joined.Count(j=>j);
-                        if(bays>best.BayCount || bays==best.BayCount && EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated)>best.StandaloneBracePenalty+1e-7)continue;
+                        if(bays>widthBest.BayCount || bays==widthBest.BayCount && EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated)>widthBest.StandaloneBracePenalty+1e-7)continue;
                     }
                     double geometrySymmetry=input.EngineerSearch ? TowerOptimizer.SymmetryError(geometry.Positions,geometry.Stock.Select(s=>s.StockLengthMm).ToArray(),input.LengthMm/2-item.Edge)
                         +geometry.Stock.Sum(s=>Math.Abs((geometry.Positions[s.FirstSupport]-s.StartMm)-(s.EndMm-geometry.Positions[s.LastSupport]))) : 0;
                     foreach(var cross in item.Crosses)
                     {
-                        if(input.EngineerSearch && input.PruneUneconomicCandidates && best!=null && geometry.Positions.Length==best.PositionsMm.Length
-                            && EngineerTowerSearch.Compare(TowerOptimizer.Standalone600Count(geometry.Positions,geometry.Joined,item.Width,item.Rotated),geometry.Joined.Count(j=>j),EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated),best.Standalone600Count,best.BayCount,best.StandaloneBracePenalty)==0
-                            && geometrySymmetry+Math.Abs(2*cross.Start+cross.Stock)>best.SymmetryErrorMm+1e-7)
+                        if(input.EngineerSearch && input.PruneUneconomicCandidates && widthBest!=null && geometry.Positions.Length==widthBest.PositionsMm.Length
+                            && EngineerTowerSearch.Compare(TowerOptimizer.Standalone600Count(geometry.Positions,geometry.Joined,item.Width,item.Rotated),geometry.Joined.Count(j=>j),EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated),widthBest.Standalone600Count,widthBest.BayCount,widthBest.StandaloneBracePenalty)==0
+                            && geometrySymmetry+Math.Abs(2*cross.Start+cross.Stock)>widthBest.SymmetryErrorMm+1e-7)
                         {
                             // This exact geometric lower bound already ranks worse.
                             // Capacity checks cannot improve fixed stock/support symmetry;
@@ -729,14 +732,19 @@ namespace EngineeringDashboard
                             continue;
                         }
                         input.Trace?.Increment(BeamSearchCounter.TransferCandidates);tested++;
-                        if(!input.EngineerSearch && input.PruneUneconomicCandidates && best!=null)
+                        if(!input.EngineerSearch && input.PruneUneconomicCandidates && widthBest!=null)
                         {
                             double score=Economy(geometry,cross,grid,input);
                             if(score>Economy(best)+.01) {input.Trace?.Increment(BeamSearchCounter.EconomyPruned);continue;}
                         }
-                        var candidate=OffsetReceiver(input,Evaluate(input,geometry,item.Width,item.Rotated,cross,grid,item.Edge,primaryCache,matrixCache,shared,best));
+                        var candidate=OffsetReceiver(input,Evaluate(input,geometry,item.Width,item.Rotated,cross,grid,item.Edge,primaryCache,matrixCache,shared,widthBest));
                         if(candidate!=null && input.EngineerSearch){candidate.SearchAssumedLegKn=EngineerTowerSearch.AssumedLegKn(input);candidate.SearchInitialLegsPerLine=InitialLegs(input,cross,item.Edge,geometry.Stock);}
-                        if(candidate!=null && (best==null || Better(candidate,best)) && (input.TransferLayoutAcceptance==null || input.TransferLayoutAcceptance(candidate)))best=candidate;
+                        if(candidate!=null && (widthBest==null || Better(candidate,widthBest)) && (input.TransferLayoutAcceptance==null || input.TransferLayoutAcceptance(candidate)))
+                        {
+                            widthBest=candidate;
+                            if(input.ReceiverAlternatives!=null)input.ReceiverAlternatives[item.Width]=candidate;
+                            if(best==null || Better(candidate,best))best=candidate;
+                        }
                     }
                 }
             }
@@ -753,6 +761,7 @@ namespace EngineeringDashboard
             if(a.LegCount!=b.LegCount)return a.LegCount<b.LegCount;
             int preference=TowerOptimizer.CompareBracePreference(a,b);if(preference!=0)return preference<0;
             if(Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7)return a.SymmetryErrorMm<b.SymmetryErrorMm;
+            if(Math.Abs(a.BraceLocationPenalty-b.BraceLocationPenalty)>1e-7)return a.BraceLocationPenalty<b.BraceLocationPenalty;
             return Economy(a)<Economy(b)-.01 || Math.Abs(Economy(a)-Economy(b))<=.01 && (a.SymmetryErrorMm<b.SymmetryErrorMm-1e-7 || Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)<1e-7 && a.Utilization<b.Utilization);
         }
         private static int InitialLegs(TowerInput input,CrossOption cross,double edge,TowerStockPiece[] stocks)
@@ -906,6 +915,7 @@ namespace EngineeringDashboard
             }
             if(Enumerable.Range(0,source.Joined.Length).Where(i=>!source.Joined[i]).All(i=>Math.Abs((source.Positions[i+1]-source.Positions[i])/25-Math.Round((source.Positions[i+1]-source.Positions[i])/25))<1e-8))
             {yield return source;yield break;}
+            if(source.Stock.All(p=>Math.Abs((source.Positions[p.FirstSupport]-p.StartMm)-(p.EndMm-source.Positions[p.LastSupport]))<1e-7))yield return source;
             foreach(int anchor in new[] {groups.Count/2,0,groups.Count-1}.Distinct())
             {
                 var positions=(double[])source.Positions.Clone();bool valid=true;

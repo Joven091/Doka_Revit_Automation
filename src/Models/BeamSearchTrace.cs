@@ -25,6 +25,9 @@ namespace EngineeringDashboard
     {
         private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred","Network branches pruned by exact bounds","Network transverse response cache hits","Complete network candidates","Crossing leg clashes rejected before member checks","Network spacing vectors searched"};
         private readonly long[] counters=new long[CounterNames.Length];
+        // Hot diagnostic events are accumulated by their owning worker. UI reads
+        // include pending counts; completion flushes them for an exact final report.
+        private readonly ThreadLocal<long[]> pendingCounters=new ThreadLocal<long[]>(()=>new long[CounterNames.Length],true);
         private readonly Func<long> timestamp;
         private readonly long started;
         private readonly double timeLimitSeconds;
@@ -67,11 +70,26 @@ namespace EngineeringDashboard
             return new Timing(this,stages.GetOrAdd(stage,_=>new StageTime()));
         }
         internal void Workers(int count)=>Volatile.Write(ref workers,count);
-        internal long Count(BeamSearchCounter counter)=>Interlocked.Read(ref counters[(int)counter]);
+        internal long Count(BeamSearchCounter counter)
+        {
+            int index=(int)counter;long value=Interlocked.Read(ref counters[index]);
+            foreach(var pending in pendingCounters.Values)value+=Interlocked.Read(ref pending[index]);
+            return value;
+        }
+        private void FlushCounters()
+        {
+            foreach(var pending in pendingCounters.Values)for(int i=0;i<pending.Length;i++)
+            {long value=Interlocked.Exchange(ref pending[i],0);if(value!=0)Interlocked.Add(ref counters[i],value);}
+        }
         internal void Increment(BeamSearchCounter counter,long amount=1)
         {
             if(HasTimeLimit)CheckCancellation();else CancellationToken.ThrowIfCancellationRequested();
-            Interlocked.Add(ref counters[(int)counter],amount);
+            if(counter==BeamSearchCounter.NumericalChecks || counter==BeamSearchCounter.RejectionChecks)
+            {
+                var pending=pendingCounters.Value;int index=(int)counter;pending[index]+=amount;
+                if(pending[index]>=256)Interlocked.Add(ref counters[index],Interlocked.Exchange(ref pending[index],0));
+            }
+            else Interlocked.Add(ref counters[(int)counter],amount);
             if(counter==BeamSearchCounter.CompleteNetworkCandidates && amount>0)
                 Interlocked.CompareExchange(ref firstCompleteNetworkTicks,timestamp(),-1);
         }
@@ -92,10 +110,11 @@ namespace EngineeringDashboard
         }
         internal void Complete(string status,string details="",string summary="")
         {
+            FlushCounters();
             Volatile.Write(ref error,details??"");Volatile.Write(ref result,summary??"");
             Interlocked.Exchange(ref ended,timestamp());Volatile.Write(ref outcome,status);
         }
-        internal void Finish()=>Interlocked.Exchange(ref ended,timestamp());
+        internal void Finish(){FlushCounters();Interlocked.Exchange(ref ended,timestamp());}
         internal double ElapsedSeconds
         {
             get {long end=Interlocked.Read(ref ended);return ((end==0 ? timestamp() : end)-started)/(double)Stopwatch.Frequency;}
@@ -135,7 +154,7 @@ namespace EngineeringDashboard
             text.AppendLine("Current/last context: "+Volatile.Read(ref context));
             text.AppendLine("Completed catalogue-pass seconds: "+(Interlocked.Read(ref catalogueTicks)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture));
             text.AppendLine("Completed custom-pass seconds: "+(Interlocked.Read(ref customTicks)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture));
-            for(int i=0;i<counters.Length;i++)text.AppendLine(CounterNames[i]+": "+Interlocked.Read(ref counters[i]).ToString(CultureInfo.InvariantCulture));
+            for(int i=0;i<counters.Length;i++)text.AppendLine(CounterNames[i]+": "+Count((BeamSearchCounter)i).ToString(CultureInfo.InvariantCulture));
             text.AppendLine("Live counters are approximate snapshots; completed pass times exclude an in-progress pass.");
             text.AppendLine("Derived solver inputs:\n"+Volatile.Read(ref derivedInputs));
             text.AppendLine("Search result summary:\n"+Volatile.Read(ref result));

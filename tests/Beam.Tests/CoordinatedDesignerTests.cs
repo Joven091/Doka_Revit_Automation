@@ -60,7 +60,7 @@ internal static class CoordinatedDesignerTests
         var common=Common();common.MaximumConcreteEndOverhangMm=150;
         var current=Solve("25 mm and alternatives",common,Network());string original=current.Schedule;
         foreach(var beam in current.Beams)for(int i=0;i<beam.Joined.Length;i++)if(!beam.Joined[i])
-            Near((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25,Math.Round((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25),"independent tower gaps use 25 mm increments");
+            Check(beam.CantileverImbalanceMm<1e-7 || Math.Abs((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25-Math.Round((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25))<1e-7,"independent gaps retain exact centred stocks or use 25 mm increments");
         Check(Math.Abs(current.CrossSupports[0].TowerSpanOffsetMm)<225,"X1 checks transverse placements before accepting the former 225 mm span shift");
         var options=TransferNetworkOptimizer.BeamOptions(common,current,1);
         Check(options.Count(o=>o.IsAvailable)>1 && ReferenceEquals(options[0].Result,current),"current layout and complete alternatives retained");
@@ -76,7 +76,7 @@ internal static class CoordinatedDesignerTests
             {
                 Check(beam.LeftReactions.Concat(beam.RightReactions).All(r=>r<=70+1e-7),"alternate network individual leg capacities pass");
                 foreach(var m in beam.Transfer.PrimaryCases.Concat(beam.Transfer.LowerCases).SelectMany(c=>c))Member(m);
-                for(int i=0;i<beam.Joined.Length;i++)if(!beam.Joined[i])Near((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25,Math.Round((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25),"alternate gaps use 25 mm increments");
+                for(int i=0;i<beam.Joined.Length;i++)if(!beam.Joined[i])Check(beam.CantileverImbalanceMm<1e-7 || Math.Abs((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25-Math.Round((beam.PositionsMm[i+1]-beam.PositionsMm[i])/25))<1e-7,"alternate gaps retain exact centred stocks or use 25 mm increments");
             }
             Console.WriteLine(option.Label+" · "+option.Result.TimberMm/1000+" m timber");
         }

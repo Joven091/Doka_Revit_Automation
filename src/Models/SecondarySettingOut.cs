@@ -43,7 +43,7 @@ namespace EngineeringDashboard
                 if(!TryAdjustSecondaries(result,balanced.Solids,otherCrossings,out TowerLayout[] beams,common.EngineerWorkflow))continue;
                 balanced.MovementMm=DedicatedMovement(layout);
                 balanced.JunctionNotice=(Math.Abs(centre-original.Input.PositionMm)<1e-7 ? "Frame centred across the cross beam. " : "")
-                    +$"Balanced primary overhangs {layout.PositionsMm[0]-stock.StartMm:0.###}/{stock.EndMm-layout.PositionsMm[1]:0.###} mm. Local receiving H20s are repositioned and added where necessary; plywood-joint supports, design spacing and main-primary UDLs remain unchanged. "
+                    +$"Balanced primary overhangs {layout.PositionsMm[0]-stock.StartMm:0.###}/{stock.EndMm-layout.PositionsMm[1]:0.###} mm. Local receiving H20s are repositioned and added where necessary; local plywood cuts/joints are permitted. Design spacing and main-primary UDLs remain unchanged. "
                     +$"Tower leg offset {balanced.TowerSpanOffsetMm:0.###} mm along the crossing span. Existing junction end zones and their checked load paths are retained.";
                 result.Beams=beams;result.CrossSupports=(CrossBeamSupportResult[])result.CrossSupports.Clone();result.CrossSupports[index]=balanced;
             }
@@ -56,6 +56,7 @@ namespace EngineeringDashboard
         {
             var check=common.CopyForSearch();check.Trace=null;check.Diagnostics=null;
             var selected=(CrossBeamSupportResult[])result.CrossSupports.Clone();bool changed=false;
+            Action<string> reason=message=>{rejected?.Invoke(message);foreach(var c in result.CrossSupports.Where(c=>c.Towers!=null))c.SymmetryNotice="Centred setting-out could not be completed: "+message;};
             for(int index=0;index<result.CrossSupports.Length;index++)
             {
                 common.Trace?.CheckUserCancellation();
@@ -75,7 +76,7 @@ namespace EngineeringDashboard
                 };
                 t.LowerCases=tower.Transfer.LowerCases.Select(stage=>stage.Select(centred).ToArray()).ToArray();
                 foreach(var m in t.LowerCases.SelectMany(stage=>stage))if(!Pass(m,check,"Centred crossing secondary"))passes=false;
-                if(!passes){rejected?.Invoke($"X{index+1}: centred secondary capacity check failed.");continue;}
+                if(!passes){reason($"X{index+1}: centred secondary capacity check failed.");continue;}
                 t.UnitLowerCases=tower.Transfer.UnitLowerCases.Select(centred).ToArray();
                 t.LowerStockStartMm+=offset;
                 t.PrimaryCases=new TransferMember[tower.Transfer.PrimaryCases.Length][];
@@ -96,7 +97,7 @@ namespace EngineeringDashboard
                             Points=m.Points.Select(p=>new BeamPointLoad {PositionMm=p.PositionMm,Kn=p.Kn*factor}).ToArray()};
                     }).ToArray();
                 }
-                if(!passes){rejected?.Invoke($"X{index+1}: zero reference reaction cannot be rescaled.");continue;}
+                if(!passes){reason($"X{index+1}: zero reference reaction cannot be rescaled.");continue;}
                 var previous=tower.Transfer.LowerCases[0][0].Analysis.Reactions;
                 var revised=t.LowerCases[0][0].Analysis.Reactions;
                 layout.LeftLineLoad*=revised[0]/previous[0];layout.RightLineLoad*=revised[1]/previous[1];
@@ -104,7 +105,7 @@ namespace EngineeringDashboard
                 var allowance=new CrossShutterAllowance(original.NearShutterClearanceMm,original.FarShutterClearanceMm);
                 var candidate=FinishDedicated(check,result,original.CrossingIndex,origin,0,original.TowerSpanOffsetMm,layout,check,out string failure,
                     original.PrimaryNearExtensionMm,original.PrimaryFarExtensionMm,allowance:allowance);
-                if(candidate==null){rejected?.Invoke($"X{index+1}: "+failure);continue;}
+                if(candidate==null){reason($"X{index+1}: "+failure);continue;}
                 candidate.Solids=candidate.Solids.Concat(original.Solids.Where(s=>s.Member==null && !s.IsLeg && !s.IsTowerEnvelope)).ToArray();
                 candidate.Bearings=candidate.Bearings.Concat(original.Bearings.Where(b=>!b.IsDedicated)).ToArray();
                 candidate.LoadKn=original.LoadKn;candidate.SlabEdgeLoadKn=original.SlabEdgeLoadKn;candidate.SharedFailure=original.SharedFailure;
@@ -116,7 +117,7 @@ namespace EngineeringDashboard
             // Both ends of a receiving H20 can meet crossing legs. Coordinate all
             // target frames together; an obsolete offset pose must not obstruct
             // the same row needed by another crossing's centred pose.
-            if(!TryAdjustSecondaries(result,selected.SelectMany(s=>s.Solids).ToArray(),new FormworkSolid[0],out var beams,true,rejected))return;
+            if(!TryAdjustSecondaries(result,selected.SelectMany(s=>s.Solids).ToArray(),new FormworkSolid[0],out var beams,true,reason))return;
             result.Beams=beams;result.CrossSupports=selected;
         }
 
@@ -151,6 +152,7 @@ namespace EngineeringDashboard
             {
                 int beam=change.Key;var rows=change.Value.OrderBy(v=>v.X).ToArray();
                 var t=adjusted[beam].Transfer=result.Beams[beam].Transfer.Copy();
+                t.HasCustomPlywoodJoints=t.HasCustomPlywoodJoints || rows.Any(v=>Math.Abs(v.X-result.Beams[beam].Transfer.RowsMm[v.Design])>1e-7 && Math.Abs(result.Beams[beam].Transfer.RowsMm[v.Design]/SheetLength(result)-Math.Round(result.Beams[beam].Transfer.RowsMm[v.Design]/SheetLength(result)))<1e-7);
                 t.SettingOutRowsMm=rows.Select(v=>v.X).ToArray();t.SettingOutDesignRows=rows.Select(v=>v.Design).ToArray();
             }
             var trial=new TransferNetworkResult {Input=result.Input,Beams=adjusted,Bays=result.Bays,BeamCentresMm=result.BeamCentresMm};
@@ -162,6 +164,7 @@ namespace EngineeringDashboard
             return failure==null;
         }
 
+        private static double SheetLength(TransferNetworkResult r)=>r.Input.PlywoodSheetLengthMm>0 ? r.Input.PlywoodSheetLengthMm : 2440;
         private static bool ProtectedRow(TransferNetworkResult r,int beam,int row,double x,bool independentSlabFeet)
         {
             var t=r.Beams[beam].Transfer;
@@ -169,7 +172,7 @@ namespace EngineeringDashboard
             if(!independentSlabFeet && (t.SlabRowIndices?.Contains(row)==true || (t.LeftUpperScales?[row]??0)>0 || (t.RightUpperScales?[row]??0)>0))return true;
             if(r.Input.PlywoodSheetLengthMm<=0)return true; // No sheet-joint information: keep the checked geometry.
             double sheet=r.Input.PlywoodSheetLengthMm;
-            if(Math.Abs(x/sheet-Math.Round(x/sheet))<1e-7)return true;
+            if(!independentSlabFeet && Math.Abs(x/sheet-Math.Round(x/sheet))<1e-7)return true;
             if(r.CrossSupports.SelectMany(s=>s.Bearings).Any(b=>b.Beam==beam && b.Row==row))return true;
             // Added rows also stay outside all crossing-concrete transfer footprints.
             return r.Input.CrossingBeams.Any(c=>(c.BayNumber==beam || c.BayNumber==beam+1) && Math.Abs(x-c.PositionMm)<c.WidthMm/2+80);
