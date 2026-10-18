@@ -14,6 +14,13 @@ internal static class SearchReuseTests
     static TransferNetworkInput Network(bool crossing=false) => new TransferNetworkInput {UpperSpacingMm=250,CustomLoads=true,LiveKnM2=0,FormworkKnM2=0,Beams=new[] {new TransferBeamRow {WidthMm=300,DepthMm=200},new TransferBeamRow {WidthMm=350,DepthMm=250},new TransferBeamRow {WidthMm=300,DepthMm=200}},Bays=new[] {new TransferBayRow {WidthMm=1800,ThicknessMm=100},new TransferBayRow {WidthMm=1850,ThicknessMm=100}},CrossingBeams=crossing ? new[] {new TransferCrossingBeamRow {SupportMode=CrossBeamSupportMode.LegacySlabRows,BayNumber=1,PositionMm=1200,WidthMm=500,DepthMm=150}} : new TransferCrossingBeamRow[0]};
     static string Signature(TransferNetworkResult result) => string.Join("\n",result.Beams.Select(b=>b.StockSchedule+"\n"+b.Transfer.Schedule+"\n"+string.Join(";",b.PositionsMm)+"\n"+string.Join(";",b.Joined)))+"\n"+result.Summary;
     static double[] Demands(TransferNetworkResult result) => result.Beams.SelectMany(b=>b.Transfer.PrimaryCases.Concat(b.Transfer.LowerCases).SelectMany(c=>c).Concat(b.Transfer.UpperMembers)).SelectMany(m=>new[] {m.Analysis.MomentKnM,m.Analysis.ShearKn,m.Analysis.DeflectionMm,m.Analysis.DeflectionUtilization,m.Analysis.TotalLoadKn}.Concat(m.Analysis.Reactions)).ToArray();
+    // Unit-UDL scaling changes arithmetic order. Keep schedules exact and use
+    // the existing 1e-12 numerical-reference tolerance for unrounded demands.
+    static bool SameDemands(TransferNetworkResult a,TransferNetworkResult b)
+    {
+        var before=Demands(a);var after=Demands(b);
+        return before.Length==after.Length && before.Zip(after,(x,y)=>Math.Abs(x-y)<=1e-12*Math.Max(1,Math.Abs(x))).All(equal=>equal);
+    }
     static void Compare(bool custom,bool crossing)
     {
         var plain=Common(false,custom);var cached=Common(true,custom);var network=Network(crossing);
@@ -30,7 +37,7 @@ internal static class SearchReuseTests
         // The pass-wide cache still reuses exact responses across receiving beams.
         long primaryHits=Counter(cached.Trace,"Primary member cache hits")+Counter(cached.Trace,"Network primary response cache hits");
         Check(primaryHits>0 && Counter(cached.Trace,"Primary member analyses")<Counter(plain.Trace,"Primary member analyses"),"identical complete primary member checks reused within or between receiving-beam solves");
-        Check(Counter(cached.Trace,"Primary matrix cache hits")>0,"new primary load vectors reuse checked structural preparation");
+        Check(Counter(cached.Trace,"Primary matrix cache hits")+Counter(cached.Trace,"Uniform primary shape cache hits")>0,"new primary load vectors reuse checked matrix or unit-response preparation");
         Check(Counter(cached.Trace,"Lower response cache hits")>0,"identical exact row tributaries reuse transverse responses");
         Check(Counter(cached.Trace,"Numerical checks")<Counter(plain.Trace,"Numerical checks"),"repeated numerical checks reduced");
         Check(b.Beams.All(x=>x.Utilization<=1+1e-8 && x.MaxLegKn<=cached.LegCapacityKn+1e-8),"engineering limits retained");
@@ -131,7 +138,7 @@ internal static class SearchReuseTests
             {
                 var optimized=Common(true,custom);optimized.ReuseNetworkNumerics=(variant&1)!=0;optimized.DeferTransferLayout=(variant&2)!=0;optimized.NetworkSearchWorkers=1;
                 var result=TransferNetworkOptimizer.Optimize(optimized,network);
-                Check(Signature(reference)==Signature(result) && Demands(reference).SequenceEqual(Demands(result)),"each speed feature preserves exact schedules, quantities and demands");
+                Check(Signature(reference)==Signature(result) && SameDemands(reference,result),"each speed feature preserves exact schedules and quantities, with unrounded demands within numerical-reference tolerance");
                 Check(reference.Tested==result.Tested,"speed features retain the complete candidate traversal");
                 Check(plain.Diagnostics.Exception("comparison").Details==optimized.Diagnostics.Exception("comparison").Details,"wide cache retains beam-specific diagnostic examples and counts");
             }

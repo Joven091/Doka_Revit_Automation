@@ -12,6 +12,7 @@ jobs:
       - run: dotnet run --project tests/Beam.Tests -c Release -- --next-search-speed
       - run: dotnet build tests/Beam.Net48 -c Release --warnaserror
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --next-search-speed
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --search-reuse
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --search-worker-benchmark
   centred-search-speed:
     runs-on: windows-latest
