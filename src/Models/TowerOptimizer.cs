@@ -334,6 +334,7 @@ namespace EngineeringDashboard
         public string MaterialQuantities=>$"{StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s"+(StockPlan.WS10Count==0 ? "" : $" · {StockPlan.WS10Count} WS10s");
         public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {MaterialQuantities}";
         public string LegLoadSummary => $"Peak leg: {MaxLegKn:0.00} / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
+        public string CentringNotice {get;internal set;}
         public string CapacityBasis => Transfer != null ? "Every leg is checked for the fully loaded configuration. Search ranks leg count, tower grouping, brace preference and symmetry before material economy. Signed leg reactions are retained." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then standalone-600 towers, braced bays, standalone brace penalties, primary quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
         public string StockSchedule => StockPlan.Schedule + (Transfer == null ? "" : "\n" + Transfer.Schedule);
         public int LegCount => PositionsMm.Length * 2;
@@ -386,6 +387,7 @@ namespace EngineeringDashboard
                     if (IgnoreUplift) lines.Add($"  Minimum signed leg reactions L/R={MinimumLegReaction(true,i):0.######}/{MinimumLegReaction(false,i):0.######} kN"+(Transfer?.FullLoadingOnly==true ? " · fully loaded case" : " across stages"));
                     if (i < Joined.Length) lines.Add(string.Format(CultureInfo.CurrentCulture, "  {0}: {1:0.###} mm", Joined[i] ? (Rotated ? "Frame span" : "Cross bay") : "Clear gap between leg planes", PositionsMm[i + 1] - PositionsMm[i]));
                 }
+                if(!string.IsNullOrEmpty(CentringNotice))lines.Add(CentringNotice);
                 lines.Add(string.Format(CultureInfo.CurrentCulture, "End overhangs: {0:0.###} / {1:0.###} mm", PositionsMm[0], LengthMm - PositionsMm.Last()));
                 if(TransverseOffsetMm!=0)lines.Add($"Tower centre offset from concrete beam centre: {TransverseOffsetMm:0.###} mm; eccentric concrete and slab reactions are included.");
                 return string.Join("\n", lines)+"\n"+BracePreferenceSummary;
@@ -438,6 +440,7 @@ namespace EngineeringDashboard
             {
                 if(a.LegCount!=b.LegCount)return a.LegCount<b.LegCount;
                 int brace=CompareBracePreference(a,b);if(brace!=0)return brace<0;
+                if(Math.Abs(a.CantileverImbalanceMm-b.CantileverImbalanceMm)>1e-7)return a.CantileverImbalanceMm<b.CantileverImbalanceMm;
                 if(Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7)return a.SymmetryErrorMm<b.SymmetryErrorMm;
                 if(Math.Abs(a.BraceLocationPenalty-b.BraceLocationPenalty)>1e-7)return a.BraceLocationPenalty<b.BraceLocationPenalty;
             }

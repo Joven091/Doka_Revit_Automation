@@ -38,6 +38,7 @@ namespace EngineeringDashboard
     }
     public sealed class CrossBeamSupportResult
     {
+        internal CrossBeamSupportResult Copy()=>(CrossBeamSupportResult)MemberwiseClone();
         public int CrossingIndex;
         public CrossBeamSupportMode Arrangement;
         public TransferCrossingBeamRow Input;

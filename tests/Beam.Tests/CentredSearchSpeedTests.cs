@@ -26,6 +26,10 @@ internal static class CentredSearchSpeedTests
             Near(fast.DeflectionMm,reference.DeflectionMm,"deflection peak");Near(fast.DeflectionUtilization,reference.DeflectionUtilization,"local deflection limit");
             for(int i=0;i<=12;i++)for(int component=0;component<3;component++)Near(fast.Response(length*i/12)[component],reference.Response(length*i/12)[component],"diagram response");
         }
+        double root;
+        Check(LoadedBeamAnalysis.TryCubicRoot(1,-6,11,-6,.5,1.5,out root),"three-root cubic chooses the isolated first root");Near(root,1,"cubic root one");
+        Check(LoadedBeamAnalysis.TryCubicRoot(1,-6,11,-6,1.5,2.5,out root),"three-root cubic chooses the isolated middle root");Near(root,2,"cubic root two");
+        Check(LoadedBeamAnalysis.TryCubicRoot(1,0,0,-8,0,3,out root),"single real cubic root");Near(root,2,"cube root");
         var positions=Enumerable.Range(0,4).SelectMany(i=>new[] {i*2650+563.0,i*2650+2087}).ToArray();
         var pieces=Enumerable.Range(0,4).Select(i=>new TowerStockPiece {StartMm=i*2650,StockLengthMm=2650,FirstSupport=i*2,LastSupport=i*2+1}).ToArray();
         Func<double[],TowerLayout> layout=p=>new TowerLayout {EngineerSearch=true,PositionsMm=p,Joined=new[] {true,false,true,false,true,false,true},WidthMm=1000,Rotated=true,LengthMm=10600,StockPlan=new TowerStockPlan {Pieces=pieces}};

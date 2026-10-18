@@ -718,13 +718,14 @@ namespace EngineeringDashboard
                         int bays=geometry.Joined.Count(j=>j);
                         if(bays>widthBest.BayCount || bays==widthBest.BayCount && EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated)>widthBest.StandaloneBracePenalty+1e-7)continue;
                     }
+                    double geometryCantilever=geometry.Stock.Sum(s=>Math.Abs((geometry.Positions[s.FirstSupport]-s.StartMm)-(s.EndMm-geometry.Positions[s.LastSupport])));
                     double geometrySymmetry=input.EngineerSearch ? TowerOptimizer.SymmetryError(geometry.Positions,geometry.Stock.Select(s=>s.StockLengthMm).ToArray(),input.LengthMm/2-item.Edge)
                         +geometry.Stock.Sum(s=>Math.Abs((geometry.Positions[s.FirstSupport]-s.StartMm)-(s.EndMm-geometry.Positions[s.LastSupport]))) : 0;
                     foreach(var cross in item.Crosses)
                     {
                         if(input.EngineerSearch && input.PruneUneconomicCandidates && widthBest!=null && geometry.Positions.Length==widthBest.PositionsMm.Length
                             && EngineerTowerSearch.Compare(TowerOptimizer.Standalone600Count(geometry.Positions,geometry.Joined,item.Width,item.Rotated),geometry.Joined.Count(j=>j),EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated),widthBest.Standalone600Count,widthBest.BayCount,widthBest.StandaloneBracePenalty)==0
-                            && geometrySymmetry+Math.Abs(2*cross.Start+cross.Stock)>widthBest.SymmetryErrorMm+1e-7)
+                            && (geometryCantilever>widthBest.CantileverImbalanceMm+1e-7 || Math.Abs(geometryCantilever-widthBest.CantileverImbalanceMm)<1e-7 && geometrySymmetry+Math.Abs(2*cross.Start+cross.Stock)>widthBest.SymmetryErrorMm+1e-7))
                         {
                             // This exact geometric lower bound already ranks worse.
                             // Capacity checks cannot improve fixed stock/support symmetry;
@@ -760,6 +761,7 @@ namespace EngineeringDashboard
         {
             if(a.LegCount!=b.LegCount)return a.LegCount<b.LegCount;
             int preference=TowerOptimizer.CompareBracePreference(a,b);if(preference!=0)return preference<0;
+            if(Math.Abs(a.CantileverImbalanceMm-b.CantileverImbalanceMm)>1e-7)return a.CantileverImbalanceMm<b.CantileverImbalanceMm;
             if(Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7)return a.SymmetryErrorMm<b.SymmetryErrorMm;
             if(Math.Abs(a.BraceLocationPenalty-b.BraceLocationPenalty)>1e-7)return a.BraceLocationPenalty<b.BraceLocationPenalty;
             return Economy(a)<Economy(b)-.01 || Math.Abs(Economy(a)-Economy(b))<=.01 && (a.SymmetryErrorMm<b.SymmetryErrorMm-1e-7 || Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)<1e-7 && a.Utilization<b.Utilization);

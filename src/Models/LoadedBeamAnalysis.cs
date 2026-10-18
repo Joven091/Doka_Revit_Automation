@@ -205,9 +205,9 @@ namespace EngineeringDashboard
                 result.elements.Add(e);
                 result.AddForcePeaks(e);
             }
-            return FinishAnalysis(result,lengthMm,supports,denominator,reactionCapacity,rejectFailedPrimary,ignoreUplift,banded && uniform.Length==0);
+            return FinishAnalysis(result,lengthMm,supports,denominator,reactionCapacity,rejectFailedPrimary,ignoreUplift,banded && uniform.Length==0,banded);
         }
-        private static LoadedBeamAnalysis FinishAnalysis(LoadedBeamAnalysis result,double lengthMm,double[] supports,int denominator,double reactionCapacity,bool rejectFailedPrimary,bool ignoreUplift,bool pointOnly)
+        private static LoadedBeamAnalysis FinishAnalysis(LoadedBeamAnalysis result,double lengthMm,double[] supports,int denominator,double reactionCapacity,bool rejectFailedPrimary,bool ignoreUplift,bool pointOnly,bool fastRoots)
         {
             if (Math.Abs(result.Reactions.Sum() - result.TotalLoadKn) > 1e-6 * Math.Max(1, result.TotalLoadKn)) throw new ArgumentException("Beam load equilibrium failed.");
             if(rejectFailedPrimary && (result.MomentKnM>TowerOptimizer.PairMoment+1e-8 || result.ShearKn>TowerOptimizer.PairShear+1e-8 || result.Reactions.Any(r=>(!ignoreUplift && r< -1e-7) || r>reactionCapacity+1e-8)))return result;
@@ -227,6 +227,7 @@ namespace EngineeringDashboard
                     // same displacement polynomial; retain bisection for UDLs or an
                     // ill-conditioned root that fails its residual/interval checks.
                     if(pointOnly && TryQuadraticRoot(3*e.C3,2*e.C2,e.T,lo,hi,out double root)) {peaks.Add(root);continue;}
+                    if(fastRoots && !pointOnly && TryCubicRoot(4*e.C4,3*e.C3,2*e.C2,e.T,lo,hi,out double cubicRoot)){peaks.Add(cubicRoot);continue;}
                     for(int j=0;j<42;j++) {double middle=(lo+hi)/2;if(sign*slope(middle)>0)lo=middle;else hi=middle;}
                     peaks.Add((lo+hi)/2);
                 }
@@ -277,7 +278,31 @@ namespace EngineeringDashboard
             if(Math.Abs(supports[1]-lengthMm)<1e-7)ub=u;
             double slope=(ub-ua)/(b-a),offset=ua-slope*a;
             foreach(var e in result.elements){e.U-=offset+slope*e.X;e.T-=slope;}
-            return FinishAnalysis(result,lengthMm,supports,denominator,reactionCapacity,rejectFailedPrimary,ignoreUplift,uniform.Length==0);
+            return FinishAnalysis(result,lengthMm,supports,denominator,reactionCapacity,rejectFailedPrimary,ignoreUplift,uniform.Length==0,true);
+        }
+        private static double CubeRoot(double value)=>Math.Sign(value)*Math.Pow(Math.Abs(value),1.0/3);
+        internal static bool TryCubicRoot(double a,double b,double c,double d,double lo,double hi,out double root)
+        {
+            if(Math.Abs(a)<1e-24)return TryQuadraticRoot(b,c,d,lo,hi,out root);
+            root=double.NaN;double shift=b/(3*a),p=c/a-3*shift*shift,q=2*shift*shift*shift-shift*c/a+d/a;
+            double discriminant=q*q/4+p*p*p/27;
+            if(discriminant>=0)
+            {
+                double radical=Math.Sqrt(discriminant);
+                root=CubeRoot(-q/2+radical)+CubeRoot(-q/2-radical)-shift;
+            }
+            else if(p<0)
+            {
+                double radius=2*Math.Sqrt(-p/3),angle=Math.Acos(Math.Max(-1,Math.Min(1,3*q/(p*radius))))/3;
+                for(int i=0;i<3;i++)
+                {
+                    double candidate=radius*Math.Cos(angle-2*Math.PI*i/3)-shift;
+                    if(candidate>lo && candidate<hi){root=candidate;break;}
+                }
+            }
+            if(!Finite(root) || root<=lo || root>=hi)return false;
+            double ar=a*root*root*root,br=b*root*root,cr=c*root;
+            return Math.Abs(ar+br+cr+d)<=1e-12*(Math.Abs(ar)+Math.Abs(br)+Math.Abs(cr)+Math.Abs(d));
         }
         internal static bool TryQuadraticRoot(double a,double b,double c,double lo,double hi,out double root)
         {

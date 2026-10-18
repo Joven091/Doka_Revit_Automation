@@ -10,6 +10,7 @@ namespace EngineeringDashboard
         // design spacing and main-primary UDLs rather than repeating the network search.
         internal static void BalanceSettingOut(TowerInput common,TransferNetworkResult result)
         {
+            if(common.EngineerWorkflow)CentreMainPrimaries(common,result);
             if(result.CrossSupports.Length==0)return;
             if(common.EngineerWorkflow)CentreCrossingFrames(common,result);
             var check=common.CopyForSearch();check.Trace=null;check.Diagnostics=null;
@@ -49,6 +50,60 @@ namespace EngineeringDashboard
             }
         }
 
+        // Stock, brace dimensions and load zones remain fixed. Recheck the actual
+        // primary support positions before committing any centred setting-out.
+        private static void CentreMainPrimaries(TowerInput common,TransferNetworkResult result)
+        {
+            var check=common.CopyForSearch();check.Trace=null;check.Diagnostics=null;
+            for(int beam=0;beam<result.Beams.Length;beam++)
+            {
+                var original=result.Beams[beam];
+                if(original.CantileverImbalanceMm<1e-7)continue;
+                var layout=Copy(original);layout.Transfer=original.Transfer.Copy();
+                var shifts=new double[layout.PositionsMm.Length];
+                foreach(var stock in layout.StockPlan.Pieces)
+                {
+                    double shift=(stock.StartMm+stock.EndMm-original.PositionsMm[stock.FirstSupport]-original.PositionsMm[stock.LastSupport])/2;
+                    for(int i=stock.FirstSupport;i<=stock.LastSupport;i++)shifts[i]=shift;
+                }
+                if(Enumerable.Range(0,original.Joined.Length).Any(i=>original.Joined[i] && Math.Abs(shifts[i]-shifts[i+1])>1e-7))
+                {original.CentringNotice="Unequal primary overhangs retained: the linked brace spans a stock joint and prevents independent centring of these pieces.";continue;}
+                layout.PositionsMm=original.PositionsMm.Select((x,i)=>x+shifts[i]).ToArray();
+                int runs=layout.StockPlan.Pieces.Length;bool passes=true;
+                layout.Transfer.PrimaryCases=original.Transfer.PrimaryCases.Select(stage=>stage.Select((m,i)=>
+                {
+                    var stock=layout.StockPlan.Pieces[i%runs];
+                    var member=new TransferMember {PrimaryMaterial=m.PrimaryMaterial,Name=m.Name,LoadCase=m.LoadCase,H20Count=m.H20Count,StartMm=m.StartMm,LengthMm=m.LengthMm,PrimarySelfWeightKnM=m.PrimarySelfWeightKnM,Uniform=m.Uniform,Points=m.Points,LegacyPrimaryUniform=m.LegacyPrimaryUniform,
+                        SupportsMm=layout.PositionsMm.Skip(stock.FirstSupport).Take(stock.LastSupport-stock.FirstSupport+1).Select(x=>x-stock.StartMm).ToArray()};
+                    member.Analysis=LoadedBeamAnalysis.AnalyzeSigned(member.LengthMm,member.SupportsMm,member.Uniform,member.Points,member.EI,common.DeflectionDenominator);
+                    if(!Pass(member,check,"Centred main primary") || member.Analysis.Reactions.Max()>common.LegCapacityKn+1e-8)passes=false;
+                    return member;
+                }).ToArray()).ToArray();
+                if(!passes){original.CentringNotice="Unequal primary overhangs retained: equal overhangs fail a primary strength, deflection, bearing or individual-leg check.";continue;}
+                string reason=null,owner=$"B{beam+1}";
+                // Main towers run along x; use their actual production solids.
+                var trialBeams=(TowerLayout[])result.Beams.Clone();trialBeams[beam]=layout;
+                var trial=new TransferNetworkResult {Input=result.Input,Beams=trialBeams,Bays=result.Bays,BeamCentresMm=result.BeamCentresMm,SlabCoveredLengthMm=result.SlabCoveredLengthMm,RowPhaseMm=result.RowPhaseMm};
+                var targets=NetworkSolids(trial).Where(s=>s.TowerOwner==owner && (s.IsLeg || s.IsTowerEnvelope)).ToArray();
+                if(!TryAdjustSecondaries(result,targets,result.CrossSupports.SelectMany(c=>c.Solids).ToArray(),out var adjusted,true,message=>reason=message,owner))
+                {original.CentringNotice="Unequal primary overhangs retained: "+(reason??"centred tower clearance check failed.");continue;}
+                layout.Transfer.SettingOutRowsMm=adjusted[beam].Transfer.SettingOutRowsMm;layout.Transfer.SettingOutDesignRows=adjusted[beam].Transfer.SettingOutDesignRows;layout.Transfer.HasCustomPlywoodJoints=adjusted[beam].Transfer.HasCustomPlywoodJoints;
+                int count=layout.PositionsMm.Length;
+                layout.LeftReactions=Enumerable.Repeat(double.NegativeInfinity,count).ToArray();layout.RightReactions=(double[])layout.LeftReactions.Clone();layout.MinimumLeftReactions=Enumerable.Repeat(double.PositiveInfinity,count).ToArray();layout.MinimumRightReactions=(double[])layout.MinimumLeftReactions.Clone();
+                foreach(var stage in layout.Transfer.PrimaryCases)for(int i=0;i<stage.Length;i++)
+                {
+                    var stock=layout.StockPlan.Pieces[i%runs];var high=i<runs ? layout.LeftReactions : layout.RightReactions;var low=i<runs ? layout.MinimumLeftReactions : layout.MinimumRightReactions;
+                    for(int j=0;j<stage[i].Analysis.Reactions.Length;j++){int at=stock.FirstSupport+j;high[at]=Math.Max(high[at],stage[i].Analysis.Reactions[j]);low[at]=Math.Min(low[at],stage[i].Analysis.Reactions[j]);}
+                }
+                layout.MaxLegKn=Math.Max(layout.LeftReactions.Max(),layout.RightReactions.Max());
+                var members=layout.Transfer.PrimaryCases.Concat(layout.Transfer.LowerCases).SelectMany(c=>c).Concat(layout.Transfer.UpperMembers).ToArray();
+                layout.Utilization=Math.Max(layout.MaxLegKn/layout.LegCapacityKn,members.Max(m=>m.Utilization));layout.MomentKnM=members.Max(m=>m.Analysis.MomentKnM);layout.ShearKn=members.Max(m=>m.Analysis.ShearKn);layout.DeflectionMm=members.Max(m=>m.Analysis.DeflectionMm);
+                layout.Governing=layout.MaxLegKn/layout.LegCapacityKn>=members.Max(m=>m.Utilization) ? "Leg capacity" : members.OrderByDescending(m=>m.Utilization).First().Name;
+                layout.CentringNotice="Primary supports centred beneath each stock piece; existing UDL zones retained and all revised reactions/member checks pass.";
+                RefreshStockDemands(layout);adjusted[beam]=layout;result.Beams=adjusted;
+            }
+        }
+
         // The site bearer permits slab feet and receiving secondaries to have
         // independent longitudinal stations. It is outside this member calculator:
         // no new bearer sharing model or slab/primary load allocation is introduced.
@@ -56,7 +111,15 @@ namespace EngineeringDashboard
         {
             var check=common.CopyForSearch();check.Trace=null;check.Diagnostics=null;
             var selected=(CrossBeamSupportResult[])result.CrossSupports.Clone();bool changed=false;
-            Action<string> reason=message=>{rejected?.Invoke(message);foreach(var c in result.CrossSupports.Where(c=>c.Towers!=null))c.SymmetryNotice="Centred setting-out could not be completed: "+message;};
+            Action<string> reason=message=>
+            {
+                rejected?.Invoke(message);
+                result.CrossSupports=result.CrossSupports.Select(c=>
+                {
+                    if(c.Towers==null)return c;
+                    var copy=c.Copy();copy.SymmetryNotice="Centred setting-out could not be completed: "+message;return copy;
+                }).ToArray();
+            };
             for(int index=0;index<result.CrossSupports.Length;index++)
             {
                 common.Trace?.CheckUserCancellation();
@@ -127,10 +190,11 @@ namespace EngineeringDashboard
             internal double X;
         }
 
-        internal static bool TryAdjustSecondaries(TransferNetworkResult result,FormworkSolid[] crossing,FormworkSolid[] otherCrossings,out TowerLayout[] adjusted,bool independentSlabFeet=false,Action<string> rejected=null)
+        internal static bool TryAdjustSecondaries(TransferNetworkResult result,FormworkSolid[] crossing,FormworkSolid[] otherCrossings,out TowerLayout[] adjusted,bool independentSlabFeet=false,Action<string> rejected=null,string replacedTowerOwner=null)
         {
             adjusted=null;
-            var existing=NetworkSolids(result).ToArray();
+            Func<FormworkSolid,bool> keep=s=>replacedTowerOwner==null || s.TowerOwner!=replacedTowerOwner || !(s.IsLeg || s.IsTowerEnvelope);
+            var existing=NetworkSolids(result).Where(keep).ToArray();
             var concrete=Concrete(result).Concat(otherCrossings).ToArray();
             var hits=existing.Where(s=>crossing.Any(c=>s.Conflicts(c))).ToArray();
             var changes=new Dictionary<int,List<SettingOutRow>>();
@@ -157,7 +221,7 @@ namespace EngineeringDashboard
             }
             var trial=new TransferNetworkResult {Input=result.Input,Beams=adjusted,Bays=result.Bays,BeamCentresMm=result.BeamCentresMm};
             // Final checks cover complete physical stock, legs, frames and added H20s.
-            var physical=NetworkSolids(trial).ToArray();
+            var physical=NetworkSolids(trial).Where(keep).ToArray();
             var changed=physical.Where(s=>s.Name.Contains("/T") && !existing.Any(old=>old.Name==s.Name && old.X0==s.X0 && old.X1==s.X1)).ToArray();
             var failure=Clash(crossing,physical.Concat(concrete))??Clash(changed,physical.Except(changed).Concat(concrete).Concat(crossing));
             if(failure!=null)rejected?.Invoke(failure);
