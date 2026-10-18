@@ -53,8 +53,10 @@ internal static class IndependentSpacingSearchTests
             Check(input.BeamSpacingsMm.SequenceEqual(fresh ? new[] {350.0,305,350} : Enumerable.Repeat(275.0,8)),"source maxima remain unchanged");
             if(!baseline)
             {
-                Check(result.Input.BeamSpacingsMm.SequenceEqual(fresh ? new[] {350.0,275,350} : Enumerable.Repeat(275.0,8)),"passing beam maxima retained");
-                Check(result.Input.SlabSpacingsMm.SequenceEqual(fresh ? new[] {488.0,488} : new[] {275.0,275,250,275,275,275,275}),"only necessary slab reductions retained");
+                // The wider plywood-based end allowance changes eligible slab stocks
+                // and their actual receiving reactions; keep the checked spacing regression.
+                Check(result.Input.BeamSpacingsMm.SequenceEqual(fresh ? new[] {350.0,275,350} : new[] {275.0,275,250,275,275,275,275,275}),"passing beam maxima retained");
+                Check(result.Input.SlabSpacingsMm.SequenceEqual(fresh ? new[] {488.0,488} : new[] {250.0,275,250,275,275,275,275}),"only necessary slab reductions retained");
                 Check(result.Input.CrossingSpacingsMm.SequenceEqual(fresh ? new[] {350.0,350} : Enumerable.Repeat(275.0,7)),"passing crossing maxima retained");
                 int elements=input.Beams.Length+input.Bays.Length+input.CrossingBeams.Length;
                 Check(common.Trace.Count(BeamSearchCounter.NetworkSpacingTrials)<=10+7*elements,"search vector count is linear in elements, never a Cartesian product");
