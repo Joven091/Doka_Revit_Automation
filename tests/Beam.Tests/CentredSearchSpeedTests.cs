@@ -59,6 +59,15 @@ internal static class CentredSearchSpeedTests
         Parallel.For(0,8,i=>{for(int j=0;j<1001;j++)trace.Increment(BeamSearchCounter.NumericalChecks);});
         Near(trace.Count(BeamSearchCounter.NumericalChecks),8008,"live counter includes pending worker events");trace.Complete("Succeeded");
         Near(trace.Count(BeamSearchCounter.NumericalChecks),8008,"completed counter remains exact");
+        foreach(bool engineer in new[] {false,true})
+        {
+            var capacityTrace=new BeamSearchTrace("impossible leg capacity");
+            var impossible=new TowerInput {LengthMm=10600,LegCapacityKn=1,EngineerSearch=engineer,FullLoadingOnly=true,StockLengthsMm=TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths),DeflectionDenominator=270,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=175,AllowSeparateSlabFallback=false,Trace=capacityTrace};
+            var network=new TransferNetworkInput {UpperSpacingMm=305,Beams=new[] {new TransferBeamRow {WidthMm=800,DepthMm=1750,BottomElevationMm=-1750},new TransferBeamRow {WidthMm=800,DepthMm=1750,BottomElevationMm=-1750}},Bays=new[] {new TransferBayRow {WidthMm=2125,ThicknessMm=300}}};
+            bool rejected=false;try{TransferNetworkOptimizer.Optimize(impossible,network);}catch(TowerOptimizationException failure){rejected=failure.Details.Contains("total available leg capacity");}
+            Check(rejected,"impossible capacity is rejected in production and historical searches");
+            Check(capacityTrace.Count(BeamSearchCounter.PrimaryAnalyses)==0,"impossible total capacity needs no primary numerical analyses");
+        }
         Console.WriteLine($"Passed {checks} centred search / two-support checks.");
     }
     internal static void Reported()

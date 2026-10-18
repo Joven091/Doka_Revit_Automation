@@ -666,9 +666,13 @@ namespace EngineeringDashboard
                 diag.Geometry("primary coverage",$"Primary coverage: no available stock combination totals {common.LengthMm-2*common.MaximumConcreteEndOverhangMm:0.###}–{common.LengthMm:0.###} mm.","Review available primary stocks and the maximum concrete end allowance.");
                 throw diag.Exception("No primary stock coverage fits the beam; separate slab formwork cannot fix missing beam stock.");
             }
-            if(common.EngineerSearch)
             {
-                double maximumCapacity=2*EngineerTowerSearch.MaximumStations(common)*common.LegCapacityKn;
+                // Every braced group has at least two support stations with a
+                // minimum 600 mm bay; independent groups need at least 25 mm.
+                // span >= 312.5*n - 25 is an optimistic upper bound on stations,
+                // valid for both production and historical staged searches.
+                int maximumStations=(int)Math.Floor((common.LengthMm-2*common.StockEndSetbackMm+25)/312.5+1e-9);
+                double maximumCapacity=2*Math.Max(0,maximumStations)*common.LegCapacityKn;
                 double minimumCoverage=stockCovers.Min(c=>c.Sum());
                 for(int beam=0;beam<input.Beams.Length;beam++)
                 {
