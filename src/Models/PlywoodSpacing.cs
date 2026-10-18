@@ -116,6 +116,9 @@ namespace EngineeringDashboard
         public static string SheetBasis => "2440 × 1220 mm sheets. Maximum spacings: 488, 407, 350, 305, 275 or 250 mm; the largest passing value is used. "
             + "The 2440 mm direction follows the secondary-row setting out. Each sheet joint has a support row; the final span in a sheet can be shorter.";
 
+        public static double SlabEndStripLimitMm(double pressureKnM2,string profileId=null,int denominator=350)
+            =>CalculateForSheet(string.IsNullOrEmpty(profileId) ? PlywoodCatalog.Default : PlywoodCatalog.FromId(profileId),pressureKnM2,denominator==0 ? 350 : denominator).MaximumSpacingMm;
+
         public static PlywoodSpacingResult CalculateForSheet(PlywoodProfile profile, double pressureKnM2, int denominator)
         {
             var chart=Calculate(profile,pressureKnM2,denominator);

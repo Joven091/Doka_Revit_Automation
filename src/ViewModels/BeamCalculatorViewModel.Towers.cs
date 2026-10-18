@@ -96,7 +96,7 @@ namespace EngineeringDashboard
             {
                 if (HasLeftSlab) Check(LeftSlabBayMm, "Left clear slab bay", true);
                 if (HasRightSlab) Check(RightSlabBayMm, "Right clear slab bay", true);
-                input.TransferredSlab = new TransferredSlabInput { PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm, BeamWidthMm=Width, BeamLineLoadKnM=AreaLoad(Depth)*Width/1000, UpperSpacingMm=UpperSupportSpacingMm,LeftSlabSpacingMm=HasLeftSlab ? LeftSlabSecondarySpacingMm : 0,RightSlabSpacingMm=HasRightSlab ? RightSlabSecondarySpacingMm : 0,
+                input.TransferredSlab = new TransferredSlabInput { PlywoodProfileId=PlywoodProfileId, PlywoodDeflectionDenominator=PlywoodSpacing.ParseDeflectionLimit(PlywoodDeflectionLimit), PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm, BeamWidthMm=Width, BeamLineLoadKnM=AreaLoad(Depth)*Width/1000, UpperSpacingMm=UpperSupportSpacingMm,LeftSlabSpacingMm=HasLeftSlab ? LeftSlabSecondarySpacingMm : 0,RightSlabSpacingMm=HasRightSlab ? RightSlabSecondarySpacingMm : 0,
                     LeftBayMm=HasLeftSlab ? LeftSlabBayMm : 0, RightBayMm=HasRightSlab ? RightSlabBayMm : 0, LeftAreaLoadKnM2=HasLeftSlab ? AreaLoad(LeftSlabThickness) : 0, RightAreaLoadKnM2=HasRightSlab ? AreaLoad(RightSlabThickness) : 0 };
                 input.TransferredSlab.Validate(input);
             }
