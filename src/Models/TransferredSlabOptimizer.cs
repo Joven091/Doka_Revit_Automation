@@ -452,6 +452,8 @@ namespace EngineeringDashboard
         }
         internal static LoadedBeamAnalysis AnalyzeTransverse(TowerInput input,BeamSearchCounter counter,double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool signed=false)
         {
+            using(var hot=input.Trace?.Hot(counter==BeamSearchCounter.PrimaryAnalyses ? BeamHotStage.PrimaryResponse : BeamHotStage.TransverseResponse))
+            {
             input.Trace?.CheckCancellation();
             var shared=input.ReuseSearchWork && input.ReuseTransverseNumerics ? input.NetworkNumerics??input.TransferredSlab?.SharedSearchWork : null;
             var key=shared==null ? null : new TransverseKey(length,supports,uniform,points,ei,denominator,input.IgnoreUplift || signed);
@@ -462,6 +464,7 @@ namespace EngineeringDashboard
                 response=input.IgnoreUplift || signed ? LoadedBeamAnalysis.AnalyzeSigned(length,supports,uniform,points,ei,denominator) : LoadedBeamAnalysis.Analyze(length,supports,uniform,points,ei,denominator);
             if(key!=null)shared.StoreTransverse(key,response);
             return response;
+            }
         }
         private static string Values(IEnumerable<double> values) => string.Join(";",values.Select(x=>x.ToString("R",CultureInfo.InvariantCulture)));
         public static TowerLayout Optimize(TowerInput input,bool shareDiagnostics=false)
@@ -629,7 +632,7 @@ namespace EngineeringDashboard
                                     if(input.PruneUneconomicCandidates && best!=null && Economy(geometry,cross,grid,input)>Economy(best)+.01)
                                     {input.Trace?.Increment(BeamSearchCounter.EconomyPruned);continue;}
                                     var candidate = OffsetReceiver(input,Evaluate(input,geometry,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared,best));
-                                    if (candidate != null && (best == null || Better(candidate,best)) && (input.TransferLayoutAcceptance==null || input.TransferLayoutAcceptance(candidate))) best = candidate;
+                                    if (candidate != null && (best == null || Better(candidate,best)) && (input.TransferLayoutAcceptance==null || AcceptLayout(input,candidate))) best = candidate;
                                 }
                             }
                         }
@@ -786,7 +789,7 @@ namespace EngineeringDashboard
                         }
                         var candidate=OffsetReceiver(input,Evaluate(input,geometry,item.Width,item.Rotated,cross,grid,item.Edge,primaryCache,matrixCache,shared,widthBest));
                         if(candidate!=null && input.EngineerSearch){candidate.SearchAssumedLegKn=EngineerTowerSearch.AssumedLegKn(input);candidate.SearchInitialLegsPerLine=InitialLegs(input,cross,item.Edge,geometry.Stock);}
-                        if(candidate!=null && (widthBest==null || Better(candidate,widthBest)) && (input.TransferLayoutAcceptance==null || input.TransferLayoutAcceptance(candidate)))
+                        if(candidate!=null && (widthBest==null || Better(candidate,widthBest)) && (input.TransferLayoutAcceptance==null || AcceptLayout(input,candidate)))
                         {
                             widthBest=candidate;
                             if(input.ReceiverAlternatives!=null)input.ReceiverAlternatives[item.Width]=candidate;
@@ -1212,6 +1215,8 @@ namespace EngineeringDashboard
         }
         private static PrimaryLoadData PrimaryLoads(TowerInput input,CrossOption cross,double stockStart,double stockLength,int line,int c,double edge)
         {
+            using(var hot=input.Trace?.Hot(BeamHotStage.LoadPreparation))
+            {
             // Load clipping depends on the stock and transverse source, never on
             // the tower stations being tried beneath that same stock.
             var key=new PrimaryLoadKey(stockStart,stockLength,line,c,edge);
@@ -1228,11 +1233,14 @@ namespace EngineeringDashboard
             }
             if(input.ReuseSearchWork && input.OptimizePrimaryResponses)cross.PrimaryLoads.Store(key,data);
             return data;
+            }
         }
         private static BeamDistributedLoad[] PrimaryUniformLoads(TowerInput input,CrossOption cross,double stockStart,double stockLength,int line,int c,double edge)
             =>PrimaryLoads(input,cross,stockStart,stockLength,line,c,edge).Uniform;
         internal static LoadedBeamAnalysis AnalyzePrimary(TowerInput input,double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,LoadedBeamAnalysis.MatrixCache matrices,SearchWorkCache shared)
         {
+            using(var hot=input.Trace?.Hot(BeamHotStage.PrimaryResponse))
+            {
             bool reject=input.StagePrimaryChecks && !input.Primary.IsWS10 && !input.DeferCrossingChecks;
             LoadedBeamAnalysis analysis=null;long before=matrices?.Hits??0;
             if(input.OptimizePrimaryResponses && shared!=null && points.Length==0 && uniform.Length==1 && uniform[0].StartMm==0 && uniform[0].EndMm==length && uniform[0].KnPerM>=0)
@@ -1259,6 +1267,7 @@ namespace EngineeringDashboard
             if(!analysis.DeflectionEvaluated)input.Trace?.Increment(BeamSearchCounter.PrimaryDeflectionSkipped);
             if(matrices!=null && matrices.Hits>before)input.Trace?.Increment(BeamSearchCounter.PrimaryMatrixCacheHits);
             return analysis;
+            }
         }
         private static BeamDistributedLoad[] LegacyPrimaryUniformLoads(TowerInput input,CrossOption cross,double stockStart,double stockLength,int line,int c,double edge)
         {
@@ -1371,6 +1380,8 @@ namespace EngineeringDashboard
         }
         private static bool NecessaryPrimarySpans(TowerInput input,Geometry geometry,CrossOption cross,double edge,int stage)
         {
+            using(var hot=input.Trace?.Hot(BeamHotStage.SpanScreen))
+            {
             // Between supports, a constant UDL changes shear by qL and needs a
             // moment range qL²/8. With |V|<=Vlim and |M|<=Mlim these are necessary
             // bounds, independent of end moments. Unknown crossing increments
@@ -1429,6 +1440,7 @@ namespace EngineeringDashboard
                 }
             }
             return true;
+            }
         }
         // Ordering only: never use this estimate to accept or reject a member.
         internal static double PrimaryPriority(TransferMember member)
@@ -1438,6 +1450,10 @@ namespace EngineeringDashboard
             gap=Math.Max(gap,member.LengthMm-last);
             double q=member.Uniform.Length==0 ? 0 : member.Uniform.Max(load=>Math.Abs(load.KnPerM));
             return q*gap*gap;
+        }
+        private static bool AcceptLayout(TowerInput input,TowerLayout layout)
+        {
+            using(var hot=input.Trace?.Hot(BeamHotStage.LayoutAcceptance))return input.TransferLayoutAcceptance(layout);
         }
         private static double PrimaryUtilization(TowerInput input,LoadedBeamAnalysis analysis)=>Math.Max(analysis.DeflectionUtilization,input.Primary.Strength(analysis));
         private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,ResponseCache<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent)
@@ -1506,7 +1522,7 @@ namespace EngineeringDashboard
                 var provisional=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,IgnoreUplift=input.IgnoreUplift,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=g.Joined,WidthMm=width,Rotated=rotated,LengthMm=input.LengthMm,DeflectionDenominator=input.DeflectionDenominator,DeflectionLimitMm=input.DeflectionLimitMm,LegCapacityKn=input.LegCapacityKn,
                     StockPlan=new TowerStockPlan {PrimaryMaterial=input.PrimaryMaterial,Pieces=g.Stock.Select(p=>new TowerStockPiece {StartMm=p.StartMm+edge,StockLengthMm=p.StockLengthMm,FirstSupport=p.FirstSupport,LastSupport=p.LastSupport}).ToArray()},
                     Transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerReceiverCount,FullLoadingOnly=input.FullLoadingOnly,RowsMm=rows.Select(x=>x+edge).ToArray(),LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,CaseNames=cross.DesignCases.Select(i=>cross.Names[i]).ToArray(),LowerCases=lowerCases.ToArray(),PrimaryCases=primaryCases.ToArray(),UpperMembers=new TransferMember[0],ColumnSupportLoads=new ColumnEndStripLoad[0][]}};
-                if(!input.TransferLayoutAcceptance(OffsetReceiver(input,provisional)))
+                if(!AcceptLayout(input,OffsetReceiver(input,provisional)))
                 {input.Trace?.Increment(BeamSearchCounter.TransferLayoutsDeferred);return null;}
             }
             // Ranking uses the identical member utilization arithmetic. Preserve strict

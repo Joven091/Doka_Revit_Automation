@@ -19,11 +19,36 @@ namespace EngineeringDashboard
     {
         internal BeamSearchDeadlineException():base("Search time limit reached before a complete valid solution was found. This does not prove that no feasible layout exists.") { }
     }
+    internal enum BeamHotStage { LoadPreparation, PrimaryResponse, TransverseResponse, SpanScreen, LayoutAcceptance, CrossingRecheck, SharedCrossing, PrimaryRecheck }
     internal enum BeamSearchStage { InputValidation, SolverWall, StockCovers, UpperOptions, ReceivingBeams, Geometry, TransverseAnalysis, PrimaryAnalysis, CrossingSupports, Movement, ResultApplication, DrawingPreparation }
     // Workers write atomic counters; the UI can read without touching solver collections.
     internal sealed class BeamSearchTrace
     {
         private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred","Network branches pruned by exact bounds","Network transverse response cache hits","Complete network candidates","Crossing leg clashes rejected before member checks","Network spacing vectors searched","Uniform primary shape cache hits","Primary load-data cache hits","Seed network candidates"};
+        // Sampling is opt-in for benchmark runs. No per-check stopwatch,
+        // timer allocation or profiling collection is used by normal calculation.
+        internal bool EnableHotProfiling;
+        internal sealed class HotBucket {internal long Calls,Samples,Ticks;internal uint Random=31973;}
+        private readonly ThreadLocal<HotBucket[]> hotBuckets=new ThreadLocal<HotBucket[]>(()=>Enum.GetValues(typeof(BeamHotStage)).Cast<BeamHotStage>().Select(x=>new HotBucket {Random=31973+(uint)x*7111}).ToArray(),true);
+        internal struct HotTimer : IDisposable
+        {
+            private readonly HotBucket bucket;private readonly long start;
+            internal HotTimer(HotBucket bucket){this.bucket=bucket;start=Stopwatch.GetTimestamp();}
+            public void Dispose(){if(bucket!=null){bucket.Ticks+=Stopwatch.GetTimestamp()-start;bucket.Samples++;}}
+        }
+        internal HotTimer Hot(BeamHotStage stage)
+        {
+            if(!EnableHotProfiling)return default(HotTimer);
+            var bucket=hotBuckets.Value[(int)stage];bucket.Calls++;
+            unchecked{bucket.Random=bucket.Random*1664525+1013904223;}
+            return (bucket.Random>>23)==0 ? new HotTimer(bucket) : default(HotTimer);
+        }
+        private long lastImprovementTicks=-1,improvements;
+        private string improvementScore="";
+        internal void NetworkImproved(string score)
+        {
+            Interlocked.Increment(ref improvements);Interlocked.Exchange(ref lastImprovementTicks,timestamp());Volatile.Write(ref improvementScore,score);
+        }
         private readonly long[] counters=new long[CounterNames.Length];
         // Hot diagnostic events are accumulated by their owning worker. UI reads
         // include pending counts; completion flushes them for an exact final report.
@@ -146,6 +171,20 @@ namespace EngineeringDashboard
             text.AppendLine("Network workers: "+Volatile.Read(ref workers));
             long firstComplete=Interlocked.Read(ref firstCompleteNetworkTicks);
             text.AppendLine("First complete network candidate seconds: "+(firstComplete<0 ? "Not found" : ((firstComplete-started)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture)));
+            if(EnableHotProfiling)
+            {
+                long improved=Interlocked.Read(ref lastImprovementTicks);
+                text.AppendLine("Last network improvement seconds: "+(improved<0 ? "Not found" : ((improved-started)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture)));
+                text.AppendLine("Network improvements: "+Interlocked.Read(ref improvements)+"; score: "+Volatile.Read(ref improvementScore));
+                foreach(BeamHotStage stage in Enum.GetValues(typeof(BeamHotStage)))
+                {
+                    long calls=0,samples=0,ticks=0;
+                    foreach(var worker in hotBuckets.Values){var bucket=worker[(int)stage];calls+=Interlocked.Read(ref bucket.Calls);samples+=Interlocked.Read(ref bucket.Samples);ticks+=Interlocked.Read(ref bucket.Ticks);}
+                    double estimate=samples==0 ? 0 : ticks/(double)samples*calls/Stopwatch.Frequency;
+                    text.AppendLine("Profile "+stage+": calls="+calls+"; samples="+samples+"; estimated worker seconds="+estimate.ToString("0.000",CultureInfo.InvariantCulture));
+                }
+                text.AppendLine("Sampled worker times are estimates, overlap when nested, and are not additive wall times.");
+            }
             foreach(var stage in stages.OrderBy(x=>x.Key))
                 text.AppendLine("Stage "+stage.Key+": "+(Interlocked.Read(ref stage.Value.Ticks)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture)+" seconds; calls="+Interlocked.Read(ref stage.Value.Calls));
             if(!HasTimeLimit)text.AppendLine("Per-member numerical timing is disabled for full searches; enclosing stage times and numerical counters are retained.");

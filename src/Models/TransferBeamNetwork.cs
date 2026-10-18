@@ -636,8 +636,10 @@ namespace EngineeringDashboard
         {
             private int legs=int.MaxValue;
             private readonly int minimumDedicatedLegs;
-            internal EngineerBound(TransferNetworkInput input)
+            private readonly object improvementGate=new object();private TransferNetworkResult best;private readonly BeamSearchTrace trace;
+            internal EngineerBound(TransferNetworkInput input,BeamSearchTrace trace)
             {
+                this.trace=trace;
                 // Dedicated formwork needs at least one four-leg tower. A negative
                 // filler gap makes the shared mode impossible at every receiver pose.
                 minimumDedicatedLegs=4*input.CrossingBeams.Count(c=>c.SupportMode==CrossBeamSupportMode.DedicatedTowers
@@ -647,6 +649,14 @@ namespace EngineeringDashboard
             internal int Ceiling(int used,int remaining,int minimum)=>Math.Max(0,Volatile.Read(ref legs)-used-remaining*minimum-minimumDedicatedLegs);
             internal void Publish(TransferNetworkResult result)
             {
+                if(trace?.EnableHotProfiling==true)lock(improvementGate)
+                {
+                    if(best==null || Better(result,best))
+                    {
+                        best=result;
+                        trace.NetworkImproved(FormattableString.Invariant($"legs={result.LegCount}; groups={result.Beams.Sum(b=>b.BayCount)}; brace={result.Beams.Sum(b=>b.StandaloneBracePenalty):R}; cantilever={result.Beams.Sum(b=>b.CantileverImbalanceMm):R}; symmetry={result.Beams.Sum(b=>b.SymmetryErrorMm):R}; timber={result.TimberMm:R}"));
+                    }
+                }
                 int value=result.LegCount,old;
                 do{old=Volatile.Read(ref legs);if(value>=old)return;}while(Interlocked.CompareExchange(ref legs,value,old)!=old);
             }
@@ -658,7 +668,7 @@ namespace EngineeringDashboard
             common.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};var diag=common.Diagnostics;
             var geometryCache=common.ReuseSearchWork ? common.NetworkGeometryWork ?? new TransferredSlabOptimizer.GeometryCache() : null;
             var incumbent=!common.EngineerSearch && common.PruneNetworkBounds && !separate && input.CrossingBeams.All(c=>c.SupportMode==CrossBeamSupportMode.LegacySlabRows) ? new Incumbent() : null;
-            var engineerBound=common.EngineerSearch && common.PruneNetworkBounds && !separate ? new EngineerBound(input) : null;
+            var engineerBound=common.EngineerSearch && common.PruneNetworkBounds && !separate ? new EngineerBound(input,common.Trace) : null;
             common.Trace?.Work("Network primary cover generation");
             double[][] stockCovers;
             using(common.Trace?.Measure(BeamSearchStage.StockCovers))stockCovers=TransferredSlabOptimizer.StockCovers(common);

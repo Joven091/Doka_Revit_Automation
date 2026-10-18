@@ -240,6 +240,8 @@ namespace EngineeringDashboard
         }
         private static CrossBeamSupportResult Shared(TowerInput common,TransferNetworkResult r,int index,out string failure)
         {
+            using(var hot=common.Trace?.Hot(BeamHotStage.SharedCrossing))
+            {
             var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;double span=r.Input.Bays[bay].WidthMm;
             var left=r.Beams[bay].Transfer;var right=r.Beams[bay+1].Transfer;double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2;
             failure=null;
@@ -335,6 +337,7 @@ namespace EngineeringDashboard
                 }
             }
             failure=$"X{index+1}: no permitted shared H20 stock passes moment, shear, deflection{(common.IgnoreUplift ? "" : ", uplift")} and bearing/end geometry.";return null;
+            }
         }
         private static CrossBeamSupportResult Dedicated(TowerInput common,TransferNetworkResult r,int index,IEnumerable<FormworkSolid> obstacles,out string failure,CrossShutterAllowance allowance=null)
         {
@@ -973,6 +976,8 @@ namespace EngineeringDashboard
         }
         private static bool Recheck(TowerInput common,TransferNetworkResult r,TowerLayout[] originals,CrossBeamSupportResult[] supports,bool lowerOnly=false,bool pendingAssignments=false)
         {
+            using(var hot=common.Trace?.Hot(BeamHotStage.CrossingRecheck))
+            {
             var shared=supports.Where(s=>s.Bearings.Any(b=>b.Beam>=0)).ToArray();
             r.Beams=originals.Select(Copy).ToArray();
             for(int beam=0;beam<r.Beams.Length;beam++)
@@ -1042,6 +1047,8 @@ namespace EngineeringDashboard
                     if(common.OptimizePrimaryResponses)order=order.OrderByDescending(i=>TransferredSlabOptimizer.PrimaryPriority(t.PrimaryCases[stage][i]));
                     foreach(int memberIndex in order)
                     {
+                        using(var primaryHot=common.Trace?.Hot(BeamHotStage.PrimaryRecheck))
+                        {
                         int line=memberIndex/runs,run=memberIndex%runs;
                         var original=t.PrimaryCases[stage][memberIndex];
                         // Shared production primaries use the agreed concrete tributary zones.
@@ -1069,6 +1076,7 @@ namespace EngineeringDashboard
                         }
                         for(int j=0;j<m.Analysis.Reactions.Length;j++) {int leg=l.StockPlan.Pieces[run].FirstSupport+j;var reactions=line==0 ? left : right;reactions[leg]=Math.Max(reactions[leg],m.Analysis.Reactions[j]);var minimum=line==0 ? minLeft : minRight;minimum[leg]=Math.Min(minimum[leg],m.Analysis.Reactions[j]);}
                     }
+                        }
                     names.Add(name);cases.Add(primary);lowerCases.Add(lower);
                     if(resolvedPlan!=null)
                         columnLoads.Add(resolvedPlan.Columns(l.StockPlan.Pieces.First().StartMm,l.StockPlan.Pieces.Last().EndMm,name));
@@ -1086,6 +1094,7 @@ namespace EngineeringDashboard
                 RefreshStockDemands(l);
             }
             return true;
+            }
         }
         private static TransferMember StageCopy(TransferMember m,string stage)=>new TransferMember {PrimaryMaterial=m.PrimaryMaterial,Name=m.Name,LoadCase=stage,StartMm=m.StartMm,LengthMm=m.LengthMm,H20Count=m.H20Count,PrimarySelfWeightKnM=m.PrimarySelfWeightKnM,SupportsMm=m.SupportsMm,Points=m.Points,Uniform=m.Uniform,LegacyPrimaryUniform=m.LegacyPrimaryUniform,Analysis=m.Analysis,SubsetMinimumReactionsKn=m.SubsetMinimumReactionsKn,SubsetMomentBoundKnM=m.SubsetMomentBoundKnM,SubsetShearBoundKn=m.SubsetShearBoundKn,SubsetDeflectionBound=m.SubsetDeflectionBound};
         private static void RefreshStockDemands(TowerLayout l)
