@@ -50,12 +50,12 @@ internal static class NextSearchSpeedTests
             }
             Check(input.Trace.Count(BeamSearchCounter.UniformPrimaryCacheHits)>0,"same geometry reuses its complete unit response");
         }
-        var control=new TowerInput {IgnoreUplift=true,StagePrimaryChecks=false};
+        var control=new TowerInput {IgnoreUplift=true,StagePrimaryChecks=false,DeflectionDenominator=270};
         var discontinuous=new[] {new BeamDistributedLoad {StartMm=0,EndMm=1800,KnPerM=20},new BeamDistributedLoad {StartMm=1800,EndMm=2450,KnPerM=50}};
         var stations=new[] {300.0,1300,2150};
         Same(TransferredSlabOptimizer.AnalyzePrimary(control,2450,stations,discontinuous,new BeamPointLoad[0],shared.Matrix,shared),LoadedBeamAnalysis.AnalyzeSigned(2450,stations,discontinuous,new BeamPointLoad[0],control.Primary.EI,270),2450);
         var unit=LoadedBeamAnalysis.Analyze(2450,stations,new[] {new BeamDistributedLoad {StartMm=0,EndMm=2450,KnPerM=1}},null,control.Primary.EI,270);
-        foreach(double q in new[] {10/unit.MomentKnM,22/unit.ShearKn,1/unit.DeflectionUtilization})
+        foreach(double q in new[] {10/unit.MomentKnM,22/unit.ShearKn,1/unit.DeflectionUtilization,70/unit.Reactions.Max()})
         {
             var loads=new[] {new BeamDistributedLoad {StartMm=0,EndMm=2450,KnPerM=q}};
             var actual=TransferredSlabOptimizer.AnalyzePrimary(control,2450,stations,loads,new BeamPointLoad[0],shared.Matrix,shared);
@@ -84,7 +84,7 @@ internal static class NextSearchSpeedTests
         TransferNetworkResult reference=null;
         foreach(int requested in new[] {4,6,8})
         {
-            var common=Common(true,requested);var timer=Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,Network());timer.Stop();Valid(result);
+            var common=Common(true,requested);common.LengthMm=4900;common.MaximumConcreteEndOverhangMm=175;common.StockLengthsMm=TowerStockPlanner.ParseLengths(TowerStockPlanner.DefaultLengths);var timer=Stopwatch.StartNew();var result=TransferNetworkOptimizer.Optimize(common,Network());timer.Stop();Valid(result);
             if(reference!=null){Check(result.LegCount==reference.LegCount,"worker leg count parity");Near(result.TimberMm,reference.TimberMm,"worker material parity");}
             reference=result;
             Console.WriteLine($"WORKERS requested={requested} actual={TransferNetworkOptimizer.SearchWorkers(requested,Environment.ProcessorCount)} processors={Environment.ProcessorCount} seconds={timer.Elapsed.TotalSeconds:0.000} managedMB={GC.GetTotalMemory(false)/1048576.0:0.0} peakWorkingMB={Process.GetCurrentProcess().PeakWorkingSet64/1048576.0:0.0} legs={result.LegCount}");

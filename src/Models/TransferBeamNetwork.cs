@@ -867,7 +867,7 @@ namespace EngineeringDashboard
                     var alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,1000,offset);
                     if(alternative!=null)choices.Add(alternative);
                 }
-                receivers=choices.OrderBy(l=>common.EngineerSearch ? l.LegCount : TransferredSlabOptimizer.Economy(l)).ThenBy(l=>l.Standalone600Count).ThenBy(l=>l.BayCount).ThenBy(l=>l.StandaloneBracePenalty).ThenBy(l=>l.SymmetryErrorMm).ToArray();solveCache[key]=Tuple.Create(ceiling,receivers);return receivers;
+                receivers=choices.OrderBy(l=>common.EngineerSearch ? l.LegCount : TransferredSlabOptimizer.Economy(l)).ThenBy(l=>l.Standalone600Count).ThenBy(l=>l.BayCount).ThenBy(l=>l.StandaloneBracePenalty).ThenBy(l=>l.CantileverImbalanceMm).ThenBy(l=>l.SymmetryErrorMm).ThenBy(l=>l.BraceLocationPenalty).ToArray();solveCache[key]=Tuple.Create(ceiling,receivers);return receivers;
             }
             State Extend(State previous,UpperTransferPlan right,TowerLayout receiver,int beam)
             {

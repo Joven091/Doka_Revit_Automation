@@ -221,7 +221,7 @@ namespace EngineeringDashboard
         private sealed class Upper { public double Stock, Edge, Foot, OtherFoot, Bay, Load; public bool Custom; public LoadedBeamAnalysis Analysis; }
         private sealed class CrossOption
         {
-            internal readonly Dictionary<Tuple<double,double,int,int,double>,PrimaryLoadData> PrimaryLoads=new Dictionary<Tuple<double,double,int,int,double>,PrimaryLoadData>();
+            internal readonly ResponseCache<PrimaryLoadKey,PrimaryLoadData> PrimaryLoads=new ResponseCache<PrimaryLoadKey,PrimaryLoadData>(512);
             public double Start, Stock; public Upper Left, Right; public LoadedBeamAnalysis[] Cases; public string[] Names;
             public TransferMember[] UnitMembers;public string[][] UnitPointLabels;
             public EngineerPrimaryPlan PositionedPlan;
@@ -346,6 +346,14 @@ namespace EngineeringDashboard
                 else if(entries.Count>=capacity){entries.Remove(order.First.Value.Key);order.RemoveFirst();}
                 entries.Add(key,order.AddLast(new KeyValuePair<TKey,TValue>(key,value)));
             }
+        }
+        private struct PrimaryLoadKey : IEquatable<PrimaryLoadKey>
+        {
+            private readonly double start,length,edge;private readonly int line,stage;
+            internal PrimaryLoadKey(double start,double length,int line,int stage,double edge){this.start=start;this.length=length;this.line=line;this.stage=stage;this.edge=edge;}
+            public bool Equals(PrimaryLoadKey other)=>start==other.start && length==other.length && edge==other.edge && line==other.line && stage==other.stage;
+            public override bool Equals(object other)=>other is PrimaryLoadKey && Equals((PrimaryLoadKey)other);
+            public override int GetHashCode(){unchecked{return (((start.GetHashCode()*31+length.GetHashCode())*31+line)*31+stage)*31+edge.GetHashCode();}}
         }
         private sealed class PrimaryLoadData
         {
@@ -1206,7 +1214,7 @@ namespace EngineeringDashboard
         {
             // Load clipping depends on the stock and transverse source, never on
             // the tower stations being tried beneath that same stock.
-            var key=Tuple.Create(stockStart,stockLength,line,c,edge);
+            var key=new PrimaryLoadKey(stockStart,stockLength,line,c,edge);
             if(input.ReuseSearchWork && input.OptimizePrimaryResponses && cross.PrimaryLoads.TryGetValue(key,out var found))
             {input.Trace?.Increment(BeamSearchCounter.PrimaryLoadCacheHits);return found;}
             var uniform=input.EngineerPlan?.UseDesignZones==true
@@ -1218,7 +1226,7 @@ namespace EngineeringDashboard
                 data.Positions=new double[uniform.Length*2];data.Forces=new double[uniform.Length*2];
                 for(int i=0;i<uniform.Length;i++){data.Positions[2*i]=uniform[i].StartMm;data.Positions[2*i+1]=uniform[i].EndMm;data.Forces[2*i]=data.Forces[2*i+1]=uniform[i].KnPerM;}
             }
-            if(input.ReuseSearchWork && input.OptimizePrimaryResponses && cross.PrimaryLoads.Count<512)cross.PrimaryLoads[key]=data;
+            if(input.ReuseSearchWork && input.OptimizePrimaryResponses)cross.PrimaryLoads.Store(key,data);
             return data;
         }
         private static BeamDistributedLoad[] PrimaryUniformLoads(TowerInput input,CrossOption cross,double stockStart,double stockLength,int line,int c,double edge)
