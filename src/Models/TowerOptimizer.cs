@@ -228,6 +228,7 @@ namespace EngineeringDashboard
         internal bool EngineerWorkflow=>EngineerSearch && FullLoadingOnly;
         internal EngineerPrimaryPlan EngineerPlan;
         internal bool EngineerDedicatedFallback;
+        internal bool SeedNetworkSearch=true,OptimizePrimaryResponses=true;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
         internal Dictionary<double,TowerLayout> ReceiverAlternatives;

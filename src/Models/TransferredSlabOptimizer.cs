@@ -221,6 +221,7 @@ namespace EngineeringDashboard
         private sealed class Upper { public double Stock, Edge, Foot, OtherFoot, Bay, Load; public bool Custom; public LoadedBeamAnalysis Analysis; }
         private sealed class CrossOption
         {
+            internal readonly Dictionary<Tuple<double,double,int,int,double>,PrimaryLoadData> PrimaryLoads=new Dictionary<Tuple<double,double,int,int,double>,PrimaryLoadData>();
             public double Start, Stock; public Upper Left, Right; public LoadedBeamAnalysis[] Cases; public string[] Names;
             public TransferMember[] UnitMembers;public string[][] UnitPointLabels;
             public EngineerPrimaryPlan PositionedPlan;
@@ -325,6 +326,44 @@ namespace EngineeringDashboard
             grid.Key=Values(rows)+"|"+Values(widthsBeam)+"|"+Values(grid.LeftScales)+"|"+Values(grid.RightScales)+"|"+edge.ToString("R",CultureInfo.InvariantCulture);
             return grid;
         }
+        // Per-worker bounded LRU: a late, frequently used response must not be
+        // excluded just because the first 4096 trial responses filled the cache.
+        internal sealed class ResponseCache<TKey,TValue>
+        {
+            private readonly int capacity;
+            private readonly Dictionary<TKey,LinkedListNode<KeyValuePair<TKey,TValue>>> entries=new Dictionary<TKey,LinkedListNode<KeyValuePair<TKey,TValue>>>();
+            private readonly LinkedList<KeyValuePair<TKey,TValue>> order=new LinkedList<KeyValuePair<TKey,TValue>>();
+            internal ResponseCache(int capacity){this.capacity=capacity;}
+            internal int Count=>entries.Count;
+            internal bool TryGetValue(TKey key,out TValue value)
+            {
+                if(!entries.TryGetValue(key,out var node)){value=default(TValue);return false;}
+                order.Remove(node);order.AddLast(node);value=node.Value.Value;return true;
+            }
+            internal void Store(TKey key,TValue value)
+            {
+                if(entries.TryGetValue(key,out var old)){order.Remove(old);entries.Remove(key);}
+                else if(entries.Count>=capacity){entries.Remove(order.First.Value.Key);order.RemoveFirst();}
+                entries.Add(key,order.AddLast(new KeyValuePair<TKey,TValue>(key,value)));
+            }
+        }
+        private sealed class PrimaryLoadData
+        {
+            internal BeamDistributedLoad[] Uniform;
+            internal double[] Positions,Forces;
+        }
+        internal sealed class UniformShapeKey : IEquatable<UniformShapeKey>
+        {
+            private readonly double length,ei;private readonly int denominator,hash;private readonly double[] supports;
+            internal UniformShapeKey(double length,double[] supports,double ei,int denominator)
+            {
+                this.length=length;this.supports=supports;this.ei=ei;this.denominator=denominator;
+                unchecked{int h=(length.GetHashCode()*31+ei.GetHashCode())*31+denominator;foreach(double x in supports)h=h*31+x.GetHashCode();hash=h;}
+            }
+            public override int GetHashCode()=>hash;
+            public override bool Equals(object other)=>Equals(other as UniformShapeKey);
+            public bool Equals(UniformShapeKey other)=>other!=null && hash==other.hash && length==other.length && ei==other.ei && denominator==other.denominator && supports.SequenceEqual(other.supports);
+        }
         internal sealed class PrimaryCheck { public LoadedBeamAnalysis Analysis; public bool Passed; public BeamPointLoad[] Points; public BeamDistributedLoad[] Uniform; }
         internal sealed class PrimaryKey : IEquatable<PrimaryKey>
         {
@@ -398,15 +437,10 @@ namespace EngineeringDashboard
                 transverse.Add(key,transverseOrder.AddLast(new KeyValuePair<TransverseKey,LoadedBeamAnalysis>(key,value)));
             }
             internal readonly LoadedBeamAnalysis.MatrixCache Matrix=new LoadedBeamAnalysis.MatrixCache(2048,true);
-            private readonly Dictionary<PrimaryKey,PrimaryCheck> responses=new Dictionary<PrimaryKey,PrimaryCheck>();
-            private readonly Queue<PrimaryKey> order=new Queue<PrimaryKey>();
+            private readonly ResponseCache<PrimaryKey,PrimaryCheck> responses=new ResponseCache<PrimaryKey,PrimaryCheck>(4096);
+            internal readonly ResponseCache<UniformShapeKey,LoadedBeamAnalysis> UniformShapes=new ResponseCache<UniformShapeKey,LoadedBeamAnalysis>(2048);
             internal PrimaryCheck Get(PrimaryKey key)=>responses.TryGetValue(key,out var check) ? check : null;
-            internal void Store(PrimaryKey key,PrimaryCheck check)
-            {
-                if(responses.ContainsKey(key))return;
-                if(responses.Count>=4096)responses.Remove(order.Dequeue());
-                responses.Add(key,check);order.Enqueue(key);
-            }
+            internal void Store(PrimaryKey key,PrimaryCheck check)=>responses.Store(key,check);
         }
         internal static LoadedBeamAnalysis AnalyzeTransverse(TowerInput input,BeamSearchCounter counter,double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool signed=false)
         {
@@ -504,7 +538,7 @@ namespace EngineeringDashboard
             // Different tower combinations often repeat an identical local primary member.
             // Include every support, distributed-load boundary and intensity, without rounding. This cache
             // lives only in one receiving-beam solve and retains at most 4096 checks.
-            var primaryCache = input.ReuseSearchWork ? new Dictionary<PrimaryKey,PrimaryCheck>() : null;
+            var primaryCache = input.ReuseSearchWork ? new ResponseCache<PrimaryKey,PrimaryCheck>(4096) : null;
             var shared = input.ReuseSearchWork && input.ReuseNetworkNumerics ? t.SharedSearchWork : null;
             var matrixCache = input.ReuseSearchWork ? shared?.Matrix ?? new LoadedBeamAnalysis.MatrixCache() : null;
             if(!shareDiagnostics || input.Diagnostics==null)input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace,ignoreUplift:input.IgnoreUplift) {LazyLocations=input.LazySearchDiagnostics};var diag=input.Diagnostics;
@@ -611,7 +645,7 @@ namespace EngineeringDashboard
             // Different tower combinations often repeat an identical local primary member.
             // Include every support, distributed-load boundary and intensity, without rounding. This cache
             // lives only in one receiving-beam solve and retains at most 4096 checks.
-            var primaryCache = input.ReuseSearchWork ? new Dictionary<PrimaryKey,PrimaryCheck>() : null;
+            var primaryCache = input.ReuseSearchWork ? new ResponseCache<PrimaryKey,PrimaryCheck>(4096) : null;
             var shared = input.ReuseSearchWork && input.ReuseNetworkNumerics ? t.SharedSearchWork : null;
             var matrixCache = input.ReuseSearchWork ? shared?.Matrix ?? new LoadedBeamAnalysis.MatrixCache() : null;
             if(!shareDiagnostics || input.Diagnostics==null)input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace,ignoreUplift:input.IgnoreUplift) {LazyLocations=input.LazySearchDiagnostics};var diag=input.Diagnostics;
@@ -1168,10 +1202,56 @@ namespace EngineeringDashboard
             }
             return result.ToArray();
         }
-        private static BeamDistributedLoad[] PrimaryUniformLoads(TowerInput input,CrossOption cross,double stockStart,double stockLength,int line,int c,double edge)
-            => input.EngineerPlan?.UseDesignZones==true
+        private static PrimaryLoadData PrimaryLoads(TowerInput input,CrossOption cross,double stockStart,double stockLength,int line,int c,double edge)
+        {
+            // Load clipping depends on the stock and transverse source, never on
+            // the tower stations being tried beneath that same stock.
+            var key=Tuple.Create(stockStart,stockLength,line,c,edge);
+            if(input.ReuseSearchWork && input.OptimizePrimaryResponses && cross.PrimaryLoads.TryGetValue(key,out var found))
+            {input.Trace?.Increment(BeamSearchCounter.PrimaryLoadCacheHits);return found;}
+            var uniform=input.EngineerPlan?.UseDesignZones==true
                 ? (cross.PositionedPlan??input.EngineerPlan).Loads(stockStart,stockLength,line,selfWeight:input.Primary.SelfWeightKnM(stockLength))
                 : LegacyPrimaryUniformLoads(input,cross,stockStart,stockLength,line,c,edge);
+            var data=new PrimaryLoadData {Uniform=uniform};
+            if(uniform!=null)
+            {
+                data.Positions=new double[uniform.Length*2];data.Forces=new double[uniform.Length*2];
+                for(int i=0;i<uniform.Length;i++){data.Positions[2*i]=uniform[i].StartMm;data.Positions[2*i+1]=uniform[i].EndMm;data.Forces[2*i]=data.Forces[2*i+1]=uniform[i].KnPerM;}
+            }
+            if(input.ReuseSearchWork && input.OptimizePrimaryResponses && cross.PrimaryLoads.Count<512)cross.PrimaryLoads[key]=data;
+            return data;
+        }
+        private static BeamDistributedLoad[] PrimaryUniformLoads(TowerInput input,CrossOption cross,double stockStart,double stockLength,int line,int c,double edge)
+            =>PrimaryLoads(input,cross,stockStart,stockLength,line,c,edge).Uniform;
+        internal static LoadedBeamAnalysis AnalyzePrimary(TowerInput input,double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,LoadedBeamAnalysis.MatrixCache matrices,SearchWorkCache shared)
+        {
+            bool reject=input.StagePrimaryChecks && !input.Primary.IsWS10 && !input.DeferCrossingChecks;
+            LoadedBeamAnalysis analysis=null;long before=matrices?.Hits??0;
+            if(input.OptimizePrimaryResponses && shared!=null && points.Length==0 && uniform.Length==1 && uniform[0].StartMm==0 && uniform[0].EndMm==length && uniform[0].KnPerM>=0)
+            {
+                var shape=new UniformShapeKey(length,supports,input.Primary.EI,input.DeflectionDenominator);
+                if(!shared.UniformShapes.TryGetValue(shape,out var unit))
+                {
+                    input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
+                    unit=LoadedBeamAnalysis.AnalyzeCombinedCached(length,supports,new[] {new BeamDistributedLoad {StartMm=0,EndMm=length,KnPerM=1}},points,input.Primary.EI,input.DeflectionDenominator,matrices);
+                    shared.UniformShapes.Store(shape,unit);
+                }
+                else input.Trace?.Increment(BeamSearchCounter.UniformPrimaryCacheHits);
+                analysis=unit.Scale(uniform[0].KnPerM);
+                // Retain the original arithmetic at acceptance boundaries.
+                if(Math.Abs(PrimaryUtilization(input,analysis)-1)<1e-7 || Math.Abs(analysis.Reactions.Max()-input.LegCapacityKn)<1e-6
+                    || !input.IgnoreUplift && Math.Abs(analysis.Reactions.Min())<1e-7)analysis=null;
+            }
+            if(analysis==null)
+            {
+                input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
+                using(input.Trace?.Measure(BeamSearchStage.PrimaryAnalysis))
+                    analysis=LoadedBeamAnalysis.AnalyzeCombinedCached(length,supports,uniform,points,input.Primary.EI,input.DeflectionDenominator,matrices,input.LegCapacityKn,reject,input.IgnoreUplift || input.DeferCrossingChecks,input.TransferredSlab?.IncludeConcreteEndStrips==true);
+            }
+            if(!analysis.DeflectionEvaluated)input.Trace?.Increment(BeamSearchCounter.PrimaryDeflectionSkipped);
+            if(matrices!=null && matrices.Hits>before)input.Trace?.Increment(BeamSearchCounter.PrimaryMatrixCacheHits);
+            return analysis;
+        }
         private static BeamDistributedLoad[] LegacyPrimaryUniformLoads(TowerInput input,CrossOption cross,double stockStart,double stockLength,int line,int c,double edge)
         {
             double baseBeam=cross.Cases[0].Reactions[line],beam=baseBeam;
@@ -1342,8 +1422,17 @@ namespace EngineeringDashboard
             }
             return true;
         }
+        // Ordering only: never use this estimate to accept or reject a member.
+        internal static double PrimaryPriority(TransferMember member)
+        {
+            double gap=member.SupportsMm[0],last=0;
+            foreach(double support in member.SupportsMm){gap=Math.Max(gap,support-last);last=support;}
+            gap=Math.Max(gap,member.LengthMm-last);
+            double q=member.Uniform.Length==0 ? 0 : member.Uniform.Max(load=>Math.Abs(load.KnPerM));
+            return q*gap*gap;
+        }
         private static double PrimaryUtilization(TowerInput input,LoadedBeamAnalysis analysis)=>Math.Max(analysis.DeflectionUtilization,input.Primary.Strength(analysis));
-        private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,Dictionary<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent)
+        private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,ResponseCache<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent)
         {
             if(!input.DeferTransferLayout)return EvaluateReference(input,g,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared);
             if(input.EngineerSearch && !AcceptTransverseCases(input,cross,width,grid,edge))return null;
@@ -1361,11 +1450,12 @@ namespace EngineeringDashboard
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {
                     var supports=g.MemberSupports[Array.IndexOf(g.Stock,stock)];
-                    var uniform=PrimaryUniformLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,c,edge);
+                    var loadData=PrimaryLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,c,edge);
+                    var uniform=loadData.Uniform;
                     if(uniform==null) {input.Diagnostics?.Geometry(input.DiagnosticScope+"primary distributed uplift","Primary UDL has an upward resultant within a loaded interval.","Review transverse bearings and asymmetric slab/crossing loads.");return null;}
                     input.Trace?.CheckCancellation();
                     var points=new BeamPointLoad[0];
-                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,uniform,points,input.DeferCrossingChecks);
+                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,loadData.Positions,loadData.Forces,uniform.Length,input.DeferCrossingChecks);
                     PrimaryCheck check;
                     if(primaryCache==null || !primaryCache.TryGetValue(key,out check))
                     {
@@ -1375,18 +1465,13 @@ namespace EngineeringDashboard
                         if(reused!=null) {analysis=reused.Analysis;uniform=reused.Uniform;points=reused.Points;input.Trace?.Increment(BeamSearchCounter.NetworkPrimaryCacheHits);}
                         else
                         {
-                            input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
-                            long priorHits=matrixCache?.Hits??0;
-                            using(input.Trace?.Measure(BeamSearchStage.PrimaryAnalysis))
-                            analysis=LoadedBeamAnalysis.AnalyzeCombinedCached(stock.StockLengthMm,supports,uniform,points,input.Primary.EI,input.DeflectionDenominator,matrixCache,input.LegCapacityKn,input.StagePrimaryChecks && !input.Primary.IsWS10 && !input.DeferCrossingChecks,input.IgnoreUplift || input.DeferCrossingChecks,input.TransferredSlab.IncludeConcreteEndStrips);
-                            if(!analysis.DeflectionEvaluated)input.Trace?.Increment(BeamSearchCounter.PrimaryDeflectionSkipped);
-                            if(matrixCache!=null && matrixCache.Hits>priorHits)input.Trace?.Increment(BeamSearchCounter.PrimaryMatrixCacheHits);
+                            analysis=AnalyzePrimary(input,stock.StockLengthMm,supports,uniform,points,matrixCache,shared);
                         }
                         bool memberPass=Pass(input,analysis,1,2,input.Diagnostics,input.DiagnosticScope+"Primary pair · UDL",3,()=> $"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · stock {stock.StockLengthMm:0} mm · x={stock.StartMm+edge:0.###}–{stock.EndMm+edge:0.###} mm");
                         int peakLeg=Array.IndexOf(analysis.Reactions,analysis.Reactions.Max());
                         if(!input.DeferCrossingChecks)input.Diagnostics?.LegsLazy(analysis.Reactions,input.LegCapacityKn,input.DiagnosticScope+"Tower legs · UDL",()=> $"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · peak leg x={g.Positions[stock.FirstSupport+peakLeg]+edge:0.###} mm");
                         check=new PrimaryCheck {Analysis=analysis,Points=points,Uniform=uniform,Passed=memberPass && (input.DeferCrossingChecks || analysis.Reactions.Max()<=input.LegCapacityKn+1e-8)};
-                        if(primaryCache!=null && primaryCache.Count<4096)primaryCache[key]=check;
+                        primaryCache?.Store(key,check);
                         if(key!=null && reused==null)shared?.Store(key,check);
                     }
                     else input.Trace?.Increment(BeamSearchCounter.PrimaryCacheHits);
@@ -1457,7 +1542,7 @@ namespace EngineeringDashboard
                 LeftLineLoad=lowerCases.Last().Sum(m=>m.Analysis.Reactions[0])/(trib.Sum()/1000),RightLineLoad=lowerCases.Last().Sum(m=>m.Analysis.Reactions[1])/(trib.Sum()/1000),LegCapacityKn=input.LegCapacityKn,MaxLegKn=peak,
                 StockPlan=new TowerStockPlan {PrimaryMaterial=input.PrimaryMaterial,Pieces=pieces,Reactions=left.Zip(right,Math.Max).ToArray()},DeflectionDenominator=input.DeflectionDenominator,DeflectionLimitMm=input.DeflectionLimitMm,MomentKnM=all.Max(m=>m.Analysis.MomentKnM),ShearKn=all.Max(m=>m.Analysis.ShearKn),DeflectionMm=all.Max(m=>m.Analysis.DeflectionMm),Utilization=util,Governing=peak/input.LegCapacityKn>=all.Max(m=>m.Utilization) ? "Leg capacity" : all.OrderByDescending(m=>m.Utilization).First().Name};
         }
-        private static TowerLayout EvaluateReference(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,Dictionary<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared)
+        private static TowerLayout EvaluateReference(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,ResponseCache<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared)
         {
             if(input.EngineerSearch && !AcceptTransverseCases(input,cross,width,grid,edge))return null;
             var rows=grid.Rows;var trib=grid.Tributaries;var ls=grid.LeftScales;var rs=grid.RightScales;
@@ -1474,11 +1559,12 @@ namespace EngineeringDashboard
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {
                     var supports=g.MemberSupports[Array.IndexOf(g.Stock,stock)];
-                    var uniform=PrimaryUniformLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,c,edge);
+                    var loadData=PrimaryLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,c,edge);
+                    var uniform=loadData.Uniform;
                     if(uniform==null) {input.Diagnostics?.Geometry(input.DiagnosticScope+"primary distributed uplift","Primary UDL has an upward resultant within a loaded interval.","Review transverse bearings and asymmetric slab/crossing loads.");return null;}
                     input.Trace?.CheckCancellation();
                     var points=new BeamPointLoad[0];
-                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,uniform,points,input.DeferCrossingChecks);
+                    var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,loadData.Positions,loadData.Forces,uniform.Length,input.DeferCrossingChecks);
                     PrimaryCheck check;
                     if(primaryCache==null || !primaryCache.TryGetValue(key,out check))
                     {
@@ -1488,18 +1574,13 @@ namespace EngineeringDashboard
                         if(reused!=null) {analysis=reused.Analysis;uniform=reused.Uniform;points=reused.Points;input.Trace?.Increment(BeamSearchCounter.NetworkPrimaryCacheHits);}
                         else
                         {
-                            input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
-                            long priorHits=matrixCache?.Hits??0;
-                            using(input.Trace?.Measure(BeamSearchStage.PrimaryAnalysis))
-                            analysis=LoadedBeamAnalysis.AnalyzeCombinedCached(stock.StockLengthMm,supports,uniform,points,input.Primary.EI,input.DeflectionDenominator,matrixCache,input.LegCapacityKn,input.StagePrimaryChecks && !input.Primary.IsWS10 && !input.DeferCrossingChecks,input.IgnoreUplift || input.DeferCrossingChecks,input.TransferredSlab.IncludeConcreteEndStrips);
-                            if(!analysis.DeflectionEvaluated)input.Trace?.Increment(BeamSearchCounter.PrimaryDeflectionSkipped);
-                            if(matrixCache!=null && matrixCache.Hits>priorHits)input.Trace?.Increment(BeamSearchCounter.PrimaryMatrixCacheHits);
+                            analysis=AnalyzePrimary(input,stock.StockLengthMm,supports,uniform,points,matrixCache,shared);
                         }
                         bool memberPass=Pass(input,analysis,1,2,input.Diagnostics,input.DiagnosticScope+"Primary pair · UDL",3,()=> $"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · stock {stock.StockLengthMm:0} mm · x={stock.StartMm+edge:0.###}–{stock.EndMm+edge:0.###} mm");
                         int peakLeg=Array.IndexOf(analysis.Reactions,analysis.Reactions.Max());
                         if(!input.DeferCrossingChecks)input.Diagnostics?.LegsLazy(analysis.Reactions,input.LegCapacityKn,input.DiagnosticScope+"Tower legs · UDL",()=> $"P{Array.IndexOf(g.Stock,stock)+1} {(line==0 ? "left" : "right")} · {cross.Names[c]} · peak leg x={g.Positions[stock.FirstSupport+peakLeg]+edge:0.###} mm");
                         check=new PrimaryCheck {Analysis=analysis,Points=points,Uniform=uniform,Passed=memberPass && (input.DeferCrossingChecks || analysis.Reactions.Max()<=input.LegCapacityKn+1e-8)};
-                        if(primaryCache!=null && primaryCache.Count<4096)primaryCache[key]=check;
+                        primaryCache?.Store(key,check);
                         if(key!=null && reused==null)shared?.Store(key,check);
                     }
                     else input.Trace?.Increment(BeamSearchCounter.PrimaryCacheHits);

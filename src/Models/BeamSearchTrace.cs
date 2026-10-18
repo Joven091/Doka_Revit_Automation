@@ -12,7 +12,7 @@ namespace EngineeringDashboard
     {
         CoveragePlans, CoverageVariants, UpperAnalyses, LowerAnalyses, PrimaryAnalyses,
         TowerCandidates, TransferCandidates, NetworkSolves, NumericalChecks, RejectionChecks,
-        GeometryBuilds, GeometryCacheHits, CrossCacheHits, LowerCaseCacheHits, PrimaryCacheHits, PrimaryMatrixCacheHits, LowerResponseCacheHits, EconomyPruned, PrimaryDeflectionSkipped, NetworkPrimaryCacheHits, TransferLayoutsBuilt, TransferLayoutsDeferred, NetworkBranchesPruned, NetworkTransverseCacheHits, CompleteNetworkCandidates, CrossingLegClashesRejected, NetworkSpacingTrials
+        GeometryBuilds, GeometryCacheHits, CrossCacheHits, LowerCaseCacheHits, PrimaryCacheHits, PrimaryMatrixCacheHits, LowerResponseCacheHits, EconomyPruned, PrimaryDeflectionSkipped, NetworkPrimaryCacheHits, TransferLayoutsBuilt, TransferLayoutsDeferred, NetworkBranchesPruned, NetworkTransverseCacheHits, CompleteNetworkCandidates, CrossingLegClashesRejected, NetworkSpacingTrials, UniformPrimaryCacheHits, PrimaryLoadCacheHits, SeedNetworkCandidates
     }
     // Deadline expiry is separate from user cancellation and structural rejection.
     internal sealed class BeamSearchDeadlineException : Exception
@@ -23,7 +23,7 @@ namespace EngineeringDashboard
     // Workers write atomic counters; the UI can read without touching solver collections.
     internal sealed class BeamSearchTrace
     {
-        private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred","Network branches pruned by exact bounds","Network transverse response cache hits","Complete network candidates","Crossing leg clashes rejected before member checks","Network spacing vectors searched"};
+        private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred","Network branches pruned by exact bounds","Network transverse response cache hits","Complete network candidates","Crossing leg clashes rejected before member checks","Network spacing vectors searched","Uniform primary shape cache hits","Primary load-data cache hits","Seed network candidates"};
         private readonly long[] counters=new long[CounterNames.Length];
         // Hot diagnostic events are accumulated by their owning worker. UI reads
         // include pending counts; completion flushes them for an exact final report.
@@ -84,7 +84,7 @@ namespace EngineeringDashboard
         internal void Increment(BeamSearchCounter counter,long amount=1)
         {
             if(HasTimeLimit)CheckCancellation();else CancellationToken.ThrowIfCancellationRequested();
-            if(counter==BeamSearchCounter.NumericalChecks || counter==BeamSearchCounter.RejectionChecks)
+            if(counter==BeamSearchCounter.NumericalChecks || counter==BeamSearchCounter.RejectionChecks || counter==BeamSearchCounter.PrimaryLoadCacheHits || counter==BeamSearchCounter.UniformPrimaryCacheHits)
             {
                 var pending=pendingCounters.Value;int index=(int)counter;pending[index]+=amount;
                 if(pending[index]>=256)Interlocked.Add(ref counters[index],Interlocked.Exchange(ref pending[index],0));

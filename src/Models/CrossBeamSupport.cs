@@ -890,7 +890,14 @@ namespace EngineeringDashboard
         private static void Reject(TowerInput common,string message)=>common.Diagnostics?.Geometry("cross support",message,"Review elevations, cross position, stock availability, bearing/end allowances and tower geometry.",blocker:true);
         private static TransferMember Analyze(TransferMember source,BeamPointLoad[] points,BeamDistributedLoad[] uniform,TowerInput common,string stage)
         {
-            return new TransferMember {PrimaryMaterial=source.PrimaryMaterial,Name=source.Name,LoadCase=stage,StartMm=source.StartMm,LengthMm=source.LengthMm,H20Count=source.H20Count,PrimarySelfWeightKnM=source.PrimarySelfWeightKnM,SupportsMm=source.SupportsMm,Points=points,Uniform=uniform,LegacyPrimaryUniform=source.LegacyPrimaryUniform,Analysis=TransferredSlabOptimizer.AnalyzeTransverse(common,source.H20Count==2 || source.IsWS10 ? BeamSearchCounter.PrimaryAnalyses : BeamSearchCounter.LowerAnalyses,source.LengthMm,source.SupportsMm,uniform,points,source.EI,common.DeflectionDenominator,signed:true)};
+            LoadedBeamAnalysis analysis;
+            if(source.IsPrimary && common.OptimizePrimaryResponses && common.NetworkNumerics!=null && points.Length==0 && uniform.Length==1 && uniform[0].StartMm==0 && uniform[0].EndMm==source.LengthMm && uniform[0].KnPerM>=0)
+            {
+                var check=common.CopyForSearch();check.PrimaryMaterial=source.PrimaryMaterial;check.StagePrimaryChecks=false;
+                analysis=TransferredSlabOptimizer.AnalyzePrimary(check,source.LengthMm,source.SupportsMm,uniform,points,common.NetworkNumerics.Matrix,common.NetworkNumerics);
+            }
+            else analysis=TransferredSlabOptimizer.AnalyzeTransverse(common,source.IsPrimary ? BeamSearchCounter.PrimaryAnalyses : BeamSearchCounter.LowerAnalyses,source.LengthMm,source.SupportsMm,uniform,points,source.EI,common.DeflectionDenominator,signed:true);
+            return new TransferMember {PrimaryMaterial=source.PrimaryMaterial,Name=source.Name,LoadCase=stage,StartMm=source.StartMm,LengthMm=source.LengthMm,H20Count=source.H20Count,PrimarySelfWeightKnM=source.PrimarySelfWeightKnM,SupportsMm=source.SupportsMm,Points=points,Uniform=uniform,LegacyPrimaryUniform=source.LegacyPrimaryUniform,Analysis=analysis};
         }
         private static BeamDistributedLoad[] PrimaryIncrement(TransferNetworkResult r,int beam,TransferMember p,int line,IEnumerable<CrossBeamSupportResult> supports,TowerInput common)
         {
@@ -1029,9 +1036,14 @@ namespace EngineeringDashboard
                         if(resolvedPlan==null)return false;
                     }
                     var primary=new TransferMember[runs*2];
-                    for(int line=0;line<2;line++)for(int run=0;run<runs;run++)
+                    // Resolve the crossing first, then check the most highly loaded
+                    // long-span members before spending time on the lighter ones.
+                    var order=Enumerable.Range(0,runs*2);
+                    if(common.OptimizePrimaryResponses)order=order.OrderByDescending(i=>TransferredSlabOptimizer.PrimaryPriority(t.PrimaryCases[stage][i]));
+                    foreach(int memberIndex in order)
                     {
-                        var original=t.PrimaryCases[stage][run+line*runs];
+                        int line=memberIndex/runs,run=memberIndex%runs;
+                        var original=t.PrimaryCases[stage][memberIndex];
                         // Shared production primaries use the agreed concrete tributary zones.
                         // Slab ledger/stock-tail effects belong to the secondary checks above.
                         bool direct=resolvedPlan!=null;
