@@ -205,6 +205,26 @@ namespace EngineeringDashboard
     public static class TransferredSlabOptimizer
     {
         internal sealed class Geometry { public TowerStockPiece[] Stock; public double[] Positions; public bool[] Joined; public double[][] MemberSupports; }
+        // Exact geometry identity; avoids formatting every support coordinate
+        // into a temporary string while retaining first-occurrence ordering.
+        internal sealed class GeometryKey : IEquatable<GeometryKey>
+        {
+            private readonly double[] positions;private readonly bool[] joined;private readonly int hash;
+            internal GeometryKey(double[] positions,bool[] joined)
+            {
+                this.positions=positions;this.joined=joined;
+                unchecked{int value=17;foreach(double p in positions)value=value*31+p.GetHashCode();foreach(bool j in joined)value=value*31+(j ? 1 : 0);hash=value;}
+            }
+            public override int GetHashCode()=>hash;
+            public override bool Equals(object other)=>Equals(other as GeometryKey);
+            public bool Equals(GeometryKey other)
+            {
+                if(other==null || hash!=other.hash || positions.Length!=other.positions.Length || joined.Length!=other.joined.Length)return false;
+                for(int i=0;i<positions.Length;i++)if(positions[i]!=other.positions[i])return false;
+                for(int i=0;i<joined.Length;i++)if(joined[i]!=other.joined[i])return false;
+                return true;
+            }
+        }
         // Created for one pass only: stock, setback and exclusion settings are constant.
         internal sealed class GeometryCache
         {
@@ -410,6 +430,15 @@ namespace EngineeringDashboard
                 return true;
             }
         }
+        internal struct PreparedPrimaryKey : IEquatable<PreparedPrimaryKey>
+        {
+            private readonly PrimaryKey member;private readonly PrimaryBeamMaterial material;private readonly int criterion;private readonly double legLimit;private readonly bool ignoreUplift;
+            internal PreparedPrimaryKey(PrimaryKey member,TowerInput input){this.member=member;material=input.PrimaryMaterial;criterion=input.DeflectionDenominator;legLimit=input.LegCapacityKn;ignoreUplift=input.IgnoreUplift;}
+            public bool Equals(PreparedPrimaryKey other)=>material==other.material && criterion==other.criterion && legLimit==other.legLimit && ignoreUplift==other.ignoreUplift && member.Equals(other.member);
+            public override bool Equals(object other)=>other is PreparedPrimaryKey && Equals((PreparedPrimaryKey)other);
+            public override int GetHashCode(){unchecked{return (((member.GetHashCode()*31+(int)material)*31+criterion)*31+legLimit.GetHashCode())*31+(ignoreUplift ? 1 : 0);}}
+        }
+        internal sealed class PreparedPrimaryCheck {internal bool Passed;internal TowerSearchDiagnostics Diagnostics;}
         // Exact immutable numerical inputs. Include both distributed and point loads,
         // stiffness and criterion; no rounded geometry, forces or eligibility decisions.
         internal sealed class TransverseKey : IEquatable<TransverseKey>
@@ -448,6 +477,7 @@ namespace EngineeringDashboard
                 if(transverse.Count>=16384) {transverse.Remove(transverseOrder.First.Value.Key);transverseOrder.RemoveFirst();}
                 transverse.Add(key,transverseOrder.AddLast(new KeyValuePair<TransverseKey,LoadedBeamAnalysis>(key,value)));
             }
+            internal readonly ResponseCache<PreparedPrimaryKey,PreparedPrimaryCheck> PreparedPrimaryChecks=new ResponseCache<PreparedPrimaryKey,PreparedPrimaryCheck>(16384);
             internal readonly LoadedBeamAnalysis.MatrixCache Matrix=new LoadedBeamAnalysis.MatrixCache(2048,true);
             private readonly ResponseCache<PrimaryKey,PrimaryCheck> responses=new ResponseCache<PrimaryKey,PrimaryCheck>(4096);
             internal readonly ResponseCache<UniformShapeKey,LoadedBeamAnalysis> UniformShapes=new ResponseCache<UniformShapeKey,LoadedBeamAnalysis>(2048);
@@ -516,6 +546,7 @@ namespace EngineeringDashboard
         {
             internal Geometry Geometry;internal double Width,Edge;internal bool Rotated;
             internal CrossOption[] Crosses;internal RowGrid Grid;
+            internal int JoinedBays,Narrow;internal double Brace,Cantilever,Symmetry;
         }
         private static TowerLayout OptimizeCore(TowerInput input,bool shareDiagnostics)
             => input.EngineerSearch ? OptimizeEngineer(input,shareDiagnostics) : input.SearchByLegTier ? OptimizeCoreByLegTier(input,shareDiagnostics) : OptimizeCoreReference(input,shareDiagnostics);
@@ -648,6 +679,18 @@ namespace EngineeringDashboard
             best.SearchTimeLimitReached=input.Trace?.BudgetReached==true;
             best.Tested = tested; return best;
         }
+        private static double ConflictingRow(Geometry geometry,double[] rows)
+        {
+            int first=rows.Length;
+            for(int i=1;i<geometry.Stock.Length;i++)
+            {
+                double joint=geometry.Stock[i].StartMm;int at=Array.BinarySearch(rows,joint);if(at<0)at=~at;
+                int before=at-1;while(before>0 && Math.Abs(rows[before-1]-joint)<40)before--;
+                if(before>=0 && Math.Abs(rows[before]-joint)<40)first=Math.Min(first,before);
+                if(at<rows.Length && Math.Abs(rows[at]-joint)<40)first=Math.Min(first,at);
+            }
+            return first==rows.Length ? 0 : rows[first];
+        }
         private static TowerLayout OptimizeCoreByLegTier(TowerInput input,bool shareDiagnostics)
         {
             var t = input.TransferredSlab; t.Validate(input); TowerLayout best = null; int tested = 0;
@@ -749,9 +792,13 @@ namespace EngineeringDashboard
                                 // resulting larger beam tributaries are checked at their actual loads.
                                 if (!independent && !t.IncludeConcreteEndStrips && !t.IncludeMainBeamEndLoads && tributaries.Max() > t.UpperSpacingMm+1e-7) continue;
                                 // A transverse row must bear on both longitudinal stocks, away from independent member breaks.
-                                var conflicting=rows.FirstOrDefault(r=>geometry.Stock.Skip(1).Any(s=>Math.Abs(s.StartMm-r)<40));
+                                var conflicting=input.PrepareReceiverChecks ? ConflictingRow(geometry,rows) : rows.FirstOrDefault(r=>geometry.Stock.Skip(1).Any(s=>Math.Abs(s.StartMm-r)<40));
                                 if(conflicting>0) {double joint=geometry.Stock.Skip(1).OrderBy(s=>Math.Abs(s.StartMm-conflicting)).First().StartMm;diag.Geometry(input.DiagnosticScope+"row/joint",$"{input.DiagnosticScope}support row x={conflicting+edge:0.###} mm is {Math.Abs(joint-conflicting):0.###} mm from primary joint x={joint+edge:0.###} mm; minimum 40 mm.","Review upper row spacing and the primary stock combination.",40-Math.Abs(joint-conflicting));continue;}
-                                work.Add(new LayoutWork {Geometry=geometry,Width=width,Rotated=rotated,Crosses=crosses,Grid=grid,Edge=edge});
+                                work.Add(new LayoutWork {Geometry=geometry,Width=width,Rotated=rotated,Crosses=crosses,Grid=grid,Edge=edge,
+                                    JoinedBays=geometry.Joined.Count(j=>j),Brace=EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,width,rotated),
+                                    Narrow=TowerOptimizer.Standalone600Count(geometry.Positions,geometry.Joined,width,rotated),
+                                    Cantilever=geometry.Stock.Sum(p=>Math.Abs((geometry.Positions[p.FirstSupport]-p.StartMm)-(p.EndMm-geometry.Positions[p.LastSupport]))),
+                                    Symmetry=input.EngineerSearch ? TowerOptimizer.SymmetryError(geometry.Positions,geometry.Stock.Select(p=>p.StockLengthMm).ToArray(),input.LengthMm/2-edge) : 0});
                             }
                         }
                     }
@@ -759,7 +806,7 @@ namespace EngineeringDashboard
                 // Stable order within a leg tier keeps all original timber/utilization ties.
                 // Economic bounds, rather than a leg-only cutoff, retain valid timber/support trade-offs.
                 int initial=input.EngineerSearch && work.Count>0 ? work.GroupBy(w=>Tuple.Create(w.Crosses,w.Edge)).Min(group=>group.First().Crosses.Min(c=>InitialLegs(input,c,group.First().Edge,group.First().Geometry.Stock))) : 2;
-                foreach(var item in input.EngineerSearch ? work.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Geometry.Positions.Length,initial)).ThenBy(w=>w.Geometry.Joined.Count(j=>j)).ThenBy(w=>EngineerTowerSearch.BracePenalty(w.Geometry.Positions,w.Geometry.Joined,w.Width,w.Rotated)).ThenBy(w=>w.Geometry.Stock.Sum(p=>Math.Abs((w.Geometry.Positions[p.FirstSupport]-p.StartMm)-(p.EndMm-w.Geometry.Positions[p.LastSupport])))) : work.OrderBy(w=>w.Geometry.Positions.Length))
+                foreach(var item in input.EngineerSearch ? work.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Geometry.Positions.Length,initial)).ThenBy(w=>w.JoinedBays).ThenBy(w=>w.Brace).ThenBy(w=>w.Cantilever) : work.OrderBy(w=>w.Geometry.Positions.Length))
                 {
                     input.Trace?.CheckCancellation();
                     var geometry=item.Geometry;var grid=item.Grid;
@@ -768,16 +815,15 @@ namespace EngineeringDashboard
                     if(geometry.Positions.Length*2>input.NetworkLegCeiling || input.EngineerSearch && widthBest!=null && geometry.Positions.Length>widthBest.PositionsMm.Length)continue;
                     if(input.EngineerSearch && widthBest!=null && geometry.Positions.Length==widthBest.PositionsMm.Length)
                     {
-                        int bays=geometry.Joined.Count(j=>j);
-                        if(bays>widthBest.BayCount || bays==widthBest.BayCount && EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated)>widthBest.StandaloneBracePenalty+1e-7)continue;
+                        int bays=item.JoinedBays;
+                        if(bays>widthBest.BayCount || bays==widthBest.BayCount && item.Brace>widthBest.StandaloneBracePenalty+1e-7)continue;
                     }
-                    double geometryCantilever=geometry.Stock.Sum(s=>Math.Abs((geometry.Positions[s.FirstSupport]-s.StartMm)-(s.EndMm-geometry.Positions[s.LastSupport])));
-                    double geometrySymmetry=input.EngineerSearch ? TowerOptimizer.SymmetryError(geometry.Positions,geometry.Stock.Select(s=>s.StockLengthMm).ToArray(),input.LengthMm/2-item.Edge)
-                        +geometry.Stock.Sum(s=>Math.Abs((geometry.Positions[s.FirstSupport]-s.StartMm)-(s.EndMm-geometry.Positions[s.LastSupport]))) : 0;
+                    double geometryCantilever=item.Cantilever;
+                    double geometrySymmetry=input.EngineerSearch ? item.Symmetry+item.Cantilever : 0;
                     foreach(var cross in item.Crosses)
                     {
                         if(input.EngineerSearch && input.PruneUneconomicCandidates && widthBest!=null && geometry.Positions.Length==widthBest.PositionsMm.Length
-                            && EngineerTowerSearch.Compare(TowerOptimizer.Standalone600Count(geometry.Positions,geometry.Joined,item.Width,item.Rotated),geometry.Joined.Count(j=>j),EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,item.Width,item.Rotated),widthBest.Standalone600Count,widthBest.BayCount,widthBest.StandaloneBracePenalty)==0
+                            && EngineerTowerSearch.Compare(item.Narrow,item.JoinedBays,item.Brace,widthBest.Standalone600Count,widthBest.BayCount,widthBest.StandaloneBracePenalty)==0
                             && (geometryCantilever>widthBest.CantileverImbalanceMm+1e-7 || Math.Abs(geometryCantilever-widthBest.CantileverImbalanceMm)<1e-7 && geometrySymmetry+Math.Abs(2*cross.Start+cross.Stock)>widthBest.SymmetryErrorMm+1e-7))
                         {
                             // This exact geometric lower bound already ranks worse.
@@ -946,8 +992,8 @@ namespace EngineeringDashboard
             // Keep fully mirrored regular groups even when the inset-based beam-search cap drops them.
             var symmetric=SymmetricGeometries(stock,rotated,input).GroupBy(g=>g.Positions.Length).SelectMany(g=>g.Take(24));
             if(input.EngineerSearch)states=(rotated ? Enumerable.Empty<Geometry>() : EngineerTowerSearch.StockRunGeometries(stock,input)).Concat(EngineerTowerSearch.Geometries(stock,rotated,input)).Concat(states.Where(g=>g.Positions.Length<=input.EngineerStationLimit)).ToList();
-            states=states.Concat(symmetric).GroupBy(g=>Values(g.Positions)+"|"+string.Join(";",g.Joined)).Select(g=>g.First()).ToList();
-            if(input.TransferredSlab?.IsNetwork==true)states=states.SelectMany(g=>SiteGeometries(g,input.StockEndSetbackMm)).GroupBy(g=>Values(g.Positions)+"|"+string.Join(";",g.Joined)).Select(g=>g.First()).ToList();
+            states=states.Concat(symmetric).GroupBy(g=>new GeometryKey(g.Positions,g.Joined)).Select(g=>g.First()).ToList();
+            if(input.TransferredSlab?.IsNetwork==true)states=states.SelectMany(g=>SiteGeometries(g,input.StockEndSetbackMm)).GroupBy(g=>new GeometryKey(g.Positions,g.Joined)).Select(g=>g.First()).ToList();
             foreach(var geometry in states)geometry.MemberSupports=geometry.Stock.Select(s=>geometry.Positions.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(x=>x-s.StartMm).ToArray()).ToArray();
             return states;
         }
@@ -1432,7 +1478,7 @@ namespace EngineeringDashboard
             using(var hot=input.Trace?.Hot(BeamHotStage.SpanScreen))
             {
             var preparedPlan=cross.PositionedPlan??input.EngineerPlan;
-            if(input.PrepareReceiverChecks && input.DeferCrossingChecks && preparedPlan!=null && preparedPlan.Network.CrossingBeams.Any(c=>(c.BayNumber==preparedPlan.Beam || c.BayNumber==preparedPlan.Beam+1) && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows))return PreparedSpanScreen(input,geometry,cross,edge,preparedPlan);
+            if(input.PrepareReceiverChecks && input.DeferCrossingChecks && preparedPlan!=null && (cross.SpanPrepared || preparedPlan.Network.CrossingBeams.Any(c=>(c.BayNumber==preparedPlan.Beam || c.BayNumber==preparedPlan.Beam+1) && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows)))return PreparedSpanScreen(input,geometry,cross,edge,preparedPlan);
             // Between supports, a constant UDL changes shear by qL and needs a
             // moment range qL²/8. With |V|<=Vlim and |M|<=Mlim these are necessary
             // bounds, independent of end moments. Unknown crossing increments
@@ -1511,6 +1557,8 @@ namespace EngineeringDashboard
         {
             if(!input.DeferTransferLayout)return EvaluateReference(input,g,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared);
             if(input.EngineerSearch && !AcceptTransverseCases(input,cross,width,grid,edge))return null;
+            bool preparedSpans=cross.PreparedReceiver!=null && input.DeferCrossingChecks;
+            if(preparedSpans)foreach(int stage in cross.DesignCases)if(!NecessaryPrimarySpans(input,g,cross,edge,stage))return null;
             if(cross.PreparedReceiver!=null && !cross.PreparedReceiver(g,edge)){input.Trace?.Increment(BeamSearchCounter.TransferLayoutsDeferred);return null;}
             var rows=grid.Rows;var trib=grid.Tributaries;var ls=grid.LeftScales;var rs=grid.RightScales;
             if(ls.Length!=rows.Length || rs.Length!=rows.Length)throw new ArgumentException("Crossing beam row loads do not match the support rows.");
@@ -1521,7 +1569,7 @@ namespace EngineeringDashboard
             foreach(int c in cross.DesignCases)
             {
                 var checks=new PrimaryCheck[g.Stock.Length*2];
-                if(input.EngineerSearch && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
+                if(input.EngineerSearch && !preparedSpans && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {

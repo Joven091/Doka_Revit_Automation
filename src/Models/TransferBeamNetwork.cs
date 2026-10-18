@@ -649,7 +649,7 @@ namespace EngineeringDashboard
             internal int Ceiling(int used,int remaining,int minimum)=>Math.Max(0,Volatile.Read(ref legs)-used-remaining*minimum-minimumDedicatedLegs);
             internal void Publish(TransferNetworkResult result)
             {
-                if(trace?.EnableHotProfiling==true)lock(improvementGate)
+                if(trace!=null)lock(improvementGate)
                 {
                     if(best==null || Better(result,best))
                     {
@@ -1068,7 +1068,7 @@ namespace EngineeringDashboard
             }
             if(common.CoordinateCrossingLayouts)
             {
-                if(input.PrepareReceiverChecks && input.FullLoadingOnly && input.EngineerPlan?.UseDesignZones==true)input.TransferReceiverPreparation=layout=>CrossBeamSupportOptimizer.PrepareReceiver(input,network,beam,layout);
+                if(input.PrepareReceiverChecks && input.ReuseSearchWork && input.DeferTransferLayout && input.FullLoadingOnly && input.EngineerPlan?.UseDesignZones==true)input.TransferReceiverPreparation=layout=>CrossBeamSupportOptimizer.PrepareReceiver(input,network,beam,layout);
                 input.TransferLayoutAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout)) && CrossBeamSupportOptimizer.CheckJunctionReceiver(input,network,beam,layout);
                 if(common.EngineerSearch)input.TransferLowerAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout,true)) && CrossBeamSupportOptimizer.CheckJunctionLowerReceiver(input,network,beam,layout);
             }

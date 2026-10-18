@@ -1028,6 +1028,7 @@ namespace EngineeringDashboard
             // A check belongs to this resolved plan, material, criterion and leg limit.
             // No load rounding or acceptance decision is shared between different plans.
             var responses=new TransferredSlabOptimizer.ResponseCache<TransferredSlabOptimizer.PrimaryKey,bool>(4096);
+            var shared=common.ReuseSearchWork && common.ReuseNetworkNumerics ? common.NetworkNumerics??common.TransferredSlab?.SharedSearchWork : null;
             return (geometry,edge)=>
             {
                 using(common.Trace?.Hot(BeamHotStage.PrimaryRecheck))
@@ -1043,11 +1044,17 @@ namespace EngineeringDashboard
                     var uniform=data.Item1;
                     var key=new TransferredSlabOptimizer.PrimaryKey(stock.StockLengthMm,geometry.MemberSupports[run],data.Item2,data.Item3,uniform.Length);
                     if(responses.TryGetValue(key,out bool passed)){if(!passed)return false;continue;}
+                    var sharedKey=new TransferredSlabOptimizer.PreparedPrimaryKey(key,common);
+                    if(shared!=null && shared.PreparedPrimaryChecks.TryGetValue(sharedKey,out var saved) && (saved.Passed || ReferenceEquals(saved.Diagnostics,common.Diagnostics)))
+                    {
+                        common.Trace?.Increment(BeamSearchCounter.PreparedPrimaryCacheHits);responses.Store(key,saved.Passed);if(!saved.Passed)return false;continue;
+                    }
                     var source=new TransferMember {PrimaryMaterial=common.PrimaryMaterial,PrimarySelfWeightKnM=common.Primary.SelfWeightKnM(stock.StockLengthMm),Name="P"+(run+1)+(line==0 ? " L" : " R"),StartMm=loadKey.Item1,LengthMm=stock.StockLengthMm,H20Count=2,SupportsMm=geometry.MemberSupports[run]};
                     var member=Analyze(source,new BeamPointLoad[0],uniform,common,"Crossing resolved primary");
                     passed=Pass(member,common,"Crossing resolved primary");
                     common.Diagnostics?.Legs(member.Analysis.Reactions,common.LegCapacityKn,$"B{beam+1} cross stage legs","Crossing resolved primary");
                     passed &= member.Analysis.Reactions.Max()<=common.LegCapacityKn+1e-8;
+                    shared?.PreparedPrimaryChecks.Store(sharedKey,new TransferredSlabOptimizer.PreparedPrimaryCheck {Passed=passed,Diagnostics=common.Diagnostics});
                     responses.Store(key,passed);if(!passed)return false;
                 }
                 return true;

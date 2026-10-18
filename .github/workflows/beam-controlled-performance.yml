@@ -1,7 +1,7 @@
 name: Controlled beam performance
 on: [pull_request]
 concurrency:
-  group: controlled-beam-${{ github.ref }}
+  group: controlled-beam-${{ github.sha }}
   cancel-in-progress: true
 jobs:
   profile:
@@ -20,9 +20,24 @@ jobs:
           New-Item -ItemType Directory -Force work/performance | Out-Null
           tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --controlled-performance --model reported | Tee-Object -FilePath work/performance/optimized-net48.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Reference complete search on the same runner
+      - uses: actions/checkout@v4
+        with:
+          ref: ff55742fe99d430c621e18d57d78a27d3b848de5
+          path: work/previous-version
+      - name: Build the previous delivered solver with the same benchmark driver
         run: |
-          tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --controlled-performance --model reported --variant reference | Tee-Object -FilePath work/performance/reference-net48.txt
+          Copy-Item tests/Beam.Tests/ControlledPerformanceTests.cs work/previous-version/tests/Beam.Tests/
+          $programPath = 'work/previous-version/tests/Beam.Tests/Program.cs'
+          $program = Get-Content $programPath -Raw
+          $entry = 'static int Main(string[] args){try{'
+          if (-not $program.Contains($entry)) { throw 'Previous benchmark entry point changed' }
+          $program = $program.Replace($entry, $entry + 'if(args.Contains("--controlled-performance")){ControlledPerformanceTests.Run(args);return 0;}')
+          Set-Content $programPath -Value $program
+          dotnet build work/previous-version/tests/Beam.Net48 -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Previous delivered solver on the same runner
+        run: |
+          work/previous-version/tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --controlled-performance --model reported | Tee-Object -FilePath work/performance/reference-net48.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compare complete layouts and calculated loads
         shell: python

@@ -807,7 +807,7 @@ namespace EngineeringDashboard
         {
             double length=stocks.Sum(),setback=input.StockEndSetbackMm;
             int maximum=Math.Min(input.EngineerStationLimit,(int)(length/600)+2);
-            var seen=new HashSet<string>();
+            var seen=new HashSet<TransferredSlabOptimizer.GeometryKey>();
             for(int count=stocks.Length*2;count<=maximum;count++)foreach(var groups in Groups(count,rotated))
             {
                 input.Trace?.CheckCancellation();
@@ -843,7 +843,7 @@ namespace EngineeringDashboard
                             pieces.Add(new TowerStockPiece {StartMm=start,StockLengthMm=stock,FirstSupport=first,LastSupport=last,IsCustomLength=!input.PrimaryStockLengthsMm.Contains(stock)});start+=stock;
                         }
                         if(!valid || p.Last()>length-setback+1e-7)continue;
-                        string key=string.Join(",",p.Select(v=>v.ToString("R",CultureInfo.InvariantCulture)))+"|"+string.Join(",",joined);
+                        var key=new TransferredSlabOptimizer.GeometryKey(p,joined.ToArray());
                         if(!seen.Add(key))continue;
                         yield return new TransferredSlabOptimizer.Geometry {Stock=pieces.ToArray(),Positions=p,Joined=joined.ToArray(),MemberSupports=pieces.Select(s=>p.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(v=>v-s.StartMm).ToArray()).ToArray()};
                     }

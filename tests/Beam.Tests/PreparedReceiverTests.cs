@@ -23,8 +23,10 @@ internal static class PreparedReceiverTests
             {
                 var probe=expected.Beams[beam];var t=probe.Transfer;
                 var input=common.CopyForSearch();input.TransferredSlab=new TransferredSlabInput {EngineerNetwork=EngineerPrimaryPlan.Adjacent(network,beam).Any() ? network : null,FixedCoveredLengthMm=2450};input.EngineerPlan=t.PrimaryPlan;
-                foreach(int receiverCount in new[] {2,8})foreach(bool narrow in new[] {false,true})
+                input.NetworkNumerics=new TransferredSlabOptimizer.SearchWorkCache();
+                foreach(double legLimit in new[] {5.0,70})foreach(bool ignoreUplift in new[] {false,true})foreach(int receiverCount in new[] {2,8})foreach(bool narrow in new[] {false,true})
                 {
+                    input.LegCapacityKn=legLimit;input.IgnoreUplift=ignoreUplift;
                     var template=(TowerLayout)typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(probe,null);
                     template.Transfer=t.Copy();template.Transfer.EngineerReceiverCount=receiverCount;input.AllowLocalShutterExceptions=narrow;
                     var prepared=CrossBeamSupportOptimizer.PrepareReceiver(input,network,beam,template);Check(prepared!=null,"modern fully loaded check can be prepared");
@@ -45,7 +47,22 @@ internal static class PreparedReceiverTests
                 }
             }
         }
-        SpanScreenParity();Console.WriteLine("Passed "+checks+" prepared receiver and span-screen checks.");
+        GeometryParity();SpanScreenParity();Console.WriteLine("Passed "+checks+" prepared receiver and span-screen checks.");
+    }
+    static void GeometryParity()
+    {
+        var a=new[] {150.0,1150,2300};var b=(double[])a.Clone();var c=(double[])a.Clone();c[1]+=1e-10;
+        Check(new TransferredSlabOptimizer.GeometryKey(a,new[] {true,false}).Equals(new TransferredSlabOptimizer.GeometryKey(b,new[] {true,false})),"exact geometry identity");
+        Check(!new TransferredSlabOptimizer.GeometryKey(a,new[] {true,false}).Equals(new TransferredSlabOptimizer.GeometryKey(c,new[] {true,false})),"precise coordinates retained");
+        Check(!new TransferredSlabOptimizer.GeometryKey(a,new[] {true,false}).Equals(new TransferredSlabOptimizer.GeometryKey(b,new[] {false,true})),"brace topology retained");
+        var conflict=typeof(TransferredSlabOptimizer).GetMethod("ConflictingRow",BindingFlags.Static|BindingFlags.NonPublic);var random=new Random(101838);
+        for(int sample=0;sample<1000;sample++)
+        {
+            var rows=Enumerable.Range(1,100).Select(i=>i*40.0+random.NextDouble()*20).ToArray();
+            var geometry=new TransferredSlabOptimizer.Geometry {Stock=new[] {new TowerStockPiece(),new TowerStockPiece {StartMm=sample%2==0 ? rows[sample%100]+40 : 10+random.NextDouble()*4100},new TowerStockPiece {StartMm=10+random.NextDouble()*4100}}};
+            double expected=rows.FirstOrDefault(r=>geometry.Stock.Skip(1).Any(stock=>Math.Abs(stock.StartMm-r)<40));
+            Check((double)conflict.Invoke(null,new object[] {geometry,rows})==expected,"binary row/joint check retains the strict 40 mm boundary and first conflict");
+        }
     }
     static void SpanScreenParity()
     {
