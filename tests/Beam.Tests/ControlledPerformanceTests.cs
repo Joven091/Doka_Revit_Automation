@@ -16,18 +16,29 @@ internal static class ControlledPerformanceTests
     {int at=Array.IndexOf(args,name);return at<0 || at+1==args.Length ? fallback : args[at+1];}
     static void Set(object target,string field,object value)
     {target.GetType().GetField(field,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public)?.SetValue(target,value);}
-    internal static TowerInput Input(string model)
+    internal static BeamCalculatorViewModel Model(string model)
     {
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,
             BeamLengthMm=model=="junction" ? 10800 : 10600,Depth=1750,Width=800,FloorHeight=3000,TowerLegCapacityKn=70,AllowCustomH20Lengths=model=="junction",MaximumConcreteEndOverhangMm=model=="junction" ? 75 : 175,StockEndSetbackMm=150,
             Exclude600Standalone=model=="junction",PlywoodDeflectionLimit=model=="junction" ? "L/270" : "L/350",DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         if(model!="junction")vm.AddNetworkBay();
-        for(int i=0;i<vm.NetworkBeams.Count;i++){vm.NetworkBeams[i].WidthMm=i==0 ? 650 : 800;vm.NetworkBeams[i].DepthMm=i==0 ? 1150 : 1750;vm.NetworkBeams[i].BottomElevationMm=i==0 ? -1150 : -1750;}
+        if(model=="search-error")vm.AddNetworkBay();
+        for(int i=0;i<vm.NetworkBeams.Count;i++){vm.NetworkBeams[i].WidthMm=i<(model=="search-error" ? 2 : 1) ? 650 : 800;vm.NetworkBeams[i].DepthMm=i<(model=="search-error" ? 2 : 1) ? 1150 : 1750;vm.NetworkBeams[i].BottomElevationMm=i<(model=="search-error" ? 2 : 1) ? -1150 : -1750;}
         vm.NetworkBays[0].WidthMm=model=="junction" ? 2575 : 3000;vm.NetworkBays[0].ThicknessMm=model=="junction" ? 300 : 200;
         if(model!="junction"){vm.NetworkBays[1].WidthMm=2125;vm.NetworkBays[1].ThicknessMm=300;}
         foreach(int bay in model=="junction" ? new[] {1} : new[] {2,1})vm.CrossingBeams.Add(new TransferCrossingBeamRow {BayNumber=bay,PositionMm=model=="junction" ? 5375 : 5675,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150});
-        return (TowerInput)typeof(BeamCalculatorViewModel).GetMethod("CreateTowerInput",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(vm,new object[] {true});
+        if(model=="search-error")
+        {
+            vm.NetworkBays[1].WidthMm=3000;vm.NetworkBays[1].ThicknessMm=200;
+            vm.NetworkBays[2].WidthMm=3500;vm.NetworkBays[2].ThicknessMm=300;
+            vm.CrossingBeams.Clear();
+            foreach(var c in new[] {new {Bay=3,X=5675},new {Bay=2,X=5675},new {Bay=3,X=2500}})
+                vm.CrossingBeams.Add(new TransferCrossingBeamRow {BayNumber=c.Bay,PositionMm=c.X,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150});
+        }
+        return vm;
     }
+    internal static TowerInput Input(string model)
+        =>(TowerInput)typeof(BeamCalculatorViewModel).GetMethod("CreateTowerInput",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(Model(model),new object[] {true});
     static string Number(double x)=>Math.Round(x,7).ToString("R",CultureInfo.InvariantCulture);
     internal static string Fingerprint(TransferNetworkResult result)
     {
@@ -83,6 +94,7 @@ internal static class ControlledPerformanceTests
             catch(Exception error)
             {
                 var ex=error is AggregateException aggregate ? aggregate.Flatten().InnerExceptions.First() : error;
+                if(ex is TowerOptimizationException rejected)Console.WriteLine(rejected.Details);
                 if(!(ex is OperationCanceledException) || seconds<=0)throw;
                 cancelled=true;
             }

@@ -190,11 +190,20 @@ namespace EngineeringDashboard
         }
         internal static double[] FillRequiredRows(double start,double end,double maximum,double[] required)
         {
-            var anchors=SheetSupportRows(start,end,50000).ToList();
+            var mandatory=required.Distinct().OrderBy(x=>x).ToArray();
+            for(int i=1;i<mandatory.Length;i++)
+                if(mandatory[i]-mandatory[i-1]<80-1e-7)
+                    throw new ArgumentException(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                        "Required H20 rows at {0:0.###} and {1:0.###} mm are {2:0.###} mm apart; minimum row separation is 80 mm (H20 flange width).",
+                        mandatory[i-1],mandatory[i],mandatory[i]-mandatory[i-1]));
+            var coverageAnchors=SheetSupportRows(start,end,50000);
+            var anchors=coverageAnchors.ToList();
+            // Only original coverage-end anchors are replaceable. Never remove a
+            // previously inserted mandatory row: the transfer grid still maps its load.
             // Mandatory slab feet can replace nearby primary-stock end rows, but never sheet joints.
-            foreach(double x in required)
+            foreach(double x in mandatory)
             {
-                foreach(double a in anchors.Where(a=>Math.Abs(a-x)>1e-7 && Math.Abs(a-x)<80-1e-7).ToArray())
+                foreach(double a in coverageAnchors.Where(a=>Math.Abs(a-x)>1e-7 && Math.Abs(a-x)<80-1e-7))
                 {
                     if(Math.Abs(a/SheetLengthMm-Math.Round(a/SheetLengthMm))<1e-7)
                         throw new ArgumentException("A slab support clashes with a mandatory beam sheet joint.");
