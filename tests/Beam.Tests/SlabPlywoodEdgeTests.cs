@@ -78,13 +78,16 @@ internal static class SlabPlywoodEdgeTests
     internal static void Reported()
     {
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,
-            BeamLengthMm=7000,TowerLegCapacityKn=70,AllowCustomH20Lengths=false,MaximumConcreteEndOverhangMm=175,StockEndSetbackMm=150,
+            BeamLengthMm=7000,Depth=1750,Width=800,FloorHeight=3000,TowerLegCapacityKn=70,AllowCustomH20Lengths=false,MaximumConcreteEndOverhangMm=175,StockEndSetbackMm=150,
             Exclude600Standalone=false,PlywoodDeflectionLimit="L/350",DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         vm.AddNetworkBay();
         for(int i=0;i<vm.NetworkBeams.Count;i++){vm.NetworkBeams[i].WidthMm=i==0 ? 650 : 800;vm.NetworkBeams[i].DepthMm=i==0 ? 1150 : 1750;vm.NetworkBeams[i].BottomElevationMm=i==0 ? -1150 : -1750;}
         vm.NetworkBays[0].WidthMm=3000;vm.NetworkBays[0].ThicknessMm=200;vm.NetworkBays[1].WidthMm=2125;vm.NetworkBays[1].ThicknessMm=300;
         vm.AddCrossingBeam();var c=vm.CrossingBeams[0];c.BayNumber=2;c.PositionMm=3350;c.WidthMm=650;c.DepthMm=1150;c.BottomElevationMm=-1150;
-        vm.OptimizeTowersAsync(false).GetAwaiter().GetResult();Console.WriteLine(vm.BuildDiagnosticReport("2026-10-18 S2 plywood edge regression"));
+        var task=vm.OptimizeTowersAsync(false);
+        while(!task.Wait(TimeSpan.FromSeconds(30)))
+            Console.WriteLine(string.Join("\n",vm.BuildDiagnosticReport("S2 progress").Split('\n').Where(line=>line.StartsWith("Elapsed seconds:") || line.StartsWith("Current/last") || line.StartsWith("Complete network candidates:"))));
+        task.GetAwaiter().GetResult();Console.WriteLine(vm.BuildDiagnosticReport("2026-10-18 S2 plywood edge regression"));
         Check(vm.IsCalculationValid,"reported calculation completes");var r=vm.NetworkResult;Verify(r);
         Near(r.Bays[1].StockLengthMm,1250,"reported S2 retains the 1250 mm catalogue H20");Near(r.Bays[1].EdgeMm,437.5,"reported S2 end strips");
         Check(!r.Bays[1].IsCustomLength,"reported S2 does not need custom stock");
