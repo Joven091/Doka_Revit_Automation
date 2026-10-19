@@ -18,6 +18,7 @@ internal static class ControlledPerformanceTests
     {target.GetType().GetField(field,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public)?.SetValue(target,value);}
     internal static BeamCalculatorViewModel Model(string model)
     {
+        if(model=="local-rows"){var reported=Model("search-error");reported.CrossingBeams.RemoveAt(2);return reported;}
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,
             BeamLengthMm=model=="junction" ? 10800 : 10600,Depth=1750,Width=800,FloorHeight=3000,TowerLegCapacityKn=70,AllowCustomH20Lengths=model=="junction",MaximumConcreteEndOverhangMm=model=="junction" ? 75 : 175,StockEndSetbackMm=150,
             Exclude600Standalone=model=="junction",PlywoodDeflectionLimit=model=="junction" ? "L/270" : "L/350",DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};

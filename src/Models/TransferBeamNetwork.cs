@@ -236,9 +236,15 @@ namespace EngineeringDashboard
         public SystemLoadingStage SystemGoverningStage=>systemGoverningStage??(systemGoverningStage=SystemLoadingStage.Governing(this));
         public SystemLoadingStage DisplayStage {get=>displayStage??SystemGoverningStage;set=>displayStage=value;}
         public double[] BeamCentresMm;
-        public double[] SlabRowsMm=>Beams[0].Transfer.SlabRowIndices==null ? Beams[0].Transfer.RowsMm : Beams[0].Transfer.SlabRowIndices.Select(i=>Beams[0].Transfer.RowsMm[i]).ToArray();
-        public int SlabBeamRow(int beam,int row)=>Beams[beam].Transfer.SlabRowIndices?[row]??row;
-        public bool SlabRowActive(int bay,int row)=>(!Input.HasIndividualSpacings || Beams[bay].Transfer.RightUpperScales[SlabBeamRow(bay,row)]>0) && !Input.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && c.BayNumber==bay+1 && Math.Abs(Beams[0].Transfer.RowsMm[SlabBeamRow(0,row)]-c.PositionMm)<c.WidthMm/2+40-1e-7);
+        public double[] SlabRowsMm=>Beams[0].Transfer.SharedSlabRowsMm??(Beams[0].Transfer.SlabRowIndices==null ? Beams[0].Transfer.RowsMm : Beams[0].Transfer.SlabRowIndices.Select(i=>Beams[0].Transfer.RowsMm[i]).ToArray());
+        public int SlabBeamRow(int beam,int row)=>Beams[beam].Transfer.SlabSourceRowIndices?[row]??Beams[beam].Transfer.SlabRowIndices?[row]??row;
+        public bool SlabRowActive(int bay,int row)
+        {
+            if(Bays[bay]==null)return false;
+            var t=Beams[bay].Transfer;int receiver=SlabBeamRow(bay,row);
+            bool active=t.RightSlabSourceScales!=null ? t.RightSlabSourceScales[row]>0 : !Input.HasIndividualSpacings || receiver>=0 && t.RightUpperScales[receiver]>0;
+            return active && !Input.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && c.BayNumber==bay+1 && Math.Abs(SlabRowsMm[row]-c.PositionMm)<c.WidthMm/2+40-1e-7);
+        }
         public int SlabRowCount(int bay)=>Bays[bay]==null ? 0 : Enumerable.Range(0,SlabRowsMm.Length).Count(r=>SlabRowActive(bay,r));
         public double SlabMovementMm, SlabLoadKn, SlabCoveredLengthMm, RowPhaseMm;
         public string FullTransferFailureDetails {get;internal set;}="";
@@ -1041,6 +1047,12 @@ namespace EngineeringDashboard
                 .SelectMany(g=>new[] {g.First(),g.OrderBy(r=>r.Item1.NearFootMm).ThenBy(r=>r.Item1.StockLengthMm).ThenBy(r=>r.Item2).First()}.Distinct())
                 .Select(r=>r.Item1).Take(20).ToArray();
         }
+        // Row registry remains global for slab quantities/drawing; each receiving
+        // beam requests only its own slab feet and adjacent crossing receivers.
+        internal static double[] CrossingRows(TowerInput common,TransferNetworkInput input,double cover,int beam)
+            =>input.UseCrossingSlabLedgers ? input.CrossingBeams.SelectMany((c,i)=>
+                (c.BayNumber!=beam && c.BayNumber!=beam+1) || c.SupportMode==CrossBeamSupportMode.LegacySlabRows || common.EngineerWorkflow && EngineerPrimaryPlan.Eligible(input,c)
+                    ? new double[0] : c.WidthMm>80 ? PlywoodSpacing.SheetSupportRows(c.PositionMm-c.WidthMm/2,c.PositionMm+c.WidthMm/2,input.CrossSpacing(i)) : new[] {c.PositionMm}).Distinct().OrderBy(x=>x).ToArray() : new double[0];
         private static double[] BayBaseline(TowerInput common,TransferNetworkInput input,int bay,UpperTransferPlan plan,double cover,double phase)
         {
             var all=RowStations(common,input,cover,phase);
@@ -1059,6 +1071,12 @@ namespace EngineeringDashboard
                 LeftCrossingBands=left==null ? new BeamDistributedLoad[0] : CrossingBands(network,beam-1,common.LengthMm,cover),RightCrossingBands=right==null ? new BeamDistributedLoad[0] : CrossingBands(network,beam,common.LengthMm,cover),
                 LeftEffectiveWidthsMm=left==null ? null : EffectiveWidthsMm(common,network,beam-1,cover,phase),RightEffectiveWidthsMm=right==null ? null : EffectiveWidthsMm(common,network,beam,cover,phase),
                 LeftBaselineWidthsMm=network.HasIndividualSpacings ? BayBaseline(common,network,beam-1,left,cover,phase) : null,RightBaselineWidthsMm=network.HasIndividualSpacings ? BayBaseline(common,network,beam,right,cover,phase) : null};
+            if(common.EngineerWorkflow && network.HasIndividualSpacings)
+            {
+                t.ReceivingRowsMm=CrossingRows(common,network,cover,beam);
+                t.ReceivingCrossings=network.CrossingBeams.Where(c=>(c.BayNumber==beam || c.BayNumber==beam+1) && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows).ToArray();
+                t.LocalReceivingRows=true;
+            }
             var input=new TowerInput {PrepareReceiverChecks=common.PrepareReceiverChecks,OptimizePrimaryResponses=common.OptimizePrimaryResponses,SeedNetworkSearch=common.SeedNetworkSearch,ReceiverAlternatives=alternatives,EngineerSearch=common.EngineerSearch,EngineerMinimumStations=common.EngineerMinimumStations,FullLoadingOnly=common.FullLoadingOnly,DeferCrossingChecks=common.FullLoadingOnly && network.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && (c.BayNumber==beam || c.BayNumber==beam+1)),PrimaryMaterial=common.PrimaryMaterial,AllowLocalShutterExceptions=common.AllowLocalShutterExceptions,ReceiverTransverseOffsetMm=transverseOffset,IgnoreUplift=common.IgnoreUplift,Trace=common.Trace,ReuseSearchWork=common.ReuseSearchWork,PruneUneconomicCandidates=common.PruneUneconomicCandidates,StagePrimaryChecks=common.StagePrimaryChecks,ReuseNetworkNumerics=common.ReuseNetworkNumerics,ReuseTransverseNumerics=common.ReuseTransverseNumerics,LazySearchDiagnostics=common.LazySearchDiagnostics,DeferTransferLayout=common.DeferTransferLayout,SearchByLegTier=common.SearchByLegTier,NetworkLegCeiling=ceiling,AllowCustomH20Lengths=common.AllowCustomH20Lengths,CustomH20Scope=common.CustomH20Scope,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
             if(common.EngineerWorkflow)
             {
@@ -1115,7 +1133,7 @@ namespace EngineeringDashboard
                         dl=Enumerable.Range(0,left.Transfer.CaseNames.Length).Where(c=>left.Transfer.CaseNames[c]==leftStage || left.Transfer.CaseNames[c].StartsWith(leftStage+" + X",StringComparison.Ordinal)).Min(c=>FootDisplacement(left,result.Input.Beams[bay].WidthMm,c,lr,false));
                         dr=Enumerable.Range(0,right.Transfer.CaseNames.Length).Where(c=>right.Transfer.CaseNames[c]==rightStage || right.Transfer.CaseNames[c].StartsWith(rightStage+" + X",StringComparison.Ordinal)).Min(c=>FootDisplacement(right,result.Input.Beams[bay+1].WidthMm,c,rr,true));
                     }
-                    var analysis=upper.Analysis.Scale(left.Transfer.UpperScale(false,lr)/Math.Max(left.Transfer.RightUpperScales.Max(),left.Transfer.SlabSpacing(false)/1000));
+                    var analysis=upper.Analysis.Scale((left.Transfer.RightSlabSourceScales?[row]??left.Transfer.UpperScale(false,lr))/Math.Max(left.Transfer.RightUpperScales.Max(),left.Transfer.SlabSpacing(false)/1000));
                     double movement=analysis.DeflectionWithAffineOffsetMm(dl,dr,upper.SupportsMm[0],upper.SupportsMm[1]);
                     result.SlabMovementMm=Math.Max(result.SlabMovementMm,movement);
                     left.Transfer.SlabMovementMm=Math.Max(left.Transfer.SlabMovementMm,movement);right.Transfer.SlabMovementMm=Math.Max(right.Transfer.SlabMovementMm,movement);

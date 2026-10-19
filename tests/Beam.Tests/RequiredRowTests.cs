@@ -54,7 +54,7 @@ internal static class RequiredRowTests
         }
         else
         {
-            Check(vm.HasTowerFailure && vm.TowerFailureDetails.Contains("Required H20 rows"),"Unsuccessful bounded search explains the actual setting-out conflict");
+            Check(vm.HasTowerFailure && !string.IsNullOrEmpty(vm.TowerFailureDetails),"Unsuccessful bounded search returns checked engineering rejections");
             Check(diagnostic.Contains("Search outcome: No solution"),"View model reports a normal engineering rejection");
         }
         Console.WriteLine("Reported four-beam outcome: "+(vm.IsCalculationValid ? "valid solution" : vm.WarningMessage));

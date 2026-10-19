@@ -188,7 +188,7 @@ namespace EngineeringDashboard
             }
             return rows.ToArray();
         }
-        internal static double[] FillRequiredRows(double start,double end,double maximum,double[] required)
+        internal static double[] FillRequiredRows(double start,double end,double maximum,double[] required,bool customJoints=false)
         {
             var mandatory=required.Distinct().OrderBy(x=>x).ToArray();
             for(int i=1;i<mandatory.Length;i++)
@@ -205,7 +205,7 @@ namespace EngineeringDashboard
             {
                 foreach(double a in coverageAnchors.Where(a=>Math.Abs(a-x)>1e-7 && Math.Abs(a-x)<80-1e-7))
                 {
-                    if(Math.Abs(a/SheetLengthMm-Math.Round(a/SheetLengthMm))<1e-7)
+                    if(!customJoints && Math.Abs(a/SheetLengthMm-Math.Round(a/SheetLengthMm))<1e-7)
                         throw new ArgumentException("A slab support clashes with a mandatory beam sheet joint.");
                     anchors.Remove(a);
                 }
@@ -258,6 +258,65 @@ namespace EngineeringDashboard
             return new PlywoodSpacingResult(profile, chart, pressureKnM2, p, denominator, spacing, governing,
                 moment, shear, deflection, profile.DeflectionCoefficient * p * Math.Pow(l, 4),
                 p * l * l / profile.MomentEnvelope, p * l / profile.ShearEnvelope);
+        }
+    }
+
+    internal sealed class ReceivingRowRequest
+    {
+        internal double PositionMm,MinimumMm=double.NegativeInfinity,MaximumMm=double.PositiveInfinity;
+        internal int Sides;
+        internal bool Crossing;
+    }
+    internal sealed class ReceivingRowLayout
+    {
+        internal double[] RowsMm,ReceiversMm;
+    }
+    internal static class ReceivingRows
+    {
+        private sealed class Cluster
+        {
+            internal double X,Minimum,Maximum;
+            internal int Sides;
+        }
+        // The site bearer permits a nearby lower receiver to serve a slab foot
+        // without moving the upper H20. Combine opposite-side transfers only;
+        // distinct loaded rows from the same slab remain distinct receivers.
+        internal static ReceivingRowLayout Coordinate(double start,double end,double maximum,ReceivingRowRequest[] requests)
+        {
+            const double flange=80,tolerance=1e-7;
+            var clusters=new List<Cluster>();var mapping=new Cluster[requests.Length];
+            foreach(int index in Enumerable.Range(0,requests.Length).OrderByDescending(i=>requests[i].Crossing).ThenBy(i=>requests[i].PositionMm))
+            {
+                var request=requests[index];double x=request.PositionMm;
+                double lo=Math.Max(start+40,Math.Max(request.MinimumMm,x-flange)),hi=Math.Min(end-40,Math.Min(request.MaximumMm,x+flange));
+                if(lo>hi+tolerance)throw new ArgumentException("No receiving H20 fits inside its primary coverage and crossing footprint.");
+                Cluster selected=null;
+                foreach(var cluster in clusters.Where(c=>Math.Abs(c.X-x)<flange-tolerance && (c.Sides&request.Sides)==0).OrderBy(c=>Math.Abs(c.X-x)))
+                {
+                    double a=Math.Max(lo,cluster.Minimum),b=Math.Min(hi,cluster.Maximum);if(a>b+tolerance)continue;
+                    var choices=new[] {cluster.X,x,Math.Max(a,Math.Min(b,(cluster.X+x)/2)),a,b};
+                    foreach(double candidate in choices.Where(v=>v>=a-tolerance && v<=b+tolerance).Distinct().OrderBy(v=>Math.Abs(v-cluster.X)))
+                    {
+                        if(clusters.Any(c=>c!=cluster && Math.Abs(c.X-candidate)<flange-tolerance))continue;
+                        cluster.X=candidate;cluster.Minimum=a;cluster.Maximum=b;cluster.Sides|=request.Sides;selected=cluster;break;
+                    }
+                    if(selected!=null)break;
+                }
+                if(selected==null)
+                {
+                    var choices=new[] {Math.Max(lo,Math.Min(hi,x)),lo,hi}.Concat(clusters.SelectMany(c=>new[] {c.X-flange,c.X+flange}))
+                        .Where(v=>v>=lo-tolerance && v<=hi+tolerance).Distinct().OrderBy(v=>Math.Abs(v-x)).ThenBy(v=>v).ToArray();
+                    foreach(double candidate in choices)
+                    {
+                        if(clusters.Any(c=>Math.Abs(c.X-candidate)<flange-tolerance))continue;
+                        selected=new Cluster {X=candidate,Minimum=lo,Maximum=hi,Sides=request.Sides};clusters.Add(selected);break;
+                    }
+                }
+                if(selected==null)throw new ArgumentException("No non-overlapping local receiving H20 arrangement fits the slab feet and crossing footprint.");
+                mapping[index]=selected;
+            }
+            var required=clusters.Select(c=>c.X).OrderBy(x=>x).ToArray();
+            return new ReceivingRowLayout {RowsMm=PlywoodSpacing.FillRequiredRows(start,end,maximum,required,true),ReceiversMm=mapping.Select(c=>c.X).ToArray()};
         }
     }
 

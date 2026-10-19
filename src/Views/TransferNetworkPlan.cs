@@ -398,9 +398,11 @@ namespace EngineeringDashboard
                 dc.DrawRectangle(Brushes.LightSteelBlue,null,slabRect);SectionGeometryBounds.Add(slabRect);
                 SectionCallout("Concrete slab",new Point(slabRect.Left+slabRect.Width/2,slabRect.Top+3),slabRect.Left+slabRect.Width/2-35,slabTop-25,true);
                 var receiving=result.Beams[bay].Transfer;
-                int row=Array.FindIndex(receiving.RowsMm,x=>Math.Abs(x-cut)<=40+1e-7 && receiving.RightUpperScales[Array.IndexOf(receiving.RowsMm,x)]>0);
+                int source=receiving.SharedSlabRowsMm==null ? -1 : Array.FindIndex(result.SlabRowsMm,x=>Math.Abs(x-cut)<=40+1e-7 && result.SlabRowActive(bay,Array.IndexOf(result.SlabRowsMm,x)));
+                int row=receiving.SharedSlabRowsMm==null ? Array.FindIndex(receiving.RowsMm,x=>Math.Abs(x-cut)<=40+1e-7 && receiving.RightUpperScales[Array.IndexOf(receiving.RowsMm,x)]>0) : source<0 ? -1 : result.SlabBeamRow(bay,source);
                 if(row<0 || result.SlabRowCount(bay)==0)continue;
-                SectionNote($"S{bay+1} · T{row+1} · x {receiving.RowsMm[row]:0.###} mm",xx((a+b)/2),top-105,true);
+                double slabStation=source<0 ? receiving.RowsMm[row] : result.SlabRowsMm[source];
+                SectionNote($"S{bay+1} · T{row+1} · x {slabStation:0.###} mm",xx((a+b)/2),top-105,true);
                 int encoded=result.Beams[bay].StockPlan.Pieces.Length+result.Beams[bay].Transfer.RowsMm.Length+row*2+1;
                 var upperRect=new Rect(xx(a),soffit,plan.StockLengthMm*scale,200*depthScale);
                 H20Drawing.Longitudinal(dc,upperRect,bay==selectedBeam && selectedRun==encoded);DrawnH20ProfileCount++;SectionGeometryBounds.Add(upperRect);

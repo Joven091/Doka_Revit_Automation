@@ -21,6 +21,9 @@ namespace EngineeringDashboard
         public int PlywoodDeflectionDenominator;
         public double LeftSlabSpacingMm, RightSlabSpacingMm;
         internal double[] SharedRowsMm, LeftBaselineWidthsMm, RightBaselineWidthsMm;
+        internal bool LocalReceivingRows;
+        internal double[] ReceivingRowsMm=new double[0];
+        internal TransferCrossingBeamRow[] ReceivingCrossings=new TransferCrossingBeamRow[0];
         internal bool HasIndividualSpacings=>SharedRowsMm!=null || LeftSlabSpacingMm>0 || RightSlabSpacingMm>0;
         public double SlabSpacing(bool left)=>(left ? LeftSlabSpacingMm : RightSlabSpacingMm)>0 ? (left ? LeftSlabSpacingMm : RightSlabSpacingMm) : UpperSpacingMm;
         public double LeftBayMm, RightBayMm, LeftAreaLoadKnM2, RightAreaLoadKnM2;
@@ -140,15 +143,22 @@ namespace EngineeringDashboard
 
         // Shared slab-row ordinal -> this beam's lower-secondary index. Other rows carry beam concrete only.
         public int[] SlabRowIndices;
+        // Original slab rows stay fixed above the site bearer. These explicit maps
+        // identify their local lower receivers without imposing remote bay rows.
+        public double[] SharedSlabRowsMm,LeftSlabSourceScales,RightSlabSourceScales;
+        public int[] SlabSourceRowIndices;
         public int BeamOnlyRowCount=>HasIndividualSpacings ? Enumerable.Range(0,RowsMm.Length).Count(i=>(LeftUpperScales?[i]??0)==0 && (RightUpperScales?[i]??0)==0) : SlabRowIndices==null ? 0 : RowsMm.Length-SlabRowIndices.Length;
         public double[] LeftUpperScales, RightUpperScales;
         public double UpperDesignWidthMm(bool left,int row)=>UpperScale(left,row)*1000;
         public string UpperSpacingDescription(bool left,int row)
         {
-            var active=Enumerable.Range(0,RowsMm.Length).Where(i=>UpperScale(left,i)>0).ToArray();
-            int index=Array.IndexOf(active,row);
-            string before=index>0 ? (RowsMm[row]-RowsMm[active[index-1]]).ToString("0.###",CultureInfo.CurrentCulture) : "—";
-            string after=index>=0 && index<active.Length-1 ? (RowsMm[active[index+1]]-RowsMm[row]).ToString("0.###",CultureInfo.CurrentCulture) : "—";
+            var source=left ? LeftSlabSourceScales : RightSlabSourceScales;
+            var stations=SharedSlabRowsMm??RowsMm;
+            var active=Enumerable.Range(0,stations.Length).Where(i=>source==null ? UpperScale(left,i)>0 : source[i]>0).ToArray();
+            int selected=source==null ? row : active.Where(i=>SlabSourceRowIndices[i]==row).DefaultIfEmpty(-1).First();
+            int index=Array.IndexOf(active,selected);
+            string before=index>0 ? (stations[selected]-stations[active[index-1]]).ToString("0.###",CultureInfo.CurrentCulture) : "—";
+            string after=index>=0 && index<active.Length-1 ? (stations[active[index+1]]-stations[selected]).ToString("0.###",CultureInfo.CurrentCulture) : "—";
             return $"Nominal slab design spacing {SlabSpacing(left):0.###} mm · actual local gaps before/after {before}/{after} mm · effective design tributary width {UpperDesignWidthMm(left,row):0.###} mm";
         }
         public double GoverningUpperScale(bool left)=>Math.Max((left ? LeftUpperScales : RightUpperScales).Max(),SlabSpacing(left)/1000);
@@ -262,7 +272,9 @@ namespace EngineeringDashboard
         private sealed class RowGrid
         {
             public double[] Rows, Tributaries, LeftScales, RightScales, LeftPhysicalScales, RightPhysicalScales;
-            public int[] SlabRowIndices;
+            public int[] SlabRowIndices,SlabSourceRowIndices;
+            internal double[] SharedSlabRowsMm,LeftSourceScales,RightSourceScales;
+            internal bool Adjusted;
             public string Key;
             internal readonly Dictionary<Tuple<double,double>,RowSlice> Slices=new Dictionary<Tuple<double,double>,RowSlice>();
             internal RowSlice Slice(TowerStockPiece stock)
@@ -333,20 +345,41 @@ namespace EngineeringDashboard
                 };
                 left=leftBase=map(l);right=rightBase=map(r);
             }
-            double[] absolute;
-            try {absolute=PlywoodSpacing.FillRequiredRows(edge,edge+covered,t.UpperSpacingMm,shared.Concat(EngineerPrimaryPlan.Rows(t,shared)).Distinct().OrderBy(x=>x).ToArray());}
+            var sourceIndices=Enumerable.Range(0,shared.Length).Where(i=>!t.LocalReceivingRows || left[i]>0 || right[i]>0 || t.ReceivingRowsMm.Contains(shared[i])).ToArray();
+            var extra=EngineerPrimaryPlan.Rows(t,shared.Where((x,i)=>!t.LocalReceivingRows || left[i]>0 || right[i]>0).ToArray());
+            var required=sourceIndices.Select(i=>shared[i]).Concat(extra).Distinct().OrderBy(x=>x).ToArray();
+            double[] absolute;var mapped=(double[])shared.Clone();bool adjusted=false;
+            try
+            {
+                try {absolute=PlywoodSpacing.FillRequiredRows(edge,edge+covered,t.UpperSpacingMm,required);}
+                catch(ArgumentException) when(t.LocalReceivingRows)
+                {
+                    var requests=required.Select(x=>new ReceivingRowRequest {PositionMm=x,
+                        Sides=Enumerable.Range(0,shared.Length).Where(i=>shared[i]==x).Select(i=>(left[i]>0 ? 1 : 0)|(right[i]>0 ? 2 : 0)).DefaultIfEmpty().First(),
+                        Crossing=t.ReceivingRowsMm.Contains(x) || extra.Contains(x)}).ToArray();
+                    foreach(var request in requests.Where(r=>r.Crossing))foreach(var c in t.ReceivingCrossings.Where(c=>Math.Abs(c.PositionMm-request.PositionMm)<=c.WidthMm/2-40+1e-7))
+                    {request.MinimumMm=Math.Max(request.MinimumMm,c.PositionMm-c.WidthMm/2+40);request.MaximumMm=Math.Min(request.MaximumMm,c.PositionMm+c.WidthMm/2-40);}
+                    var coordinated=ReceivingRows.Coordinate(edge,edge+covered,t.UpperSpacingMm,requests);
+                    absolute=coordinated.RowsMm;
+                    foreach(int i in sourceIndices)mapped[i]=coordinated.ReceiversMm[Array.IndexOf(required,shared[i])];
+                    adjusted=true;
+                }
+            }
             catch(ArgumentException ex)
             {input.Diagnostics?.Geometry(input.DiagnosticScope+"receiving row setting-out",input.DiagnosticScope+ex.Message,"Review required slab/crossing rows and plywood joints.");return null;}
             var rows=absolute.Select(x=>x-edge).ToArray();
-            var indices=shared.Select(x=>Array.IndexOf(absolute,x)).ToArray();
+            var sourceSet=new HashSet<int>(sourceIndices);
+            var indices=shared.Select((x,i)=>sourceSet.Contains(i) ? Array.IndexOf(absolute,mapped[i]) : -1).ToArray();
             var widthsBeam=PlywoodSpacing.RowTributaries(0,covered,rows);
             if(t.IncludeConcreteEndStrips || t.IncludeMainBeamEndLoads)
             {var end=ConcreteEndStripTributaries(covered,rows,edge);for(int i=0;i<rows.Length;i++)widthsBeam[i]+=end[i];}
-            var grid=new RowGrid {Rows=rows,Tributaries=widthsBeam,SlabRowIndices=indices,
+            var grid=new RowGrid {Rows=rows,Tributaries=widthsBeam,SlabRowIndices=t.LocalReceivingRows ? indices.Where(i=>i>=0).Distinct().OrderBy(i=>i).ToArray() : indices,
+                SharedSlabRowsMm=t.LocalReceivingRows ? shared : null,SlabSourceRowIndices=t.LocalReceivingRows ? indices : null,Adjusted=adjusted,
                 LeftPhysicalScales=new double[rows.Length],RightPhysicalScales=new double[rows.Length],LeftScales=new double[rows.Length],RightScales=new double[rows.Length]};
             var ls=FullTributaryScales(leftBase,left,t.SlabSpacing(true),true);var rs=FullTributaryScales(rightBase,right,t.SlabSpacing(false),true);
+            grid.LeftSourceScales=ls;grid.RightSourceScales=rs;
             for(int i=0;i<shared.Length;i++)
-            {int j=indices[i];grid.LeftPhysicalScales[j]=left[i]/1000;grid.RightPhysicalScales[j]=right[i]/1000;grid.LeftScales[j]=ls[i];grid.RightScales[j]=rs[i];}
+            {int j=indices[i];if(j<0)continue;grid.LeftPhysicalScales[j]+=left[i]/1000;grid.RightPhysicalScales[j]+=right[i]/1000;grid.LeftScales[j]+=ls[i];grid.RightScales[j]+=rs[i];}
             grid.Key=Values(rows)+"|"+Values(widthsBeam)+"|"+Values(grid.LeftScales)+"|"+Values(grid.RightScales)+"|"+edge.ToString("R",CultureInfo.InvariantCulture);
             return grid;
         }
@@ -1641,7 +1674,7 @@ namespace EngineeringDashboard
                 pieces[i].GoverningDeflectionLimitMm=governing.GoverningLengthMm/input.DeflectionDenominator;
                 pieces[i].GoverningDeflectionMm=governing.DeflectionUtilization*pieces[i].GoverningDeflectionLimitMm;
             }
-            var transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerNetwork==null ? 0 : input.TransferredSlab.EngineerReceiverCount,UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=SelectColumnCases(input,cross,edge),LegacyColumnSupportLoads=input.EngineerPlan?.UseDesignZones==true ? SelectLegacyColumnCases(input,cross,edge) : null,CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
+            var transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerNetwork==null ? 0 : input.TransferredSlab.EngineerReceiverCount,UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=SelectColumnCases(input,cross,edge),LegacyColumnSupportLoads=input.EngineerPlan?.UseDesignZones==true ? SelectLegacyColumnCases(input,cross,edge) : null,CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,SharedSlabRowsMm=grid.SharedSlabRowsMm,SlabSourceRowIndices=grid.SlabSourceRowIndices,LeftSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.LeftSourceScales,RightSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.RightSourceScales,HasCustomPlywoodJoints=grid.Adjusted,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
                 LeftUpperStockMm=cross.Left?.Stock??0,RightUpperStockMm=cross.Right?.Stock??0,LeftUpperCustom=cross.Left?.Custom??false,RightUpperCustom=cross.Right?.Custom??false,LeftUpperEdgeMm=cross.Left?.Edge??0,RightUpperEdgeMm=cross.Right?.Edge??0,
                 LeftFootReactionKn=(cross.Left?.Analysis.Reactions[0]??0)*ls.Max(),RightFootReactionKn=(cross.Right?.Analysis.Reactions[0]??0)*rs.Max(),
                 BeamLoadKn=input.TransferredSlab.TotalBeamLineLoadKnM*input.LengthMm/1000,
@@ -1727,7 +1760,7 @@ namespace EngineeringDashboard
             }
             var upper=new List<TransferMember>();
             foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null)) upper.Add(new TransferMember {H20Count=1,Name=u==cross.Left ? "Upper left" : "Upper right",LoadCase="Slab · governing row",StartMm=u.Edge,LengthMm=u.Stock,SupportsMm=new[] {u.Foot-u.Edge,u.Bay-u.OtherFoot-u.Edge},Points=new BeamPointLoad[0],Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=u.Stock,KnPerM=u.Load*Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000)}},Analysis=u.Analysis.Scale(Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000))});
-            var transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerNetwork==null ? 0 : input.TransferredSlab.EngineerReceiverCount,UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=SelectColumnCases(input,cross,edge),LegacyColumnSupportLoads=input.EngineerPlan?.UseDesignZones==true ? SelectLegacyColumnCases(input,cross,edge) : null,CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
+            var transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerNetwork==null ? 0 : input.TransferredSlab.EngineerReceiverCount,UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=SelectColumnCases(input,cross,edge),LegacyColumnSupportLoads=input.EngineerPlan?.UseDesignZones==true ? SelectLegacyColumnCases(input,cross,edge) : null,CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,SharedSlabRowsMm=grid.SharedSlabRowsMm,SlabSourceRowIndices=grid.SlabSourceRowIndices,LeftSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.LeftSourceScales,RightSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.RightSourceScales,HasCustomPlywoodJoints=grid.Adjusted,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
                 LeftUpperStockMm=cross.Left?.Stock??0,RightUpperStockMm=cross.Right?.Stock??0,LeftUpperCustom=cross.Left?.Custom??false,RightUpperCustom=cross.Right?.Custom??false,LeftUpperEdgeMm=cross.Left?.Edge??0,RightUpperEdgeMm=cross.Right?.Edge??0,
                 LeftFootReactionKn=(cross.Left?.Analysis.Reactions[0]??0)*ls.Max(),RightFootReactionKn=(cross.Right?.Analysis.Reactions[0]??0)*rs.Max(),
                 BeamLoadKn=input.TransferredSlab.TotalBeamLineLoadKnM*input.LengthMm/1000,
