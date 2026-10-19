@@ -9,6 +9,12 @@ using System.Threading.Tasks;
 
 namespace EngineeringDashboard
 {
+    internal sealed class NetworkSeedCompletion
+    {
+        private int found;
+        internal bool Found=>Volatile.Read(ref found)!=0;
+        internal void Complete()=>Interlocked.Exchange(ref found,1);
+    }
     public sealed class UpperTransferPlan
     {
         public const string SiteArrangement = "Slab H20 feet use equal setbacks from both concrete faces, giving equal stock-end overhangs. Repeat the same arrangement at every slab H20 row in a bay. Uniform slab loading gives equal foot reactions; receiving-member and tower-leg reactions remain individually checked for every loading stage. The specified maximum row spacing, bearings and end allowances require site control.";
@@ -494,6 +500,7 @@ namespace EngineeringDashboard
                 finally {common.Diagnostics=first.Diagnostics;}
             }
             var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
+            worker.FirstCompleteNetworkOnly=denseSeedFirst || common.FirstCompleteNetworkOnly;
             var attempted=new HashSet<string>();
             TransferNetworkResult best=null;
             Func<TransferNetworkInput,string> keyOf=n=>string.Join(";",n.BeamSpacingsMm.Concat(n.SlabSpacingsMm).Concat(n.CrossingSpacingsMm));
@@ -525,6 +532,7 @@ namespace EngineeringDashboard
                 catch(TowerOptimizationException ex){failure=ex;}
             }
             if(best==null){common.Diagnostics=worker.Diagnostics;throw failure;}
+            if(common.FirstCompleteNetworkOnly){common.Diagnostics=worker.Diagnostics;return best;}
             var acceptedDiagnostics=worker.Diagnostics;
             var maxima=input.BeamSpacingsMm.Concat(input.SlabSpacingsMm).Concat(input.CrossingSpacingsMm).ToArray();
             Func<TransferNetworkInput,double[]> spacings=n=>n.BeamSpacingsMm.Concat(n.SlabSpacingsMm).Concat(n.CrossingSpacingsMm).ToArray();
@@ -582,7 +590,20 @@ namespace EngineeringDashboard
                 best.SearchTimeLimitReached=true;
                 foreach(var beam in best.Beams) {beam.SearchTimeLimitReached=true;beam.MinimumLegCountProven=false;}
             }
-            common.Trace?.CheckUserCancellation();common.Diagnostics=acceptedDiagnostics;return best;
+            common.Trace?.CheckUserCancellation();
+            if(denseSeedFirst && common.Trace?.BudgetReached!=true)
+            {
+                worker.FirstCompleteNetworkOnly=false;
+                common.Trace?.Work("Optimizing final recovered network spacing");
+                try{best=SearchSpacing(worker,best.Input);acceptedDiagnostics=worker.Diagnostics;}
+                catch(TowerOptimizationException){ /* Keep the already checked complete seed. */ }
+                catch(BeamSearchDeadlineException)
+                {
+                    best.SearchTimeLimitReached=true;
+                    foreach(var beam in best.Beams){beam.SearchTimeLimitReached=true;beam.MinimumLegCountProven=false;}
+                }
+            }
+            common.Diagnostics=acceptedDiagnostics;return best;
         }
         private static TransferNetworkResult LegacyTransfer(TowerInput common,TransferNetworkInput input)
         {
@@ -716,6 +737,7 @@ namespace EngineeringDashboard
             if(common.Trace?.HasTimeLimit==true)
                 scenarios=scenarios.OrderBy(s=>Math.Abs(s.Item1-(common.LengthMm-common.MaximumConcreteEndOverhangMm))).ThenBy(s=>Math.Abs(s.Item2)).ToArray();
             var outcomes=new ScenarioResult[scenarios.Length];
+            var completion=common.FirstCompleteNetworkOnly ? new NetworkSeedCompletion() : null;
             int workers=SearchWorkers(common.NetworkSearchWorkers,Environment.ProcessorCount);
             common.Trace?.Workers(workers);
             using(var numericalWork=new ThreadLocal<TransferredSlabOptimizer.SearchWorkCache>(()=>new TransferredSlabOptimizer.SearchWorkCache()))
@@ -723,6 +745,8 @@ namespace EngineeringDashboard
                 Action<int> run=index=>
                 {
                     var worker=common.CopyForSearch();
+                    worker.NetworkSeedCompletion=completion;
+                    if(completion?.Found==true){outcomes[index]=new ScenarioResult {Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator)};return;}
                     worker.DedicatedCrossCache=new Dictionary<string,DedicatedCrossSearch>();
                     worker.CrossingGeometryWork=new CrossGeometryCache();
                     worker.NetworkNumerics=common.ReuseSearchWork && (common.ReuseNetworkNumerics || common.ReuseTransverseNumerics) ? (common.NetworkNumericalWork ?? numericalWork).Value : null;
@@ -923,7 +947,7 @@ namespace EngineeringDashboard
                     bool crossingPassed;
                     using(common.Trace?.Measure(BeamSearchStage.CrossingSupports))crossingPassed=CrossBeamSupportOptimizer.Complete(worker,partial,beam<input.Beams.Length-1);
                     if(!crossingPassed)return null;
-                    if(beam==input.Beams.Length-1) {outcome.Improvements.Add(partial);engineerBound?.Publish(partial);common.Trace?.Increment(BeamSearchCounter.CompleteNetworkCandidates);return null;}
+                    if(beam==input.Beams.Length-1) {outcome.Improvements.Add(partial);engineerBound?.Publish(partial);common.Trace?.Increment(BeamSearchCounter.CompleteNetworkCandidates);common.NetworkSeedCompletion?.Complete();return null;}
                 }
                 return candidate;
             }
@@ -937,6 +961,7 @@ namespace EngineeringDashboard
                     ? options[beam].OrderBy(o=>o==null ? double.PositiveInfinity : o.NearFootMm+o.FarFootMm).ThenBy(o=>o?.StockLengthMm??double.PositiveInfinity).Take(2) : options[beam].Take(2);
                 foreach(var right in seedOptions)
                 {
+                    if(common.NetworkSeedCompletion?.Found==true)return false;
                     common.Trace?.CheckCancellation();if(remaining--<=0)return false;
                     int ceiling=engineerBound?.Ceiling(previous.Legs,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4)??int.MaxValue;
                     bool tightJunction=input.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && (c.BayNumber==beam || c.BayNumber==beam+1)
@@ -945,6 +970,7 @@ namespace EngineeringDashboard
                     if(common.OptimizeCrossingSearch && tightJunction)receivers=receivers.OrderBy(r=>Math.Abs(r.WidthMm-1000)).ThenBy(r=>Math.Abs(r.TransverseOffsetMm));
                     foreach(var receiver in receivers.Take(common.OptimizeCrossingSearch ? 4 : 2))
                     {
+                        if(common.NetworkSeedCompletion?.Found==true)return false;
                         int before=outcome.Improvements.Count;var next=Extend(previous,right,receiver,beam);
                         if(outcome.Improvements.Count>before){common.Trace?.Increment(BeamSearchCounter.SeedNetworkCandidates);return true;}
                         if(next!=null && beam+1<input.Beams.Length && Seed(next,beam+1,ref remaining))return true;
@@ -960,20 +986,23 @@ namespace EngineeringDashboard
                     // Explore a small complete path before expanding every slab
                     // option at B1/B2. The ordinary bounded search still follows.
                     int remaining=common.OptimizeCrossingSearch ? input.Beams.Length*8+32 : input.Beams.Length*2+8;Seed(states[0],0,ref remaining);
+                    if(common.NetworkSeedCompletion?.Found==true)return outcome;
                 }
-                for(int beam=0;beam<input.Beams.Length && states.Count>0;beam++)
+                for(int beam=0;beam<input.Beams.Length && states.Count>0 && common.NetworkSeedCompletion?.Found!=true;beam++)
                 {
                     common.Trace?.CheckCancellation();
                     var next=new Dictionary<UpperTransferPlan,List<State>>();var closed=new List<State>();
                     foreach(var previous in states)
                     foreach(var right in beam==input.Bays.Length ? new UpperTransferPlan[] {null} : options[beam])
                     {
+                        if(common.NetworkSeedCompletion?.Found==true)break;
                         var left=previous.Bays.LastOrDefault();
                         int ceiling=engineerBound?.Ceiling(previous.Legs,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4)??int.MaxValue;
                         if(ceiling<covers.Min(c=>c.Length)*4){common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);continue;}
                         var receivers=Receivers(beam,left,right,ceiling);
                         foreach(var receiver in receivers)
                         {
+                            if(common.NetworkSeedCompletion?.Found==true)break;
                             if(receiver.LegCount>ceiling){common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);continue;}
                             var candidate=Extend(previous,right,receiver,beam);if(candidate==null)continue;
                             if(right==null) {closed.Add(candidate);continue;}
@@ -986,7 +1015,7 @@ namespace EngineeringDashboard
                 }
             }
             catch(BeamSearchDeadlineException) {common.Trace?.CheckUserCancellation();}
-            if(common.EngineerSearch && common.EngineerJunctionExtraTiers==0 && outcome.Improvements.Count==0 && common.Trace?.BudgetReached!=true)
+            if(common.EngineerSearch && common.EngineerJunctionExtraTiers==0 && outcome.Improvements.Count==0 && common.Trace?.BudgetReached!=true && common.NetworkSeedCompletion?.Found!=true)
             {
                 var expanded=common.CopyForSearch();expanded.EngineerJunctionExtraTiers=2;
                 var alternative=CoordinatedScenario(expanded,input,covers,geometryCache,options,cover,phase,rows,engineerBound,common.OptimizeCrossingSearch ? baseReceivers : null);

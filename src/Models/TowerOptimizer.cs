@@ -231,6 +231,8 @@ namespace EngineeringDashboard
         internal bool EngineerDedicatedFallback;
         internal bool SeedNetworkSearch=true,OptimizePrimaryResponses=true,PrepareReceiverChecks=true;
         internal bool OptimizeCrossingSearch=true;
+        internal bool FirstCompleteNetworkOnly;
+        internal NetworkSeedCompletion NetworkSeedCompletion;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
         internal Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> TransferReceiverPreparation;

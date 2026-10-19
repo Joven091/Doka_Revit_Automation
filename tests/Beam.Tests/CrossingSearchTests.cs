@@ -76,6 +76,12 @@ internal static class CrossingSearchTests
                 +r.CrossSupports.Where(c=>c.Towers!=null).Sum(c=>c.Towers.Transfer.PrimaryCases[0].Sum(m=>m.Analysis.TotalLoadKn));
             Check(Math.Abs(load(expected)-load(actual))<1e-6,"complete main/dedicated/column system conserves the same applied force");
             ControlledPerformanceTests.Validate(common,actual);
+            common.FirstCompleteNetworkOnly=true;common.Trace=new BeamSearchTrace("first checked network");
+            var seed=TransferNetworkOptimizer.Optimize(common,network);ControlledPerformanceTests.Validate(common,seed);
+            Check(common.Trace.Count(BeamSearchCounter.CompleteNetworkCandidates)==1,"feasibility traversal stops after a complete checked network");
+            common.FirstCompleteNetworkOnly=false;common.Trace=new BeamSearchTrace("final full ranking");
+            var ranked=TransferNetworkOptimizer.Optimize(common,network);
+            Check(ControlledPerformanceTests.Fingerprint(ranked)==ControlledPerformanceTests.Fingerprint(actual),"full ranking after a feasibility seed retains its deterministic result");
         }
     }
     static void Frames()
