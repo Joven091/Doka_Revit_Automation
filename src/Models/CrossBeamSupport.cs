@@ -1256,7 +1256,10 @@ namespace EngineeringDashboard
                         }
                         common.Trace?.Increment(BeamSearchCounter.PreparedPrimaryCacheHits);responses.Store(key,saved.Passed);if(!saved.Passed)return false;continue;
                     }
-                    var source=new TransferMember {PrimaryMaterial=common.PrimaryMaterial,PrimarySelfWeightKnM=common.Primary.SelfWeightKnM(stock.StockLengthMm),Name="P"+(run+1)+(line==0 ? " L" : " R"),StartMm=loadKey.Item1,LengthMm=stock.StockLengthMm,H20Count=2,SupportsMm=geometry.MemberSupports[run]};
+                    string name="P"+(run+1)+(line==0 ? " L" : " R");
+                    if(common.OptimizeCrossingSearch && !PrimaryForcesFit(common,stock.StockLengthMm,geometry.MemberSupports[run],uniform,name))
+                    {responses.Store(key,false);return false;}
+                    var source=new TransferMember {PrimaryMaterial=common.PrimaryMaterial,PrimarySelfWeightKnM=common.Primary.SelfWeightKnM(stock.StockLengthMm),Name=name,StartMm=loadKey.Item1,LengthMm=stock.StockLengthMm,H20Count=2,SupportsMm=geometry.MemberSupports[run]};
                     var member=Analyze(source,new BeamPointLoad[0],uniform,common,"Crossing resolved primary");
                     passed=Pass(member,common,"Crossing resolved primary");
                     common.Diagnostics?.Legs(member.Analysis.Reactions,common.LegCapacityKn,$"B{beam+1} cross stage legs","Crossing resolved primary");
@@ -1266,6 +1269,34 @@ namespace EngineeringDashboard
                 }
                 return true;
             };
+        }
+        // These necessary bounds use the resolved UDLs of this exact receiver,
+        // including its slab allocation. Across a support span, the difference
+        // of the two shears equals its applied force; both faces must therefore
+        // accommodate at least half that force. Free tails have exact root force
+        // and moment. No stiffness solve is needed to reject an impossible span.
+        internal static bool PrimaryForcesFit(TowerInput common,double length,double[] supports,BeamDistributedLoad[] loads,string scope)
+        {
+            double shear=common.Primary.ShearLimitKn,moment=common.Primary.MomentLimitKnM;
+            Func<double,double,double> force=(a,b)=>loads.Sum(q=>q.KnPerM*Math.Max(0,Math.Min(b,q.EndMm)-Math.Max(a,q.StartMm))/1000);
+            for(int i=1;i<supports.Length;i++)
+            {
+                double lower=Math.Abs(force(supports[i-1],supports[i]))/2;
+                if(lower<=shear+shear*1e-6)continue;
+                common.Diagnostics?.Limit(scope,"span shear lower bound",3,lower,shear,"kN","Resolved UDL on this support span","Reduce the support span or revise the primary arrangement.",shear*1e-6);return false;
+            }
+            for(int side=0;side<2;side++)
+            {
+                double a=side==0 ? 0 : supports.Last(),b=side==0 ? supports[0] : length,root=side==0 ? b : a;
+                double v=Math.Abs(force(a,b)),m=Math.Abs(loads.Sum(q=>
+                {
+                    double lo=Math.Max(a,q.StartMm),hi=Math.Min(b,q.EndMm);
+                    return hi<=lo ? 0 : q.KnPerM*(hi-lo)*((lo+hi)/2-root)/1e6;
+                }));
+                if(v>shear+shear*1e-6){common.Diagnostics?.Limit(scope,"cantilever shear",3,v,shear,"kN","Resolved UDL on this stock tail","Review primary overhang and support positions.",shear*1e-6);return false;}
+                if(m>moment+moment*1e-6){common.Diagnostics?.Limit(scope,"cantilever moment",3,m,moment,"kNm","Resolved UDL on this stock tail","Review primary overhang and support positions.",moment*1e-6);return false;}
+            }
+            return true;
         }
         private static bool Recheck(TowerInput common,TransferNetworkResult r,TowerLayout[] originals,CrossBeamSupportResult[] supports,bool lowerOnly=false,bool pendingAssignments=false)
         {

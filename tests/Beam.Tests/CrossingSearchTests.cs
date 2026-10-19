@@ -30,7 +30,7 @@ internal static class CrossingSearchTests
         catch(TowerOptimizationException ex){rejected=ex.Details.Contains("X2") && ex.Details.Contains("1300") && ex.Details.Contains("1475");}
         Check(rejected,"early failure identifies actual stock/bracing interval");
         Check(input.Trace.Count(BeamSearchCounter.PrimaryAnalyses)==0 && input.Trace.Count(BeamSearchCounter.CoveragePlans)==0,"impossible catalogue pass needs no primary search");
-        GeometryKeys();Frames();StockStarts();Parity();Console.WriteLine("Passed "+checks+" crossing search checks.");
+        GeometryKeys();Frames();StockStarts();ForceBounds();Parity();Console.WriteLine("Passed "+checks+" crossing search checks.");
     }
     static void GeometryKeys()
     {
@@ -62,6 +62,24 @@ internal static class CrossingSearchTests
         Check(starts.All(start=>start>=-287.5 && start<=-269.5),"no primary alternative exceeds the stock/setback interval");
         input.OptimizeCrossingSearch=false;
         Check(CrossBeamSupportOptimizer.PrimaryStarts(input,-287.5,-287.5,-269.5,1375,512.5,3450,1524,-1350,new[] {obstacle}).SequenceEqual(new[] {-287.5}),"reference retains the former one-position search");
+    }
+    static void ForceBounds()
+    {
+        var random=new Random(191070);
+        foreach(var material in new[] {PrimaryBeamMaterial.DoubleH20,PrimaryBeamMaterial.WS10})
+        for(int sample=0;sample<300;sample++)
+        {
+            var input=new TowerInput {PrimaryMaterial=material};double length=1250+random.Next(3600),a=50+random.Next(400),b=length-50-random.Next(400);
+            var supports=sample%2==0 ? new[] {a,b} : new[] {a,(a+b)/2,b};
+            var loads=new[] {new BeamDistributedLoad {StartMm=0,EndMm=length,KnPerM=random.NextDouble()*100},new BeamDistributedLoad {StartMm=length*.2,EndMm=length*.8,KnPerM=random.NextDouble()*50}};
+            bool accepted=CrossBeamSupportOptimizer.PrimaryForcesFit(input,length,supports,loads,"independent bound fixture");
+            var reference=LoadedBeamAnalysis.AnalyzeDenseReference(length,supports,loads,new BeamPointLoad[0],input.Primary.EI,270);
+            Check(accepted || reference.ShearKn>input.Primary.ShearLimitKn+1e-8 || reference.MomentKnM>input.Primary.MomentLimitKnM+1e-8,"force screen never rejects an independently passing member");
+        }
+        var h20=new TowerInput();var q=new[] {new BeamDistributedLoad {StartMm=0,EndMm=2000,KnPerM=34}};
+        Check(!CrossBeamSupportOptimizer.PrimaryForcesFit(h20,2000,new[] {200.0,1724},q,"reported narrow receiver"),"34 kN/m cannot fit a 1524 mm span within two 22 kN shear limits");
+        q[0].KnPerM=44/1.524;
+        Check(CrossBeamSupportOptimizer.PrimaryForcesFit(h20,2000,new[] {200.0,1724},q,"capacity boundary"),"exact shear force boundary proceeds to full checks");
     }
     static void Parity()
     {
