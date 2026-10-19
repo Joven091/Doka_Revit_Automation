@@ -934,7 +934,7 @@ namespace EngineeringDashboard
                 // the least-timber slab stocks; the ordinary ranked search below
                 // still compares every retained passing option.
                 var seedOptions=beam==input.Bays.Length ? new UpperTransferPlan[] {null} : common.OptimizeCrossingSearch
-                    ? options[beam].OrderBy(o=>o.NearFootMm+o.FarFootMm).ThenBy(o=>o.StockLengthMm).Take(2) : options[beam].Take(2);
+                    ? options[beam].OrderBy(o=>o==null ? double.PositiveInfinity : o.NearFootMm+o.FarFootMm).ThenBy(o=>o?.StockLengthMm??double.PositiveInfinity).Take(2) : options[beam].Take(2);
                 foreach(var right in seedOptions)
                 {
                     common.Trace?.CheckCancellation();if(remaining--<=0)return false;
