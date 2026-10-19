@@ -233,6 +233,10 @@ namespace EngineeringDashboard
         internal bool OptimizeCrossingSearch=true;
         internal bool FirstCompleteNetworkOnly;
         internal NetworkSeedCompletion NetworkSeedCompletion;
+        internal bool ReuseReceiverSearches=true,WarmStartNetwork=true;
+        internal NetworkReceiverCache NetworkReceiverWork;
+        internal NetworkPrefixCache NetworkPrefixWork;
+        internal TransferNetworkResult NetworkWarmStart;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
         internal Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> TransferReceiverPreparation;

@@ -30,7 +30,69 @@ internal static class CrossingSearchTests
         catch(TowerOptimizationException ex){rejected=ex.Details.Contains("X2") && ex.Details.Contains("1300") && ex.Details.Contains("1475");}
         Check(rejected,"early failure identifies actual stock/bracing interval");
         Check(input.Trace.Count(BeamSearchCounter.PrimaryAnalyses)==0 && input.Trace.Count(BeamSearchCounter.CoveragePlans)==0,"impossible catalogue pass needs no primary search");
-        GeometryKeys();Frames();StockStarts();ForceBounds();ZonedPrimaryReuse();Parity();Console.WriteLine("Passed "+checks+" crossing search checks.");
+        GeometryKeys();Frames();StockStarts();ForceBounds();ZonedPrimaryReuse();ReceiverSearchReuse();RecoveryParity();Parity();Console.WriteLine("Passed "+checks+" crossing search checks.");
+    }
+    static void RecoveryParity()
+    {
+        var input=new TowerInput {EngineerSearch=true,FullLoadingOnly=true,CoordinateCrossingLayouts=true,LengthMm=2450,
+            AllowCustomH20Lengths=true,CustomH20Scope=CustomH20LengthScope.Both,StockLengthsMm=new[] {1250.0,1800,2450,2900},
+            LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=0,DeflectionDenominator=270,
+            AllowSeparateSlabFallback=false,IgnoreUplift=true,NetworkSearchWorkers=1};
+        var network=new TransferNetworkInput {PlywoodProfileId=PlywoodCatalog.Default.Id,PlywoodDeflectionDenominator=350,PlywoodSheetLengthMm=2440,UpperSpacingMm=305,
+            BeamSpacingsMm=Enumerable.Repeat(305.0,4).ToArray(),SlabSpacingsMm=Enumerable.Repeat(488.0,3).ToArray(),CrossingSpacingsMm=Enumerable.Repeat(350.0,3).ToArray(),
+            Beams=Enumerable.Range(0,4).Select(i=>new TransferBeamRow {WidthMm=800,DepthMm=800,BottomElevationMm=-800}).ToArray(),Bays=Enumerable.Range(0,3).Select(i=>new TransferBayRow {WidthMm=2200,ThicknessMm=200}).ToArray(),
+            CrossingBeams=Enumerable.Range(1,3).Select(i=>new TransferCrossingBeamRow {BayNumber=i,PositionMm=1225,WidthMm=650,DepthMm=600,BottomElevationMm=-600}).ToArray()};
+        input.ReuseReceiverSearches=false;input.WarmStartNetwork=false;
+        var expected=TransferNetworkOptimizer.Optimize(input,network);ControlledPerformanceTests.Validate(input,expected);
+        input.ReuseReceiverSearches=true;input.WarmStartNetwork=true;input.Trace=new BeamSearchTrace("warm spacing recovery parity");
+        var actual=TransferNetworkOptimizer.Optimize(input,network);ControlledPerformanceTests.Validate(input,actual);
+        Check(ControlledPerformanceTests.Fingerprint(actual)==ControlledPerformanceTests.Fingerprint(expected),"full ranking after spacing recovery retains geometry, loads and reactions");
+        Check(actual.Input.BeamSpacingsMm.SequenceEqual(expected.Input.BeamSpacingsMm) && actual.Input.SlabSpacingsMm.SequenceEqual(expected.Input.SlabSpacingsMm),"warm recovery retains the same passing pitches");
+        Check(input.Trace.Count(BeamSearchCounter.WarmNetworkCandidates)>0,"complete warm networks still receive all member and physical checks");
+        var key=new CheckedPrefixKey(input,actual);Check(key.Equals(new CheckedPrefixKey(input,actual)),"identical immutable prefix is reusable");
+        var prior=actual.Input.BeamSpacingsMm[0];actual.Input.BeamSpacingsMm[0]=275;
+        Check(!key.Equals(new CheckedPrefixKey(input,actual)),"prefix pitch change invalidates its previous check");actual.Input.BeamSpacingsMm[0]=prior;
+        var old=actual.Beams[0];actual.Beams[0]=new TowerLayout();
+        Check(!key.Equals(new CheckedPrefixKey(input,actual)),"a different base receiver invalidates its prefix check");actual.Beams[0]=old;
+    }
+    static void ReceiverSearchReuse()
+    {
+        var common=new TowerInput {EngineerSearch=true,FullLoadingOnly=true,CoordinateCrossingLayouts=true,LengthMm=2450,
+            StockLengthsMm=new[] {1250.0,1800,2450},LegCapacityKn=70,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=0,
+            DeflectionDenominator=270,AllowSeparateSlabFallback=false,IgnoreUplift=true,NetworkSearchWorkers=1,
+            Trace=new BeamSearchTrace("complete receiver reuse"),NetworkReceiverWork=new NetworkReceiverCache()};
+        var network=new TransferNetworkInput {PlywoodProfileId=PlywoodCatalog.Default.Id,PlywoodDeflectionDenominator=350,PlywoodSheetLengthMm=2440,UpperSpacingMm=305,
+            BeamSpacingsMm=new[] {305.0,305},SlabSpacingsMm=new[] {488.0},CrossingSpacingsMm=new double[0],
+            Beams=Enumerable.Range(0,2).Select(i=>new TransferBeamRow {WidthMm=800,DepthMm=800,BottomElevationMm=-800}).ToArray(),Bays=new[] {new TransferBayRow {WidthMm=2125,ThicknessMm=200}}};
+        var method=typeof(TransferNetworkOptimizer).GetMethod("Solve",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+        double setback=362.5;
+        Func<TowerLayout,TowerLayout> solve=previous=>
+        {
+            common.Diagnostics=new TowerSearchDiagnostics(270,trace:common.Trace,ignoreUplift:true);
+            var plan=new UpperTransferPlan {StockLengthMm=1700,EdgeMm=212.5,NearFootMm=setback,FarFootMm=setback,IsCustomLength=true};
+            return (TowerLayout)method.Invoke(null,new object[] {common,network,0,null,plan,2450.0,0.0,new[] {new[] {2450.0}},new TransferredSlabOptimizer.GeometryCache(),int.MaxValue,
+                previous==null ? (double?)null : previous.WidthMm,0.0,null,previous});
+        };
+        common.AllowCustomH20Lengths=true;common.CustomH20Scope=CustomH20LengthScope.Both;
+        var original=solve(null);if(original==null)throw common.Diagnostics.Exception("Receiver reuse fixture failed");Check(true,"receiver fixture passes its complete local checks");
+        long solves=common.Trace.Count(BeamSearchCounter.NetworkSolves);
+        var cached=solve(null);Check(ReferenceEquals(original,cached) && common.Trace.Count(BeamSearchCounter.NetworkSolves)==solves,"value-identical independently rebuilt slab plans reuse a complete receiver search");
+        setback+=1e-10;solve(null);Check(common.Trace.Count(BeamSearchCounter.NetworkSolves)>solves,"receiver cache does not round support coordinates");setback=362.5;
+        network.BeamSpacingsMm[1]=350;
+        Check(ReferenceEquals(original,solve(null)),"unrelated beam pitch retains the exact local receiver result");
+        network.BeamSpacingsMm[0]=275;network.UpperSpacingMm=275;
+        var warm=solve(original);Check(warm!=null && warm.PositionsMm.SequenceEqual(original.PositionsMm),"new spacing can reuse the old support arrangement after full reanalysis");
+        Check(warm.Transfer.EnteredUpperSpacingMm==275 && !warm.Transfer.RowsMm.SequenceEqual(original.Transfer.RowsMm),"warm recheck rebuilds actual rows and spacing metadata");
+        foreach(var m in warm.Transfer.PrimaryCases.Concat(warm.Transfer.LowerCases).SelectMany(c=>c).Concat(warm.Transfer.UpperMembers))
+        {
+            var reference=LoadedBeamAnalysis.AnalyzeDenseReference(m.LengthMm,m.SupportsMm,m.Uniform,m.Points,m.EI,270);
+            Check(m.Analysis.DeflectionEvaluated && m.Utilization<=1+1e-8 && Math.Abs(m.Analysis.MomentKnM-reference.MomentKnM)<1e-7
+                && Math.Abs(m.Analysis.ShearKn-reference.ShearKn)<1e-7 && Math.Abs(m.Analysis.DeflectionMm-reference.DeflectionMm)<1e-7,"rebuilt warm member retains independent full numerical checks");
+        }
+        common.LegCapacityKn=1;Check(solve(original)==null,"warm geometry cannot bypass a changed leg capacity");
+        Check(solve(null)==null,"changed capacity invalidates the complete receiver cache");
+        solves=common.Trace.Count(BeamSearchCounter.NetworkSolves);Check(solve(null)==null && common.Trace.Count(BeamSearchCounter.NetworkSolves)==solves,"a completed exact local failure is reusable");
+        Check(common.Diagnostics.Exception("cached failure").Details.Contains("leg"),"cached failure retains its engineering explanation");
     }
     static void ZonedPrimaryReuse()
     {

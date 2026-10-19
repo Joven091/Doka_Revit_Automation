@@ -164,7 +164,7 @@ namespace EngineeringDashboard
             if(prepared==null || uniform.Length!=0)for(int e=0;e<nodes.Count-1;e++)
             {
                 double l=(nodes[e+1]-nodes[e])/1000,q=uniform.Where(v=>v.StartMm<(nodes[e]+nodes[e+1])/2 && v.EndMm>(nodes[e]+nodes[e+1])/2).Sum(v=>v.KnPerM),c=ei/(l*l*l);
-                var ke=new double[,] {{12,6*l,-12,6*l},{6*l,4*l*l,-6*l,2*l*l},{-12,-6*l,12,-6*l},{6*l,2*l*l,-6*l,4*l*l}};
+                var ke=k==null ? null : new double[,] {{12,6*l,-12,6*l},{6*l,4*l*l,-6*l,2*l*l},{-12,-6*l,12,-6*l},{6*l,2*l*l,-6*l,4*l*l}};
                 var fe=new[] {q*l/2,q*l*l/12,q*l/2,-q*l*l/12};
                 for(int i=0;i<4;i++)
                 {

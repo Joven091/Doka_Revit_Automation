@@ -934,6 +934,37 @@ namespace EngineeringDashboard
                 +g.Stock.Sum(s=>s.StockLengthMm)*2*input.Primary.CountPerLine+grid.Rows.Length*cross.Stock+left*(cross.Left?.Stock??0)+right*(cross.Right?.Stock??0);
         }
         internal static double[] CoveredLengths(TowerInput input) => Covers(input).Select(c=>c.Sum()).Distinct().ToArray();
+        // Rebuild the entire row/load model at the new pitch, evaluating only
+        // the previous support/stock geometry. Failure returns to the normal search.
+        internal static TowerLayout TryFixedLayout(TowerInput input,TowerLayout previous)
+        {
+            var t=input.TransferredSlab;t.Validate(input);
+            if(previous==null || previous.PrimaryMaterial!=input.PrimaryMaterial || previous.LengthMm!=input.LengthMm
+                || previous.LegCount>input.NetworkLegCeiling || previous.PositionsMm.Length<input.EngineerMinimumStations)return null;
+            var lengths=previous.StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray();
+            if(!Covers(input).Any(c=>c.SequenceEqual(lengths)))return null;
+            double covered=lengths.Sum(),edge=(input.LengthMm-covered)/2,rowCoverage=t.FixedCoveredLengthMm??covered;
+            if(t.FixedCoveredLengthMm.HasValue && (t.AllowLongerPrimaryCoverage ? covered<rowCoverage-1e-7 : Math.Abs(covered-rowCoverage)>1e-7))return null;
+            var positions=previous.PositionsMm.Select(x=>x-edge).ToArray();
+            var stocks=previous.StockPlan.Pieces.Select(p=>new TowerStockPiece {StartMm=p.StartMm-edge,StockLengthMm=p.StockLengthMm,FirstSupport=p.FirstSupport,LastSupport=p.LastSupport}).ToArray();
+            var geometry=new Geometry {Positions=positions,Joined=previous.Joined,Stock=stocks,
+                MemberSupports=stocks.Select(p=>positions.Skip(p.FirstSupport).Take(p.LastSupport-p.FirstSupport+1).Select(x=>x-p.StartMm).ToArray()).ToArray()};
+            int count=(int)Math.Ceiling(rowCoverage/t.RowGapMm);
+            double first=(rowCoverage-(count-1)*t.RowGapMm)/2+(input.LengthMm-rowCoverage)/2-edge;
+            var grid=BuildRowGrid(input,covered,rowCoverage,first,count,t.FixedRowPhaseMm??0,edge);
+            if(grid==null || ConflictingRow(geometry,grid.Rows)>0)return null;
+            t.EngineerReceiverCount=previous.Transfer.EngineerReceiverCount;
+            var shared=input.ReuseSearchWork ? t.SharedSearchWork : null;
+            foreach(var cross in CrossOptions(input,previous.WidthMm,t.UpperSpacingMm))
+            {
+                if(cross.Stock!=previous.Transfer.LowerStockLengthMm || cross.Start!=previous.Transfer.LowerStockStartMm-input.ReceiverTransverseOffsetMm)continue;
+                var result=OffsetReceiver(input,Evaluate(input,geometry,previous.WidthMm,previous.Rotated,cross,grid,edge,null,shared?.Matrix,shared,null));
+                if(result==null || input.TransferLayoutAcceptance!=null && !AcceptLayout(input,result))continue;
+                result.MinimumLegCountProven=false;result.SearchAssumedLegKn=previous.SearchAssumedLegKn;result.SearchInitialLegsPerLine=previous.SearchInitialLegsPerLine;
+                return result;
+            }
+            return null;
+        }
         private static TowerLayout OffsetReceiver(TowerInput input,TowerLayout layout)
         {
             double offset=input.ReceiverTransverseOffsetMm;

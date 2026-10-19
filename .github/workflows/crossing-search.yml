@@ -6,7 +6,7 @@ concurrency:
 jobs:
   crossing-search:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

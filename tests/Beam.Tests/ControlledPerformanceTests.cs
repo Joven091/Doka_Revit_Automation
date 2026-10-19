@@ -108,6 +108,8 @@ internal static class ControlledPerformanceTests
             if(variant=="no-seed")Set(input,"SeedNetworkSearch",false);
             if(variant=="crossing-reference")Set(input,"OptimizeCrossingSearch",false);
             if(variant=="feasibility")Set(input,"FirstCompleteNetworkOnly",true);
+            if(variant=="receiver-reference"){Set(input,"ReuseReceiverSearches",false);Set(input,"WarmStartNetwork",false);}
+            if(variant=="receiver-cache-only")Set(input,"WarmStartNetwork",false);
             if(variant=="no-udl-reuse")Set(input,"OptimizePrimaryResponses",false);
             if(variant=="reference")Set(input,"PrepareReceiverChecks",false);
             int gc0=GC.CollectionCount(0),gc1=GC.CollectionCount(1),gc2=GC.CollectionCount(2);var process=Process.GetCurrentProcess();double cpuBefore=process.TotalProcessorTime.TotalSeconds;
@@ -118,7 +120,7 @@ internal static class ControlledPerformanceTests
                 while(!task.Wait(TimeSpan.FromSeconds(30)))
                 {
                     Console.WriteLine("PROGRESS wall="+timer.Elapsed.TotalSeconds.ToString("0.000",CultureInfo.InvariantCulture));
-                    Console.WriteLine(string.Join("\n",input.Trace.Snapshot().Split('\n').Where(l=>l.StartsWith("Profile ") || l.StartsWith("First complete") || l.StartsWith("Last network") || l.StartsWith("Network improvements") || l.StartsWith("Current/last ") || l.StartsWith("Latest crossing") || l.StartsWith("Primary member analyses:") || l.StartsWith("Transferred layout candidates:"))));
+                    Console.WriteLine(string.Join("\n",input.Trace.Snapshot().Split('\n').Where(l=>l.StartsWith("Profile ") || l.StartsWith("First complete") || l.StartsWith("Last network") || l.StartsWith("Network improvements") || l.StartsWith("Current/last ") || l.StartsWith("Latest crossing") || l.StartsWith("Primary member analyses:") || l.StartsWith("Transferred layout candidates:") || l.StartsWith("Complete receiving-beam search cache hits:") || l.StartsWith("Passing warm-start networks:"))));
                 }
                 result=task.GetAwaiter().GetResult();
             }
