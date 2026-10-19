@@ -24,8 +24,9 @@ namespace EngineeringDashboard
             internal TowerLayout Best;
             internal Dictionary<double,TowerLayout> Alternatives;
             internal TowerSearchDiagnostics Diagnostics;
+            internal double[] RowRegistry;
         }
-        private readonly TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Entry> entries=new TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Entry>(8192);
+        private readonly TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Entry> entries=new TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Entry>(4096);
         internal bool Get(ReceiverSolveKey key,out Entry value){lock(entries)return entries.TryGetValue(key,out value);}
         internal void Store(ReceiverSolveKey key,Entry value){lock(entries)entries.Store(key,value);}
     }
@@ -47,8 +48,15 @@ namespace EngineeringDashboard
                 input.StagePrimaryChecks,input.DeferTransferLayout,input.SearchByLegTier,input.OptimizeCrossingSearch,
                 t.LocalReceivingRows,t.IsNetwork,t.AllowLongerPrimaryCoverage,t.IncludeConcreteEndStrips,t.IncludeMainBeamEndLoads,t.CrossFormwork})v.Add(flag?1:0);
             Action<double[]> array=a=>{v.Add(a?.Length??-1);if(a!=null)v.AddRange(a);};
-            array(input.StockLengthsMm);array(t.SharedRowsMm);array(t.LeftEffectiveWidthsMm);array(t.RightEffectiveWidthsMm);
-            array(t.LeftBaselineWidthsMm);array(t.RightBaselineWidthsMm);array(t.ReceivingRowsMm);
+            array(input.StockLengthsMm);
+            // A remote bay can add zero-load entries to the global drawing row
+            // registry. Only actual local source rows affect this beam search.
+            // Hits with a different registry rebuild the returned row mapping below.
+            int[] local=t.LocalReceivingRows && t.SharedRowsMm!=null ? Enumerable.Range(0,t.SharedRowsMm.Length).Where(i=>
+                ((t.LeftEffectiveWidthsMm??t.LeftBaselineWidthsMm)?[i]??0)>0 || ((t.RightEffectiveWidthsMm??t.RightBaselineWidthsMm)?[i]??0)>0 || t.ReceivingRowsMm.Contains(t.SharedRowsMm[i])).ToArray() : null;
+            Action<double[]> rowArray=a=>array(a==null || local==null ? a : local.Select(i=>a[i]).ToArray());
+            rowArray(t.SharedRowsMm);rowArray(t.LeftEffectiveWidthsMm);rowArray(t.RightEffectiveWidthsMm);
+            rowArray(t.LeftBaselineWidthsMm);rowArray(t.RightBaselineWidthsMm);array(t.ReceivingRowsMm);
             foreach(var plan in new[] {t.LeftPlan,t.RightPlan})
             {v.Add(plan==null?0:1);if(plan!=null)v.AddRange(new[] {plan.StockLengthMm,plan.EdgeMm,plan.NearFootMm,plan.FarFootMm,plan.IsCustomLength?1.0:0});}
             foreach(var loads in new[] {t.LeftCrossingBands,t.RightCrossingBands})
@@ -1282,13 +1290,6 @@ namespace EngineeringDashboard
             input.CoordinateCrossingLayouts=common.CoordinateCrossingLayouts;
             var receiverCache=fixedLayout==null && common.ReuseReceiverSearches && common.ReuseSearchWork ? common.NetworkReceiverWork : null;
             var receiverKey=receiverCache==null ? null : new ReceiverSolveKey(input,network,beam,alternatives!=null);
-            if(receiverCache!=null && receiverCache.Get(receiverKey,out var cachedReceiver))
-            {
-                common.Trace?.Increment(BeamSearchCounter.ReceiverSearchCacheHits);
-                common.Diagnostics?.Merge(cachedReceiver.Diagnostics);
-                if(alternatives!=null)foreach(var choice in cachedReceiver.Alternatives)alternatives[choice.Key]=choice.Value;
-                return cachedReceiver.Best;
-            }
             input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace,ignoreUplift:input.IgnoreUplift) {LazyLocations=input.LazySearchDiagnostics};
             if(common.CoordinateCrossingLayouts)
             {
@@ -1315,6 +1316,33 @@ namespace EngineeringDashboard
             TowerLayout result=null;
             try
             {
+                if(receiverCache!=null && receiverCache.Get(receiverKey,out var cachedReceiver))
+                {
+                    if(cachedReceiver.Best==null || (cachedReceiver.RowRegistry??new double[0]).SequenceEqual(t.SharedRowsMm??new double[0]))
+                    {
+                        common.Trace?.Increment(BeamSearchCounter.ReceiverSearchCacheHits);
+                        input.Diagnostics.Merge(cachedReceiver.Diagnostics);
+                        if(alternatives!=null)foreach(var choice in cachedReceiver.Alternatives)alternatives[choice.Key]=choice.Value;
+                        return cachedReceiver.Best;
+                    }
+                    // Identical local mathematical problem, new global row IDs.
+                    // Rebuild all member loads, source indices and diagrams at the
+                    // cached best geometry instead of repeating its geometry search.
+                    var rebuilt=new Dictionary<double,TowerLayout>();
+                    result=TransferredSlabOptimizer.TryFixedLayout(input,cachedReceiver.Best);
+                    bool complete=result!=null;
+                    if(complete && alternatives!=null)foreach(var choice in cachedReceiver.Alternatives)
+                    {
+                        var layout=ReferenceEquals(choice.Value,cachedReceiver.Best) ? result : TransferredSlabOptimizer.TryFixedLayout(input,choice.Value);
+                        if(layout==null){complete=false;break;}rebuilt[choice.Key]=layout;
+                    }
+                    if(complete)
+                    {
+                        common.Trace?.Increment(BeamSearchCounter.ReceiverSearchCacheHits);
+                        if(alternatives!=null)foreach(var choice in rebuilt)alternatives[choice.Key]=choice.Value;
+                        return result;
+                    }
+                }
                 common.Trace?.Increment(BeamSearchCounter.NetworkSolves);
                 using(common.Trace?.Measure(BeamSearchStage.ReceivingBeams))result=fixedLayout==null ? TransferredSlabOptimizer.Optimize(input,true) : TransferredSlabOptimizer.TryFixedLayout(input,fixedLayout);
             }
@@ -1322,7 +1350,7 @@ namespace EngineeringDashboard
             catch(ArgumentException ex) {input.Diagnostics.Geometry("B"+(beam+1)+" geometry",$"B{beam+1}: {ex.Message}","Review this beam's geometry and transfer inputs.");}
             finally{common.Diagnostics?.Merge(input.Diagnostics);}
             if(receiverCache!=null && common.Trace?.BudgetReached!=true && result?.SearchTimeLimitReached!=true)
-                receiverCache.Store(receiverKey,new NetworkReceiverCache.Entry {Best=result,Alternatives=alternatives==null ? new Dictionary<double,TowerLayout>() : new Dictionary<double,TowerLayout>(alternatives),Diagnostics=input.Diagnostics});
+                receiverCache.Store(receiverKey,new NetworkReceiverCache.Entry {Best=result,Alternatives=alternatives==null ? new Dictionary<double,TowerLayout>() : new Dictionary<double,TowerLayout>(alternatives),Diagnostics=input.Diagnostics,RowRegistry=t.SharedRowsMm});
             return result;
         }
         private static BeamDistributedLoad[] CrossingBands(TransferNetworkInput network,int bay,double length,double cover)

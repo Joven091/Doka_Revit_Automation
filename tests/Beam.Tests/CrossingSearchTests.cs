@@ -62,8 +62,8 @@ internal static class CrossingSearchTests
             DeflectionDenominator=270,AllowSeparateSlabFallback=false,IgnoreUplift=true,NetworkSearchWorkers=1,
             Trace=new BeamSearchTrace("complete receiver reuse"),NetworkReceiverWork=new NetworkReceiverCache()};
         var network=new TransferNetworkInput {PlywoodProfileId=PlywoodCatalog.Default.Id,PlywoodDeflectionDenominator=350,PlywoodSheetLengthMm=2440,UpperSpacingMm=305,
-            BeamSpacingsMm=new[] {305.0,305},SlabSpacingsMm=new[] {488.0},CrossingSpacingsMm=new double[0],
-            Beams=Enumerable.Range(0,2).Select(i=>new TransferBeamRow {WidthMm=800,DepthMm=800,BottomElevationMm=-800}).ToArray(),Bays=new[] {new TransferBayRow {WidthMm=2125,ThicknessMm=200}}};
+            BeamSpacingsMm=new[] {305.0,305,305},SlabSpacingsMm=new[] {488.0,488},CrossingSpacingsMm=new double[0],
+            Beams=Enumerable.Range(0,3).Select(i=>new TransferBeamRow {WidthMm=800,DepthMm=800,BottomElevationMm=-800}).ToArray(),Bays=Enumerable.Range(0,2).Select(i=>new TransferBayRow {WidthMm=2125,ThicknessMm=200}).ToArray()};
         var method=typeof(TransferNetworkOptimizer).GetMethod("Solve",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
         double setback=362.5;
         Func<TowerLayout,TowerLayout> solve=previous=>
@@ -80,6 +80,11 @@ internal static class CrossingSearchTests
         setback+=1e-10;solve(null);Check(common.Trace.Count(BeamSearchCounter.NetworkSolves)>solves,"receiver cache does not round support coordinates");setback=362.5;
         network.BeamSpacingsMm[1]=350;
         Check(ReferenceEquals(original,solve(null)),"unrelated beam pitch retains the exact local receiver result");
+        network.SlabSpacingsMm[1]=407;solves=common.Trace.Count(BeamSearchCounter.NetworkSolves);
+        var remapped=solve(null);
+        Check(remapped!=null && common.Trace.Count(BeamSearchCounter.NetworkSolves)==solves,"remote slab pitch reuses the unchanged local geometry search");
+        Check(!remapped.Transfer.SharedSlabRowsMm.SequenceEqual(original.Transfer.SharedSlabRowsMm)
+            && remapped.Transfer.RowsMm.SequenceEqual(original.Transfer.RowsMm),"cache recheck refreshes global slab-source IDs while retaining correct local rows");
         network.BeamSpacingsMm[0]=275;network.UpperSpacingMm=275;
         var warm=solve(original);Check(warm!=null && warm.PositionsMm.SequenceEqual(original.PositionsMm),"new spacing can reuse the old support arrangement after full reanalysis");
         Check(warm.Transfer.EnteredUpperSpacingMm==275 && !warm.Transfer.RowsMm.SequenceEqual(original.Transfer.RowsMm),"warm recheck rebuilds actual rows and spacing metadata");

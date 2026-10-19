@@ -941,6 +941,10 @@ namespace EngineeringDashboard
             var t=input.TransferredSlab;t.Validate(input);
             if(previous==null || previous.PrimaryMaterial!=input.PrimaryMaterial || previous.LengthMm!=input.LengthMm
                 || previous.LegCount>input.NetworkLegCeiling || previous.PositionsMm.Length<input.EngineerMinimumStations)return null;
+            int previousCount=t.EngineerReceiverCount;
+            try
+            {
+            t.EngineerReceiverCount=previous.Transfer.EngineerReceiverCount;
             var lengths=previous.StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray();
             if(!Covers(input).Any(c=>c.SequenceEqual(lengths)))return null;
             double covered=lengths.Sum(),edge=(input.LengthMm-covered)/2,rowCoverage=t.FixedCoveredLengthMm??covered;
@@ -953,7 +957,6 @@ namespace EngineeringDashboard
             double first=(rowCoverage-(count-1)*t.RowGapMm)/2+(input.LengthMm-rowCoverage)/2-edge;
             var grid=BuildRowGrid(input,covered,rowCoverage,first,count,t.FixedRowPhaseMm??0,edge);
             if(grid==null || ConflictingRow(geometry,grid.Rows)>0)return null;
-            t.EngineerReceiverCount=previous.Transfer.EngineerReceiverCount;
             var shared=input.ReuseSearchWork ? t.SharedSearchWork : null;
             foreach(var cross in CrossOptions(input,previous.WidthMm,t.UpperSpacingMm))
             {
@@ -964,6 +967,8 @@ namespace EngineeringDashboard
                 return result;
             }
             return null;
+            }
+            finally{t.EngineerReceiverCount=previousCount;}
         }
         private static TowerLayout OffsetReceiver(TowerInput input,TowerLayout layout)
         {
