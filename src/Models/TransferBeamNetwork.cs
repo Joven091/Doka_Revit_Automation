@@ -26,7 +26,7 @@ namespace EngineeringDashboard
             internal TowerSearchDiagnostics Diagnostics;
             internal double[] RowRegistry;
         }
-        private readonly TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Entry> entries=new TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Entry>(4096);
+        private readonly TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Entry> entries=new TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Entry>(8192);
         internal bool Get(ReceiverSolveKey key,out Entry value){lock(entries)return entries.TryGetValue(key,out value);}
         internal void Store(ReceiverSolveKey key,Entry value){lock(entries)entries.Store(key,value);}
     }
