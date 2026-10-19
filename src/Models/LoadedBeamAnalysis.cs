@@ -135,7 +135,7 @@ namespace EngineeringDashboard
             if (!Finite(lengthMm) || lengthMm <= 0 || !Finite(ei) || ei <= 0 || supportMm == null || supportMm.Length < 2
                 || supportMm.Any(v => !Finite(v) || v < 0 || v > lengthMm) || supportMm.Distinct().Count() != supportMm.Length
                 || !new[] { 500, 350, 270 }.Contains(denominator)) throw new ArgumentException("Invalid stock/support geometry or deflection criterion.");
-            uniform = uniform ?? new BeamDistributedLoad[0]; points = points ?? new BeamPointLoad[0];
+            uniform = uniform ?? new BeamDistributedLoad[0]; points = points ?? Array.Empty<BeamPointLoad>();
             if (uniform.Any(v => v == null || !Finite(v.StartMm) || !Finite(v.EndMm) || v.StartMm < 0 || v.EndMm > lengthMm || v.EndMm <= v.StartMm || !Finite(v.KnPerM) || !allowSigned && v.KnPerM < 0)
                 || points.Any(v => v == null || !Finite(v.PositionMm) || v.PositionMm < 0 || v.PositionMm > lengthMm || !Finite(v.Kn) || !allowSigned && v.Kn < 0)) throw new ArgumentException("Invalid beam loads.");
             if(banded && supportMm.Length==2 && Math.Abs(supportMm[1]-supportMm[0])>1e-4)
@@ -165,12 +165,10 @@ namespace EngineeringDashboard
             {
                 double l=(nodes[e+1]-nodes[e])/1000,q=uniform.Where(v=>v.StartMm<(nodes[e]+nodes[e+1])/2 && v.EndMm>(nodes[e]+nodes[e+1])/2).Sum(v=>v.KnPerM),c=ei/(l*l*l);
                 var ke=k==null ? null : new double[,] {{12,6*l,-12,6*l},{6*l,4*l*l,-6*l,2*l*l},{-12,-6*l,12,-6*l},{6*l,2*l*l,-6*l,4*l*l}};
-                var fe=new[] {q*l/2,q*l*l/12,q*l/2,-q*l*l/12};
-                for(int i=0;i<4;i++)
-                {
-                    f[2*e+i]+=fe[i];
-                    if(k!=null)for(int j=0;j<4;j++)k[2*e+i,banded ? j-i+3 : 2*e+j]+=c*ke[i,j];
-                }
+                f[2*e]+=q*l/2;f[2*e+1]+=q*l*l/12;
+                f[2*e+2]+=q*l/2;f[2*e+3]+=-q*l*l/12;
+                if(k!=null)for(int i=0;i<4;i++)for(int j=0;j<4;j++)
+                    k[2*e+i,banded ? j-i+3 : 2*e+j]+=c*ke[i,j];
             }
             for(int i=0;i<points.Length;i++)f[pointDof[i]]+=points[i].Kn;
             var originalF=(double[])f.Clone();
@@ -210,7 +208,7 @@ namespace EngineeringDashboard
         private static LoadedBeamAnalysis FinishAnalysis(LoadedBeamAnalysis result,double lengthMm,double[] supports,int denominator,double reactionCapacity,bool rejectFailedPrimary,bool ignoreUplift,bool pointOnly,bool fastRoots)
         {
             if (Math.Abs(result.Reactions.Sum() - result.TotalLoadKn) > 1e-6 * Math.Max(1, result.TotalLoadKn)) throw new ArgumentException("Beam load equilibrium failed.");
-            if(rejectFailedPrimary && (result.MomentKnM>TowerOptimizer.PairMoment+1e-8 || result.ShearKn>TowerOptimizer.PairShear+1e-8 || result.Reactions.Any(r=>(!ignoreUplift && r< -1e-7) || r>reactionCapacity+1e-8)))return result;
+            if(rejectFailedPrimary && (result.MomentKnM>TowerOptimizer.PairMoment*(1+1e-8) || result.ShearKn>TowerOptimizer.PairShear*(1+1e-8) || result.Reactions.Any(r=>(!ignoreUplift && r< -1e-7) || r>reactionCapacity+1e-8)))return result;
             for(int index=0;index<result.elements.Count;index++)
             {
                 var e=result.elements[index];double l=e.L;

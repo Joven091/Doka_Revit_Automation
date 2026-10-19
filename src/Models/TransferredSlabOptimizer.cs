@@ -12,7 +12,7 @@ namespace EngineeringDashboard
         internal TransferredSlabInput Copy()=>(TransferredSlabInput)MemberwiseClone();
         public double BeamWidthMm, BeamLineLoadKnM, UpperSpacingMm;
         // Point reactions from slab-bearing ledgers, per metre along the crossing span.
-        internal BeamPointLoad[] BeamEdgeLoadsKnM=new BeamPointLoad[0];
+        internal BeamPointLoad[] BeamEdgeLoadsKnM=Array.Empty<BeamPointLoad>();
         internal double TotalBeamLineLoadKnM=>BeamLineLoadKnM+BeamEdgeLoadsKnM.Sum(p=>p.Kn);
         internal double LocalRowGapMm;
         internal double RowGapMm=>LocalRowGapMm>0 ? LocalRowGapMm : UpperSpacingMm;
@@ -450,7 +450,7 @@ namespace EngineeringDashboard
                 }
             }
             internal PrimaryKey(double length,double[] supports,BeamDistributedLoad[] uniform)
-                :this(length,supports,uniform,new BeamPointLoad[0]) {}
+                :this(length,supports,uniform,Array.Empty<BeamPointLoad>()) {}
             internal PrimaryKey(double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,bool deferred=false)
                 :this(length,supports,uniform.SelectMany(q=>new[] {q.StartMm,q.EndMm}).Concat(points.Select(p=>p.PositionMm)).ToArray(),uniform.SelectMany(q=>new[] {q.KnPerM,q.KnPerM}).Concat(points.Select(p=>p.Kn)).ToArray(),uniform.Length,deferred) {}
             public override int GetHashCode()=>hash;
@@ -477,7 +477,7 @@ namespace EngineeringDashboard
         internal sealed class TransverseKey : IEquatable<TransverseKey>
         {
             private readonly double[] values;private readonly int hash;
-            internal TransverseKey(double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool signed=false)
+            internal TransverseKey(double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool signed=false,bool rejectResolvedPrimary=false)
             {
                 int uniforms=uniform?.Length??0,pointCount=points?.Length??0;
                 values=new double[7+supports.Length+uniforms*3+pointCount*2];int at=0;
@@ -517,11 +517,12 @@ namespace EngineeringDashboard
             internal PrimaryCheck Get(PrimaryKey key)=>responses.TryGetValue(key,out var check) ? check : null;
             internal void Store(PrimaryKey key,PrimaryCheck check)=>responses.Store(key,check);
         }
-        internal static LoadedBeamAnalysis AnalyzeTransverse(TowerInput input,BeamSearchCounter counter,double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool signed=false)
+        internal static LoadedBeamAnalysis AnalyzeTransverse(TowerInput input,BeamSearchCounter counter,double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,double ei,int denominator,bool signed=false,bool rejectResolvedPrimary=false)
         {
             using(var hot=input.Trace?.Hot(counter==BeamSearchCounter.PrimaryAnalyses ? BeamHotStage.PrimaryResponse : BeamHotStage.TransverseResponse))
             {
             input.Trace?.CheckCancellation();
+            bool reject=rejectResolvedPrimary && counter==BeamSearchCounter.PrimaryAnalyses && input.StagePrimaryChecks && !input.Primary.IsWS10;
             var shared=input.ReuseSearchWork && input.ReuseTransverseNumerics ? input.NetworkNumerics??input.TransferredSlab?.SharedSearchWork : null;
             var key=shared==null ? null : new TransverseKey(length,supports,uniform,points,ei,denominator,input.IgnoreUplift || signed);
             var response=key==null ? null : shared.GetTransverse(key);
@@ -529,19 +530,21 @@ namespace EngineeringDashboard
             input.Trace?.Increment(counter);
             using(input.Trace?.Measure(BeamSearchStage.TransverseAnalysis))
             {
-                // Crossing rechecks have several UDL zones. Retain the exact
-                // response cache above and also reuse their stiffness factorization
-                // when only the load magnitudes change. No staged rejection here:
-                // the returned analysis must include every deflection check.
-                if(counter==BeamSearchCounter.PrimaryAnalyses && input.OptimizePrimaryResponses && input.ReuseNetworkNumerics && shared!=null)
+                // Only fully resolved H20 checks may stop after another check
+                // proves rejection. Ordinary callers and every accepted member
+                // retain a complete response; partial failures never enter the
+                // shared numerical response cache below.
+                bool reuseMatrix=counter==BeamSearchCounter.PrimaryAnalyses && input.OptimizePrimaryResponses && input.ReuseNetworkNumerics && shared!=null;
+                if(reuseMatrix || reject)
                 {
-                    long before=shared.Matrix.Hits;
-                    response=LoadedBeamAnalysis.AnalyzeCombinedCached(length,supports,uniform,points,ei,denominator,shared.Matrix,allowSignedLoads:input.IgnoreUplift || signed);
-                    if(shared.Matrix.Hits>before)input.Trace?.Increment(BeamSearchCounter.PrimaryMatrixCacheHits);
+                    var matrix=reuseMatrix ? shared.Matrix : null;long before=matrix?.Hits??0;
+                    response=LoadedBeamAnalysis.AnalyzeCombinedCached(length,supports,uniform,points,ei,denominator,matrix,input.LegCapacityKn,reject,input.IgnoreUplift,allowSignedLoads:input.IgnoreUplift || signed);
+                    if(matrix!=null && matrix.Hits>before)input.Trace?.Increment(BeamSearchCounter.PrimaryMatrixCacheHits);
                 }
                 else response=input.IgnoreUplift || signed ? LoadedBeamAnalysis.AnalyzeSigned(length,supports,uniform,points,ei,denominator) : LoadedBeamAnalysis.Analyze(length,supports,uniform,points,ei,denominator);
             }
-            if(key!=null)shared.StoreTransverse(key,response);
+            if(!response.DeflectionEvaluated)input.Trace?.Increment(BeamSearchCounter.PrimaryDeflectionSkipped);
+            if(key!=null && response.DeflectionEvaluated)shared.StoreTransverse(key,response);
             return response;
             }
         }
@@ -1659,7 +1662,7 @@ namespace EngineeringDashboard
                     var uniform=loadData.Uniform;
                     if(uniform==null) {input.Diagnostics?.Geometry(input.DiagnosticScope+"primary distributed uplift","Primary UDL has an upward resultant within a loaded interval.","Review transverse bearings and asymmetric slab/crossing loads.");return null;}
                     input.Trace?.CheckCancellation();
-                    var points=new BeamPointLoad[0];
+                    var points=Array.Empty<BeamPointLoad>();
                     var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,loadData.Positions,loadData.Forces,uniform.Length,input.DeferCrossingChecks);
                     PrimaryCheck check;
                     if(primaryCache==null || !primaryCache.TryGetValue(key,out check))
@@ -1709,7 +1712,7 @@ namespace EngineeringDashboard
             // Ranking uses the identical member utilization arithmetic. Preserve strict
             // original-order ties; only candidates outside the economic bound are deferred.
             var upper=new List<TransferMember>();
-            foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null)) upper.Add(new TransferMember {H20Count=1,Name=u==cross.Left ? "Upper left" : "Upper right",LoadCase="Slab · governing row",StartMm=u.Edge,LengthMm=u.Stock,SupportsMm=new[] {u.Foot-u.Edge,u.Bay-u.OtherFoot-u.Edge},Points=new BeamPointLoad[0],Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=u.Stock,KnPerM=u.Load*Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000)}},Analysis=u.Analysis.Scale(Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000))});
+            foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null)) upper.Add(new TransferMember {H20Count=1,Name=u==cross.Left ? "Upper left" : "Upper right",LoadCase="Slab · governing row",StartMm=u.Edge,LengthMm=u.Stock,SupportsMm=new[] {u.Foot-u.Edge,u.Bay-u.OtherFoot-u.Edge},Points=Array.Empty<BeamPointLoad>(),Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=u.Stock,KnPerM=u.Load*Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000)}},Analysis=u.Analysis.Scale(Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000))});
             if(!input.EngineerSearch && input.TransferredSlab.IsNetwork && incumbent!=null && Economy(g,cross,grid,input)>Economy(incumbent)+.01)
             {input.Trace?.Increment(BeamSearchCounter.TransferLayoutsDeferred);return null;}
             input.Trace?.Increment(BeamSearchCounter.TransferLayoutsBuilt);
@@ -1768,7 +1771,7 @@ namespace EngineeringDashboard
                     var uniform=loadData.Uniform;
                     if(uniform==null) {input.Diagnostics?.Geometry(input.DiagnosticScope+"primary distributed uplift","Primary UDL has an upward resultant within a loaded interval.","Review transverse bearings and asymmetric slab/crossing loads.");return null;}
                     input.Trace?.CheckCancellation();
-                    var points=new BeamPointLoad[0];
+                    var points=Array.Empty<BeamPointLoad>();
                     var key=primaryCache==null ? null : new PrimaryKey(stock.StockLengthMm,supports,loadData.Positions,loadData.Forces,uniform.Length,input.DeferCrossingChecks);
                     PrimaryCheck check;
                     if(primaryCache==null || !primaryCache.TryGetValue(key,out check))
@@ -1807,7 +1810,7 @@ namespace EngineeringDashboard
                 pieces[i].GoverningDeflectionMm=governing.DeflectionUtilization*pieces[i].GoverningDeflectionLimitMm;
             }
             var upper=new List<TransferMember>();
-            foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null)) upper.Add(new TransferMember {H20Count=1,Name=u==cross.Left ? "Upper left" : "Upper right",LoadCase="Slab · governing row",StartMm=u.Edge,LengthMm=u.Stock,SupportsMm=new[] {u.Foot-u.Edge,u.Bay-u.OtherFoot-u.Edge},Points=new BeamPointLoad[0],Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=u.Stock,KnPerM=u.Load*Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000)}},Analysis=u.Analysis.Scale(Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000))});
+            foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null)) upper.Add(new TransferMember {H20Count=1,Name=u==cross.Left ? "Upper left" : "Upper right",LoadCase="Slab · governing row",StartMm=u.Edge,LengthMm=u.Stock,SupportsMm=new[] {u.Foot-u.Edge,u.Bay-u.OtherFoot-u.Edge},Points=Array.Empty<BeamPointLoad>(),Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=u.Stock,KnPerM=u.Load*Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000)}},Analysis=u.Analysis.Scale(Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000))});
             var transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerNetwork==null ? 0 : input.TransferredSlab.EngineerReceiverCount,UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=SelectColumnCases(input,cross,edge),LegacyColumnSupportLoads=input.EngineerPlan?.UseDesignZones==true ? SelectLegacyColumnCases(input,cross,edge) : null,CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,SharedSlabRowsMm=grid.SharedSlabRowsMm,SlabSourceRowIndices=grid.SlabSourceRowIndices,LeftSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.LeftSourceScales,RightSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.RightSourceScales,HasCustomPlywoodJoints=grid.Adjusted,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
                 LeftUpperStockMm=cross.Left?.Stock??0,RightUpperStockMm=cross.Right?.Stock??0,LeftUpperCustom=cross.Left?.Custom??false,RightUpperCustom=cross.Right?.Custom??false,LeftUpperEdgeMm=cross.Left?.Edge??0,RightUpperEdgeMm=cross.Right?.Edge??0,
                 LeftFootReactionKn=(cross.Left?.Analysis.Reactions[0]??0)*ls.Max(),RightFootReactionKn=(cross.Right?.Analysis.Reactions[0]??0)*rs.Max(),

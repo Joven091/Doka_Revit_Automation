@@ -411,7 +411,7 @@ namespace EngineeringDashboard
                     // As for slab H20s, only the area above the stock loads the H20.
                     // The remaining strip loads its own shutter on the receiving secondary.
                     var q=new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock,KnPerM=r.Input.AreaLoad(c.DepthMm)*(hi-lo)/1000+ledgerRows[k]}};
-                    var points=new BeamPointLoad[0];
+                    var points=Array.Empty<BeamPointLoad>();
                     var m=new TransferMember {Name=$"X{index+1} H20 {k+1}",LoadCase="Cross concrete + construction/formwork",H20Count=1,StartMm=face+edge,LengthMm=stock,SupportsMm=new[] {near-edge,span-far-edge},Uniform=q,Points=points};
                     m.Analysis=LoadedBeamAnalysis.Analyze(stock,m.SupportsMm,q,points,TowerOptimizer.PairEI/2,common.DeflectionDenominator);
                     if(!Pass(m,common,$"Cross X{index+1}; H20 {k+1}")) {valid=false;break;}
@@ -742,7 +742,7 @@ namespace EngineeringDashboard
                         if(!passing)continue;
                         // As in the existing end-strip model, distribute the full load on
                         // centred covered concrete, conserving force and its exact centroid.
-                        var primary=Enumerable.Range(0,2).Select(line=>new TransferMember {PrimaryMaterial=common.PrimaryMaterial,Name=$"P1 {(line==0 ? "L" : "R")}",H20Count=2,StartMm=start,LengthMm=stock,SupportsMm=positions.Select(x=>x-start).ToArray(),Points=new BeamPointLoad[0],Uniform=new[] {new BeamDistributedLoad {StartMm=edge-start,EndMm=span-edge-start,KnPerM=unit.Analysis.Reactions[line]*span/(span-2*edge)}}}).ToArray();
+                        var primary=Enumerable.Range(0,2).Select(line=>new TransferMember {PrimaryMaterial=common.PrimaryMaterial,Name=$"P1 {(line==0 ? "L" : "R")}",H20Count=2,StartMm=start,LengthMm=stock,SupportsMm=positions.Select(x=>x-start).ToArray(),Points=Array.Empty<BeamPointLoad>(),Uniform=new[] {new BeamDistributedLoad {StartMm=edge-start,EndMm=span-edge-start,KnPerM=unit.Analysis.Reactions[line]*span/(span-2*edge)}}}).ToArray();
                         l.Transfer=new TransferredSlabResult {RowsMm=rows,TributaryWidthsMm=tributaries,EnteredUpperSpacingMm=spacing,LowerStockStartMm=lowerStart,LowerStockLengthMm=lowerStock,LowerCustom=!common.StockLengthsMm.Contains(lowerStock),PrimaryCases=new[] {primary},LowerCases=new[] {lower},UpperMembers=new TransferMember[0],CaseNames=new[] {"Cross concrete + construction/formwork"},BeamLoadKn=q*span/1000};
                         var result=FinishDedicated(common,r,index,face,offset,alongSpan,l,input,out failure,Math.Max(0,-start),Math.Max(0,start+stock-span),allowance:allowance);
                         if(result!=null && Clash(result.Solids,obstacles)==null)return result;
@@ -1087,15 +1087,16 @@ namespace EngineeringDashboard
             common.Trace?.CrossingRejected(message);
             common.Diagnostics?.Geometry("cross support",message,"Review elevations, cross position, stock availability, bearing/end allowances and tower geometry.",blocker:true);
         }
-        private static TransferMember Analyze(TransferMember source,BeamPointLoad[] points,BeamDistributedLoad[] uniform,TowerInput common,string stage)
+        private static TransferMember Analyze(TransferMember source,BeamPointLoad[] points,BeamDistributedLoad[] uniform,TowerInput common,string stage,bool resolvedPrimary=false)
         {
             LoadedBeamAnalysis analysis;var work=common.NetworkNumerics??common.TransferredSlab?.SharedSearchWork;
             if(source.IsPrimary && common.OptimizePrimaryResponses && common.ReuseSearchWork && common.ReuseNetworkNumerics && work!=null && points.Length==0 && uniform.Length==1 && uniform[0].StartMm==0 && uniform[0].EndMm==source.LengthMm && uniform[0].KnPerM>=0)
             {
-                var check=common.CopyForSearch();check.PrimaryMaterial=source.PrimaryMaterial;check.StagePrimaryChecks=false;
+                var check=common.CopyForSearch();check.PrimaryMaterial=source.PrimaryMaterial;check.StagePrimaryChecks=resolvedPrimary && common.LocalNetworkSearch && common.StagePrimaryChecks;
+                if(resolvedPrimary)check.DeferCrossingChecks=false;
                 analysis=TransferredSlabOptimizer.AnalyzePrimary(check,source.LengthMm,source.SupportsMm,uniform,points,work.Matrix,work);
             }
-            else analysis=TransferredSlabOptimizer.AnalyzeTransverse(common,source.IsPrimary ? BeamSearchCounter.PrimaryAnalyses : BeamSearchCounter.LowerAnalyses,source.LengthMm,source.SupportsMm,uniform,points,source.EI,common.DeflectionDenominator,signed:true);
+            else analysis=TransferredSlabOptimizer.AnalyzeTransverse(common,source.IsPrimary ? BeamSearchCounter.PrimaryAnalyses : BeamSearchCounter.LowerAnalyses,source.LengthMm,source.SupportsMm,uniform,points,source.EI,common.DeflectionDenominator,signed:true,rejectResolvedPrimary:resolvedPrimary && common.LocalNetworkSearch && !source.IsWS10);
             return new TransferMember {PrimaryMaterial=source.PrimaryMaterial,Name=source.Name,LoadCase=stage,StartMm=source.StartMm,LengthMm=source.LengthMm,H20Count=source.H20Count,PrimarySelfWeightKnM=source.PrimarySelfWeightKnM,SupportsMm=source.SupportsMm,Points=points,Uniform=uniform,LegacyPrimaryUniform=source.LegacyPrimaryUniform,Analysis=analysis};
         }
         private static BeamDistributedLoad[] PrimaryIncrement(TransferNetworkResult r,int beam,TransferMember p,int line,IEnumerable<CrossBeamSupportResult> supports,TowerInput common)
@@ -1213,6 +1214,14 @@ namespace EngineeringDashboard
             var second=narrow==null ? (Func<TransferredSlabOptimizer.Geometry,double,bool>)((g,e)=>false) : PrepareRecheck(common,network,beam,probe,narrow);
             return (g,e)=>first(g,e) || second(g,e);
         }
+        private struct ResolvedLoadKey : IEquatable<ResolvedLoadKey>
+        {
+            internal readonly double Start,Length;internal readonly int Line;
+            internal ResolvedLoadKey(double start,double length,int line){Start=start;Length=length;Line=line;}
+            public bool Equals(ResolvedLoadKey other)=>Start==other.Start && Length==other.Length && Line==other.Line;
+            public override bool Equals(object other)=>other is ResolvedLoadKey && Equals((ResolvedLoadKey)other);
+            public override int GetHashCode(){unchecked{return (Start.GetHashCode()*31+Length.GetHashCode())*31+Line;}}
+        }
         private static Func<TransferredSlabOptimizer.Geometry,double,bool> PrepareRecheck(TowerInput common,TransferNetworkInput network,int beam,TowerLayout probe,CrossBeamSupportResult[] supports)
         {
             if(supports.Length==0)return (g,e)=>true;
@@ -1220,7 +1229,7 @@ namespace EngineeringDashboard
             if(!Recheck(common,local,new[] {probe},supports,lowerOnly:true))return (g,e)=>false;
             var plan=probe.Transfer.PrimaryPlan.Resolve(common,local,0,supports);
             if(plan==null)return (g,e)=>false;
-            var loads=new Dictionary<Tuple<double,double,int>,Tuple<BeamDistributedLoad[],double[],double[]>>();
+            var loads=new Dictionary<ResolvedLoadKey,Tuple<BeamDistributedLoad[],double[],double[]>>();
             // A check belongs to this resolved plan, material, criterion and leg limit.
             // No load rounding or acceptance decision is shared between different plans.
             var responses=new TransferredSlabOptimizer.ResponseCache<TransferredSlabOptimizer.PrimaryKey,bool>(4096);
@@ -1231,10 +1240,10 @@ namespace EngineeringDashboard
                 for(int run=0;run<geometry.Stock.Length;run++)for(int line=0;line<2;line++)
                 {
                     common.Trace?.CheckCancellation();var stock=geometry.Stock[run];
-                    var loadKey=Tuple.Create(stock.StartMm+edge,stock.StockLengthMm,line);
+                    var loadKey=new ResolvedLoadKey(stock.StartMm+edge,stock.StockLengthMm,line);
                     if(!loads.TryGetValue(loadKey,out var data))
                     {
-                        var clipped=plan.Loads(loadKey.Item1,stock.StockLengthMm,line,selfWeight:common.Primary.SelfWeightKnM(stock.StockLengthMm));
+                        var clipped=plan.Loads(loadKey.Start,stock.StockLengthMm,line,selfWeight:common.Primary.SelfWeightKnM(stock.StockLengthMm));
                         loads[loadKey]=data=Tuple.Create(clipped,clipped.SelectMany(q=>new[] {q.StartMm,q.EndMm}).ToArray(),clipped.SelectMany(q=>new[] {q.KnPerM,q.KnPerM}).ToArray());
                     }
                     var uniform=data.Item1;
@@ -1259,8 +1268,8 @@ namespace EngineeringDashboard
                     string name="P"+(run+1)+(line==0 ? " L" : " R");
                     if(common.OptimizeCrossingSearch && !PrimaryForcesFit(common,stock.StockLengthMm,geometry.MemberSupports[run],uniform,name))
                     {responses.Store(key,false);return false;}
-                    var source=new TransferMember {PrimaryMaterial=common.PrimaryMaterial,PrimarySelfWeightKnM=common.Primary.SelfWeightKnM(stock.StockLengthMm),Name=name,StartMm=loadKey.Item1,LengthMm=stock.StockLengthMm,H20Count=2,SupportsMm=geometry.MemberSupports[run]};
-                    var member=Analyze(source,new BeamPointLoad[0],uniform,common,"Crossing resolved primary");
+                    var source=new TransferMember {PrimaryMaterial=common.PrimaryMaterial,PrimarySelfWeightKnM=common.Primary.SelfWeightKnM(stock.StockLengthMm),Name=name,StartMm=loadKey.Start,LengthMm=stock.StockLengthMm,H20Count=2,SupportsMm=geometry.MemberSupports[run]};
+                    var member=Analyze(source,Array.Empty<BeamPointLoad>(),uniform,common,"Crossing resolved primary",resolvedPrimary:true);
                     passed=Pass(member,common,"Crossing resolved primary");
                     common.Diagnostics?.Legs(member.Analysis.Reactions,common.LegCapacityKn,$"B{beam+1} cross stage legs","Crossing resolved primary");
                     passed &= member.Analysis.Reactions.Max()<=common.LegCapacityKn+1e-8;
@@ -1382,14 +1391,14 @@ namespace EngineeringDashboard
                         var increment=direct ? new BeamDistributedLoad[0] : PrimaryIncrement(r,beam,original,line,active,common);
                         if(increment==null){Reject(common,"Crossing resultant cannot be represented by a flat UDL inside its physical footprint.");return false;}
                         var uniform=direct ? resolvedPlan.Loads(original.StartMm,original.LengthMm,line,selfWeight:original.PrimarySelfWeightKnM) : baseline.Concat(increment).ToArray();
-                        var m=EngineerPrimaryPlan.SameLoads(original.Uniform,uniform) ? StageCopy(original,name) : Analyze(original,new BeamPointLoad[0],uniform,common,name);primary[run+line*runs]=m;
+                        var m=EngineerPrimaryPlan.SameLoads(original.Uniform,uniform) ? StageCopy(original,name) : Analyze(original,Array.Empty<BeamPointLoad>(),uniform,common,name);primary[run+line*runs]=m;
                         if(!Pass(m,common,name))return false;
                         common.Diagnostics?.Legs(m.Analysis.Reactions,common.LegCapacityKn,$"B{beam+1} cross stage legs",name);
                         if(m.Analysis.Reactions.Max()>common.LegCapacityKn+1e-8)return false;
                         if(conservative && mask==1 && !common.FullLoadingOnly)
                         {
-                            var baseMember=Analyze(original,new BeamPointLoad[0],baseline,common,name);
-                            var increments=active.Select(s=>Analyze(original,new BeamPointLoad[0],PrimaryIncrement(r,beam,original,line,new[] {s},common),common,"increment")).ToArray();
+                            var baseMember=Analyze(original,Array.Empty<BeamPointLoad>(),baseline,common,name);
+                            var increments=active.Select(s=>Analyze(original,Array.Empty<BeamPointLoad>(),PrimaryIncrement(r,beam,original,line,new[] {s},common),common,"increment")).ToArray();
                             if(!Envelope(common,baseMember,increments,common.LegCapacityKn,m))return false;
                             for(int j=0;j<m.Analysis.Reactions.Length;j++)
                             {

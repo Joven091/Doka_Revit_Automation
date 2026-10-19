@@ -233,7 +233,7 @@ namespace EngineeringDashboard
         internal bool OptimizeCrossingSearch=true;
         internal bool FirstCompleteNetworkOnly;
         internal NetworkSeedCompletion NetworkSeedCompletion;
-        internal bool ReuseReceiverSearches=true,WarmStartNetwork=true;
+        internal bool ReuseReceiverSearches=true,WarmStartNetwork=true,LocalNetworkSearch=true;
         internal NetworkReceiverCache NetworkReceiverWork;
         internal NetworkPrefixCache NetworkPrefixWork;
         internal TransferNetworkResult NetworkWarmStart;
@@ -306,6 +306,7 @@ namespace EngineeringDashboard
     }
     public sealed class TowerLayout
     {
+        internal ReceiverLayoutKey ReceiverIdentity;
         internal bool EngineerSearch;
         public double SearchAssumedLegKn {get;internal set;}
         public int SearchInitialLegsPerLine {get;internal set;}

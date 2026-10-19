@@ -30,7 +30,7 @@ internal static class CrossingSearchTests
         catch(TowerOptimizationException ex){rejected=ex.Details.Contains("X2") && ex.Details.Contains("1300") && ex.Details.Contains("1475");}
         Check(rejected,"early failure identifies actual stock/bracing interval");
         Check(input.Trace.Count(BeamSearchCounter.PrimaryAnalyses)==0 && input.Trace.Count(BeamSearchCounter.CoveragePlans)==0,"impossible catalogue pass needs no primary search");
-        GeometryKeys();Frames();StockStarts();ForceBounds();ZonedPrimaryReuse();ReceiverSearchReuse();RecoveryParity();Parity();Console.WriteLine("Passed "+checks+" crossing search checks.");
+        GeometryKeys();Frames();StockStarts();ForceBounds();ZonedPrimaryReuse();ResolvedRejection();ReceiverSearchReuse();LocalDependencyKeys();RecoveryParity();Parity();Console.WriteLine("Passed "+checks+" crossing search checks.");
     }
     static void RecoveryParity()
     {
@@ -42,18 +42,41 @@ internal static class CrossingSearchTests
             BeamSpacingsMm=Enumerable.Repeat(305.0,4).ToArray(),SlabSpacingsMm=Enumerable.Repeat(488.0,3).ToArray(),CrossingSpacingsMm=Enumerable.Repeat(350.0,3).ToArray(),
             Beams=Enumerable.Range(0,4).Select(i=>new TransferBeamRow {WidthMm=800,DepthMm=800,BottomElevationMm=-800}).ToArray(),Bays=Enumerable.Range(0,3).Select(i=>new TransferBayRow {WidthMm=2200,ThicknessMm=200}).ToArray(),
             CrossingBeams=Enumerable.Range(1,3).Select(i=>new TransferCrossingBeamRow {BayNumber=i,PositionMm=1225,WidthMm=650,DepthMm=600,BottomElevationMm=-600}).ToArray()};
-        input.ReuseReceiverSearches=false;input.WarmStartNetwork=false;
+        input.ReuseReceiverSearches=false;input.WarmStartNetwork=false;input.LocalNetworkSearch=false;
         var expected=TransferNetworkOptimizer.Optimize(input,network);ControlledPerformanceTests.Validate(input,expected);
-        input.ReuseReceiverSearches=true;input.WarmStartNetwork=true;input.Trace=new BeamSearchTrace("warm spacing recovery parity");
+        input.ReuseReceiverSearches=true;input.WarmStartNetwork=true;input.LocalNetworkSearch=true;input.Trace=new BeamSearchTrace("warm spacing recovery parity");
         var actual=TransferNetworkOptimizer.Optimize(input,network);ControlledPerformanceTests.Validate(input,actual);
         Check(ControlledPerformanceTests.Fingerprint(actual)==ControlledPerformanceTests.Fingerprint(expected),"full ranking after spacing recovery retains geometry, loads and reactions");
         Check(actual.Input.BeamSpacingsMm.SequenceEqual(expected.Input.BeamSpacingsMm) && actual.Input.SlabSpacingsMm.SequenceEqual(expected.Input.SlabSpacingsMm),"warm recovery retains the same passing pitches");
         Check(input.Trace.Count(BeamSearchCounter.WarmNetworkCandidates)>0,"complete warm networks still receive all member and physical checks");
+        Func<int,int,int,double,double,double,double,bool> mayImprove=(legs,narrow,bays,brace,cant,sym,location)=>TransferNetworkOptimizer.EngineerPrefixMayImprove(actual,legs,narrow,bays,brace,cant,sym,location);
+        Check(mayImprove(actual.LegCount-2,100,100,1e6,1e6,1e6,1e6),"fewer possible legs retain a branch despite worse later criteria");
+        Check(!mayImprove(actual.LegCount+2,0,0,0,0,0,0),"proven excess legs cannot improve the incumbent");
+        Check(!mayImprove(actual.LegCount,actual.Standalone600Count+1,actual.BracedBayCount,actual.StandaloneBracePenalty,0,0,0),"proven worse narrow-tower count can be pruned");
+        Check(!mayImprove(actual.LegCount,actual.Standalone600Count,actual.BracedBayCount+1,0,0,0,0),"proven worse braced-bay count can be pruned");
+        Check(!mayImprove(actual.LegCount,actual.Standalone600Count,actual.BracedBayCount,actual.StandaloneBracePenalty+1,0,0,0),"proven worse brace preference can be pruned");
+        Check(!mayImprove(actual.LegCount,actual.Standalone600Count,actual.BracedBayCount,actual.StandaloneBracePenalty,actual.CantileverImbalanceMm+1,0,0),"proven worse cantilevers can be pruned");
+        Check(mayImprove(actual.LegCount,actual.Standalone600Count,actual.BracedBayCount,actual.StandaloneBracePenalty,actual.CantileverImbalanceMm,actual.SymmetryErrorMm,actual.BraceLocationPenalty),"equal geometry bounds retain possible timber improvements");
         var key=new CheckedPrefixKey(input,actual);Check(key.Equals(new CheckedPrefixKey(input,actual)),"identical immutable prefix is reusable");
         var prior=actual.Input.BeamSpacingsMm[0];actual.Input.BeamSpacingsMm[0]=275;
         Check(!key.Equals(new CheckedPrefixKey(input,actual)),"prefix pitch change invalidates its previous check");actual.Input.BeamSpacingsMm[0]=prior;
         var old=actual.Beams[0];actual.Beams[0]=new TowerLayout();
         Check(!key.Equals(new CheckedPrefixKey(input,actual)),"a different base receiver invalidates its prefix check");actual.Beams[0]=old;
+    }
+    static void LocalDependencyKeys()
+    {
+        var input=ControlledPerformanceTests.Input("eight-crossings");var network=input.Network;
+        input.TransferredSlab=new TransferredSlabInput {BeamWidthMm=800,BeamLineLoadKnM=35,UpperSpacingMm=305,
+            StockCovers=new[] {new[] {3300.0,3600}},SharedRowsMm=new[] {250.0,550},LeftBaselineWidthsMm=new[] {250.0,250},RightBaselineWidthsMm=new[] {250.0,250},ReceivingRowsMm=new double[0]};
+        var key=new ReceiverSolveKey(input,network,0,false);var remote=network.CrossingSpacingsMm[6];
+        network.CrossingSpacingsMm[6]=250;Check(key.Equals(new ReceiverSolveKey(input,network,0,false)),"remote crossing pitch cannot invalidate unchanged local mathematical inputs");
+        var local=network.CrossingSpacingsMm[0];network.CrossingSpacingsMm[0]=250;
+        Check(!key.Equals(new ReceiverSolveKey(input,network,0,false)),"adjacent crossing pitch invalidates its receiver");network.CrossingSpacingsMm[0]=local;network.CrossingSpacingsMm[6]=remote;
+        var identity=new ReceiverSolveKey(input,network,0,false,true);
+        input.NetworkLegCeiling=12;input.EngineerStationLimit=6;
+        Check(identity.Equals(new ReceiverSolveKey(input,network,0,false,true)),"identical solved geometry can retain identity across search-only ceilings");
+        Check(!key.Equals(new ReceiverSolveKey(input,network,0,false)),"completed receiver search still retains its exact search ceiling");
+        input.LegCapacityKn-=1;Check(!identity.Equals(new ReceiverSolveKey(input,network,0,false,true)),"capacity changes invalidate receiver identities");
     }
     static void ReceiverSearchReuse()
     {
@@ -83,6 +106,7 @@ internal static class CrossingSearchTests
         network.SlabSpacingsMm[1]=407;solves=common.Trace.Count(BeamSearchCounter.NetworkSolves);
         var remapped=solve(null);
         Check(remapped!=null && common.Trace.Count(BeamSearchCounter.NetworkSolves)==solves,"remote slab pitch reuses the unchanged local geometry search");
+        Check(original.ReceiverIdentity.Equals(remapped.ReceiverIdentity),"drawing registry rebuild retains exact local receiver identity");
         Check(!remapped.Transfer.SharedSlabRowsMm.SequenceEqual(original.Transfer.SharedSlabRowsMm)
             && remapped.Transfer.RowsMm.SequenceEqual(original.Transfer.RowsMm),"cache recheck refreshes global slab-source IDs while retaining correct local rows");
         network.BeamSpacingsMm[0]=275;network.UpperSpacingMm=275;
@@ -114,6 +138,25 @@ internal static class CrossingSearchTests
             Check(actual.Reactions.Zip(expected.Reactions,same).All(v=>v),"multi-zone primary retains each signed-load reaction");
         }
         Check(input.Trace.Count(BeamSearchCounter.PrimaryMatrixCacheHits)==79,"different zoned loads reuse the same stiffness factorization");
+    }
+    static void ResolvedRejection()
+    {
+        var input=new TowerInput {NetworkNumerics=new TransferredSlabOptimizer.SearchWorkCache(),LegCapacityKn=70,IgnoreUplift=true,Trace=new BeamSearchTrace("resolved primary staging")};
+        var supports=new[] {300.0,1600,2900,3600};
+        var loads=new[] {new BeamDistributedLoad {StartMm=0,EndMm=3200,KnPerM=100},new BeamDistributedLoad {StartMm=3200,EndMm=3900,KnPerM=180}};
+        var points=Array.Empty<BeamPointLoad>();
+        var rejected=TransferredSlabOptimizer.AnalyzeTransverse(input,BeamSearchCounter.PrimaryAnalyses,3900,supports,loads,points,input.Primary.EI,270,true,true);
+        Check(!rejected.DeflectionEvaluated && (rejected.ShearKn>22 || rejected.MomentKnM>10),"fully resolved strength failure skips deflection");
+        var complete=TransferredSlabOptimizer.AnalyzeTransverse(input,BeamSearchCounter.PrimaryAnalyses,3900,supports,loads,points,input.Primary.EI,270,true);
+        var dense=LoadedBeamAnalysis.AnalyzeDenseReference(3900,supports,loads,points,input.Primary.EI,270);
+        Check(complete.DeflectionEvaluated && Math.Abs(complete.DeflectionMm-dense.DeflectionMm)<1e-7,"partial rejection cannot poison a later complete response");
+        Check(rejected.Reactions.SequenceEqual(complete.Reactions) && rejected.MomentKnM==complete.MomentKnM && rejected.ShearKn==complete.ShearKn,"strength-first check retains exact forces and reactions");
+        var near=new[] {new BeamDistributedLoad {StartMm=0,EndMm=2450,KnPerM=80/(2.45*2.45)*(1+5e-9)}};
+        var boundary=LoadedBeamAnalysis.AnalyzeCombinedCached(2450,new[] {0.0,2450},near,points,input.Primary.EI,270,null,70,true,true);
+        Check(boundary.DeflectionEvaluated,"accepted strength tolerance cannot bypass deflection near the limit");
+        input.PrimaryMaterial=PrimaryBeamMaterial.WS10;input.NetworkNumerics=new TransferredSlabOptimizer.SearchWorkCache();
+        var waler=TransferredSlabOptimizer.AnalyzeTransverse(input,BeamSearchCounter.PrimaryAnalyses,3900,supports,loads,points,input.Primary.EI,270,true,true);
+        Check(waler.DeflectionEvaluated,"WS10 keeps its full interaction and deflection response");
     }
     static void GeometryKeys()
     {

@@ -108,6 +108,7 @@ internal static class ControlledPerformanceTests
             if(variant=="no-seed")Set(input,"SeedNetworkSearch",false);
             if(variant=="crossing-reference")Set(input,"OptimizeCrossingSearch",false);
             if(variant=="feasibility")Set(input,"FirstCompleteNetworkOnly",true);
+            if(variant=="local-reference")Set(input,"LocalNetworkSearch",false);
             if(variant=="receiver-reference"){Set(input,"ReuseReceiverSearches",false);Set(input,"WarmStartNetwork",false);}
             if(variant=="receiver-cache-only")Set(input,"WarmStartNetwork",false);
             if(variant=="no-udl-reuse")Set(input,"OptimizePrimaryResponses",false);
