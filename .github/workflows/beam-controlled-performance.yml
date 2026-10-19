@@ -39,16 +39,40 @@ jobs:
         run: |
           work/previous-version/tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --controlled-performance --model reported | Tee-Object -FilePath work/performance/reference-net48.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Compare complete layouts and calculated loads
+      - name: Compare primary designs, crossing resultants and material quantities
         shell: python
         run: |
           from pathlib import Path
-          a=Path('work/performance/optimized-net48.txt').read_text()
-          b=Path('work/performance/reference-net48.txt').read_text()
-          def fingerprint(s):
-              return s.split('FINGERPRINT BEGIN\n',1)[1].split('FINGERPRINT END',1)[0]
-          assert fingerprint(a)==fingerprint(b), 'Selected layouts or calculated forces changed'
-          print('Complete optimized/reference layout and force fingerprints match.')
+          from collections import defaultdict
+          import math
+
+          def fingerprint(path):
+              text=Path(path).read_text()
+              return text.split('FINGERPRINT BEGIN\n',1)[1].split('FINGERPRINT END',1)[0].strip().splitlines()
+          a=fingerprint('work/performance/optimized-net48.txt')
+          b=fingerprint('work/performance/reference-net48.txt')
+          # Local receiving rows intentionally differ. Preserve the agreed main-primary
+          # layouts, UDLs and reactions, while checking complete crossing resultants.
+          primary=lambda rows:[line for line in rows if line.startswith(('beam:','primary:'))]
+          assert primary(a)==primary(b), 'Main-primary layouts, loads or reactions changed'
+          quantities=lambda rows:{key:float(value) for key,value in (item.split('=') for item in rows[0].split('; '))}
+          qa,qb=quantities(a),quantities(b)
+          assert all(qa[key]<=qb[key]+1e-7 for key in ('legs','H20','timber')), 'Reference model material economy regressed'
+          def resultants(rows):
+              values=defaultdict(lambda:[0.,0.,0.])
+              for line in rows:
+                  if not line.startswith('cross:'):continue
+                  crossing,bearings=line.split('; bearings=')
+                  for bearing in bearings.split(';'):
+                      beam,x,y,force=map(float,bearing.split(','))
+                      total=values[(crossing,int(beam))]
+                      for i,value in enumerate((force,force*x/1000,force*y/1000)):total[i]+=value
+              return values
+          x,y=resultants(a),resultants(b)
+          assert x.keys()==y.keys(), 'Crossing support assignment changed'
+          # Fingerprints round individual bearings to 7 decimals before summation.
+          assert all(math.isclose(v,w,rel_tol=1e-6,abs_tol=1e-5) for key in x for v,w in zip(x[key],y[key])), 'Crossing force or moment resultants changed'
+          print('Main-primary layouts/UDLs/reactions and crossing force/moment resultants match; local-row material quantities do not increase.')
       - uses: actions/upload-artifact@v4
         if: always()
         with:
