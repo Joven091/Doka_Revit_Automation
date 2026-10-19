@@ -110,9 +110,10 @@ internal static class PrimaryUdlTests
         Check(former.ShearKn<22,"even secondary point loads can pass the arrangement rejected by UDL");
         Near(former.TotalLoadKn,failed.TotalLoadKn,"point and UDL examples have identical total loads");
         var cache=new LoadedBeamAnalysis.MatrixCache();
-        var first=LoadedBeamAnalysis.AnalyzeUniformCached(2475,supports,stock,TowerOptimizer.PairEI,270,cache);
+        var combinedSupports=new[] {475.5,1237.5,1999.5};
+        var first=LoadedBeamAnalysis.AnalyzeUniformCached(2475,combinedSupports,stock,TowerOptimizer.PairEI,270,cache);
         var half=stock.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM/2}).ToArray();
-        var second=LoadedBeamAnalysis.AnalyzeUniformCached(2475,supports,half,TowerOptimizer.PairEI,270,cache);
+        var second=LoadedBeamAnalysis.AnalyzeUniformCached(2475,combinedSupports,half,TowerOptimizer.PairEI,270,cache);
         Check(cache.Hits==1,"UDL support matrix is reused independently of intensity");
         Near(second.ShearKn,first.ShearKn/2,"cached intensity change preserves shear");
         Near(second.DeflectionMm,first.DeflectionMm/2,"cached intensity change preserves deflection");

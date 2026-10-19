@@ -66,7 +66,7 @@ internal static class NetworkFallbackTests
         var crossing=TransferNetworkOptimizer.Optimize(Common(),input);
         Check(crossing.Bays[0]==null && crossing.Schedule.Contains("X1: S1 · separate formwork design required (not calculated)"),"excluded crossing is expressly identified");
         Engineering(crossing);
-        input=Network();input.Bays[0].WidthMm=2575;
+        input=Network();input.Bays[0].WidthMm=2800;
         var noCut=TransferNetworkOptimizer.Optimize(Common(),input);
         Check(noCut.Bays[0]==null && noCut.Bays[1]!=null,"custom disabled does not silently cut an upper H20 when no catalogue length fits");
         // Full transfer remains preferred when it passes; excluded slab costs are never used to claim savings.
@@ -86,28 +86,28 @@ internal static class NetworkFallbackTests
         Console.WriteLine($"Passed {checks} network fallback checks.");
     }
 
-    private static void ReportedEngineerFallback()
+    internal static void ReportedEngineerFallback()
     {
-        // Exact 2026-10-15 report: the copied coordinated search failed full
-        // slab transfer, then a valid separate-formwork result crashed on apply.
+        // The 2026-10-15 fallback/application regression, with its slab width
+        // moved to the remaining catalogue gap under the plywood-based strip rule.
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,
             Depth=1750,Width=800,BeamLengthMm=6100,FloorHeight=3000,TowerLegCapacityKn=30,AllowCustomH20Lengths=false,
             IgnoreUplift=true,Exclude600Standalone=true,PlywoodDeflectionLimit="L/350",
             DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
         foreach(var beam in vm.NetworkBeams){beam.WidthMm=800;beam.DepthMm=1750;beam.BottomElevationMm=-1750;}
-        vm.NetworkBays[0].WidthMm=2125;vm.NetworkBays[0].ThicknessMm=200;
+        vm.NetworkBays[0].WidthMm=2800;vm.NetworkBays[0].ThicknessMm=200;
         vm.AddCrossingBeam();var cross=vm.CrossingBeams[0];cross.PositionMm=3350;cross.WidthMm=650;cross.DepthMm=1150;cross.BottomElevationMm=-1150;
         vm.OptimizeTowersAsync(false).GetAwaiter().GetResult();
         Check(vm.IsCalculationValid,vm.BuildDiagnosticReport("reported fallback regression"));
         var result=vm.NetworkResult;
         Check(result.RequiresSeparateSlabFormwork && result.Bays[0]==null,"reported slab is explicitly excluded from beam-supported formwork");
-        Check(result.SeparateSlabExplanationForBay(0).Contains("2125 mm") && result.SeparateSlabExplanationForBay(0).Contains("no permitted slab H20 length"),"copied failed search preserves the actual slab span and stock rejection");
+        Check(result.SeparateSlabExplanationForBay(0).Contains("2800 mm") && result.SeparateSlabExplanationForBay(0).Contains("no permitted slab H20 length"),"copied failed search preserves the actual slab span and stock rejection");
         Check(result.FullTransferFailureDetails.Contains("no permitted slab H20 length"),"original rejected full-transfer evidence remains available");
         var crossing=result.CrossSupports.Single(c=>c.CrossingIndex==0);
         Check(crossing.Members.Length>0,"modern X1 support remains calculated when S1 needs separate formwork");
         Near(result.SlabLoadKn,0,"separate S1 contributes no slab load to the returned design");
         Near(crossing.SlabEdgeLoadKn,0,"separate S1 contributes no slab-edge ledger loads to X1");
-        Near(crossing.LoadKn,result.Input.AreaLoad(1150)*.65*2.125,"X1 retains its complete concrete and construction load");
+        Near(crossing.LoadKn,result.Input.AreaLoad(1150)*.65*2.8,"X1 retains its complete concrete and construction load");
         var layouts=result.Beams.Concat(result.CrossSupports.Where(c=>c.Towers!=null).Select(c=>c.Towers)).ToArray();
         foreach(var beam in layouts)
         {

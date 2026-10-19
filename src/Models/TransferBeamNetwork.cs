@@ -15,23 +15,25 @@ namespace EngineeringDashboard
         public double StockLengthMm, EdgeMm, NearFootMm, FarFootMm;
         public bool IsCustomLength;
         // Custom fallback keeps edge strips closest to 200 mm, without changing primary/lower stocks.
-        public static double[] SlabLengths(double bay,double[] stocks,bool allowCustom=false)
+        public static double[] SlabLengths(double bay,double[] stocks,double maximumEndStripMm,bool allowCustom=false)
         {
-            var fitting=stocks.Where(stock=>(bay-stock)/2>=200 && (bay-stock)/2<=350).ToArray();
+            if(!TowerBeamAnalysis.Finite(maximumEndStripMm) || maximumEndStripMm<200)
+                throw new ArgumentException("The slab plywood end-strip limit must be at least 200 mm.");
+            var fitting=stocks.Where(stock=>(bay-stock)/2>=200 && (bay-stock)/2<=maximumEndStripMm).ToArray();
             if(allowCustom)
             {
-                int first=(int)Math.Ceiling(Math.Max(25,bay-700)/25),last=(int)Math.Floor(Math.Min(50000,bay-400)/25);
+                int first=(int)Math.Ceiling(Math.Max(25,bay-2*maximumEndStripMm)/25),last=(int)Math.Floor(Math.Min(50000,bay-400)/25);
                 return fitting.Concat(Enumerable.Range(first,Math.Max(0,last-first+1)).Select(x=>x*25.0)).Distinct().OrderBy(x=>x).ToArray();
             }
             if(fitting.Length>0)return fitting;
             double custom=Math.Floor((bay-400)/25)*25;
-            return custom>0 && (bay-custom)/2<=350 ? new[] {custom} : new double[0];
+            return custom>0 && (bay-custom)/2<=maximumEndStripMm ? new[] {custom} : new double[0];
         }
         public UpperTransferPlan Reverse() => new UpperTransferPlan {StockLengthMm=StockLengthMm,EdgeMm=EdgeMm,NearFootMm=FarFootMm,FarFootMm=NearFootMm,IsCustomLength=IsCustomLength};
-        public void Validate(double bay,double[] stocks,bool allowCustom=false)
+        public void Validate(double bay,double[] stocks,double maximumEndStripMm,bool allowCustom=false)
         {
-            if(new[] {StockLengthMm,EdgeMm,NearFootMm,FarFootMm}.Any(x=>!TowerBeamAnalysis.Finite(x)) || !SlabLengths(bay,stocks,allowCustom).Contains(StockLengthMm) || IsCustomLength!=!stocks.Contains(StockLengthMm)
-                || Math.Abs(bay-StockLengthMm-2*EdgeMm)>1e-7 || EdgeMm<200 || EdgeMm>350 || NearFootMm<Math.Max(250,EdgeMm+150)
+            if(new[] {StockLengthMm,EdgeMm,NearFootMm,FarFootMm}.Any(x=>!TowerBeamAnalysis.Finite(x)) || !SlabLengths(bay,stocks,maximumEndStripMm,allowCustom).Contains(StockLengthMm) || IsCustomLength!=!stocks.Contains(StockLengthMm)
+                || Math.Abs(bay-StockLengthMm-2*EdgeMm)>1e-7 || EdgeMm<200 || EdgeMm>maximumEndStripMm || NearFootMm<Math.Max(250,EdgeMm+150)
                 || FarFootMm<Math.Max(250,EdgeMm+150) || bay-NearFootMm-FarFootMm<300) throw new ArgumentException("Invalid shared upper H20 stock or foot positions.");
             if(Math.Abs(NearFootMm-FarFootMm)>1e-7)throw new ArgumentException("Slab H20 supports must have equal setbacks from both concrete faces and equal stock-end overhangs.");
         }
@@ -134,6 +136,8 @@ namespace EngineeringDashboard
         public double BeamSpacing(int beam)=>BeamSpacingsMm?[beam]??UpperSpacingMm;
         public double BaySpacing(int bay)=>SlabSpacingsMm?[bay]??UpperSpacingMm;
         public double CrossSpacing(int cross)=>CrossingSpacingsMm?[cross]??UpperSpacingMm;
+        // A closer row-spacing retry does not reduce the slab plywood's transverse allowance.
+        public double MaximumSlabEndStripMm(int bay)=>PlywoodSpacing.SlabEndStripLimitMm(AreaLoad(Bays[bay].ThicknessMm),PlywoodProfileId,PlywoodDeflectionDenominator);
         internal TransferNetworkInput WithSpacings(int steps=0,int beamCount=0)
         {
             int count=beamCount==0 ? Beams.Length : beamCount;
@@ -232,9 +236,15 @@ namespace EngineeringDashboard
         public SystemLoadingStage SystemGoverningStage=>systemGoverningStage??(systemGoverningStage=SystemLoadingStage.Governing(this));
         public SystemLoadingStage DisplayStage {get=>displayStage??SystemGoverningStage;set=>displayStage=value;}
         public double[] BeamCentresMm;
-        public double[] SlabRowsMm=>Beams[0].Transfer.SlabRowIndices==null ? Beams[0].Transfer.RowsMm : Beams[0].Transfer.SlabRowIndices.Select(i=>Beams[0].Transfer.RowsMm[i]).ToArray();
-        public int SlabBeamRow(int beam,int row)=>Beams[beam].Transfer.SlabRowIndices?[row]??row;
-        public bool SlabRowActive(int bay,int row)=>(!Input.HasIndividualSpacings || Beams[bay].Transfer.RightUpperScales[SlabBeamRow(bay,row)]>0) && !Input.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && c.BayNumber==bay+1 && Math.Abs(Beams[0].Transfer.RowsMm[SlabBeamRow(0,row)]-c.PositionMm)<c.WidthMm/2+40-1e-7);
+        public double[] SlabRowsMm=>Beams[0].Transfer.SharedSlabRowsMm??(Beams[0].Transfer.SlabRowIndices==null ? Beams[0].Transfer.RowsMm : Beams[0].Transfer.SlabRowIndices.Select(i=>Beams[0].Transfer.RowsMm[i]).ToArray());
+        public int SlabBeamRow(int beam,int row)=>Beams[beam].Transfer.SlabSourceRowIndices?[row]??Beams[beam].Transfer.SlabRowIndices?[row]??row;
+        public bool SlabRowActive(int bay,int row)
+        {
+            if(Bays[bay]==null)return false;
+            var t=Beams[bay].Transfer;int receiver=SlabBeamRow(bay,row);
+            bool active=t.RightSlabSourceScales!=null ? t.RightSlabSourceScales[row]>0 : !Input.HasIndividualSpacings || receiver>=0 && t.RightUpperScales[receiver]>0;
+            return active && !Input.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && c.BayNumber==bay+1 && Math.Abs(SlabRowsMm[row]-c.PositionMm)<c.WidthMm/2+40-1e-7);
+        }
         public int SlabRowCount(int bay)=>Bays[bay]==null ? 0 : Enumerable.Range(0,SlabRowsMm.Length).Count(r=>SlabRowActive(bay,r));
         public double SlabMovementMm, SlabLoadKn, SlabCoveredLengthMm, RowPhaseMm;
         public string FullTransferFailureDetails {get;internal set;}="";
@@ -248,6 +258,8 @@ namespace EngineeringDashboard
         public int Standalone600Count=>AllTowers.Sum(b=>b.Standalone600Count);
         public int BracedBayCount=>AllTowers.Sum(b=>b.BayCount);
         public double StandaloneBracePenalty=>AllTowers.Sum(b=>b.StandaloneBracePenalty);
+        public double CantileverImbalanceMm=>AllTowers.Sum(b=>b.CantileverImbalanceMm);
+        public double BraceLocationPenalty=>AllTowers.Sum(b=>b.BraceLocationPenalty);
         public int SeparateSlabCount=>Bays.Count(b=>b==null);
         public bool RequiresSeparateSlabFormwork=>SeparateSlabCount>0;
         public string SeparateSlabNotice=>!RequiresSeparateSlabFormwork ? "" : "Separate slab formwork required: "+string.Join(", ",Bays.Select((b,i)=>b==null ? "S"+(i+1) : null).Where(x=>x!=null))+". Its supports, timber and design are excluded from this result; these bays transfer no slab or shutter load to the calculated beams. Legacy crossing loads are excluded; dedicated cross-beam formwork is calculated separately.";
@@ -266,9 +278,9 @@ namespace EngineeringDashboard
             +(SecondarySpacingNotice.Length==0 ? "" : "\n"+SecondarySpacingNotice)
             +System.FormattableString.Invariant($"\nEconomic preference (not supplier prices): tower leg = {TowerOptimizer.TowerLegTimberEquivalentMm/1000:0.###} m timber; upper foot = {TowerOptimizer.UpperFootTimberEquivalentMm/1000:0.###} m timber. Lower score is a material-economy preference; production first ranks legs, tower grouping, brace preference and symmetry.\nBalanced stock/support patterns are protected in the bounded search; linked bays share frames. Uncovered longitudinal main-beam end-strip loads are assigned to external column-side supports; their capacity requires separate verification.\nPrimary design model: UDL derived from beam/slab loads per metre; crossing loads stay over their physical footprints. No secondary-row point loads on primaries.")
             +"\n"+string.Join("\n",Beams.Select((b,i)=>b.Transfer.PrimaryPlan==null ? $"B{i+1} primary model: {b.Transfer.PrimaryLoadBasis}" : $"B{i+1} primary model: "+b.Transfer.PrimaryPlan.SelectedSummary))
-            +"\n"+string.Join("\n",Beams.Select((b,i)=>System.FormattableString.Invariant($"B{i+1}: legs={b.LegCount}; shared frames={b.SharedFrameCount}; beam-only secondary rows={b.Transfer.BeamOnlyRowCount}; symmetry error={b.SymmetryErrorMm:0.###} mm; primary coverage={b.StockPlan.Pieces.Sum(p=>p.StockLengthMm):0.###} mm; end allowance={b.ConcreteEndOverhangMm:0.###} mm; lower H20={b.Transfer.LowerStockLengthMm:0.###} mm; secondary midpoint={b.Transfer.LowerStockStartMm+b.Transfer.LowerStockLengthMm/2:0.###} mm; standalone 600={b.Standalone600Count}; braced bays={b.BayCount}; brace preference={b.StandaloneBracePenalty:0.###} mm; beam load={b.Transfer.BeamLoadKn:0.###} kN; slab load={b.Transfer.SlabLoadKn:0.###} kN; primary runs=")+string.Join(", ",b.StockPlan.Pieces.Select(p=>p.StockLengthMm.ToString("0.###",System.Globalization.CultureInfo.InvariantCulture)))+(b.EngineerSearch ? $"; search seed={b.SearchInitialLegsPerLine} legs per line at {b.SearchAssumedLegKn:0.###} kN/leg (before final crossing allocation)" : "")))
+            +"\n"+string.Join("\n",Beams.Select((b,i)=>System.FormattableString.Invariant($"B{i+1}: legs={b.LegCount}; shared frames={b.SharedFrameCount}; beam-only secondary rows={b.Transfer.BeamOnlyRowCount}; symmetry error={b.SymmetryErrorMm:0.###} mm; primary coverage={b.StockPlan.Pieces.Sum(p=>p.StockLengthMm):0.###} mm; end allowance={b.ConcreteEndOverhangMm:0.###} mm; lower H20={b.Transfer.LowerStockLengthMm:0.###} mm; secondary midpoint={b.Transfer.LowerStockStartMm+b.Transfer.LowerStockLengthMm/2:0.###} mm; standalone 600={b.Standalone600Count}; braced bays={b.BayCount}; brace preference={b.StandaloneBracePenalty:0.###} mm; beam load={b.Transfer.BeamLoadKn:0.###} kN; slab load={b.Transfer.SlabLoadKn:0.###} kN; primary runs=")+string.Join(", ",b.StockPlan.Pieces.Select(p=>p.StockLengthMm.ToString("0.###",System.Globalization.CultureInfo.InvariantCulture)))+(b.EngineerSearch ? $"; search seed={b.SearchInitialLegsPerLine} legs per line at {b.SearchAssumedLegKn:0.###} kN/leg (before final crossing allocation)" : "")+(string.IsNullOrEmpty(b.CentringNotice) ? "" : "; "+b.CentringNotice)))
             +(RequiresSeparateSlabFormwork ? "\n"+SeparateSlabExplanation : "")
-            +"\n"+string.Join("\n",Bays.Select((b,i)=>b==null ? $"S{i+1}: separate slab formwork required (not calculated)" : System.FormattableString.Invariant($"S{i+1}: H20={b.StockLengthMm:0.###} mm; edge={b.EdgeMm:0.###} mm; equal foot setback={b.NearFootMm:0.###} mm at both faces; repeat every row; maximum row spacing={Input.BaySpacing(i):0.###} mm")));
+            +"\n"+string.Join("\n",Bays.Select((b,i)=>b==null ? $"S{i+1}: separate slab formwork required (not calculated)" : System.FormattableString.Invariant($"S{i+1}: H20={b.StockLengthMm:0.###} mm; edge={b.EdgeMm:0.###} mm (plywood maximum {Input.MaximumSlabEndStripMm(i):0.###} mm); equal foot setback={b.NearFootMm:0.###} mm at both faces; repeat every row; maximum row spacing={Input.BaySpacing(i):0.###} mm")));
         public string Schedule=>(SecondarySpacingNotice.Length==0 ? "" : SecondarySpacingNotice+"\n\n")+(Bays.Any(b=>b!=null) ? UpperTransferPlan.SiteArrangement+"\n"+string.Join("\n",Bays.Select((b,i)=>b==null ? null : $"S{i+1}: equal foot setback {b.NearFootMm:0.###} mm at both concrete faces; repeat every slab row; maximum row spacing {Input.BaySpacing(i):0.###} mm").Where(x=>x!=null))+"\n\n" : "")+string.Join("\n\n",CrossSupports.Select(c=>c.Schedule))+ (CrossSupports.Length==0 ? "" : "\n"+CrossBeamSupportResult.Limitations+"\n\n")+(RequiresSeparateSlabFormwork ? SeparateSlabNotice+"\n\n"+SeparateSlabExplanation+"\n\n" : "")+(Input.CrossingBeams.Length==0 ? "" : string.Join("\n",Input.CrossingBeams.Select((c,i)=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows ? $"{CrossSupports.FirstOrDefault(s=>s.CrossingIndex==i)?.SupportDescription??($"X{i+1} · support not calculated")} · bottom {c.BottomElevationMm:0.###} mm · requested {c.SupportMode}" : (Bays[c.BayNumber-1]==null ? $"X{i+1}: S{c.BayNumber} · separate formwork design required (not calculated)" : $"X{i+1}: S{c.BayNumber} · centre {c.PositionMm:0.###} mm · {c.WidthMm:0.###} × {c.DepthMm:0.###} mm · extra bay load {(Input.AreaLoad(c.DepthMm)-Input.AreaLoad(Input.Bays[c.BayNumber-1].ThicknessMm))*c.WidthMm/1000*Input.Bays[c.BayNumber-1].WidthMm/1000:0.00} kN through slab H20s")))+"\n\n")+string.Join("\n\n",Beams.Select((b,i)=>$"B{i+1}: {Input.Beams[i].WidthMm:0} × {Input.Beams[i].DepthMm:0} mm · bottom {Input.Beams[i].BottomElevationMm:0.###} mm · {b.LegCount} legs\n{b.Schedule}\n{b.StockSchedule}"));
     }
     public sealed class NetworkBeamOption
@@ -305,7 +317,9 @@ namespace EngineeringDashboard
             if(a.LegCount!=b.LegCount)return a.LegCount<b.LegCount;
             int brace=EngineerTowerSearch.Compare(a.Standalone600Count,a.BracedBayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BracedBayCount,b.StandaloneBracePenalty);
             if(brace!=0)return brace<0;
+            if(Math.Abs(a.CantileverImbalanceMm-b.CantileverImbalanceMm)>1e-7)return a.CantileverImbalanceMm<b.CantileverImbalanceMm;
             if(Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7)return a.SymmetryErrorMm<b.SymmetryErrorMm;
+            if(Math.Abs(a.BraceLocationPenalty-b.BraceLocationPenalty)>1e-7)return a.BraceLocationPenalty<b.BraceLocationPenalty;
             return a.EconomyScoreMm<b.EconomyScoreMm-.01 || Math.Abs(a.EconomyScoreMm-b.EconomyScoreMm)<=.01 && a.SymmetryErrorMm<b.SymmetryErrorMm-1e-7;
         }
         // Options are complete checked networks, never unchecked replacements of a
@@ -356,6 +370,7 @@ namespace EngineeringDashboard
                 }
                 CalculateMovement(candidate,worker.Trace);
                 CrossBeamSupportOptimizer.BalanceSettingOut(worker,candidate);
+                CalculateMovement(candidate,common.Trace);
                 double delta=(candidate.TimberMm-current.TimberMm)/1000;
                 results.Add(new NetworkBeamOption(candidate,beam,$"Option {results.Count+1} · {seed.Item2} · {candidate.Beams[beam].LegCount} beam legs · {candidate.LegCount} total legs · {delta:+0.##;-0.##;0} m H20"));
                 if(results.Count==4)break;
@@ -367,6 +382,7 @@ namespace EngineeringDashboard
         {
             var result=OptimizeNetwork(common,input);
             CrossBeamSupportOptimizer.BalanceSettingOut(common,result);
+            CalculateMovement(result,common.Trace);
             return result;
         }
         private static TransferNetworkResult OptimizeNetwork(TowerInput common,TransferNetworkInput input)
@@ -386,7 +402,7 @@ namespace EngineeringDashboard
                 double plywoodMaximum=input.LegacyBayPlywoodLimitsMm.Where(x=>x>0).DefaultIfEmpty(source.UpperSpacingMm).Min();
                 input.UpperSpacingMm=PlywoodSpacing.ListedSpacingAtOrBelow(Math.Min(source.UpperSpacingMm,plywoodMaximum));
             }
-            try {return PreferredShutterDetail(common,input);}
+            try {return FullTransferWithAlternatives(common,input);}
             catch(TowerOptimizationException fullFailure) when (!common.AllowCustomH20Lengths && common.AllowSeparateSlabFallback)
             {
                 var fullDiagnostics=common.Diagnostics;
@@ -418,6 +434,21 @@ namespace EngineeringDashboard
                 }
                 catch(TowerOptimizationException reducedFailure)
                 {throw new TowerOptimizationException(standardFailure.Message,standardFailure.Details+"\n\nLocal 175 mm side-shutter fallback also failed:\n"+reducedFailure.Details);}
+            }
+        }
+        private static TransferNetworkResult FullTransferWithAlternatives(TowerInput common,TransferNetworkInput input)
+        {
+            try {return PreferredShutterDetail(common,input);}
+            catch(TowerOptimizationException boundedFailure) when (!common.RetainAllSlabSupportOptions)
+            {
+                // A larger plywood allowance introduces shorter stock and moves
+                // its feet. Before excluding a slab, retry every passing discrete
+                // stock/setback option rather than relying on representative bands.
+                var worker=common.CopyForSearch();worker.RetainAllSlabSupportOptions=true;
+                common.Trace?.Work("Slab stock and support alternatives");
+                try {var result=PreferredShutterDetail(worker,input);common.Diagnostics=worker.Diagnostics;return result;}
+                catch(TowerOptimizationException expandedFailure)
+                {throw new TowerOptimizationException(boundedFailure.Message,boundedFailure.Details+"\n\nFull slab stock/support alternatives also failed:\n"+expandedFailure.Details);}
             }
         }
         private static TransferNetworkResult FullTransfer(TowerInput common,TransferNetworkInput input)
@@ -581,7 +612,19 @@ namespace EngineeringDashboard
                     candidate.UpperSpacingMm=allowed[step];
                 }
                 try {return OptimizeCore(common,candidate,true);}
-                catch(TowerOptimizationException ex){failure=ex;}
+                catch(TowerOptimizationException ex)
+                {
+                    failure=ex;
+                    // A changed reaction split can need a different receiver at the
+                    // same leg tier. Compare the complete crossing before excluding
+                    // another bay or reducing a permitted nominal spacing.
+                    if(common.EngineerWorkflow && !common.CoordinateCrossingLayouts && candidate.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows))
+                    {
+                        var coordinated=common.CopyForSearch();coordinated.CoordinateCrossingLayouts=true;
+                        try {return OptimizeCore(coordinated,candidate,true);}
+                        catch(TowerOptimizationException coordinatedFailure){failure=coordinatedFailure;}
+                    }
+                }
             }
             throw failure;
         }
@@ -595,12 +638,43 @@ namespace EngineeringDashboard
                 double old;do {old=Score;if(value>=old)return;}while(Interlocked.CompareExchange(ref score,value,old)!=old);
             }
         }
+        private sealed class EngineerBound
+        {
+            private int legs=int.MaxValue;
+            private readonly int minimumDedicatedLegs;
+            private readonly object improvementGate=new object();private TransferNetworkResult best;private readonly BeamSearchTrace trace;
+            internal EngineerBound(TransferNetworkInput input,BeamSearchTrace trace)
+            {
+                this.trace=trace;
+                // Dedicated formwork needs at least one four-leg tower. A negative
+                // filler gap makes the shared mode impossible at every receiver pose.
+                minimumDedicatedLegs=4*input.CrossingBeams.Count(c=>c.SupportMode==CrossBeamSupportMode.DedicatedTowers
+                    || c.SupportMode==CrossBeamSupportMode.Automatic && (!CrossBeamSupportOptimizer.ValidFillerGap(c.BottomElevationMm,input.Beams[c.BayNumber-1].BottomElevationMm,out var near)
+                        || !CrossBeamSupportOptimizer.ValidFillerGap(c.BottomElevationMm,input.Beams[c.BayNumber].BottomElevationMm,out var far)));
+            }
+            internal int Ceiling(int used,int remaining,int minimum)=>Math.Max(0,Volatile.Read(ref legs)-used-remaining*minimum-minimumDedicatedLegs);
+            internal void Publish(TransferNetworkResult result)
+            {
+                if(trace!=null)lock(improvementGate)
+                {
+                    if(best==null || Better(result,best))
+                    {
+                        best=result;
+                        trace.NetworkImproved(FormattableString.Invariant($"legs={result.LegCount}; groups={result.Beams.Sum(b=>b.BayCount)}; brace={result.Beams.Sum(b=>b.StandaloneBracePenalty):R}; cantilever={result.Beams.Sum(b=>b.CantileverImbalanceMm):R}; symmetry={result.Beams.Sum(b=>b.SymmetryErrorMm):R}; timber={result.TimberMm:R}"));
+                    }
+                }
+                int value=result.LegCount,old;
+                do{old=Volatile.Read(ref legs);if(value>=old)return;}while(Interlocked.CompareExchange(ref legs,value,old)!=old);
+            }
+        }
+        internal static int SearchWorkers(int requested,int processors)=>Math.Max(1,Math.Min(Math.Min(8,Math.Max(1,processors)),requested));
         private static TransferNetworkResult OptimizeCore(TowerInput common,TransferNetworkInput input,bool separate)
         {
             input.Validate(common); TransferNetworkResult best=null;int tested=0;
             common.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};var diag=common.Diagnostics;
             var geometryCache=common.ReuseSearchWork ? common.NetworkGeometryWork ?? new TransferredSlabOptimizer.GeometryCache() : null;
             var incumbent=!common.EngineerSearch && common.PruneNetworkBounds && !separate && input.CrossingBeams.All(c=>c.SupportMode==CrossBeamSupportMode.LegacySlabRows) ? new Incumbent() : null;
+            var engineerBound=common.EngineerSearch && common.PruneNetworkBounds && !separate ? new EngineerBound(input,common.Trace) : null;
             common.Trace?.Work("Network primary cover generation");
             double[][] stockCovers;
             using(common.Trace?.Measure(BeamSearchStage.StockCovers))stockCovers=TransferredSlabOptimizer.StockCovers(common);
@@ -609,6 +683,22 @@ namespace EngineeringDashboard
                 diag.Geometry("primary coverage",$"Primary coverage: no available stock combination totals {common.LengthMm-2*common.MaximumConcreteEndOverhangMm:0.###}–{common.LengthMm:0.###} mm.","Review available primary stocks and the maximum concrete end allowance.");
                 throw diag.Exception("No primary stock coverage fits the beam; separate slab formwork cannot fix missing beam stock.");
             }
+            {
+                // Every braced group has at least two support stations with a
+                // minimum 600 mm bay; independent groups need at least 25 mm.
+                // span >= 312.5*n - 25 is an optimistic upper bound on stations,
+                // valid for both production and historical staged searches.
+                int maximumStations=(int)Math.Floor((common.LengthMm-2*common.StockEndSetbackMm+25)/312.5+1e-9);
+                double maximumCapacity=2*Math.Max(0,maximumStations)*common.LegCapacityKn;
+                double minimumCoverage=stockCovers.Min(c=>c.Sum());
+                for(int beam=0;beam<input.Beams.Length;beam++)
+                {
+                    double force=input.AreaLoad(input.Beams[beam].DepthMm)*input.Beams[beam].WidthMm*minimumCoverage/1e6;
+                    if(force<=maximumCapacity+1e-7)continue;
+                    diag.Geometry("B"+(beam+1)+" total leg capacity",$"B{beam+1}: beam-concrete load alone is at least {force:0.###} kN, exceeding {maximumCapacity:0.###} kN total available leg capacity even at the maximum physical support count.","Review the configured permissible leg load or support system.");
+                    throw diag.Exception("No main-beam layout can satisfy the configured leg capacity.");
+                }
+            }
             // Every independent primary run has at least two supports on each of two lines.
             // This is a topology bound over the actual searched covers, not an assumed kN/leg.
             int minimumLegs=stockCovers.Min(c=>c.Length)*4;
@@ -616,7 +706,7 @@ namespace EngineeringDashboard
             if(common.Trace?.HasTimeLimit==true)
                 scenarios=scenarios.OrderBy(s=>Math.Abs(s.Item1-(common.LengthMm-common.MaximumConcreteEndOverhangMm))).ThenBy(s=>Math.Abs(s.Item2)).ToArray();
             var outcomes=new ScenarioResult[scenarios.Length];
-            int workers=Math.Max(1,Math.Min(4,common.NetworkSearchWorkers));
+            int workers=SearchWorkers(common.NetworkSearchWorkers,Environment.ProcessorCount);
             common.Trace?.Workers(workers);
             using(var numericalWork=new ThreadLocal<TransferredSlabOptimizer.SearchWorkCache>(()=>new TransferredSlabOptimizer.SearchWorkCache()))
             {
@@ -626,7 +716,7 @@ namespace EngineeringDashboard
                     worker.DedicatedCrossCache=new Dictionary<string,DedicatedCrossSearch>();
                     worker.NetworkNumerics=common.ReuseSearchWork && (common.ReuseNetworkNumerics || common.ReuseTransverseNumerics) ? (common.NetworkNumericalWork ?? numericalWork).Value : null;
                     worker.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};
-                    outcomes[index]=SearchScenario(worker,input,stockCovers,geometryCache,incumbent,minimumLegs,scenarios[index].Item1,scenarios[index].Item2,separate);
+                    outcomes[index]=SearchScenario(worker,input,stockCovers,geometryCache,incumbent,minimumLegs,scenarios[index].Item1,scenarios[index].Item2,separate,engineerBound);
                 };
                 if(workers==1)for(int i=0;i<scenarios.Length;i++)run(i);
                 else
@@ -678,7 +768,7 @@ namespace EngineeringDashboard
             var centres=new double[beams.Length];for(int i=1;i<centres.Length;i++)centres[i]=centres[i-1]+input.Beams[i-1].WidthMm/2+input.Bays[i-1].WidthMm+input.Beams[i].WidthMm/2;
             return new TransferNetworkResult {Input=input,Beams=beams,Bays=state.Bays,BeamCentresMm=centres,SlabLoadKn=beams.Sum(b=>b.Transfer.SlabLoadKn),SlabCoveredLengthMm=cover,RowPhaseMm=phase};
         }
-        private static ScenarioResult SearchScenario(TowerInput common,TransferNetworkInput input,double[][] stockCovers,TransferredSlabOptimizer.GeometryCache geometryCache,Incumbent incumbent,int minimumLegs,double cover,double phase,bool separate)
+        private static ScenarioResult SearchScenario(TowerInput common,TransferNetworkInput input,double[][] stockCovers,TransferredSlabOptimizer.GeometryCache geometryCache,Incumbent incumbent,int minimumLegs,double cover,double phase,bool separate,EngineerBound engineerBound=null)
         {
             var diag=common.Diagnostics;TransferNetworkResult best=null;int tested=0;
             var outcome=new ScenarioResult {Diagnostics=diag};
@@ -706,7 +796,7 @@ namespace EngineeringDashboard
                     options=input.Bays.Select((b,i)=>rowLoads[i]==null ? new UpperTransferPlan[0] : Options(common,input,i,Math.Max(rowLoads[i].Max(),input.BaySpacing(i)),$"T{Array.IndexOf(rowLoads[i],rowLoads[i].Max())+1} · x={stations[Array.IndexOf(rowLoads[i],rowLoads[i].Max())]:0.###} mm").ToArray()).ToArray();
                 if(separate)options=options.Select(o=>o.Concat(new UpperTransferPlan[] {null}).ToArray()).ToArray();
                 if(options.Any(o=>o.Length==0))return outcome;
-                if(common.CoordinateCrossingLayouts)return CoordinatedScenario(common,input,stockCovers,geometryCache,options,cover,phase,rows);
+                if(common.CoordinateCrossingLayouts)return CoordinatedScenario(common,input,stockCovers,geometryCache,options,cover,phase,rows,engineerBound);
                 Func<int,int,int> ceiling=(previous,remaining)=>incumbent==null || double.IsPositiveInfinity(incumbent.Score) ? int.MaxValue : (int)Math.Floor((incumbent.Score+.01-upperFeet*TowerOptimizer.UpperFootTimberEquivalentMm)/TowerOptimizer.TowerLegTimberEquivalentMm)-previous-remaining*minimumLegs;
                 var states=new Dictionary<int,State>();
                 for(int option=0;option<options[0].Length;option++)
@@ -749,17 +839,95 @@ namespace EngineeringDashboard
             catch(BeamSearchDeadlineException) {common.Trace?.CheckUserCancellation();}
             outcome.Tested=tested;return outcome;
         }
-        private static ScenarioResult CoordinatedScenario(TowerInput common,TransferNetworkInput input,double[][] covers,TransferredSlabOptimizer.GeometryCache geometryCache,UpperTransferPlan[][] options,double cover,double phase,int rows)
+        private static ScenarioResult CoordinatedScenario(TowerInput common,TransferNetworkInput input,double[][] covers,TransferredSlabOptimizer.GeometryCache geometryCache,UpperTransferPlan[][] options,double cover,double phase,int rows,EngineerBound engineerBound=null)
         {
             var outcome=new ScenarioResult {Diagnostics=common.Diagnostics};
-            var solveCache=new Dictionary<Tuple<int,UpperTransferPlan,UpperTransferPlan>,TowerLayout[]>();
+            var solveCache=new Dictionary<Tuple<int,UpperTransferPlan,UpperTransferPlan>,Tuple<int,TowerLayout[]>>();
             var crossCaches=new Dictionary<int,Dictionary<string,DedicatedCrossSearch>>();
             // Dedicated central towers depend on crossing concrete and their own geometry.
             // Reuse them across prefixes; every receiver load and clash is still rechecked.
             var sharedCrossCache=common.ReuseSearchWork ? common.DedicatedCrossCache ?? new Dictionary<string,DedicatedCrossSearch>() : null;
+            TowerLayout[] Receivers(int beam,UpperTransferPlan left,UpperTransferPlan right,int ceiling)
+            {
+                var key=Tuple.Create(beam,left,right);
+                // A search performed with a tighter ceiling is not evidence for
+                // an otherwise identical prefix with more available legs.
+                if(solveCache.TryGetValue(key,out var saved) && saved.Item1>=ceiling)return saved.Item2;
+                TowerLayout[] receivers;
+                var choices=new List<TowerLayout>();
+                var alternatives=common.EngineerSearch && common.ReuseSearchWork ? new Dictionary<double,TowerLayout>() : null;
+                var best=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,alternatives:alternatives);if(best!=null)choices.Add(best);
+                // The unrestricted solve already searches all these widths. A failed
+                // solve proves each centred fixed-width subset fails too; offset searches
+                // below remain necessary because they change the receiving geometry.
+                if(best!=null || !common.ReuseSearchWork)foreach(double width in new[] {1000.0,1524,1500,2000})
+                {
+                    if(best!=null && Math.Abs(best.WidthMm-width)<1e-7)continue;
+                    TowerLayout alternative;
+                    if(alternatives==null || !alternatives.TryGetValue(width,out alternative))alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,width);
+                    if(alternative!=null)choices.Add(alternative);
+                }
+                if(common.EngineerSearch && common.EngineerJunctionExtraTiers>0 && best!=null)
+                {
+                    // A sparse receiver may pass its local loads but obstruct the
+                    // crossing tower. Keep the next leg tiers until the whole junction fits.
+                    foreach(int extra in Enumerable.Range(1,common.EngineerJunctionExtraTiers))
+                    {
+                        var larger=common.CopyForSearch();larger.EngineerMinimumStations=best.PositionsMm.Length+extra;
+                        var alternative=Solve(larger,input,beam,left,right,cover,phase,covers,geometryCache,larger.EngineerMinimumStations*2,best.WidthMm);
+                        if(alternative!=null)choices.Add(alternative);
+                    }
+                }
+                foreach(double offset in new[] {-25.0,25})
+                {
+                    var alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,1000,offset);
+                    if(alternative!=null)choices.Add(alternative);
+                }
+                receivers=choices.OrderBy(l=>common.EngineerSearch ? l.LegCount : TransferredSlabOptimizer.Economy(l)).ThenBy(l=>l.Standalone600Count).ThenBy(l=>l.BayCount).ThenBy(l=>l.StandaloneBracePenalty).ThenBy(l=>l.CantileverImbalanceMm).ThenBy(l=>l.SymmetryErrorMm).ThenBy(l=>l.BraceLocationPenalty).ToArray();solveCache[key]=Tuple.Create(ceiling,receivers);return receivers;
+            }
+            State Extend(State previous,UpperTransferPlan right,TowerLayout receiver,int beam)
+            {
+                outcome.Tested++;var candidate=new State {Beams=previous.Beams.Concat(new[] {receiver}).ToArray(),Bays=beam==input.Bays.Length ? previous.Bays : previous.Bays.Concat(new[] {right}).ToArray(),Separate=previous.Separate+(beam<input.Bays.Length && right==null ? 1 : 0),Legs=previous.Legs+receiver.LegCount,Narrow=previous.Narrow+receiver.Standalone600Count,BaysCount=previous.BaysCount+receiver.BayCount,BracePenalty=previous.BracePenalty+receiver.StandaloneBracePenalty,Symmetry=previous.Symmetry+receiver.SymmetryErrorMm,Timber=previous.Timber+LowerTimber(receiver)+(right==null ? 0 : right.StockLengthMm*EffectiveWidthsMm(common,input,beam,cover,phase).Count(x=>x>0))};
+                if(beam>0)
+                {
+                    var network=input.HasIndividualSpacings ? input.WithSpacings(beamCount:beam+1) : new TransferNetworkInput {LocalRowGapMm=input.LocalRowGapMm,PlywoodProfileId=input.PlywoodProfileId,PlywoodDeflectionDenominator=input.PlywoodDeflectionDenominator,PlywoodSheetLengthMm=input.PlywoodSheetLengthMm,Beams=input.Beams.Take(beam+1).ToArray(),Bays=input.Bays.Take(beam).ToArray(),CrossingBeams=input.CrossingBeams.Where(c=>c.BayNumber<=beam).ToArray(),UpperSpacingMm=input.UpperSpacingMm,RequestedUpperSpacingMm=input.RequestedUpperSpacingMm,CustomLoads=input.CustomLoads,LiveKnM2=input.LiveKnM2,FormworkKnM2=input.FormworkKnM2};
+                    var centres=new double[beam+1];for(int i=1;i<centres.Length;i++)centres[i]=centres[i-1]+input.Beams[i-1].WidthMm/2+input.Bays[i-1].WidthMm+input.Beams[i].WidthMm/2;
+                    var partial=new TransferNetworkResult {Input=network,Beams=candidate.Beams,Bays=candidate.Bays.Take(beam).ToArray(),BeamCentresMm=centres,SlabCoveredLengthMm=cover,RowPhaseMm=phase,SlabLoadKn=candidate.Beams.Sum(l=>l.Transfer.SlabLoadKn)};
+                    // Cache keys include the crossing index, concrete geometry and absolute
+                    // position, so inserted crossings cannot reuse another prefix's labels.
+                    if(!crossCaches.TryGetValue(beam,out var cache))crossCaches[beam]=cache=new Dictionary<string,DedicatedCrossSearch>();
+                    var worker=common.CopyForSearch();worker.DedicatedCrossCache=sharedCrossCache ?? cache;
+                    bool crossingPassed;
+                    using(common.Trace?.Measure(BeamSearchStage.CrossingSupports))crossingPassed=CrossBeamSupportOptimizer.Complete(worker,partial,beam<input.Beams.Length-1);
+                    if(!crossingPassed)return null;
+                    if(beam==input.Beams.Length-1) {outcome.Improvements.Add(partial);engineerBound?.Publish(partial);common.Trace?.Increment(BeamSearchCounter.CompleteNetworkCandidates);return null;}
+                }
+                return candidate;
+            }
+            bool Seed(State previous,int beam,ref int remaining)
+            {
+                foreach(var right in beam==input.Bays.Length ? new UpperTransferPlan[] {null} : options[beam].Take(2))
+                {
+                    common.Trace?.CheckCancellation();if(remaining--<=0)return false;
+                    int ceiling=engineerBound?.Ceiling(previous.Legs,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4)??int.MaxValue;
+                    foreach(var receiver in Receivers(beam,previous.Bays.LastOrDefault(),right,ceiling).Where(r=>r.LegCount<=ceiling).Take(2))
+                    {
+                        int before=outcome.Improvements.Count;var next=Extend(previous,right,receiver,beam);
+                        if(outcome.Improvements.Count>before){common.Trace?.Increment(BeamSearchCounter.SeedNetworkCandidates);return true;}
+                        if(next!=null && beam+1<input.Beams.Length && Seed(next,beam+1,ref remaining))return true;
+                    }
+                }
+                return false;
+            }
             var states=new[] {new State {Beams=new TowerLayout[0],Bays=new UpperTransferPlan[0]}}.ToList();
             try
             {
+                if(common.EngineerWorkflow && common.SeedNetworkSearch)
+                {
+                    // Explore a small complete path before expanding every slab
+                    // option at B1/B2. The ordinary bounded search still follows.
+                    int remaining=input.Beams.Length*2+8;Seed(states[0],0,ref remaining);
+                }
                 for(int beam=0;beam<input.Beams.Length && states.Count>0;beam++)
                 {
                     common.Trace?.CheckCancellation();
@@ -767,69 +935,28 @@ namespace EngineeringDashboard
                     foreach(var previous in states)
                     foreach(var right in beam==input.Bays.Length ? new UpperTransferPlan[] {null} : options[beam])
                     {
-                        var left=previous.Bays.LastOrDefault();var key=Tuple.Create(beam,left,right);
-                        if(!solveCache.TryGetValue(key,out var receivers))
-                        {
-                            var choices=new List<TowerLayout>();
-                            var best=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,int.MaxValue);if(best!=null)choices.Add(best);
-                            // The unrestricted solve already searches all these widths. A failed
-                            // solve proves each centred fixed-width subset fails too; offset searches
-                            // below remain necessary because they change the receiving geometry.
-                            if(best!=null || !common.ReuseSearchWork)foreach(double width in new[] {1000.0,1524,1500,2000})
-                            {
-                                if(best!=null && Math.Abs(best.WidthMm-width)<1e-7)continue;
-                                var alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,int.MaxValue,width);
-                                if(alternative!=null)choices.Add(alternative);
-                            }
-                            if(common.EngineerSearch && common.EngineerJunctionExtraTiers>0 && best!=null)
-                            {
-                                // A sparse receiver may pass its local loads but obstruct the
-                                // crossing tower. Keep the next leg tiers until the whole junction fits.
-                                foreach(int extra in Enumerable.Range(1,common.EngineerJunctionExtraTiers))
-                                {
-                                    var larger=common.CopyForSearch();larger.EngineerMinimumStations=best.PositionsMm.Length+extra;
-                                    var alternative=Solve(larger,input,beam,left,right,cover,phase,covers,geometryCache,larger.EngineerMinimumStations*2,best.WidthMm);
-                                    if(alternative!=null)choices.Add(alternative);
-                                }
-                            }
-                            foreach(double offset in new[] {-25.0,25})
-                            {
-                                var alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,int.MaxValue,1000,offset);
-                                if(alternative!=null)choices.Add(alternative);
-                            }
-                            receivers=choices.OrderBy(l=>common.EngineerSearch ? l.LegCount : TransferredSlabOptimizer.Economy(l)).ThenBy(l=>l.Standalone600Count).ThenBy(l=>l.BayCount).ThenBy(l=>l.StandaloneBracePenalty).ThenBy(l=>l.SymmetryErrorMm).ToArray();solveCache[key]=receivers;
-                        }
+                        var left=previous.Bays.LastOrDefault();
+                        int ceiling=engineerBound?.Ceiling(previous.Legs,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4)??int.MaxValue;
+                        if(ceiling<covers.Min(c=>c.Length)*4){common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);continue;}
+                        var receivers=Receivers(beam,left,right,ceiling);
                         foreach(var receiver in receivers)
                         {
-                            outcome.Tested++;var candidate=new State {Beams=previous.Beams.Concat(new[] {receiver}).ToArray(),Bays=right==null ? previous.Bays : previous.Bays.Concat(new[] {right}).ToArray(),Legs=previous.Legs+receiver.LegCount,Narrow=previous.Narrow+receiver.Standalone600Count,BaysCount=previous.BaysCount+receiver.BayCount,BracePenalty=previous.BracePenalty+receiver.StandaloneBracePenalty,Symmetry=previous.Symmetry+receiver.SymmetryErrorMm,Timber=previous.Timber+LowerTimber(receiver)+(right==null ? 0 : right.StockLengthMm*EffectiveWidthsMm(common,input,beam,cover,phase).Count(x=>x>0))};
-                            if(beam>0)
-                            {
-                                var network=input.HasIndividualSpacings ? input.WithSpacings(beamCount:beam+1) : new TransferNetworkInput {LocalRowGapMm=input.LocalRowGapMm,PlywoodSheetLengthMm=input.PlywoodSheetLengthMm,Beams=input.Beams.Take(beam+1).ToArray(),Bays=input.Bays.Take(beam).ToArray(),CrossingBeams=input.CrossingBeams.Where(c=>c.BayNumber<=beam).ToArray(),UpperSpacingMm=input.UpperSpacingMm,RequestedUpperSpacingMm=input.RequestedUpperSpacingMm,CustomLoads=input.CustomLoads,LiveKnM2=input.LiveKnM2,FormworkKnM2=input.FormworkKnM2};
-                                var centres=new double[beam+1];for(int i=1;i<centres.Length;i++)centres[i]=centres[i-1]+input.Beams[i-1].WidthMm/2+input.Bays[i-1].WidthMm+input.Beams[i].WidthMm/2;
-                                var partial=new TransferNetworkResult {Input=network,Beams=candidate.Beams,Bays=candidate.Bays.Take(beam).ToArray(),BeamCentresMm=centres,SlabCoveredLengthMm=cover,RowPhaseMm=phase,SlabLoadKn=candidate.Beams.Sum(l=>l.Transfer.SlabLoadKn)};
-                                // Cache keys include the crossing index, concrete geometry and absolute
-                                // position, so inserted crossings cannot reuse another prefix's labels.
-                                if(!crossCaches.TryGetValue(beam,out var cache))crossCaches[beam]=cache=new Dictionary<string,DedicatedCrossSearch>();
-                                var worker=common.CopyForSearch();worker.DedicatedCrossCache=sharedCrossCache ?? cache;
-                                bool crossingPassed;
-                                using(common.Trace?.Measure(BeamSearchStage.CrossingSupports))crossingPassed=CrossBeamSupportOptimizer.Complete(worker,partial,beam<input.Beams.Length-1);
-                                if(!crossingPassed)continue;
-                                if(beam==input.Beams.Length-1) {outcome.Improvements.Add(partial);common.Trace?.Increment(BeamSearchCounter.CompleteNetworkCandidates);continue;}
-                            }
+                            if(receiver.LegCount>ceiling){common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);continue;}
+                            var candidate=Extend(previous,right,receiver,beam);if(candidate==null)continue;
                             if(right==null) {closed.Add(candidate);continue;}
                             if(!next.TryGetValue(right,out var list))next[right]=list=new List<State>();list.Add(candidate);
                         }
                     }
                     // Keep geometrically different current receivers until their next junction is
                     // known. Economy is applied only among prefixes that already pass their crossings.
-                    states=next.Values.SelectMany(list=>list.GroupBy(s=>Tuple.Create(s.Beams.Last().WidthMm,s.Beams.Last().TransverseOffsetMm)).SelectMany(g=>g.OrderBy(s=>common.EngineerSearch ? s.Legs : s.Legs*TowerOptimizer.TowerLegTimberEquivalentMm+s.Timber).ThenBy(s=>s.Narrow).ThenBy(s=>s.BaysCount).ThenBy(s=>s.BracePenalty).ThenBy(s=>s.Symmetry).ThenBy(s=>s.Timber).Take(common.EngineerSearch ? 3 : 2))).Concat(closed).ToList();
+                    states=next.Values.SelectMany(list=>list.GroupBy(s=>Tuple.Create(s.Beams.Last().WidthMm,s.Beams.Last().TransverseOffsetMm)).SelectMany(g=>g.OrderBy(s=>s.Separate).ThenBy(s=>common.EngineerSearch ? s.Legs : s.Legs*TowerOptimizer.TowerLegTimberEquivalentMm+s.Timber).ThenBy(s=>s.Narrow).ThenBy(s=>s.BaysCount).ThenBy(s=>s.BracePenalty).ThenBy(s=>s.Beams.Sum(b=>b.CantileverImbalanceMm)).ThenBy(s=>s.Symmetry).ThenBy(s=>s.Beams.Sum(b=>b.BraceLocationPenalty)).ThenBy(s=>s.Timber).Take(common.EngineerSearch ? 3 : 2))).Concat(closed).ToList();
                 }
             }
             catch(BeamSearchDeadlineException) {common.Trace?.CheckUserCancellation();}
             if(common.EngineerSearch && common.EngineerJunctionExtraTiers==0 && outcome.Improvements.Count==0 && common.Trace?.BudgetReached!=true)
             {
                 var expanded=common.CopyForSearch();expanded.EngineerJunctionExtraTiers=2;
-                var alternative=CoordinatedScenario(expanded,input,covers,geometryCache,options,cover,phase,rows);
+                var alternative=CoordinatedScenario(expanded,input,covers,geometryCache,options,cover,phase,rows,engineerBound);
                 alternative.Tested+=outcome.Tested;return alternative;
             }
             return outcome;
@@ -888,12 +1015,13 @@ namespace EngineeringDashboard
         private static IEnumerable<UpperTransferPlan> Options(TowerInput common,TransferNetworkInput input,int bay,double tributary,string rowLocation)
         {
             var row=input.Bays[bay];var result=new List<Tuple<UpperTransferPlan,double>>();
-            var lengths=UpperTransferPlan.SlabLengths(row.WidthMm,common.StockLengthsMm,common.AllowCustomSlabLengths)
+            double maximumEndStrip=input.MaximumSlabEndStripMm(bay);
+            var lengths=UpperTransferPlan.SlabLengths(row.WidthMm,common.StockLengthsMm,maximumEndStrip,common.AllowCustomSlabLengths)
                 .Where(length=>common.AllowCustomSlabLengths || !common.RespectNetworkCatalogueLengths && common.CustomH20Scope==CustomH20LengthScope.Both || common.StockLengthsMm.Contains(length)).ToArray();
-            if(lengths.Length==0)common.Diagnostics.Geometry("S"+(bay+1)+" length",$"S{bay+1}: no permitted slab H20 length fits clear bay {row.WidthMm:0.###} mm with 200–350 mm edge strips.","Review slab stocks, edge clearance and the custom-length scope.",blocker:true);
+            if(lengths.Length==0)common.Diagnostics.Geometry("S"+(bay+1)+" length",$"S{bay+1}: no permitted slab H20 length fits clear bay {row.WidthMm:0.###} mm with 200–{maximumEndStrip:0.###} mm edge strips (slab plywood spacing limit).","Review slab stocks, plywood allowance and the custom-length scope.",blocker:true);
             foreach(double stock in lengths)
             {
-                double edge=(row.WidthMm-stock)/2;if(edge<200 || edge>350)continue;
+                double edge=(row.WidthMm-stock)/2;if(edge<200 || edge>maximumEndStrip)continue;
                 double min=Math.Max(250,edge+150),max=row.WidthMm/2-150;
                 Func<double,IEnumerable<double>> feet=width=>new[] {min,max}.Concat(new[] {600.0,1000,1500,1524,2000}.Select(w=>(w-width)/2)).Concat(Enumerable.Range(0,Math.Max(0,(int)((max-min)/250)+1)).Select(i=>min+i*250)).Where(x=>x>=min && x<=max).Distinct();
                 // One setback is repeated on both faces and at every row in this bay.
@@ -907,10 +1035,24 @@ namespace EngineeringDashboard
                 }
             }
             if(result.Count==0)common.Diagnostics.Geometry("S"+(bay+1)+" symmetric supports",$"S{bay+1}: no permitted slab H20 passes with equal support setbacks on both sides.","Review stock, spacing and receiving geometry, or provide separately designed slab supports.");
+            if(common.RetainAllSlabSupportOptions)
+                return result.OrderBy(r=>r.Item1.StockLengthMm).ThenBy(r=>r.Item1.NearFootMm)
+                    .GroupBy(r=>Tuple.Create(r.Item1.StockLengthMm,r.Item1.NearFootMm)).Select(g=>g.First().Item1).ToArray();
             // The chain DP compares only passing symmetric arrangements from this bounded set.
+            // A shorter slab stock can move its foot farther along the receiving
+            // secondary and increase that member's demand. Retain the closest-foot
+            // alternative as well as the least-timber choice in each setback band.
             return result.OrderBy(r=>r.Item1.StockLengthMm).ThenBy(r=>r.Item1.NearFootMm+r.Item1.FarFootMm).ThenBy(r=>r.Item2)
-                .GroupBy(r=>Math.Round(r.Item1.NearFootMm/250)).Select(g=>g.First().Item1).Take(10).ToArray();
+                .GroupBy(r=>Math.Round(r.Item1.NearFootMm/250))
+                .SelectMany(g=>new[] {g.First(),g.OrderBy(r=>r.Item1.NearFootMm).ThenBy(r=>r.Item1.StockLengthMm).ThenBy(r=>r.Item2).First()}.Distinct())
+                .Select(r=>r.Item1).Take(20).ToArray();
         }
+        // Row registry remains global for slab quantities/drawing; each receiving
+        // beam requests only its own slab feet and adjacent crossing receivers.
+        internal static double[] CrossingRows(TowerInput common,TransferNetworkInput input,double cover,int beam)
+            =>input.UseCrossingSlabLedgers ? input.CrossingBeams.SelectMany((c,i)=>
+                (c.BayNumber!=beam && c.BayNumber!=beam+1) || c.SupportMode==CrossBeamSupportMode.LegacySlabRows || common.EngineerWorkflow && EngineerPrimaryPlan.Eligible(input,c)
+                    ? new double[0] : c.WidthMm>80 ? PlywoodSpacing.SheetSupportRows(c.PositionMm-c.WidthMm/2,c.PositionMm+c.WidthMm/2,input.CrossSpacing(i)) : new[] {c.PositionMm}).Distinct().OrderBy(x=>x).ToArray() : new double[0];
         private static double[] BayBaseline(TowerInput common,TransferNetworkInput input,int bay,UpperTransferPlan plan,double cover,double phase)
         {
             var all=RowStations(common,input,cover,phase);
@@ -919,17 +1061,23 @@ namespace EngineeringDashboard
             var widths=PlywoodSpacing.RowTributaries(edge,edge+cover,own);
             return all.Select(x=>Array.IndexOf(own,x)).Select(i=>i<0 ? 0 : widths[i]).ToArray();
         }
-        private static TowerLayout Solve(TowerInput common,TransferNetworkInput network,int beam,UpperTransferPlan left,UpperTransferPlan right,double cover,double phase,double[][] stockCovers,TransferredSlabOptimizer.GeometryCache geometryCache,int ceiling,double? towerWidth=null,double transverseOffset=0)
+        private static TowerLayout Solve(TowerInput common,TransferNetworkInput network,int beam,UpperTransferPlan left,UpperTransferPlan right,double cover,double phase,double[][] stockCovers,TransferredSlabOptimizer.GeometryCache geometryCache,int ceiling,double? towerWidth=null,double transverseOffset=0,Dictionary<double,TowerLayout> alternatives=null)
         {
             common.Trace?.CheckCancellation();
             if(ceiling<stockCovers.Min(c=>c.Length)*4) {common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);return null;}
             common.Trace?.Increment(BeamSearchCounter.NetworkSolves);common.Trace?.Context(System.FormattableString.Invariant($"B{beam+1}; coverage={cover:R} mm; row phase={phase:R} mm; beam spacing={network.BeamSpacing(beam):R} mm; crossing coordination={common.CoordinateCrossingLayouts}"));
-            var b=network.Beams[beam];var t=new TransferredSlabInput {PlywoodSheetLengthMm=network.PlywoodSheetLengthMm,IsNetwork=true,IncludeMainBeamEndLoads=true,FixedTowerWidthMm=towerWidth,BeamCentreOffsetMm=-transverseOffset,CrossFormwork=CrossBeamSupportOptimizer.Modern(network),AllowLongerPrimaryCoverage=common.IndependentNetworkPrimaryCoverage,StockCovers=stockCovers,SharedGeometryCache=geometryCache,SharedSearchWork=common.NetworkNumerics,BeamWidthMm=b.WidthMm,BeamLineLoadKnM=network.AreaLoad(b.DepthMm)*b.WidthMm/1000,UpperSpacingMm=network.BeamSpacing(beam),LocalRowGapMm=network.LocalRowGapMm,LeftSlabSpacingMm=network.HasIndividualSpacings && left!=null ? network.BaySpacing(beam-1) : 0,RightSlabSpacingMm=network.HasIndividualSpacings && right!=null ? network.BaySpacing(beam) : 0,SharedRowsMm=network.HasIndividualSpacings ? RowStations(common,network,cover,phase) : null,FixedCoveredLengthMm=cover,FixedRowPhaseMm=phase,
+            var b=network.Beams[beam];var t=new TransferredSlabInput {PlywoodProfileId=network.PlywoodProfileId,PlywoodDeflectionDenominator=network.PlywoodDeflectionDenominator,PlywoodSheetLengthMm=network.PlywoodSheetLengthMm,IsNetwork=true,IncludeMainBeamEndLoads=true,FixedTowerWidthMm=towerWidth,BeamCentreOffsetMm=-transverseOffset,CrossFormwork=CrossBeamSupportOptimizer.Modern(network),AllowLongerPrimaryCoverage=common.IndependentNetworkPrimaryCoverage,StockCovers=stockCovers,SharedGeometryCache=geometryCache,SharedSearchWork=common.NetworkNumerics,BeamWidthMm=b.WidthMm,BeamLineLoadKnM=network.AreaLoad(b.DepthMm)*b.WidthMm/1000,UpperSpacingMm=network.BeamSpacing(beam),LocalRowGapMm=network.LocalRowGapMm,LeftSlabSpacingMm=network.HasIndividualSpacings && left!=null ? network.BaySpacing(beam-1) : 0,RightSlabSpacingMm=network.HasIndividualSpacings && right!=null ? network.BaySpacing(beam) : 0,SharedRowsMm=network.HasIndividualSpacings ? RowStations(common,network,cover,phase) : null,FixedCoveredLengthMm=cover,FixedRowPhaseMm=phase,
                 LeftBayMm=left==null ? 0 : network.Bays[beam-1].WidthMm,RightBayMm=right==null ? 0 : network.Bays[beam].WidthMm,LeftAreaLoadKnM2=left==null ? 0 : network.AreaLoad(network.Bays[beam-1].ThicknessMm),RightAreaLoadKnM2=right==null ? 0 : network.AreaLoad(network.Bays[beam].ThicknessMm),LeftPlan=left?.Reverse(),RightPlan=right,
                 LeftCrossingBands=left==null ? new BeamDistributedLoad[0] : CrossingBands(network,beam-1,common.LengthMm,cover),RightCrossingBands=right==null ? new BeamDistributedLoad[0] : CrossingBands(network,beam,common.LengthMm,cover),
                 LeftEffectiveWidthsMm=left==null ? null : EffectiveWidthsMm(common,network,beam-1,cover,phase),RightEffectiveWidthsMm=right==null ? null : EffectiveWidthsMm(common,network,beam,cover,phase),
                 LeftBaselineWidthsMm=network.HasIndividualSpacings ? BayBaseline(common,network,beam-1,left,cover,phase) : null,RightBaselineWidthsMm=network.HasIndividualSpacings ? BayBaseline(common,network,beam,right,cover,phase) : null};
-            var input=new TowerInput {EngineerSearch=common.EngineerSearch,EngineerMinimumStations=common.EngineerMinimumStations,FullLoadingOnly=common.FullLoadingOnly,DeferCrossingChecks=common.FullLoadingOnly && network.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && (c.BayNumber==beam || c.BayNumber==beam+1)),PrimaryMaterial=common.PrimaryMaterial,AllowLocalShutterExceptions=common.AllowLocalShutterExceptions,ReceiverTransverseOffsetMm=transverseOffset,IgnoreUplift=common.IgnoreUplift,Trace=common.Trace,ReuseSearchWork=common.ReuseSearchWork,PruneUneconomicCandidates=common.PruneUneconomicCandidates,StagePrimaryChecks=common.StagePrimaryChecks,ReuseNetworkNumerics=common.ReuseNetworkNumerics,ReuseTransverseNumerics=common.ReuseTransverseNumerics,LazySearchDiagnostics=common.LazySearchDiagnostics,DeferTransferLayout=common.DeferTransferLayout,SearchByLegTier=common.SearchByLegTier,NetworkLegCeiling=ceiling,AllowCustomH20Lengths=common.AllowCustomH20Lengths,CustomH20Scope=common.CustomH20Scope,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
+            if(common.EngineerWorkflow && network.HasIndividualSpacings)
+            {
+                t.ReceivingRowsMm=CrossingRows(common,network,cover,beam);
+                t.ReceivingCrossings=network.CrossingBeams.Where(c=>(c.BayNumber==beam || c.BayNumber==beam+1) && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows).ToArray();
+                t.LocalReceivingRows=true;
+            }
+            var input=new TowerInput {PrepareReceiverChecks=common.PrepareReceiverChecks,OptimizePrimaryResponses=common.OptimizePrimaryResponses,SeedNetworkSearch=common.SeedNetworkSearch,ReceiverAlternatives=alternatives,EngineerSearch=common.EngineerSearch,EngineerMinimumStations=common.EngineerMinimumStations,FullLoadingOnly=common.FullLoadingOnly,DeferCrossingChecks=common.FullLoadingOnly && network.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && (c.BayNumber==beam || c.BayNumber==beam+1)),PrimaryMaterial=common.PrimaryMaterial,AllowLocalShutterExceptions=common.AllowLocalShutterExceptions,ReceiverTransverseOffsetMm=transverseOffset,IgnoreUplift=common.IgnoreUplift,Trace=common.Trace,ReuseSearchWork=common.ReuseSearchWork,PruneUneconomicCandidates=common.PruneUneconomicCandidates,StagePrimaryChecks=common.StagePrimaryChecks,ReuseNetworkNumerics=common.ReuseNetworkNumerics,ReuseTransverseNumerics=common.ReuseTransverseNumerics,LazySearchDiagnostics=common.LazySearchDiagnostics,DeferTransferLayout=common.DeferTransferLayout,SearchByLegTier=common.SearchByLegTier,NetworkLegCeiling=ceiling,AllowCustomH20Lengths=common.AllowCustomH20Lengths,CustomH20Scope=common.CustomH20Scope,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
             if(common.EngineerWorkflow)
             {
                 var plan=EngineerPrimaryPlan.Create(common,network,beam,left!=null,right!=null);
@@ -938,6 +1086,7 @@ namespace EngineeringDashboard
             }
             if(common.CoordinateCrossingLayouts)
             {
+                if(input.PrepareReceiverChecks && input.ReuseSearchWork && input.DeferTransferLayout && input.FullLoadingOnly && input.EngineerPlan?.UseDesignZones==true)input.TransferReceiverPreparation=layout=>CrossBeamSupportOptimizer.PrepareReceiver(input,network,beam,layout);
                 input.TransferLayoutAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout)) && CrossBeamSupportOptimizer.CheckJunctionReceiver(input,network,beam,layout);
                 if(common.EngineerSearch)input.TransferLowerAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout,true)) && CrossBeamSupportOptimizer.CheckJunctionLowerReceiver(input,network,beam,layout);
             }
@@ -984,7 +1133,7 @@ namespace EngineeringDashboard
                         dl=Enumerable.Range(0,left.Transfer.CaseNames.Length).Where(c=>left.Transfer.CaseNames[c]==leftStage || left.Transfer.CaseNames[c].StartsWith(leftStage+" + X",StringComparison.Ordinal)).Min(c=>FootDisplacement(left,result.Input.Beams[bay].WidthMm,c,lr,false));
                         dr=Enumerable.Range(0,right.Transfer.CaseNames.Length).Where(c=>right.Transfer.CaseNames[c]==rightStage || right.Transfer.CaseNames[c].StartsWith(rightStage+" + X",StringComparison.Ordinal)).Min(c=>FootDisplacement(right,result.Input.Beams[bay+1].WidthMm,c,rr,true));
                     }
-                    var analysis=upper.Analysis.Scale(left.Transfer.UpperScale(false,lr)/Math.Max(left.Transfer.RightUpperScales.Max(),left.Transfer.SlabSpacing(false)/1000));
+                    var analysis=upper.Analysis.Scale((left.Transfer.RightSlabSourceScales?[row]??left.Transfer.UpperScale(false,lr))/Math.Max(left.Transfer.RightUpperScales.Max(),left.Transfer.SlabSpacing(false)/1000));
                     double movement=analysis.DeflectionWithAffineOffsetMm(dl,dr,upper.SupportsMm[0],upper.SupportsMm[1]);
                     result.SlabMovementMm=Math.Max(result.SlabMovementMm,movement);
                     left.Transfer.SlabMovementMm=Math.Max(left.Transfer.SlabMovementMm,movement);right.Transfer.SlabMovementMm=Math.Max(right.Transfer.SlabMovementMm,movement);

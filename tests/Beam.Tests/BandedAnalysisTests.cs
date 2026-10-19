@@ -17,15 +17,18 @@ internal static class BandedAnalysisTests
             var uniform=new[] {new BeamDistributedLoad {StartMm=125,EndMm=length-75,KnPerM=4.8},new BeamDistributedLoad {StartMm=length*.2,EndMm=length*.6,KnPerM=7.1}};
             foreach(bool pointOnly in new[] {false,true})
             {
+                bool direct=count==2;
+                Func<double,double,bool> same=(a,b)=>direct ? Math.Abs(a-b)<=2e-6*Math.Max(1,Math.Max(Math.Abs(a),Math.Abs(b))) : a==b;
+                Func<double[],double[],bool> values=(a,b)=>a.Zip(b,same).All(v=>v);
                 var udl=pointOnly ? null : uniform;
                 var dense=LoadedBeamAnalysis.AnalyzeDenseReference(length,supports,udl,points,TowerOptimizer.PairEI,denominator);
                 var banded=LoadedBeamAnalysis.Analyze(length,supports,udl,points,TowerOptimizer.PairEI,denominator);
-                Check(dense.Reactions.SequenceEqual(banded.Reactions) && dense.TotalLoadKn==banded.TotalLoadKn,"exact reactions and total force match dense storage");
-                Check(dense.MomentKnM==banded.MomentKnM && dense.ShearKn==banded.ShearKn,"exact moment/shear envelopes match dense storage");
-                Check(Near(dense.DeflectionMm,banded.DeflectionMm) && Near(dense.DeflectionUtilization,banded.DeflectionUtilization) && dense.GoverningLengthMm==banded.GoverningLengthMm,"direct point-load extrema agree with 42-step bisection to 1e-12; governing regions match");
+                Check(values(dense.Reactions,banded.Reactions) && same(dense.TotalLoadKn,banded.TotalLoadKn),"exact reactions and total force match dense storage");
+                Check(same(dense.MomentKnM,banded.MomentKnM) && same(dense.ShearKn,banded.ShearKn),"exact moment/shear envelopes match dense storage");
+                Check((direct ? same(dense.DeflectionMm,banded.DeflectionMm) && same(dense.DeflectionUtilization,banded.DeflectionUtilization) : Near(dense.DeflectionMm,banded.DeflectionMm) && Near(dense.DeflectionUtilization,banded.DeflectionUtilization)) && dense.GoverningLengthMm==banded.GoverningLengthMm,"direct point-load extrema agree with 42-step bisection to 1e-12; governing regions match");
                 foreach(double station in new[] {0.0,150,length*.25,length*.5,length-150,length})
-                    foreach(bool right in new[] {false,true})Check(dense.Response(station,right).SequenceEqual(banded.Response(station,right)),"exact displacement, shear and moment responses match dense storage");
-                Check(dense.DeflectionWithAffineOffsetMm(-2,-5,supports[0],supports.Last())==banded.DeflectionWithAffineOffsetMm(-2,-5,supports[0],supports.Last()),"support movement response matches dense storage");
+                    foreach(bool right in new[] {false,true})Check(values(dense.Response(station,right),banded.Response(station,right)),"exact displacement, shear and moment responses match dense storage");
+                Check(same(dense.DeflectionWithAffineOffsetMm(-2,-5,supports[0],supports.Last()),banded.DeflectionWithAffineOffsetMm(-2,-5,supports[0],supports.Last())),"support movement response matches dense storage");
                 if(pointOnly)
                 {
                     var cache=new LoadedBeamAnalysis.MatrixCache();
@@ -35,9 +38,9 @@ internal static class BandedAnalysisTests
                         var changed=points.Select(p=>new BeamPointLoad {PositionMm=p.PositionMm,Kn=p.Kn*scale}).ToArray();
                         var reference=LoadedBeamAnalysis.AnalyzeDenseReference(length,supports,null,changed,TowerOptimizer.PairEI,denominator);
                         var reused=LoadedBeamAnalysis.AnalyzePointsCached(length,supports,changed,TowerOptimizer.PairEI,denominator,cache);
-                        Check(reference.Reactions.SequenceEqual(reused.Reactions) && reference.MomentKnM==reused.MomentKnM && reference.ShearKn==reused.ShearKn && Near(reference.DeflectionMm,reused.DeflectionMm) && Near(reference.DeflectionUtilization,reused.DeflectionUtilization),"prepared matrix preserves exact forces/strength and deflection to 1e-12 with new loads");
+                        Check(values(reference.Reactions,reused.Reactions) && same(reference.MomentKnM,reused.MomentKnM) && same(reference.ShearKn,reused.ShearKn) && (direct ? same(reference.DeflectionMm,reused.DeflectionMm) && same(reference.DeflectionUtilization,reused.DeflectionUtilization) : Near(reference.DeflectionMm,reused.DeflectionMm) && Near(reference.DeflectionUtilization,reused.DeflectionUtilization)),"prepared matrix preserves exact forces/strength and deflection to 1e-12 with new loads");
                     }
-                    Check(cache.Hits==2,"load changes reuse only immutable matrix preparation");
+                    Check(cache.Hits==(direct ? 0 : 2),"two-support path avoids matrices; continuous-beam load changes reuse immutable preparation");
                 }
             }
         }
@@ -60,6 +63,6 @@ internal static class BandedAnalysisTests
         Check(passing.DeflectionEvaluated && passing.DeflectionMm>0,"candidate passing moment/shear/leg checks receives complete deflection evaluation");
         var diagnostic=new TowerSearchDiagnostics(270);diagnostic.Analysis(failed,1,2,"Rejected primary",3,"test");
         Check(!diagnostic.Exception("rejected").Details.Contains("deflection"),"unevaluated deflection is not reported as passing or as a computed failure");
-        Console.WriteLine($"Passed {checks} dense/banded and direct-extrema numerical comparisons (strength/forces exact, deflection within 1e-12).");
+        Console.WriteLine($"Passed {checks} dense/banded and direct-extrema numerical comparisons (continuous-beam forces exact, direct two-support path within reference numerical tolerance).");
     }
 }

@@ -116,6 +116,9 @@ namespace EngineeringDashboard
         public static string SheetBasis => "2440 × 1220 mm sheets. Maximum spacings: 488, 407, 350, 305, 275 or 250 mm; the largest passing value is used. "
             + "The 2440 mm direction follows the secondary-row setting out. Each sheet joint has a support row; the final span in a sheet can be shorter.";
 
+        public static double SlabEndStripLimitMm(double pressureKnM2,string profileId=null,int denominator=350)
+            =>CalculateForSheet(string.IsNullOrEmpty(profileId) ? PlywoodCatalog.Default : PlywoodCatalog.FromId(profileId),pressureKnM2,denominator==0 ? 350 : denominator).MaximumSpacingMm;
+
         public static PlywoodSpacingResult CalculateForSheet(PlywoodProfile profile, double pressureKnM2, int denominator)
         {
             var chart=Calculate(profile,pressureKnM2,denominator);
@@ -185,15 +188,24 @@ namespace EngineeringDashboard
             }
             return rows.ToArray();
         }
-        internal static double[] FillRequiredRows(double start,double end,double maximum,double[] required)
+        internal static double[] FillRequiredRows(double start,double end,double maximum,double[] required,bool customJoints=false)
         {
-            var anchors=SheetSupportRows(start,end,50000).ToList();
+            var mandatory=required.Distinct().OrderBy(x=>x).ToArray();
+            for(int i=1;i<mandatory.Length;i++)
+                if(mandatory[i]-mandatory[i-1]<80-1e-7)
+                    throw new ArgumentException(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                        "Required H20 rows at {0:0.###} and {1:0.###} mm are {2:0.###} mm apart; minimum row separation is 80 mm (H20 flange width).",
+                        mandatory[i-1],mandatory[i],mandatory[i]-mandatory[i-1]));
+            var coverageAnchors=SheetSupportRows(start,end,50000);
+            var anchors=coverageAnchors.ToList();
+            // Only original coverage-end anchors are replaceable. Never remove a
+            // previously inserted mandatory row: the transfer grid still maps its load.
             // Mandatory slab feet can replace nearby primary-stock end rows, but never sheet joints.
-            foreach(double x in required)
+            foreach(double x in mandatory)
             {
-                foreach(double a in anchors.Where(a=>Math.Abs(a-x)>1e-7 && Math.Abs(a-x)<80-1e-7).ToArray())
+                foreach(double a in coverageAnchors.Where(a=>Math.Abs(a-x)>1e-7 && Math.Abs(a-x)<80-1e-7))
                 {
-                    if(Math.Abs(a/SheetLengthMm-Math.Round(a/SheetLengthMm))<1e-7)
+                    if(!customJoints && Math.Abs(a/SheetLengthMm-Math.Round(a/SheetLengthMm))<1e-7)
                         throw new ArgumentException("A slab support clashes with a mandatory beam sheet joint.");
                     anchors.Remove(a);
                 }
@@ -246,6 +258,65 @@ namespace EngineeringDashboard
             return new PlywoodSpacingResult(profile, chart, pressureKnM2, p, denominator, spacing, governing,
                 moment, shear, deflection, profile.DeflectionCoefficient * p * Math.Pow(l, 4),
                 p * l * l / profile.MomentEnvelope, p * l / profile.ShearEnvelope);
+        }
+    }
+
+    internal sealed class ReceivingRowRequest
+    {
+        internal double PositionMm,MinimumMm=double.NegativeInfinity,MaximumMm=double.PositiveInfinity;
+        internal int Sides;
+        internal bool Crossing;
+    }
+    internal sealed class ReceivingRowLayout
+    {
+        internal double[] RowsMm,ReceiversMm;
+    }
+    internal static class ReceivingRows
+    {
+        private sealed class Cluster
+        {
+            internal double X,Minimum,Maximum;
+            internal int Sides;
+        }
+        // The site bearer permits a nearby lower receiver to serve a slab foot
+        // without moving the upper H20. Combine opposite-side transfers only;
+        // distinct loaded rows from the same slab remain distinct receivers.
+        internal static ReceivingRowLayout Coordinate(double start,double end,double maximum,ReceivingRowRequest[] requests)
+        {
+            const double flange=80,tolerance=1e-7;
+            var clusters=new List<Cluster>();var mapping=new Cluster[requests.Length];
+            foreach(int index in Enumerable.Range(0,requests.Length).OrderByDescending(i=>requests[i].Crossing).ThenBy(i=>requests[i].PositionMm))
+            {
+                var request=requests[index];double x=request.PositionMm;
+                double lo=Math.Max(start+40,Math.Max(request.MinimumMm,x-flange)),hi=Math.Min(end-40,Math.Min(request.MaximumMm,x+flange));
+                if(lo>hi+tolerance)throw new ArgumentException("No receiving H20 fits inside its primary coverage and crossing footprint.");
+                Cluster selected=null;
+                foreach(var cluster in clusters.Where(c=>Math.Abs(c.X-x)<flange-tolerance && (c.Sides&request.Sides)==0).OrderBy(c=>Math.Abs(c.X-x)))
+                {
+                    double a=Math.Max(lo,cluster.Minimum),b=Math.Min(hi,cluster.Maximum);if(a>b+tolerance)continue;
+                    var choices=new[] {cluster.X,x,Math.Max(a,Math.Min(b,(cluster.X+x)/2)),a,b};
+                    foreach(double candidate in choices.Where(v=>v>=a-tolerance && v<=b+tolerance).Distinct().OrderBy(v=>Math.Abs(v-cluster.X)))
+                    {
+                        if(clusters.Any(c=>c!=cluster && Math.Abs(c.X-candidate)<flange-tolerance))continue;
+                        cluster.X=candidate;cluster.Minimum=a;cluster.Maximum=b;cluster.Sides|=request.Sides;selected=cluster;break;
+                    }
+                    if(selected!=null)break;
+                }
+                if(selected==null)
+                {
+                    var choices=new[] {Math.Max(lo,Math.Min(hi,x)),lo,hi}.Concat(clusters.SelectMany(c=>new[] {c.X-flange,c.X+flange}))
+                        .Where(v=>v>=lo-tolerance && v<=hi+tolerance).Distinct().OrderBy(v=>Math.Abs(v-x)).ThenBy(v=>v).ToArray();
+                    foreach(double candidate in choices)
+                    {
+                        if(clusters.Any(c=>Math.Abs(c.X-candidate)<flange-tolerance))continue;
+                        selected=new Cluster {X=candidate,Minimum=lo,Maximum=hi,Sides=request.Sides};clusters.Add(selected);break;
+                    }
+                }
+                if(selected==null)throw new ArgumentException("No non-overlapping local receiving H20 arrangement fits the slab feet and crossing footprint.");
+                mapping[index]=selected;
+            }
+            var required=clusters.Select(c=>c.X).OrderBy(x=>x).ToArray();
+            return new ReceivingRowLayout {RowsMm=PlywoodSpacing.FillRequiredRows(start,end,maximum,required,true),ReceiversMm=mapping.Select(c=>c.X).ToArray()};
         }
     }
 

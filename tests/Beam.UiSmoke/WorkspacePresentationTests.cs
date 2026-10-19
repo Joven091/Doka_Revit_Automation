@@ -30,6 +30,13 @@ internal static class WorkspacePresentationTests
     }
     internal static void Run()
     {
+        var tower=Layout(false);tower.LegCapacityKn=70;
+        var crossing=new CrossBeamSupportResult {Input=new TransferCrossingBeamRow {BayNumber=1},Towers=tower,SharedFailure="Full diagnostic should not appear",LoadKn=99};
+        string summary=BeamFormworkWorkspace.CrossingLoadSummary(crossing,1,1);
+        Check(summary.Contains("Selected cross beam · X2") && summary.Contains("Efficiency:") && summary.Contains("4 tower legs") && summary.Split('\n').Length<=5,"crossing selection uses the same compact load/capacity/efficiency structure");
+        Check(summary.Contains(tower.TotalSupportedLoadKn.ToString("0.00")) && !summary.Contains("Full diagnostic") && !summary.Contains("Network totals"),"tower card uses its own supported load and omits schedule details");
+        crossing.Towers=null;summary=BeamFormworkWorkspace.CrossingLoadSummary(crossing,1,1);
+        Check(summary.Contains("Supported by B1 and B2") && !summary.Contains("Efficiency:"),"shared crossings identify their receiving beams without inventing dedicated capacity");
         var points=new[] {new BeamPointLoad {PositionMm=400,Kn=0},new BeamPointLoad {PositionMm=800,Kn=1.483},new BeamPointLoad {PositionMm=1200,Kn=-1.2}};
         var plot=new TowerDiagramWindow.MemberLoadingPlot(2000,new[] {250.0,1750},new[] {0.0,2},new BeamDistributedLoad[0],points);Render(plot);
         Check(plot.DrawnPointCount==2 && plot.DrawnSupportCount==2,"zero applied entries disappear while signed loads and every support remain");

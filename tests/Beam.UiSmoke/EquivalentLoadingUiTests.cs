@@ -74,6 +74,7 @@ internal static class EquivalentLoadingUiTests
     internal static void Run(string preview=null)
     {
         MemberLoadingUiTests.Run();
+        PositionedTransferUiTests.Run(preview);
         var layout=EquivalentLoadingTests.Fixture();var t=layout.Transfer;var unit=t.UnitLowerCases[0];
         var actual=new TransferMember {Name="T1",LoadCase=unit.LoadCase,H20Count=1,LengthMm=1800,StartMm=-900,SupportsMm=unit.SupportsMm,
             Uniform=new[] {new BeamDistributedLoad {StartMm=575,EndMm=1225,KnPerM=9.65325}},

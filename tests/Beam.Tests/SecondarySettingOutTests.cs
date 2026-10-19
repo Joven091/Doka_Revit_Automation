@@ -45,7 +45,7 @@ internal static class SecondarySettingOutTests
         // Replay the historical crossing/secondary geometry; new ledger loads and setting-out are covered by CrossingSlabSupportTests.
         n.UseCrossingSlabLedgers=false;
         var covers=TransferredSlabOptimizer.StockCovers(c);
-        var scenario=typeof(TransferNetworkOptimizer).GetMethod("SearchScenario",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,new object[] {c,n,covers,new TransferredSlabOptimizer.GeometryCache(),null,8,6750.0,0.0,false});
+        var scenario=typeof(TransferNetworkOptimizer).GetMethod("SearchScenario",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,new object[] {c,n,covers,new TransferredSlabOptimizer.GeometryCache(),null,8,6750.0,0.0,false,null});
         var candidates=(System.Collections.Generic.List<TransferNetworkResult>)scenario.GetType().GetField("Improvements",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(scenario);
         var r=candidates.OrderBy(x=>x.EconomyScoreMm).First();
         var before=r.Beams.Select(b=>b.Transfer.PrimaryCases).ToArray();int legs=r.LegCount,h20=r.H20Count;

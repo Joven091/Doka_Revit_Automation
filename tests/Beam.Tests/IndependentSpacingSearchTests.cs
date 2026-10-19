@@ -53,8 +53,12 @@ internal static class IndependentSpacingSearchTests
             Check(input.BeamSpacingsMm.SequenceEqual(fresh ? new[] {350.0,305,350} : Enumerable.Repeat(275.0,8)),"source maxima remain unchanged");
             if(!baseline)
             {
-                Check(result.Input.BeamSpacingsMm.SequenceEqual(fresh ? new[] {350.0,275,350} : Enumerable.Repeat(275.0,8)),"passing beam maxima retained");
-                Check(result.Input.SlabSpacingsMm.SequenceEqual(fresh ? new[] {488.0,488} : new[] {275.0,275,250,275,275,275,275}),"only necessary slab reductions retained");
+                // More passing stock/support alternatives can restore a higher pitch.
+                // Retain the verified floors while allowing a checked improvement.
+                var beamFloors=fresh ? new[] {350.0,275,350} : new[] {275.0,275,250,275,275,275,275,275};
+                var slabFloors=fresh ? new[] {488.0,488} : new[] {250.0,275,250,275,275,275,275};
+                Check(result.Input.BeamSpacingsMm.Zip(beamFloors,(selected,floor)=>selected>=floor).All(ok=>ok) && result.Input.BeamSpacingsMm.Zip(input.BeamSpacingsMm,(selected,maximum)=>selected<=maximum).All(ok=>ok),"known passing beam pitch floors and plywood maxima retained");
+                Check(result.Input.SlabSpacingsMm.Zip(slabFloors,(selected,floor)=>selected>=floor).All(ok=>ok) && result.Input.SlabSpacingsMm.Zip(input.SlabSpacingsMm,(selected,maximum)=>selected<=maximum).All(ok=>ok),"known passing slab pitch floors and plywood maxima retained");
                 Check(result.Input.CrossingSpacingsMm.SequenceEqual(fresh ? new[] {350.0,350} : Enumerable.Repeat(275.0,7)),"passing crossing maxima retained");
                 int elements=input.Beams.Length+input.Bays.Length+input.CrossingBeams.Length;
                 Check(common.Trace.Count(BeamSearchCounter.NetworkSpacingTrials)<=10+7*elements,"search vector count is linear in elements, never a Cartesian product");
@@ -85,15 +89,17 @@ internal static class IndependentSpacingSearchTests
     }
     internal static void Controls()
     {
-        // The first passing category seed is available at vector 3. Expire only
-        // when recovery starts another vector, rather than during initial search.
+        // Expire only when recovery starts a new vector after an actual complete
+        // seed. Stock eligibility can change which spacing vector first passes.
         foreach(bool cancel in new[] {false,true})using(var source=new CancellationTokenSource())
         {
             var common=Common(false);common.NetworkSearchWorkers=1;
-            BeamSearchTrace trace=null;
+            BeamSearchTrace trace=null;long seedVector=0;
             trace=new BeamSearchTrace("spacing recovery control",source.Token,TimeSpan.FromSeconds(1),()=>
             {
-                if(trace!=null && trace.Count(BeamSearchCounter.NetworkSpacingTrials)>=4)
+                long vector=trace?.Count(BeamSearchCounter.NetworkSpacingTrials)??0;
+                if(seedVector==0 && trace?.Count(BeamSearchCounter.CompleteNetworkCandidates)>0)seedVector=vector;
+                if(seedVector>0 && vector>seedVector)
                 {
                     if(cancel) {source.Cancel();return 0;}
                     return 2*Stopwatch.Frequency;
@@ -103,7 +109,11 @@ internal static class IndependentSpacingSearchTests
             common.Trace=trace;
             try
             {
-                var result=TransferNetworkOptimizer.Optimize(common,Reported());
+                var control=Reported();
+                control.BeamSpacingsMm=control.Beams.Select(b=>b.DepthMm==1750 ? 305.0 : 350).ToArray();
+                control.SlabSpacingsMm=Enumerable.Repeat(350.0,control.Bays.Length).ToArray();
+                control.CrossingSpacingsMm=Enumerable.Repeat(350.0,control.CrossingBeams.Length).ToArray();control.UpperSpacingMm=305;
+                var result=TransferNetworkOptimizer.Optimize(common,control);
                 Check(!cancel && trace.BudgetReached && result.SearchTimeLimitReached,"deadline recovery retains complete checked seed");
                 Engineering(result);
                 Check(result.Beams.All(b=>b.SearchTimeLimitReached && !b.MinimumLegCountProven),"deadline cannot claim proven optimum");

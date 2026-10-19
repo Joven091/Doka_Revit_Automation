@@ -44,7 +44,7 @@ internal static class UnifiedTransferTests
                 Check(view.IsAvailable && view.IsDesignSlice,"production reference diagram remains available on every row");
                 Near(view.ReferenceSpacingMm,t.EnteredUpperSpacingMm,"uses this beam's actual reference pitch");
                 for(int line=0;line<2;line++)Near(view.Member.Analysis.Reactions[line]/(view.ReferenceSpacingMm/1000),view.PrimaryTransferKnM[line],"one spacing division exactly reproduces checked primary transfer");
-                foreach(var c in view.Components)Near(c.SourceValue*c.ReferenceSpacingMm/c.NominalSpacingMm,c.EquivalentValue,"card conversion reproduces displayed equivalent load");
+                foreach(var c in view.Components)Near(c.SourceValue*c.ReferenceSpacingMm/c.NominalSpacingMm*c.AllocationFactor,c.EquivalentValue,"card conversion reproduces displayed equivalent load");
                 Check(ReferenceEquals(actual.Analysis,analysis) && ReferenceEquals(actual.Uniform,loads) && ReferenceEquals(actual.Points,points),"reference view does not change physical secondary checks");
             }
         }
@@ -73,9 +73,14 @@ internal static class UnifiedTransferTests
         {
             Check(result.CrossSupports[0].UsesSpreader && result.CrossSupports[1].Towers!=null,"explicit shared and dedicated supports coexist");
             var middle=result.Beams[1].Transfer.PrimaryPlan;
-            Check(!middle.CrossingTransfers.ContainsKey(0) && middle.CrossingTransfers.ContainsKey(1),"dedicated side does not disable the shared crossing model on the other side");
+            Check(middle.CrossingLoads.ContainsKey(0) && middle.CrossingTransfers.ContainsKey(1),"dedicated side does not disable the shared crossing model on the other side");
         }
-        else Check(result.CrossSupports.All(c=>c.Towers!=null),"exact reported equal-soffit crossings take their dedicated fallback");
+        else
+        {
+            Check(result.CrossSupports.All(c=>c.Towers!=null),"exact reported equal-soffit crossings take their dedicated fallback");
+            foreach(var c in result.CrossSupports)
+                Near(c.Bearings.Where(b=>b.IsDedicated && b.Label.StartsWith("Dedicated P")).Average(b=>b.Xmm),c.Input.PositionMm,"reported crossing frame centred across the concrete beam");
+        }
         Verify(result);Symmetry();PendingAssignments();
         Console.WriteLine($"Passed {checks} unified transfer acceptance checks.");
     }

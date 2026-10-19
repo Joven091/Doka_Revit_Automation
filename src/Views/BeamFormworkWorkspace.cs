@@ -640,8 +640,17 @@ namespace EngineeringDashboard
                 selectedSummary.Text=$"Selected slab · S{index+1}\n{rows} slab H20s × {bay.StockLengthMm:0.###} mm{(bay.IsCustomLength ? " custom" : " stock")}\nEqual foot setback {bay.NearFootMm:0.###} mm from both concrete faces; repeat every row.\n{spacing}\n{2*rows} upper feet · carried by B{index+1} and B{index+2}\nMember and leg reactions are checked for the fully loaded configuration.";
             }
             else if(Drawing.SelectedKind==FormworkObject.Crossing && index<Model.CrossingBeams.Count)
-                selectedSummary.Text=network.CrossSupports.SingleOrDefault(c=>c.CrossingIndex==index)?.Schedule??$"X{index+1} · Legacy slab rows: loads transfer through S{Model.CrossingBeams[index].BayNumber}.";
+            {
+                resultHeading.Text="Cross-beam result";networkSummary.Text="";
+                var support=network.CrossSupports.SingleOrDefault(c=>c.CrossingIndex==index);
+                selectedSummary.Text=CrossingLoadSummary(support,index,Model.CrossingBeams[index].BayNumber);
+            }
         }
+        internal static string CrossingLoadSummary(CrossBeamSupportResult support,int index,int bay)=>
+            $"Selected cross beam · X{index+1}\n"+(support?.Towers!=null
+                ? "Dedicated tower support\n"+BeamLoadSummary(support.Towers).Replace("beam + slab","carried by tower")
+                : support!=null ? $"Supported by B{support.Input.BayNumber} and B{support.Input.BayNumber+1}\nTotal transferred load: {support.LoadKn:0.00} kN"
+                : $"Loads transfer through S{bay}.");
         private static string BeamLoadSummary(TowerLayout beam)=>
             $"Total load (beam + slab): {beam.TotalSupportedLoadKn:0.00} kN\n"+
             $"{beam.LegCount} tower legs × {beam.LegCapacityKn:0.##} kN = {beam.TotalLegCapacityKn:0.00} kN\n"+

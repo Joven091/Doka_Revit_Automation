@@ -44,9 +44,9 @@ internal static class SymmetricSlabSupportTests
     public static void Run()
     {
         var common=Common();
-        Plan().Validate(3900,common.StockLengthsMm);
-        Plan().Reverse().Validate(3900,common.StockLengthsMm);
-        Reject(()=>Plan(600).Validate(3900,common.StockLengthsMm),"otherwise valid asymmetric shared plan rejected");
+        Plan().Validate(3900,common.StockLengthsMm,488);
+        Plan().Reverse().Validate(3900,common.StockLengthsMm,488);
+        Reject(()=>Plan(600).Validate(3900,common.StockLengthsMm,488),"otherwise valid asymmetric shared plan rejected");
         var transfer=new TransferredSlabInput {BeamWidthMm=300,BeamLineLoadKnM=5.25,UpperSpacingMm=250,RightBayMm=3900,RightAreaLoadKnM2=4.4,RightPlan=Plan(600)};
         Reject(()=>transfer.Validate(common),"fixed-plan caller cannot bypass the symmetric arrangement");
         transfer.RightPlan=Plan();common.TransferredSlab=transfer;
@@ -58,7 +58,7 @@ internal static class SymmetricSlabSupportTests
         {
             var plan=result.Bays[bay];
             Near(plan.NearFootMm,plan.FarFootMm,"different main beam widths cannot shift one slab foot independently");
-            plan.Validate(network.Bays[bay].WidthMm,common.StockLengthsMm);
+            plan.Validate(network.Bays[bay].WidthMm,common.StockLengthsMm,network.MaximumSlabEndStripMm(bay));
             var left=result.Beams[bay].Transfer;var right=result.Beams[bay+1].Transfer;
             Near(left.RightFootMm,plan.NearFootMm,"same setback used at every row on the first main beam");
             Near(right.LeftFootMm,plan.FarFootMm,"same setback used at every row on the opposite main beam");

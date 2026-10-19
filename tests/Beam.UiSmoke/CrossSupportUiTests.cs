@@ -274,8 +274,13 @@ internal static class CrossSupportUiTests
         var jointBitmap=new RenderTargetBitmap(1200,600,96,96,System.Windows.Media.PixelFormats.Pbgra32);jointBitmap.Render(jointCanvas);
         Check(jointCanvas.DrawnLegCount==junction.NetworkResult.LegCount && jointCanvas.DrawnCrossH20Count==junction.NetworkResult.CrossSupports.Sum(c=>c.Members.Where(m=>m.H20Count==2).Sum(m=>m.H20Count)),"junction plan draws the actual central tower and trimmed members with no duplicate end-zone timber");
         Check(jointCanvas.LegTargets.Any(t=>t.Item2.Contains("concrete end zone on B1")),"plan end-zone targets describe concrete loads rather than timber bearings");
-        Check(jointWorkspace.SelectedResultText.Contains("Dedicated central span") && jointWorkspace.SelectedResultText.Contains("Concrete end zone on B1"),"selected crossing explains which load reaches the main beam");
-        Check(jointWorkspace.SelectedResultText.Contains("existing side shutter") && jointWorkspace.SelectedResultText.Contains("100 mm"),"crossing inspector explains the same shutter load path as slab edges");
+        // The selection card was deliberately shortened; load-path detail stays
+        // in the report rather than restoring the removed assumptions paragraph.
+        var jointSupport=junction.NetworkResult.CrossSupports[0];
+        Check(jointWorkspace.SelectedResultText.Contains("Dedicated tower support") && jointWorkspace.SelectedResultText.Contains("Total load (carried by tower):") && jointWorkspace.SelectedResultText.Contains("tower legs") && jointWorkspace.SelectedResultText.Contains("Efficiency:") && jointWorkspace.SelectedResultText.Split('\n').Length<=5,"selected crossing retains the agreed compact load/capacity/efficiency card");
+        Check(jointSupport.Schedule.Contains("Dedicated central span") && jointSupport.Schedule.Contains("Concrete end zone on B1") && jointSupport.Schedule.Contains("existing side shutter"),"crossing report retains central-span and receiving-shutter load paths");
+        var shutterBearings=jointSupport.Bearings.Where(b=>b.IsShutterEndZone).ToArray();
+        Check(shutterBearings.Length>0 && shutterBearings.All(b=>Math.Abs(b.Ymm-(b.EndZoneStartMm+b.EndZoneEndMm)/2)<1e-7),"shutter loads act at the midpoint of their actual selected strip");
         Check(jointCanvas.LegTargets.Any(t=>t.Item2.Contains("side shutter")),"plan junction selection identifies the existing shutter support");
         var jointSection=new TransferNetworkPlan {Width=1200,SectionOnly=true,IsSelectionEnabled=true};jointSection.SetResult(junction.NetworkResult);jointSection.Measure(new Size(1200,420));jointSection.Arrange(new Rect(0,0,1200,jointSection.DesiredSize.Height));jointSection.UpdateLayout();var jointSectionBitmap=new RenderTargetBitmap(1200,(int)Math.Ceiling(jointSection.ActualHeight),96,96,System.Windows.Media.PixelFormats.Pbgra32);jointSectionBitmap.Render(jointSection);Check(jointSection.MemberTargets.Any(t=>t.Item2<0),"junction central members are selectable in section");
         Check(jointSection.DrawnConcreteEndZoneCount==junction.NetworkResult.CrossSupports[0].Bearings.Where(b=>b.IsConcreteEndZone).Select(b=>b.Beam).Distinct().Count(),"section draws the direct and side-shutter end zones on the receiving beams");
@@ -300,12 +305,12 @@ internal static class CrossSupportUiTests
         while(!task.IsCompleted){Pump();Thread.Sleep(1);if(timer.Elapsed.TotalSeconds>120)throw new Exception("Primary zones UI timeout");}
         task.GetAwaiter().GetResult();Check(vm.IsCalculationValid,"reported two-zone UI case solves");
         vm.SelectNetworkBeam(1);var layout=vm.NetworkResult.Beams[1];
-        int run=Array.FindIndex(layout.Transfer.PrimaryCases.Last().Take(layout.StockPlan.Pieces.Length).ToArray(),m=>m.Uniform.Any(q=>Math.Abs(q.KnPerM-25.99125)<1e-7) && m.Uniform.Any(q=>Math.Abs(q.KnPerM-52.288125)<1e-7));
+        int run=Array.FindIndex(layout.Transfer.PrimaryCases.Last().Take(layout.StockPlan.Pieces.Length).ToArray(),m=>m.Uniform.Any(q=>m.StartMm+q.StartMm<3025 && m.StartMm+q.EndMm<=3025+1e-7) && m.Uniform.Any(q=>m.StartMm+q.StartMm>=3025-1e-7 && m.StartMm+q.StartMm<3675));
         Check(run>=0,"selected inner primary contains both concrete tributary zones");
         var window=new TowerDiagramWindow(vm);window.SelectMember(run,0,-1);window.Show();Pump();
         var member=window.DisplayedTransferMember;
         Check(ReferenceEquals(member.Analysis,window.LoadedAnalysis) && member.Points.Length==0,"two-zone loading diagram uses the checked primary analysis");
-        Check(member.Uniform.All(q=>Math.Abs(q.KnPerM-25.99125)<1e-7 || Math.Abs(q.KnPerM-52.288125)<1e-7),"primary plot has only Beam + Slab and Beam + X1 load intensities");
+        Check(member.Uniform.Select(q=>q.KnPerM).Distinct().Count()==2 && member.Uniform.All(q=>Math.Abs(q.StartMm)<1e-7 || Math.Abs(member.StartMm+q.StartMm-3025)<1e-7 || Math.Abs(member.StartMm+q.StartMm-3675)<1e-7),"primary plot has only positioned Beam + Slab and Beam + X1 zones");
         MemberLoadingUiTests.ReportedPrimary(window);
         Capture(window.LoadingDiagram,1000,290,Preview(previewPath,"engineer-primary-zones"));
         window.LoadingDiagram.SelectAt(new Point(window.LoadingDiagram.Targets.First(t=>t.Kind==0 && t.Index==1).Bounds.X+2,window.LoadingDiagram.Targets.First(t=>t.Kind==0 && t.Index==1).Bounds.Y+2));
@@ -313,6 +318,6 @@ internal static class CrossSupportUiTests
         window.SelectMember(layout.StockPlan.Pieces.Length,0,-1);Pump();window.UpdateLayout();
         MemberLoadingUiTests.CheckWindow(window);
         window.Close();
-        Console.WriteLine("Reported primary zones WPF preview passed: 25.991 / 52.288 kN/m.");
+        Console.WriteLine("Reported primary zones WPF preview passed: positioned transfer and two flat intensities.");
     }
 }

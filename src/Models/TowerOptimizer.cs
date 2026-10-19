@@ -27,15 +27,22 @@ namespace EngineeringDashboard
             if(!failures.TryGetValue(key,out var f)) failures[key]=f=new Failure {Stage=stage,Score=double.PositiveInfinity};
             f.Count++;if(score<f.Score) {f.Score=score;f.Text=text;f.Advice=advice;f.Summary=summary??text;f.Blocker=blocker;}
         }
+        private bool RepeatedFailure(string key,double score)
+        {
+            if(!failures.TryGetValue(key,out var failure) || score<failure.Score)return false;
+            trace?.Increment(BeamSearchCounter.RejectionChecks);failure.Count++;return true;
+        }
         public void Geometry(string key,string text,string advice,double score=0,string summary=null,bool blocker=false)=>Add(key,0,score,text,advice,summary,blocker);
         public void Limit(string scope,string check,int stage,double demand,double limit,string units,string location,string advice,double tolerance=1e-8)
         {
             trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(demand<=limit+tolerance)return;
+            if(RepeatedFailure(scope+"/"+check,demand/limit))return;
             Add(scope+"/"+check,stage,demand/limit,$"{scope} · {check}: {demand:0.###} / {limit:0.###} {units} ({demand/limit*100:0.0}%). {location}",advice,$"{scope} · {check}: {demand:0.###} / {limit:0.###} {units} ({demand/limit*100:0.0}%).");
         }
         public void Bearing(string scope,int stage,double reaction,string location,double tolerance=1e-7)
         {
             trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(ignoreUplift || reaction>=-tolerance)return;
+            if(RepeatedFailure(scope+"/uplift",Math.Abs(reaction)))return;
             Add(scope+"/uplift",stage,Math.Abs(reaction),$"{scope} · uplift: reaction {reaction:G6} kN; minimum 0 kN. {location}","Review foot positions, primary-line/tower width and one-sided loading balance.");
         }
         internal bool LazyLocations=true;
@@ -221,8 +228,11 @@ namespace EngineeringDashboard
         internal bool EngineerWorkflow=>EngineerSearch && FullLoadingOnly;
         internal EngineerPrimaryPlan EngineerPlan;
         internal bool EngineerDedicatedFallback;
+        internal bool SeedNetworkSearch=true,OptimizePrimaryResponses=true,PrepareReceiverChecks=true;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
+        internal Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> TransferReceiverPreparation;
+        internal Dictionary<double,TowerLayout> ReceiverAlternatives;
         internal double ReceiverTransverseOffsetMm;
         internal BeamSearchTrace Trace;
         // Tests can replay the original search without reuse; production searches reuse work.
@@ -233,6 +243,7 @@ namespace EngineeringDashboard
         // Production networks share slab/primary extents. Retained internally for historical regression fixtures.
         internal bool IndependentNetworkPrimaryCoverage = false;
         internal bool CoordinateCrossingLayouts;
+        internal bool RetainAllSlabSupportOptions;
         internal int NetworkSearchWorkers = Math.Min(4,Environment.ProcessorCount);
         internal bool PruneUneconomicCandidates = true;
         internal bool StagePrimaryChecks = true;
@@ -325,6 +336,7 @@ namespace EngineeringDashboard
         public string MaterialQuantities=>$"{StockPlan.TotalH20Count + (Transfer?.AdditionalH20Count ?? 0)} H20s"+(StockPlan.WS10Count==0 ? "" : $" · {StockPlan.WS10Count} WS10s");
         public string CompactSummary => $"{LegCount} legs · {GroupCount} tower groups · {MaterialQuantities}";
         public string LegLoadSummary => $"Peak leg: {MaxLegKn:0.00} / permissible {LegCapacityKn:0.00} kN ({LegUtilizationPercent:0.0}%)";
+        public string CentringNotice {get;internal set;}
         public string CapacityBasis => Transfer != null ? "Every leg is checked for the fully loaded configuration. Search ranks leg count, tower grouping, brace preference and symmetry before material economy. Signed leg reactions are retained." : $"Every leg is checked against {LegCapacityKn:0.00} kN. Search minimizes legs, then standalone-600 towers, braced bays, standalone brace penalties, primary quantity and governing utilization. Change the permissible load and optimize again to recalculate.";
         public string StockSchedule => StockPlan.Schedule + (Transfer == null ? "" : "\n" + Transfer.Schedule);
         public int LegCount => PositionsMm.Length * 2;
@@ -342,6 +354,7 @@ namespace EngineeringDashboard
         public double ShearKn { get; internal set; }
         public double DeflectionMm { get; internal set; }
         public double Utilization { get; internal set; }
+        public double BraceLocationPenalty=>EngineerTowerSearch.BraceLocationPenalty(PositionsMm,Joined,WidthMm,Rotated);
         public double CantileverImbalanceMm=>StockPlan?.Pieces==null || PositionsMm==null ? 0 : StockPlan.Pieces.Sum(p=>Math.Abs((PositionsMm[p.FirstSupport]-p.StartMm)-(p.EndMm-PositionsMm[p.LastSupport])));
         public double SecondarySymmetryErrorMm=>Transfer==null ? 0 : Transfer.LowerCases.Take(1).SelectMany(c=>c).Take(1).Concat(Transfer.UpperMembers).Select(m=>m.SupportsMm.Length<2 ? 0 : Math.Abs(m.SupportsMm.First()-(m.LengthMm-m.SupportsMm.Last()))).DefaultIfEmpty().Max();
         public double SymmetryErrorMm=>TowerOptimizer.SymmetryError(PositionsMm,StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray(),LengthMm/2)+(EngineerSearch ? CantileverImbalanceMm+SecondarySymmetryErrorMm : 0);
@@ -376,6 +389,7 @@ namespace EngineeringDashboard
                     if (IgnoreUplift) lines.Add($"  Minimum signed leg reactions L/R={MinimumLegReaction(true,i):0.######}/{MinimumLegReaction(false,i):0.######} kN"+(Transfer?.FullLoadingOnly==true ? " · fully loaded case" : " across stages"));
                     if (i < Joined.Length) lines.Add(string.Format(CultureInfo.CurrentCulture, "  {0}: {1:0.###} mm", Joined[i] ? (Rotated ? "Frame span" : "Cross bay") : "Clear gap between leg planes", PositionsMm[i + 1] - PositionsMm[i]));
                 }
+                if(!string.IsNullOrEmpty(CentringNotice))lines.Add(CentringNotice);
                 lines.Add(string.Format(CultureInfo.CurrentCulture, "End overhangs: {0:0.###} / {1:0.###} mm", PositionsMm[0], LengthMm - PositionsMm.Last()));
                 if(TransverseOffsetMm!=0)lines.Add($"Tower centre offset from concrete beam centre: {TransverseOffsetMm:0.###} mm; eccentric concrete and slab reactions are included.");
                 return string.Join("\n", lines)+"\n"+BracePreferenceSummary;
@@ -423,9 +437,19 @@ namespace EngineeringDashboard
         internal static int CompareBracePreference(TowerLayout a,TowerLayout b)
             => a.EngineerSearch ? EngineerTowerSearch.Compare(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty) : CompareBracePreference(a.Standalone600Count,a.BayCount,a.StandaloneBracePenalty,b.Standalone600Count,b.BayCount,b.StandaloneBracePenalty);
         private static bool Better(TowerLayout a,TowerLayout b)
-            => a.LegCount<b.LegCount || a.LegCount==b.LegCount && (CompareBracePreference(a,b)<0
-                || CompareBracePreference(a,b)==0 && (a.EngineerSearch && Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7 ? a.SymmetryErrorMm<b.SymmetryErrorMm : a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
+        {
+            if(a.EngineerSearch)
+            {
+                if(a.LegCount!=b.LegCount)return a.LegCount<b.LegCount;
+                int brace=CompareBracePreference(a,b);if(brace!=0)return brace<0;
+                if(Math.Abs(a.CantileverImbalanceMm-b.CantileverImbalanceMm)>1e-7)return a.CantileverImbalanceMm<b.CantileverImbalanceMm;
+                if(Math.Abs(a.SymmetryErrorMm-b.SymmetryErrorMm)>1e-7)return a.SymmetryErrorMm<b.SymmetryErrorMm;
+                if(Math.Abs(a.BraceLocationPenalty-b.BraceLocationPenalty)>1e-7)return a.BraceLocationPenalty<b.BraceLocationPenalty;
+            }
+            return a.LegCount<b.LegCount || a.LegCount==b.LegCount && (CompareBracePreference(a,b)<0
+                || CompareBracePreference(a,b)==0 && (a.StockPlan.TotalPrimaryCount<b.StockPlan.TotalPrimaryCount
                 || a.StockPlan.TotalPrimaryCount==b.StockPlan.TotalPrimaryCount && a.Utilization<b.Utilization));
+        }
         public static TowerLayout Optimize(TowerInput input)
         {
             if(input?.Network!=null)return TransferNetworkOptimizer.Optimize(input,input.Network).Beams[0];
@@ -707,14 +731,21 @@ namespace EngineeringDashboard
         internal static int TierOrder(int count,int initial)=>count<=initial ? initial-count : initial+count;
         internal static double BracePenalty(double[] positions,bool[] joined,double width,bool rotated)
         {
-            double penalty=0,centre=(positions.First()+positions.Last())/2;
+            double penalty=0;
             for(int i=0;i<joined.Length;i++)if(joined[i])
             {
                 double brace=rotated ? width : positions[i+1]-positions[i];
                 // 1.50 m first, then 1.00 m, then other manufactured braces.
-                penalty+=Math.Abs(brace-1500)<1e-6 ? 0 : Math.Abs(brace-1000)<1e-6 ? 500+Math.Abs((positions[i]+positions[i+1])/2-centre)/100 : Math.Abs(brace-2000)<1e-6 ? 1500 : 2000;
+                penalty+=Math.Abs(brace-1500)<1e-6 ? 0 : Math.Abs(brace-1000)<1e-6 ? 500 : Math.Abs(brace-2000)<1e-6 ? 1500 : 2000;
             }
             return penalty;
+        }
+        internal static double BraceLocationPenalty(double[] positions,bool[] joined,double width,bool rotated)
+        {
+            double centre=(positions.First()+positions.Last())/2,result=0;
+            for(int i=0;i<joined.Length;i++)if(joined[i] && Math.Abs((rotated ? width : positions[i+1]-positions[i])-1000)<1e-6)
+                result+=Math.Abs((positions[i]+positions[i+1])/2-centre)/100;
+            return result;
         }
         private static IEnumerable<int[]> Groups(int count,bool rotated)
         {
@@ -776,7 +807,7 @@ namespace EngineeringDashboard
         {
             double length=stocks.Sum(),setback=input.StockEndSetbackMm;
             int maximum=Math.Min(input.EngineerStationLimit,(int)(length/600)+2);
-            var seen=new HashSet<string>();
+            var seen=new HashSet<TransferredSlabOptimizer.GeometryKey>();
             for(int count=stocks.Length*2;count<=maximum;count++)foreach(var groups in Groups(count,rotated))
             {
                 input.Trace?.CheckCancellation();
@@ -812,7 +843,7 @@ namespace EngineeringDashboard
                             pieces.Add(new TowerStockPiece {StartMm=start,StockLengthMm=stock,FirstSupport=first,LastSupport=last,IsCustomLength=!input.PrimaryStockLengthsMm.Contains(stock)});start+=stock;
                         }
                         if(!valid || p.Last()>length-setback+1e-7)continue;
-                        string key=string.Join(",",p.Select(v=>v.ToString("R",CultureInfo.InvariantCulture)))+"|"+string.Join(",",joined);
+                        var key=new TransferredSlabOptimizer.GeometryKey(p,joined.ToArray());
                         if(!seen.Add(key))continue;
                         yield return new TransferredSlabOptimizer.Geometry {Stock=pieces.ToArray(),Positions=p,Joined=joined.ToArray(),MemberSupports=pieces.Select(s=>p.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(v=>v-s.StartMm).ToArray()).ToArray()};
                     }
