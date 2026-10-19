@@ -219,6 +219,7 @@ namespace EngineeringDashboard
     {
         internal TowerSearchDiagnostics Diagnostics;
         internal Dictionary<string,DedicatedCrossSearch> DedicatedCrossCache;
+        internal CrossGeometryCache CrossingGeometryWork;
         internal System.Collections.Concurrent.ConcurrentDictionary<Tuple<TransferMember[],string>,CrossLowerCaseCheck> CrossLowerCases;
         internal bool AllowLocalShutterExceptions;
         // Production checks one fully loaded configuration. Historical test replays keep their staged inputs.
@@ -229,6 +230,7 @@ namespace EngineeringDashboard
         internal EngineerPrimaryPlan EngineerPlan;
         internal bool EngineerDedicatedFallback;
         internal bool SeedNetworkSearch=true,OptimizePrimaryResponses=true,PrepareReceiverChecks=true;
+        internal bool OptimizeCrossingSearch=true;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
         internal Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> TransferReceiverPreparation;

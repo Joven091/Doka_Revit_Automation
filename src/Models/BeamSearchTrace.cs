@@ -12,7 +12,7 @@ namespace EngineeringDashboard
     {
         CoveragePlans, CoverageVariants, UpperAnalyses, LowerAnalyses, PrimaryAnalyses,
         TowerCandidates, TransferCandidates, NetworkSolves, NumericalChecks, RejectionChecks,
-        GeometryBuilds, GeometryCacheHits, CrossCacheHits, LowerCaseCacheHits, PrimaryCacheHits, PrimaryMatrixCacheHits, LowerResponseCacheHits, EconomyPruned, PrimaryDeflectionSkipped, NetworkPrimaryCacheHits, TransferLayoutsBuilt, TransferLayoutsDeferred, NetworkBranchesPruned, NetworkTransverseCacheHits, CompleteNetworkCandidates, CrossingLegClashesRejected, NetworkSpacingTrials, UniformPrimaryCacheHits, PrimaryLoadCacheHits, SeedNetworkCandidates, PreparedPrimaryCacheHits
+        GeometryBuilds, GeometryCacheHits, CrossCacheHits, LowerCaseCacheHits, PrimaryCacheHits, PrimaryMatrixCacheHits, LowerResponseCacheHits, EconomyPruned, PrimaryDeflectionSkipped, NetworkPrimaryCacheHits, TransferLayoutsBuilt, TransferLayoutsDeferred, NetworkBranchesPruned, NetworkTransverseCacheHits, CompleteNetworkCandidates, CrossingLegClashesRejected, NetworkSpacingTrials, UniformPrimaryCacheHits, PrimaryLoadCacheHits, SeedNetworkCandidates, PreparedPrimaryCacheHits, CrossingGeometryCacheHits
     }
     // Deadline expiry is separate from user cancellation and structural rejection.
     internal sealed class BeamSearchDeadlineException : Exception
@@ -24,7 +24,7 @@ namespace EngineeringDashboard
     // Workers write atomic counters; the UI can read without touching solver collections.
     internal sealed class BeamSearchTrace
     {
-        private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred","Network branches pruned by exact bounds","Network transverse response cache hits","Complete network candidates","Crossing leg clashes rejected before member checks","Network spacing vectors searched","Uniform primary shape cache hits","Primary load-data cache hits","Seed network candidates","Prepared primary check cache hits"};
+        private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred","Network branches pruned by exact bounds","Network transverse response cache hits","Complete network candidates","Crossing leg clashes rejected before member checks","Network spacing vectors searched","Uniform primary shape cache hits","Primary load-data cache hits","Seed network candidates","Prepared primary check cache hits","Crossing geometry cache hits"};
         // Sampling is opt-in for benchmark runs. No per-check stopwatch,
         // timer allocation or profiling collection is used by normal calculation.
         internal bool EnableHotProfiling=false;
@@ -69,6 +69,8 @@ namespace EngineeringDashboard
         private long firstCompleteNetworkTicks=-1;
         private string pass="Not started", work="Validating inputs", context="", outcome="Running", error="", result="", derivedInputs="";
         private string rejectedPass="";
+        private string crossingRejection="";
+        internal void CrossingRejected(string reason)=>Volatile.Write(ref crossingRejection,reason.Length<=4000 ? reason : reason.Substring(0,4000));
         internal string Inputs {get;}
         internal DateTime StartedUtc {get;}=DateTime.UtcNow;
         internal CancellationToken CancellationToken {get;}
@@ -191,6 +193,7 @@ namespace EngineeringDashboard
             text.AppendLine("Stage times include completed calls only; nested stages and parallel worker times overlap and must not be added as wall time.");
             text.AppendLine("Current/last pass: "+Volatile.Read(ref pass));text.AppendLine("Current/last work: "+Volatile.Read(ref work));
             text.AppendLine("Current/last context: "+Volatile.Read(ref context));
+            if(!string.IsNullOrEmpty(Volatile.Read(ref crossingRejection)))text.AppendLine("Latest crossing rejection: "+Volatile.Read(ref crossingRejection));
             text.AppendLine("Completed catalogue-pass seconds: "+(Interlocked.Read(ref catalogueTicks)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture));
             text.AppendLine("Completed custom-pass seconds: "+(Interlocked.Read(ref customTicks)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture));
             for(int i=0;i<counters.Length;i++)text.AppendLine(CounterNames[i]+": "+Count((BeamSearchCounter)i).ToString(CultureInfo.InvariantCulture));

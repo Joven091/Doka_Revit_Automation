@@ -477,27 +477,36 @@ namespace EngineeringDashboard
         {
             // Find a checked seed with the existing bounded descent, then recover
             // independent maxima. Never enumerate the Cartesian product of pitches.
-            TowerOptimizationException failure;
+            TowerOptimizationException failure=null;
             var first=common;
+            bool denseSeedFirst=common.EngineerWorkflow && common.OptimizeCrossingSearch && common.AllowCustomH20Lengths && input.CrossingBeams.Length>2;
             if(common.EngineerSearch && CrossBeamSupportOptimizer.Modern(input))
             {
                 // Start with the whole junction. A cheapest provisional receiver
                 // can obstruct its crossing and adds no useful uncoordinated pass.
                 first=common.CopyForSearch();first.CoordinateCrossingLayouts=true;
             }
-            try {return SearchSpacing(first,input);}
-            catch(TowerOptimizationException ex){failure=ex;}
-            // The caller needs failed coordinated-search evidence for separate-formwork reasons.
-            finally {common.Diagnostics=first.Diagnostics;}
+            if(!denseSeedFirst)
+            {
+                try {return SearchSpacing(first,input);}
+                catch(TowerOptimizationException ex){failure=ex;}
+                // The caller needs failed coordinated-search evidence for separate-formwork reasons.
+                finally {common.Diagnostics=first.Diagnostics;}
+            }
             var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
             var attempted=new HashSet<string>();
             TransferNetworkResult best=null;
             Func<TransferNetworkInput,string> keyOf=n=>string.Join(";",n.BeamSpacingsMm.Concat(n.SlabSpacingsMm).Concat(n.CrossingSpacingsMm));
-            if(!worker.CoordinateCrossingLayouts || first.CoordinateCrossingLayouts)attempted.Add(keyOf(input));
+            if(!denseSeedFirst && (!worker.CoordinateCrossingLayouts || first.CoordinateCrossingLayouts))attempted.Add(keyOf(input));
             // Try a single category step before a blanket seed. Receiving-beam
             // failure must not automatically tighten slabs or dedicated crossings.
             var closer=input.WithSpacings(1);
             var seeds=new List<TransferNetworkInput>();
+            // Establish a fully checked complete custom network before spending
+            // exhaustive effort on marginal upper-foot/receiver combinations at
+            // every maximum pitch. The existing independent recovery below still
+            // attempts the requested maxima and intermediate permitted pitches.
+            if(denseSeedFirst)seeds.Add(input.WithSpacings(PlywoodSpacing.StandardSpacingsMm.Count-1));
             if(worker.CoordinateCrossingLayouts)seeds.Add(input);
             for(int group=0;group<3;group++)
             {
@@ -672,6 +681,7 @@ namespace EngineeringDashboard
         {
             input.Validate(common); TransferNetworkResult best=null;int tested=0;
             common.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};var diag=common.Diagnostics;
+            if(!CrossBeamSupportOptimizer.MandatoryStocksFit(common,input))throw diag.Exception("No permitted primary stock fits a mandatory crossing tower.");
             var geometryCache=common.ReuseSearchWork ? common.NetworkGeometryWork ?? new TransferredSlabOptimizer.GeometryCache() : null;
             var incumbent=!common.EngineerSearch && common.PruneNetworkBounds && !separate && input.CrossingBeams.All(c=>c.SupportMode==CrossBeamSupportMode.LegacySlabRows) ? new Incumbent() : null;
             var engineerBound=common.EngineerSearch && common.PruneNetworkBounds && !separate ? new EngineerBound(input,common.Trace) : null;
@@ -714,6 +724,7 @@ namespace EngineeringDashboard
                 {
                     var worker=common.CopyForSearch();
                     worker.DedicatedCrossCache=new Dictionary<string,DedicatedCrossSearch>();
+                    worker.CrossingGeometryWork=new CrossGeometryCache();
                     worker.NetworkNumerics=common.ReuseSearchWork && (common.ReuseNetworkNumerics || common.ReuseTransverseNumerics) ? (common.NetworkNumericalWork ?? numericalWork).Value : null;
                     worker.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};
                     outcomes[index]=SearchScenario(worker,input,stockCovers,geometryCache,incumbent,minimumLegs,scenarios[index].Item1,scenarios[index].Item2,separate,engineerBound);
@@ -839,10 +850,15 @@ namespace EngineeringDashboard
             catch(BeamSearchDeadlineException) {common.Trace?.CheckUserCancellation();}
             outcome.Tested=tested;return outcome;
         }
-        private static ScenarioResult CoordinatedScenario(TowerInput common,TransferNetworkInput input,double[][] covers,TransferredSlabOptimizer.GeometryCache geometryCache,UpperTransferPlan[][] options,double cover,double phase,int rows,EngineerBound engineerBound=null)
+        private sealed class ReceiverSearchResult
+        {
+            internal int Ceiling;internal TowerLayout Best;internal TowerLayout[] Choices;
+        }
+        private static ScenarioResult CoordinatedScenario(TowerInput common,TransferNetworkInput input,double[][] covers,TransferredSlabOptimizer.GeometryCache geometryCache,UpperTransferPlan[][] options,double cover,double phase,int rows,EngineerBound engineerBound=null,Dictionary<Tuple<int,UpperTransferPlan,UpperTransferPlan>,ReceiverSearchResult> baseReceivers=null)
         {
             var outcome=new ScenarioResult {Diagnostics=common.Diagnostics};
             var solveCache=new Dictionary<Tuple<int,UpperTransferPlan,UpperTransferPlan>,Tuple<int,TowerLayout[]>>();
+            baseReceivers=baseReceivers??new Dictionary<Tuple<int,UpperTransferPlan,UpperTransferPlan>,ReceiverSearchResult>();
             var crossCaches=new Dictionary<int,Dictionary<string,DedicatedCrossSearch>>();
             // Dedicated central towers depend on crossing concrete and their own geometry.
             // Reuse them across prefixes; every receiver load and clash is still rechecked.
@@ -855,8 +871,13 @@ namespace EngineeringDashboard
                 if(solveCache.TryGetValue(key,out var saved) && saved.Item1>=ceiling)return saved.Item2;
                 TowerLayout[] receivers;
                 var choices=new List<TowerLayout>();
+                TowerLayout best;
+                if(common.OptimizeCrossingSearch && common.ReuseSearchWork && baseReceivers.TryGetValue(key,out var baseline) && baseline.Ceiling>=ceiling)
+                {best=baseline.Best;choices.AddRange(baseline.Choices);}
+                else
+                {
                 var alternatives=common.EngineerSearch && common.ReuseSearchWork ? new Dictionary<double,TowerLayout>() : null;
-                var best=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,alternatives:alternatives);if(best!=null)choices.Add(best);
+                best=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,alternatives:alternatives);if(best!=null)choices.Add(best);
                 // The unrestricted solve already searches all these widths. A failed
                 // solve proves each centred fixed-width subset fails too; offset searches
                 // below remain necessary because they change the receiving geometry.
@@ -866,6 +887,13 @@ namespace EngineeringDashboard
                     TowerLayout alternative;
                     if(alternatives==null || !alternatives.TryGetValue(width,out alternative))alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,width);
                     if(alternative!=null)choices.Add(alternative);
+                }
+                foreach(double offset in new[] {-25.0,25})
+                {
+                    var alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,1000,offset);
+                    if(alternative!=null)choices.Add(alternative);
+                }
+                if(common.OptimizeCrossingSearch && common.ReuseSearchWork)baseReceivers[key]=new ReceiverSearchResult {Ceiling=ceiling,Best=best,Choices=choices.ToArray()};
                 }
                 if(common.EngineerSearch && common.EngineerJunctionExtraTiers>0 && best!=null)
                 {
@@ -877,11 +905,6 @@ namespace EngineeringDashboard
                         var alternative=Solve(larger,input,beam,left,right,cover,phase,covers,geometryCache,larger.EngineerMinimumStations*2,best.WidthMm);
                         if(alternative!=null)choices.Add(alternative);
                     }
-                }
-                foreach(double offset in new[] {-25.0,25})
-                {
-                    var alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,1000,offset);
-                    if(alternative!=null)choices.Add(alternative);
                 }
                 receivers=choices.OrderBy(l=>common.EngineerSearch ? l.LegCount : TransferredSlabOptimizer.Economy(l)).ThenBy(l=>l.Standalone600Count).ThenBy(l=>l.BayCount).ThenBy(l=>l.StandaloneBracePenalty).ThenBy(l=>l.CantileverImbalanceMm).ThenBy(l=>l.SymmetryErrorMm).ThenBy(l=>l.BraceLocationPenalty).ToArray();solveCache[key]=Tuple.Create(ceiling,receivers);return receivers;
             }
@@ -906,11 +929,21 @@ namespace EngineeringDashboard
             }
             bool Seed(State previous,int beam,ref int remaining)
             {
-                foreach(var right in beam==input.Bays.Length ? new UpperTransferPlan[] {null} : options[beam].Take(2))
+                // Close slab feet reduce receiving H20 cantilevers and timber
+                // intrusion into a narrow junction. Try that complete path before
+                // the least-timber slab stocks; the ordinary ranked search below
+                // still compares every retained passing option.
+                var seedOptions=beam==input.Bays.Length ? new UpperTransferPlan[] {null} : common.OptimizeCrossingSearch
+                    ? options[beam].OrderBy(o=>o.NearFootMm+o.FarFootMm).ThenBy(o=>o.StockLengthMm).Take(2) : options[beam].Take(2);
+                foreach(var right in seedOptions)
                 {
                     common.Trace?.CheckCancellation();if(remaining--<=0)return false;
                     int ceiling=engineerBound?.Ceiling(previous.Legs,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4)??int.MaxValue;
-                    foreach(var receiver in Receivers(beam,previous.Bays.LastOrDefault(),right,ceiling).Where(r=>r.LegCount<=ceiling).Take(2))
+                    bool tightJunction=input.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && (c.BayNumber==beam || c.BayNumber==beam+1)
+                        && input.Bays[c.BayNumber-1].WidthMm<2*CrossBeamSupportOptimizer.SideShutterClearanceMm+1524+2*common.StockEndSetbackMm+CrossBeamSupportOptimizer.H20WidthMm);
+                    var receivers=Receivers(beam,previous.Bays.LastOrDefault(),right,ceiling).Where(r=>r.LegCount<=ceiling);
+                    if(common.OptimizeCrossingSearch && tightJunction)receivers=receivers.OrderBy(r=>Math.Abs(r.WidthMm-1000)).ThenBy(r=>Math.Abs(r.TransverseOffsetMm));
+                    foreach(var receiver in receivers.Take(common.OptimizeCrossingSearch ? 4 : 2))
                     {
                         int before=outcome.Improvements.Count;var next=Extend(previous,right,receiver,beam);
                         if(outcome.Improvements.Count>before){common.Trace?.Increment(BeamSearchCounter.SeedNetworkCandidates);return true;}
@@ -926,7 +959,7 @@ namespace EngineeringDashboard
                 {
                     // Explore a small complete path before expanding every slab
                     // option at B1/B2. The ordinary bounded search still follows.
-                    int remaining=input.Beams.Length*2+8;Seed(states[0],0,ref remaining);
+                    int remaining=common.OptimizeCrossingSearch ? input.Beams.Length*8+32 : input.Beams.Length*2+8;Seed(states[0],0,ref remaining);
                 }
                 for(int beam=0;beam<input.Beams.Length && states.Count>0;beam++)
                 {
@@ -956,7 +989,7 @@ namespace EngineeringDashboard
             if(common.EngineerSearch && common.EngineerJunctionExtraTiers==0 && outcome.Improvements.Count==0 && common.Trace?.BudgetReached!=true)
             {
                 var expanded=common.CopyForSearch();expanded.EngineerJunctionExtraTiers=2;
-                var alternative=CoordinatedScenario(expanded,input,covers,geometryCache,options,cover,phase,rows,engineerBound);
+                var alternative=CoordinatedScenario(expanded,input,covers,geometryCache,options,cover,phase,rows,engineerBound,common.OptimizeCrossingSearch ? baseReceivers : null);
                 alternative.Tested+=outcome.Tested;return alternative;
             }
             return outcome;
@@ -1086,7 +1119,23 @@ namespace EngineeringDashboard
             }
             if(common.CoordinateCrossingLayouts)
             {
-                if(input.PrepareReceiverChecks && input.ReuseSearchWork && input.DeferTransferLayout && input.FullLoadingOnly && input.EngineerPlan?.UseDesignZones==true)input.TransferReceiverPreparation=layout=>CrossBeamSupportOptimizer.PrepareReceiver(input,network,beam,layout);
+                input.OptimizeCrossingSearch=common.OptimizeCrossingSearch;
+                if(input.PrepareReceiverChecks && input.ReuseSearchWork && input.DeferTransferLayout && input.FullLoadingOnly && input.EngineerPlan?.UseDesignZones==true)
+                {
+                    var frameChecks=new TransferredSlabOptimizer.ResponseCache<Tuple<TransferredSlabOptimizer.Geometry,double,double>,bool>(4096);
+                    input.TransferReceiverPreparation=layout=>
+                    {
+                        var prepared=CrossBeamSupportOptimizer.PrepareReceiver(input,network,beam,layout);
+                        if(!input.OptimizeCrossingSearch || prepared==null)return prepared;
+                        return (geometry,edge)=>
+                        {
+                            var key=Tuple.Create(geometry,edge,layout.WidthMm);
+                            if(!frameChecks.TryGetValue(key,out bool fits))
+                                frameChecks.Store(key,fits=CrossBeamSupportOptimizer.ReceiverFramesFit(input,network,beam,geometry,edge,layout.WidthMm,layout.TransverseOffsetMm));
+                            return fits && prepared(geometry,edge);
+                        };
+                    };
+                }
                 input.TransferLayoutAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout)) && CrossBeamSupportOptimizer.CheckJunctionReceiver(input,network,beam,layout);
                 if(common.EngineerSearch)input.TransferLowerAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout,true)) && CrossBeamSupportOptimizer.CheckJunctionLowerReceiver(input,network,beam,layout);
             }

@@ -471,7 +471,7 @@ namespace EngineeringDashboard
             public override bool Equals(object other)=>other is PreparedPrimaryKey && Equals((PreparedPrimaryKey)other);
             public override int GetHashCode(){unchecked{return (((member.GetHashCode()*31+(int)material)*31+criterion)*31+legLimit.GetHashCode())*31+(ignoreUplift ? 1 : 0);}}
         }
-        internal sealed class PreparedPrimaryCheck {internal bool Passed;internal TowerSearchDiagnostics Diagnostics;}
+        internal sealed class PreparedPrimaryCheck {internal bool Passed;internal TowerSearchDiagnostics Diagnostics;internal LoadedBeamAnalysis Analysis;}
         // Exact immutable numerical inputs. Include both distributed and point loads,
         // stiffness and criterion; no rounded geometry, forces or eligibility decisions.
         internal sealed class TransverseKey : IEquatable<TransverseKey>
