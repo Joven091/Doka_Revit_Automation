@@ -30,7 +30,23 @@ internal static class CrossingSearchTests
         catch(TowerOptimizationException ex){rejected=ex.Details.Contains("X2") && ex.Details.Contains("1300") && ex.Details.Contains("1475");}
         Check(rejected,"early failure identifies actual stock/bracing interval");
         Check(input.Trace.Count(BeamSearchCounter.PrimaryAnalyses)==0 && input.Trace.Count(BeamSearchCounter.CoveragePlans)==0,"impossible catalogue pass needs no primary search");
-        GeometryKeys();Frames();StockStarts();ForceBounds();Parity();Console.WriteLine("Passed "+checks+" crossing search checks.");
+        GeometryKeys();Frames();StockStarts();ForceBounds();ZonedPrimaryReuse();Parity();Console.WriteLine("Passed "+checks+" crossing search checks.");
+    }
+    static void ZonedPrimaryReuse()
+    {
+        var input=new TowerInput {NetworkNumerics=new TransferredSlabOptimizer.SearchWorkCache(),Trace=new BeamSearchTrace("zoned crossing primary reuse")};
+        var supports=new[] {250.0,1250,2550,3550};var random=new Random(191071);
+        for(int sample=0;sample<80;sample++)
+        {
+            var loads=new[] {new BeamDistributedLoad {StartMm=0,EndMm=2975,KnPerM=random.NextDouble()*45},new BeamDistributedLoad {StartMm=2975,EndMm=3900,KnPerM=random.NextDouble()*70}};
+            var points=new[] {new BeamPointLoad {PositionMm=3300,Kn=(random.NextDouble()-.5)*5}};
+            var actual=TransferredSlabOptimizer.AnalyzeTransverse(input,BeamSearchCounter.PrimaryAnalyses,3900,supports,loads,points,input.Primary.EI,270,signed:true);
+            var expected=LoadedBeamAnalysis.AnalyzeSigned(3900,supports,loads,points,input.Primary.EI,270);
+            Func<double,double,bool> same=(a,b)=>Math.Abs(a-b)<1e-9*Math.Max(1,Math.Abs(b));
+            Check(actual.DeflectionEvaluated && same(actual.MomentKnM,expected.MomentKnM) && same(actual.ShearKn,expected.ShearKn) && same(actual.DeflectionMm,expected.DeflectionMm),"multi-zone cached primary retains full extrema and deflection");
+            Check(actual.Reactions.Zip(expected.Reactions,same).All(v=>v),"multi-zone primary retains each signed-load reaction");
+        }
+        Check(input.Trace.Count(BeamSearchCounter.PrimaryMatrixCacheHits)==79,"different zoned loads reuse the same stiffness factorization");
     }
     static void GeometryKeys()
     {

@@ -107,6 +107,7 @@ internal static class ControlledPerformanceTests
             if(variant=="prior-policy"){Set(input,"SeedNetworkSearch",false);Set(input,"OptimizePrimaryResponses",false);}
             if(variant=="no-seed")Set(input,"SeedNetworkSearch",false);
             if(variant=="crossing-reference")Set(input,"OptimizeCrossingSearch",false);
+            if(variant=="feasibility")Set(input,"FirstCompleteNetworkOnly",true);
             if(variant=="no-udl-reuse")Set(input,"OptimizePrimaryResponses",false);
             if(variant=="reference")Set(input,"PrepareReceiverChecks",false);
             int gc0=GC.CollectionCount(0),gc1=GC.CollectionCount(1),gc2=GC.CollectionCount(2);var process=Process.GetCurrentProcess();double cpuBefore=process.TotalProcessorTime.TotalSeconds;

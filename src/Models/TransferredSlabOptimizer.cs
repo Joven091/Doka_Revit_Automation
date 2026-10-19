@@ -528,7 +528,19 @@ namespace EngineeringDashboard
             if(response!=null) {input.Trace?.Increment(BeamSearchCounter.NetworkTransverseCacheHits);return response;}
             input.Trace?.Increment(counter);
             using(input.Trace?.Measure(BeamSearchStage.TransverseAnalysis))
-                response=input.IgnoreUplift || signed ? LoadedBeamAnalysis.AnalyzeSigned(length,supports,uniform,points,ei,denominator) : LoadedBeamAnalysis.Analyze(length,supports,uniform,points,ei,denominator);
+            {
+                // Crossing rechecks have several UDL zones. Retain the exact
+                // response cache above and also reuse their stiffness factorization
+                // when only the load magnitudes change. No staged rejection here:
+                // the returned analysis must include every deflection check.
+                if(counter==BeamSearchCounter.PrimaryAnalyses && input.OptimizePrimaryResponses && input.ReuseNetworkNumerics && shared!=null)
+                {
+                    long before=shared.Matrix.Hits;
+                    response=LoadedBeamAnalysis.AnalyzeCombinedCached(length,supports,uniform,points,ei,denominator,shared.Matrix,allowSignedLoads:input.IgnoreUplift || signed);
+                    if(shared.Matrix.Hits>before)input.Trace?.Increment(BeamSearchCounter.PrimaryMatrixCacheHits);
+                }
+                else response=input.IgnoreUplift || signed ? LoadedBeamAnalysis.AnalyzeSigned(length,supports,uniform,points,ei,denominator) : LoadedBeamAnalysis.Analyze(length,supports,uniform,points,ei,denominator);
+            }
             if(key!=null)shared.StoreTransverse(key,response);
             return response;
             }
