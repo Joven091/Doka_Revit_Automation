@@ -99,9 +99,17 @@ namespace EngineeringDashboard
                     }
                     else
                     {
-                        var outline=Hull(geometry.Points);double area=PlanArea(outline);
-                        bool complete=geometry.ProjectedTopArea>0 && Math.Abs(area-geometry.ProjectedTopArea)<=Math.Max(1,area*1e-6);
-                        record.Details+="\nBoundary footprint area check: "+complete+"; hull area (mm2): "+RevitImportDiagnostics.Number(area);
+                        // Mesh coordinates can lose fractions of a millimetre at
+                        // project coordinates. Retain the double-precision face
+                        // edges for beam limits, references and slab intersections.
+                        var outline=geometry.TopOutlines.OrderByDescending(PlanArea).FirstOrDefault()??new ImportPoint[0];
+                        double area=PlanArea(outline),tolerance=RevitStructureImport.ToleranceMm;
+                        bool complete=!geometry.HasCurvedFaces && !geometry.HasTopOpening
+                            && ImportPolygon.BoundaryMatches(outline,geometry.Points.Select(Point).ToArray(),geometry.ProjectedTopArea,tolerance);
+                        record.Details+="\nBoundary footprint source: planar face edge loop; geometry tolerance (mm): "+RevitImportDiagnostics.Number(tolerance)
+                            +"\nBoundary footprint check: "+complete+"; outline area (mm2): "+RevitImportDiagnostics.Number(area)
+                            +"; projected top area difference (mm2): "+RevitImportDiagnostics.Number(Math.Abs(area-geometry.ProjectedTopArea))
+                            +"\nMesh hull area (mm2), reference only: "+RevitImportDiagnostics.Number(PlanArea(Hull(geometry.Points)));
                         if(!complete)record.Status="Blocked";
                         boundaries.Add(new RevitSelectedBoundary {SourceId=sourceId,Label=label,Kind=e is Wall ? "Wall" : "Column",Outline=outline,BottomMm=bottom,TopMm=top,
                             Problem=complete ? null : "Irregular column/wall footprints need a separate manual drawing."});
@@ -190,7 +198,7 @@ namespace EngineeringDashboard
                 }
             }
         }
-        // Exact convex plan outline; the builder rejects nonrectangular floors rather than filling their bounding box.
+        // Triangulated-mesh hull for diagnostics; physical face edges define boundaries.
         private static ImportPoint[] Hull(IEnumerable<XYZ> vertices)
         {
             var points=vertices.Select(Point).GroupBy(p=>Tuple.Create(Math.Round(p.X,4),Math.Round(p.Y,4))).Select(g=>g.First()).OrderBy(p=>p.X).ThenBy(p=>p.Y).ToArray();

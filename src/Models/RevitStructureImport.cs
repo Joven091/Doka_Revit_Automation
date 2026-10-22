@@ -124,6 +124,74 @@ namespace EngineeringDashboard
             model.NetworkConfigurationXml=xml;
         }
     }
+    internal static class ImportPolygon
+    {
+        internal static double SignedArea(ImportPoint[] p)
+        {
+            if(p==null || p.Length<3)return 0;
+            var o=p[0];double twice=0;
+            for(int i=0;i<p.Length;i++){var a=p[i];var b=p[(i+1)%p.Length];twice+=(a.X-o.X)*(b.Y-o.Y)-(a.Y-o.Y)*(b.X-o.X);}
+            return twice/2;
+        }
+        internal static double Area(ImportPoint[] p)=>Math.Abs(SignedArea(p));
+        internal static double Perimeter(ImportPoint[] p)=>Enumerable.Range(0,p.Length).Sum(i=>Distance(p[i],p[(i+1)%p.Length]));
+        private static double Distance(ImportPoint a,ImportPoint b)=>Math.Sqrt((a.X-b.X)*(a.X-b.X)+(a.Y-b.Y)*(a.Y-b.Y));
+        private static double Cross(ImportPoint a,ImportPoint b,ImportPoint c)=>(b.X-a.X)*(c.Y-a.Y)-(b.Y-a.Y)*(c.X-a.X);
+        internal static bool Convex(ImportPoint[] p,double tolerance)
+        {
+            if(p==null || p.Length<3 || p.Length>64 || p.Any(v=>v==null || !TowerBeamAnalysis.Finite(v.X) || !TowerBeamAnalysis.Finite(v.Y)))return false;
+            double area=SignedArea(p);if(Math.Abs(area)<1e-6)return false;double sign=Math.Sign(area);
+            for(int i=0;i<p.Length;i++)
+            {
+                var a=p[i];var b=p[(i+1)%p.Length];double length=Distance(a,b);if(length<1e-7)return false;
+                if(p.Any(v=>sign*Cross(a,b,v)/length< -tolerance))return false;
+            }
+            return true;
+        }
+        internal static bool BoundaryMatches(ImportPoint[] outline,ImportPoint[] mesh,double projectedArea,double tolerance)
+        {
+            if(!Convex(outline,tolerance) || mesh==null || mesh.Length==0 || !TowerBeamAnalysis.Finite(projectedArea) || projectedArea<=0)return false;
+            // The area allowance follows the same linear edge tolerance. Every
+            // projected mesh vertex must also match the real face perimeter;
+            // an enlarged base, remote component or genuine recess cannot be
+            // accepted merely by increasing an area-equality threshold.
+            if(Math.Abs(Area(outline)-projectedArea)>Perimeter(outline)*tolerance+Math.PI*tolerance*tolerance)return false;
+            double sign=Math.Sign(SignedArea(outline));
+            foreach(var v in mesh)
+            {
+                if(v==null || !TowerBeamAnalysis.Finite(v.X) || !TowerBeamAnalysis.Finite(v.Y))return false;
+                for(int i=0;i<outline.Length;i++)
+                    if(sign*Cross(outline[i],outline[(i+1)%outline.Length],v)/Distance(outline[i],outline[(i+1)%outline.Length])< -tolerance)return false;
+            }
+            return true;
+        }
+        internal static ImportPoint[] ClipConvex(ImportPoint[] subject,ImportPoint[] boundary,double inset)
+        {
+            var points=subject.ToList();double sign=Math.Sign(SignedArea(boundary));
+            for(int edge=0;edge<boundary.Length && points.Count>0;edge++)
+            {
+                var a=boundary[edge];var b=boundary[(edge+1)%boundary.Length];double length=Distance(a,b);
+                Func<ImportPoint,double> distance=p=>sign*Cross(a,b,p)/length-inset;
+                var clipped=new List<ImportPoint>();
+                for(int i=0;i<points.Count;i++)
+                {
+                    var p=points[i];var q=points[(i+1)%points.Count];double dp=distance(p),dq=distance(q);
+                    if(dp>=0)clipped.Add(p);
+                    if(dp*dq<0){double f=dp/(dp-dq);clipped.Add(new ImportPoint(p.X+(q.X-p.X)*f,p.Y+(q.Y-p.Y)*f));}
+                }
+                points=clipped;
+            }
+            return points.ToArray();
+        }
+        internal static bool InteriorOverlap(ImportPoint[] slab,ImportPoint[] boundary,double x0,double x1,double y0,double y1,double tolerance)
+        {
+            if(x1<=x0 || y1<=y0)return false;
+            // Apply the linear tolerance once, at the boundary perimeter. Also
+            // shrinking the bay would silently turn 1 mm into a 2 mm allowance.
+            var interior=SlabFootprint.Clip(slab,x0,x1,y0,y1);
+            return interior.Length>=3 && Area(ClipConvex(interior,boundary,tolerance))>1e-6;
+        }
+    }
     internal static class SlabFootprint
     {
         internal static double EndAllowance(double thickness)=>TowerBeamAnalysis.Finite(thickness) && thickness>0
@@ -236,7 +304,7 @@ namespace EngineeringDashboard
             var references=new List<RevitReferenceShape>();var boundaries=new List<Tuple<RevitSelectedBoundary,ImportPoint[]>>();
             foreach(var s in snapshot.Boundaries)
             {
-                if(s.Problem!=null || s.Outline==null || s.Outline.Length<3 || s.Outline.Any(p=>!Finite(p))) {problems.Add(s.Label+": "+(s.Problem??"Cannot read the boundary footprint."));continue;}
+                if(s.Problem!=null || !ImportPolygon.Convex(s.Outline,ToleranceMm)) {problems.Add(s.Label+": "+(s.Problem??"Cannot read a complete convex boundary footprint."));continue;}
                 var outline=s.Outline.Select(local).ToArray();boundaries.Add(Tuple.Create(s,outline));
                 references.Add(new RevitReferenceShape {SourceId=s.SourceId,Label=s.Label,Kind=s.Kind,Outline=outline});
             }
@@ -296,7 +364,8 @@ namespace EngineeringDashboard
                 {
                     var box=new Box(boundary.Item2);
                     if(boundary.Item1.TopMm>=floor.TopMm-floor.ThicknessMm-ToleranceMm && boundary.Item1.BottomMm<=floor.TopMm+ToleranceMm
-                        && box.X1>start+ToleranceMm && box.X0<end-ToleranceMm && box.Y1>y0+ToleranceMm && box.Y0<y1-ToleranceMm)
+                        && box.X1>bayStart+ToleranceMm && box.X0<bayEnd-ToleranceMm && box.Y1>y0+ToleranceMm && box.Y0<y1-ToleranceMm
+                        && ImportPolygon.InteriorOverlap(floorOutlines[floor.SourceId],boundary.Item2,bayStart,bayEnd,y0,y1,ToleranceMm))
                         problems.Add("S"+(i+1)+": "+boundary.Item1.Label+" intersects the bay interior. Select one clear rectangular area.");
                 }
                 if(floor.ThicknessMm>Math.Min(rows[i].DepthMm,rows[i+1].DepthMm))problems.Add(floor.Label+": slab is thicker than an adjacent beam.");

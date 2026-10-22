@@ -22,7 +22,7 @@ internal static class RevitSelectionUiTests
         var model=new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true,UseBeamNetwork=true,TransferSlabLoads=true,AllowCustomH20Lengths=false,TowerLegCapacityKn=50,FloorHeight=4000};
         string original=model.NetworkConfigurationXml;double originalLength=model.BeamLengthMm;
         var standalone=new BeamFormworkWorkspace(model,null,null,null);Check(!standalone.Buttons.ContainsKey("FromRevit"),"standalone has no live Revit command");standalone.Close();
-        int reads=0;var w=new BeamFormworkWorkspace(model,null,null,null,readRevitSelection:()=> {reads++;return RevitStructureImportTests.Sample();});w.Show();Pump();
+        int reads=0;bool columnSelection=false;var w=new BeamFormworkWorkspace(model,null,null,null,readRevitSelection:()=> {reads++;return columnSelection ? RevitColumnImportTests.ReportedSelection() : RevitStructureImportTests.Sample();});w.Show();Pump();
         Check(w.Buttons.ContainsKey("FromRevit"),"Revit host has visible import button");
         w.ShowRevitImportPreview=dialog=> {Check(dialog.Result.CanImport && dialog.ImportButton.IsEnabled,"valid preview ready");dialog.Close();return false;};
         Click(w,"FromRevit");Check(reads==1 && model.NetworkConfigurationXml==original && model.BeamLengthMm==originalLength,"cancel does not replace canvas");
@@ -65,6 +65,28 @@ internal static class RevitSelectionUiTests
             var bitmap=new RenderTargetBitmap((int)content.ActualWidth,(int)content.ActualHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(content);
             var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.Combine(Path.GetDirectoryName(png),"individual-spans.png")))encoder.Save(file);
         }
+        columnSelection=true;
+        w.ShowRevitImportPreview=dialog=>
+        {
+            dialog.Show();Pump();dialog.RefreshPreview();Pump();dialog.PreviewCanvas.Fit();Pump();
+            Check(dialog.ImportButton.IsEnabled && dialog.Result.CanImport,"reported columns in slab cutbacks enable import");
+            Check(dialog.PreviewCanvas.DrawnReferenceCount==4,"all four reported columns appear in the preview");
+            Check(dialog.PreviewCanvas.Model.NetworkBays[0].Outline.Length>=8 && dialog.PreviewCanvas.Model.NetworkBays[3].Outline.Length>=8,"preview retains both actual corner outlines");
+            Check(dialog.BuildDiagnosticReport("").Contains("Preview status: Ready to import"),"reported selection now has a successful diagnostic");
+            if(png!=null)
+            {
+                var content=(FrameworkElement)dialog.Content;content.UpdateLayout();
+                var bitmap=new RenderTargetBitmap((int)content.ActualWidth,(int)content.ActualHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(content);
+                var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.Combine(Path.GetDirectoryName(png),"column-cutbacks.png")))encoder.Save(file);
+            }
+            dialog.Close();return true;
+        };
+        Click(w,"FromRevit");Pump();Check(model.RevitContext.References.Length==4 && model.NetworkBeams.Count==5,"reported thirteen-element selection reaches canvas");
+        Check(!model.AllowCustomH20Lengths && model.TowerLegCapacityKn==50,"column fix preserves project stock and capacity settings");
+        Click(w,"Undo");Pump();Check(model.RevitContext.References.Length==0,"undo restores the earlier drawing without columns");
+        Click(w,"Redo");Pump();Check(model.RevitContext.References.Length==4 && model.NetworkBays[0].Outline.Length>=8,"redo preserves columns and cutbacks");
+        var obstructed=RevitColumnImportTests.ReportedSelection();foreach(var p in obstructed.Boundaries[1].Outline)p.Y+=20;
+        var obstacle=new RevitSelectionImportWindow(obstructed);Check(!obstacle.ImportButton.IsEnabled && obstacle.BuildDiagnosticReport("").Contains("intersects the bay interior"),"genuine interior obstruction remains blocked and diagnosable");obstacle.Close();
         var empty=new RevitSelectionImportWindow(new RevitSelectionSnapshot());Check(!empty.ImportButton.IsEnabled && empty.PreviewCanvas==null,"empty selection cannot replace inputs");empty.Close();
         string copied=null;
         var blockedSource=RevitStructureImportTests.Sample();blockedSource.Beams[0].WidthMm=0;
