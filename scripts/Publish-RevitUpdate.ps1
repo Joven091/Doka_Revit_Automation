@@ -13,7 +13,8 @@ function NormalVersion([string]$Text) {
 }
 $Installer = (Resolve-Path -LiteralPath $Installer).Path
 $details = [Diagnostics.FileVersionInfo]::GetVersionInfo($Installer)
-if ((NormalVersion $details.FileVersion) -ne (NormalVersion $Version)) { throw 'Installer file version does not match the requested release version.' }
+$fileVersion = [version]::new($details.FileMajorPart,$details.FileMinorPart,$details.FileBuildPart,$details.FilePrivatePart)
+if ($fileVersion -ne (NormalVersion $Version)) { throw 'Installer file version does not match the requested release version.' }
 if ($ReleaseNotes.Length -gt 4000) { throw 'Release notes must be 4000 characters or fewer.' }
 $size = (Get-Item -LiteralPath $Installer).Length
 if ($size -le 0 -or $size -gt 512MB) { throw 'Installer size is invalid.' }

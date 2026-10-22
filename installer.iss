@@ -8,12 +8,16 @@
 #ifndef BuildOutput
   #define BuildOutput RepoRoot + "src\bin\Release\net48"
 #endif
-#define MyAppVersion GetFileVersion(BuildOutput + "\MyRevitAddin.dll")
+#define MyAppVersion GetVersionNumbersString(BuildOutput + "\MyRevitAddin.dll")
 
 [Setup]
 ; Basic installer metadata
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersion}
+VersionInfoTextVersion={#MyAppVersion}
+VersionInfoProductVersion={#MyAppVersion}
+VersionInfoProductTextVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 
 ; Hide the directory selection page for a true "one-click" feel
