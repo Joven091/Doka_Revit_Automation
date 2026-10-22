@@ -380,7 +380,7 @@ namespace EngineeringDashboard
             }
             foreach(var b in Beams)b.ValidateSpan(common.LengthMm);
             if(SharedEnd(common.LengthMm)-SharedStart<=0)throw new ArgumentException("The parallel beams need an overlapping clear span for shared slab support.");
-            foreach(var b in Bays)if(b.Outline!=null && !SlabFootprint.ValidEndCutbacks(b.Outline,MaximumSlabEndStripMm(Array.IndexOf(Bays,b))))throw new ArgumentException("Invalid slab outline: use a rectangular bay with supported corner cutbacks.");
+            foreach(var b in Bays)if(b.Outline!=null && (!SlabFootprint.ValidEndCutbacks(b.Outline,MaximumSlabEndStripMm(Array.IndexOf(Bays,b))) || b.Outline.Any(p=>p.X<0 || p.X>50000 || p.Y< -1 || p.Y>b.WidthMm+1)))throw new ArgumentException("Invalid slab outline: use a rectangular bay with supported corner cutbacks.");
             foreach(var c in CrossingBeams)
                 if(new[] {c.BayNumber-1,c.BayNumber}.Any(i=>c.PositionMm-c.WidthMm/2<Beams[i].SpanStartMm-1e-7 || c.PositionMm+c.WidthMm/2>Beams[i].SpanEnd(common.LengthMm)+1e-7))throw new ArgumentException("A cross beam must meet the actual span of both adjacent beams.");
             ValidateSpacings();

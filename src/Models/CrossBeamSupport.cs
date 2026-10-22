@@ -547,7 +547,7 @@ namespace EngineeringDashboard
                 if(common.DedicatedCrossCache!=null)common.DedicatedCrossCache[cacheKey]=new DedicatedCrossSearch {Failure=failure};return null;
             }
             // Dedicated transverse secondaries and primary pairs use the same checked tower geometry as main beams.
-            var input=common.CopyForSearch();input.LengthMm=span;input.Network=null;input.EngineerPlan=null;
+            var input=common.CopyForSearch();input.LengthMm=span;input.LongitudinalStartMm=0;input.Network=null;input.EngineerPlan=null;
             input.DiagnosticScope=$"X{index+1} dedicated · ";
             input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace,ignoreUplift:input.IgnoreUplift) {LazyLocations=input.LazySearchDiagnostics};
             input.NetworkLegCeiling=int.MaxValue;

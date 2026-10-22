@@ -40,7 +40,7 @@ namespace EngineeringDashboard
         {foreach(var b in IndependentBeams)b.PropertyChanged-=NetworkChanged;IndependentBeams.Clear();}
         internal TowerInput IndependentInput(TowerInput common,IndependentBeamRow beam)
         {
-            beam.Validate();var input=common.CopyForSearch();input.Network=null;input.LengthMm=beam.LengthMm;input.TotalLineLoad=AreaLoad(beam.DepthMm)*beam.WidthMm/1000;input.TransverseLoadMoment=0;
+            beam.Validate();var input=common.CopyForSearch();input.Network=null;input.LengthMm=beam.LengthMm;input.LongitudinalStartMm=0;input.TotalLineLoad=AreaLoad(beam.DepthMm)*beam.WidthMm/1000;input.TransverseLoadMoment=0;
             input.TransferredSlab=new TransferredSlabInput {IsNetwork=true,IncludeMainBeamEndLoads=true,PlywoodSheetLengthMm=PlywoodSpacing.SheetLengthMm,BeamWidthMm=beam.WidthMm,BeamLineLoadKnM=input.TotalLineLoad,UpperSpacingMm=beam.MaximumSecondarySpacingMm};
             input.DiagnosticScope=beam.Label+" · independent beam · ";input.TransferredSlab.Validate(input);return input;
         }
@@ -134,6 +134,18 @@ namespace EngineeringDashboard
             if(beam==null || !TowerBeamAnalysis.Finite(start) || !TowerBeamAnalysis.Finite(length) || start<0 || length<300 || start+length>50000)throw new ArgumentException("Use a positive beam length and endpoints within 0–50,000 mm.");
             if(IsNetworkMode && CrossingBeams.Any(c=>(c.BayNumber==index || c.BayNumber==index+1) && (c.PositionMm-c.WidthMm/2<start || c.PositionMm+c.WidthMm/2>start+length)))throw new ArgumentException("Keep connected cross beams within this beam's actual endpoints.");
 
+        }
+        internal bool CrossingFitsSpan(int bayNumber,double position,double width)
+        {
+            int bay=bayNumber-1;return IsNetworkMode && bay>=0 && bay<NetworkBays.Count && TowerBeamAnalysis.Finite(position) && width>0
+                && position-width/2>=Math.Max(BeamSpanStart(bay),BeamSpanStart(bay+1))-1e-7
+                && position+width/2<=Math.Min(BeamSpanEnd(bay),BeamSpanEnd(bay+1))+1e-7;
+        }
+        internal double ClampCrossingPosition(int bayNumber,double position,double width)
+        {
+            int bay=Math.Max(0,Math.Min(NetworkBays.Count-1,bayNumber-1));
+            double near=Math.Max(BeamSpanStart(bay),BeamSpanStart(bay+1))+width/2,far=Math.Min(BeamSpanEnd(bay),BeamSpanEnd(bay+1))-width/2;
+            return far<near ? (near+far)/2 : Math.Max(near,Math.Min(far,position));
         }
         internal void SetAllBeamLengths(double length)
         {

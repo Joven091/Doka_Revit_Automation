@@ -121,8 +121,8 @@ namespace EngineeringDashboard
             Drawing.DraftPointRequested+=AcceptDraftPoint;Drawing.DraftPointerChanged+=PreviewDraftPoint;
             Drawing.SectionPositionChanged+=position=>SetSectionPosition(position);
             Drawing.MemberSelected+=ShowMember;Section.MemberSelected+=ShowMember;Section.SeparateSlabSelected+=bay=>SeparateSlabNotice.ShowBay(bay);
-            Drawing.CrossingRequested+=(bay,x)=> {if(!CommitFields())return;Mutate(()=> {Model.AddCrossingBeam();var c=Model.CrossingBeams.Last();c.BayNumber=bay+1;c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,x));Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});Drawing.Cursor=Cursors.Arrow;};
-            Drawing.MoveRequested+=(kind,index,delta)=> {if(!CommitFields())return;Mutate(()=> {if(kind==FormworkObject.Crossing) {var c=Model.CrossingBeams[index];c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,c.PositionMm+delta));}else if(!Model.TryMoveParallelBeam(index,delta))status.Text="Move needs at least 500 mm of clear slab bay on each side.";});};
+            Drawing.CrossingRequested+=(bay,x)=> {if(!CommitFields())return;Mutate(()=> {Model.AddCrossingBeam();var c=Model.CrossingBeams.Last();c.BayNumber=bay+1;c.PositionMm=Model.ClampCrossingPosition(c.BayNumber,x,c.WidthMm);Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});Drawing.Cursor=Cursors.Arrow;};
+            Drawing.MoveRequested+=(kind,index,delta)=> {if(!CommitFields())return;Mutate(()=> {if(kind==FormworkObject.Crossing) {var c=Model.CrossingBeams[index];c.PositionMm=Model.ClampCrossingPosition(c.BayNumber,c.PositionMm+delta,c.WidthMm);}else if(!Model.TryMoveParallelBeam(index,delta))status.Text="Move needs at least 500 mm of clear slab bay on each side.";});};
             Model.PropertyChanged+=ModelChanged;
             InitializeDrawingEditors(root);root.Loaded+=(s,e)=>Drawing.Fit();Closed+=(s,e)=> {closed=true;Diagnostics?.Close();Model.PropertyChanged-=ModelChanged;Model.SetAdditionalTextInputErrors(this,false);ClearDiagrams();};
             root.PreviewKeyDown+=(s,e)=>
@@ -242,7 +242,7 @@ namespace EngineeringDashboard
                 Mutate(()=> {int index=InsertBay(before);var beam=Model.NetworkBeams[index];beam.WidthMm=copiedBeam.WidthMm;beam.DepthMm=copiedBeam.DepthMm;beam.BottomElevationMm=copiedBeam.BottomElevationMm;});return true;
             }
             if(copiedCrossing==null || !Model.IsNetworkMode || Model.CrossingBeams.Count>=30 || bay==null)return false;
-            Mutate(()=> {Model.AddCrossingBeam();var beam=Model.CrossingBeams.Last();beam.BayNumber=bay.Item1+1;beam.WidthMm=copiedCrossing.WidthMm;beam.DepthMm=copiedCrossing.DepthMm;beam.BottomElevationMm=copiedCrossing.BottomElevationMm;beam.SupportMode=copiedCrossing.SupportMode;beam.PositionMm=Math.Max(beam.WidthMm/2,Math.Min(Model.BeamLengthMm-beam.WidthMm/2,bay.Item2));Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});return true;
+            Mutate(()=> {Model.AddCrossingBeam();var beam=Model.CrossingBeams.Last();beam.BayNumber=bay.Item1+1;beam.WidthMm=copiedCrossing.WidthMm;beam.DepthMm=copiedCrossing.DepthMm;beam.BottomElevationMm=copiedCrossing.BottomElevationMm;beam.SupportMode=copiedCrossing.SupportMode;beam.PositionMm=Model.ClampCrossingPosition(beam.BayNumber,bay.Item2,beam.WidthMm);Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});return true;
         }
         private void OpenGeometryMenu(Point point)
         {
@@ -384,7 +384,7 @@ namespace EngineeringDashboard
                     else {applied=Model.TryInsertParallelBeam(draftBeam,destination.Item3,out int index);if(applied)Drawing.Select(FormworkObject.Beam,index,false);}
                 },false);
             }
-            else if(destination.Item1>=0 && destination.Item2>=draftCrossing.WidthMm/2 && destination.Item2<=Model.BeamLengthMm-draftCrossing.WidthMm/2 && (draftCommand=="MV" || Model.CrossingBeams.Count<30)
+            else if(destination.Item1>=0 && Model.CrossingFitsSpan(destination.Item1+1,destination.Item2,draftCrossing.WidthMm) && (draftCommand=="MV" || Model.CrossingBeams.Count<30)
                 && !Model.CrossingBeams.Where((c,i)=>draftCommand!="MV" || i!=draftIndex).Any(c=>c.BayNumber==destination.Item1+1 && Math.Abs(c.PositionMm-destination.Item2)<(c.WidthMm+draftCrossing.WidthMm)/2))
             {
                 Mutate(()=> {
@@ -496,6 +496,7 @@ namespace EngineeringDashboard
             if(valid && Drawing.SelectedKind==FormworkObject.Beam && (editor.Box.Name=="EditSpanStartMm" || editor.Box.Name=="EditBeamLengthMm"))
                 try {Model.ValidateBeamSpan(Drawing.SelectedIndex,editor.Box.Name=="EditSpanStartMm" ? v : Model.BeamSpanStart(Drawing.SelectedIndex),editor.Box.Name=="EditBeamLengthMm" ? v : Model.BeamSpanLength(Drawing.SelectedIndex));}
                 catch(ArgumentException ex){valid=false;reason=ex.Message;}
+            if(valid && editor.Box.Name=="EditAllBeamLengthMm" && (v<300 || v>30000 || Model.CrossingBeams.Any(c=>c.PositionMm+c.WidthMm/2>v))){valid=false;reason="Keep all beam lengths positive and connected crossings within their endpoints.";}
             editor.Box.BorderBrush=valid ? Brushes.SlateGray : Brushes.Firebrick;editor.Error.Text=reason??$"Enter a number of at least {editor.Minimum:0.###}.";editor.Error.Visibility=valid ? Visibility.Collapsed : Visibility.Visible;return valid;
         }
         private bool ValidateStock(StringEditor editor)
@@ -508,7 +509,7 @@ namespace EngineeringDashboard
             if(changing)return true;if(editors.Any(e=>e.Box.IsEnabled && !ValidateEditor(e)) || stringEditors.Any(e=>!ValidateStock(e))) {status.Text="Correct the red input before continuing.";return false;}
             var dirty=editors.Where(e=>e.Dirty && e.Box.IsEnabled).ToArray();var strings=stringEditors.Where(e=>e.Dirty).ToArray();if(dirty.Length==0 && strings.Length==0)return true;
             CancelDrafting();var old=Capture();changing=true;
-            try {Model.SetAdditionalTextInputErrors(this,false);foreach(var e in dirty){double v=double.Parse(e.Box.Text,CultureInfo.CurrentCulture);if(Math.Abs(v-e.Get())>1e-9)e.Set(v);e.Dirty=false;}foreach(var e in strings){e.Set(e.Box.Text);e.Dirty=false;}}
+            try {Model.SetAdditionalTextInputErrors(this,false);foreach(var e in dirty){double v=double.Parse(e.Box.Text,CultureInfo.CurrentCulture);if(Math.Abs(v-e.Get())>1e-9 || e.Box.Name=="EditAllBeamLengthMm")e.Set(v);e.Dirty=false;}foreach(var e in strings){e.Set(e.Box.Text);e.Dirty=false;}}
             finally {changing=false;}
             undo.Push(old);redo.Clear();Refresh();return true;
         }
@@ -557,7 +558,7 @@ namespace EngineeringDashboard
                 Fields["UpperSupportSpacingMm"].Visibility=Visibility.Collapsed;
                 properties.Children.RemoveAt(properties.Children.Count-2);
                 int selectionControls=properties.Children.Count;var objectFields=new HashSet<string>(Fields.Keys);
-                Number("AllBeamLengthMm","All parallel beam lengths (mm)",()=>Model.BeamLengthMm,Model.SetAllBeamLengths);
+                Number("AllBeamLengthMm","Set all beam lengths (mm)",()=>Model.BeamLengthMm,Model.SetAllBeamLengths);
                 BuildSharedSettings();
                 foreach(var key in Fields.Keys.Where(k=>!objectFields.Contains(k)))sharedFields.Add(key);
                 while(properties.Children.Count>selectionControls){var child=properties.Children[selectionControls];properties.Children.RemoveAt(selectionControls);SharedProperties.Children.Add(child);}

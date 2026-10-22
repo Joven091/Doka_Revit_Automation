@@ -58,6 +58,12 @@ internal static class RevitSelectionUiTests
         var variable=RevitStructureImport.Build(IndividualSpanTests.ReportedGeometry(),"beam1");w.ApplyRevitImport(variable);Pump();w.Drawing.Fit();Pump();
         Check(model.NetworkBays[0].Outline.Length==8 && model.BeamSpanStart(0)>149,"canvas accepts different ends and actual cutbacks");
         Check(w.Drawing.AnnotationLabels.Any(t=>t.Contains("3901.832")),"canvas labels the actual short beam length");
+        if(png!=null)
+        {
+            w.UpdateLayout();var content=(FrameworkElement)w.Content;content.UpdateLayout();
+            var bitmap=new RenderTargetBitmap((int)content.ActualWidth,(int)content.ActualHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(content);
+            var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.Combine(Path.GetDirectoryName(png),"individual-spans.png")))encoder.Save(file);
+        }
         var empty=new RevitSelectionImportWindow(new RevitSelectionSnapshot());Check(!empty.ImportButton.IsEnabled && empty.PreviewCanvas==null,"empty selection cannot replace inputs");empty.Close();
         string copied=null;
         var blockedSource=RevitStructureImportTests.Sample();blockedSource.Beams[0].WidthMm=0;
@@ -68,7 +74,7 @@ internal static class RevitSelectionUiTests
         blocked.Diagnostics.RemarksBox.Text="Cannot import this selection";blocked.Diagnostics.CopyReport();
         Check(copied.Contains("enter a valid width") && copied.Contains("Cannot import this selection") && copied.Contains("101"),"copy includes selection, rejection and remarks");
         var diagnostic=blocked.Diagnostics;blocked.DiagnoseButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(ReferenceEquals(diagnostic,blocked.Diagnostics),"repeat Diagnose reuses its report window");
-        blocked.Activate();var table=Find<DataGrid>((DependencyObject)blocked.Content).First();table.SelectedItem=table.Items[0];table.CurrentCell=new DataGridCellInfo(table.Items[0],table.Columns[1]);table.Focus();Check(table.BeginEdit(),"review cell can be edited");Pump();
+        blocked.Activate();var table=Find<DataGrid>((DependencyObject)blocked.Content).First();table.SelectedItem=table.Items[0];table.CurrentCell=new DataGridCellInfo(table.Items[0],table.Columns.Single(c=>Equals(c.Header,"Width (mm)")));table.Focus();Check(table.BeginEdit(),"review cell can be edited");Pump();
         var rawInput=Find<TextBox>(table).Single(box=>box.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path?.Path=="WidthMm");rawInput.Text="invalid width";rawInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();
         Check(blocked.BuildDiagnosticReport("").Contains("raw text: invalid width") && !blocked.ImportButton.IsEnabled,"diagnose captures invalid text rather than just its last valid numeric value");
         blocked.Close();Pump();Check(!diagnostic.IsVisible,"closing import closes its diagnostic child");

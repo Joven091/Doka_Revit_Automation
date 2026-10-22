@@ -56,7 +56,7 @@ namespace EngineeringDashboard
             if(field=="PositionMm")
             {
                 var c=Model.CrossingBeams[Drawing.SelectedIndex];
-                if(value<c.WidthMm/2 || value>Model.BeamLengthMm-c.WidthMm/2){error="Keep the crossing beam within the beam length.";return false;}
+                if(!Model.CrossingFitsSpan(c.BayNumber,value,c.WidthMm)){error="Keep the crossing beam within the beam length.";return false;}
                 if(Model.CrossingBeams.Where((c2,i)=>i!=Drawing.SelectedIndex && c2.BayNumber==c.BayNumber).Any(c2=>Math.Abs(c2.PositionMm-value)<(c2.WidthMm+c.WidthMm)/2)){error="Crossing beams cannot overlap.";return false;}
             }
             if(field=="BeamLengthMm" || field=="SpanStartMm")

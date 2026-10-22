@@ -43,6 +43,9 @@ internal static class IndividualSpanTests
         var plan=EngineerPrimaryPlan.Create(input,network,0);Near(plan.Lines[0].Min(q=>q.StartMm),150,"primary loads begin at actual beam start");Near(plan.Lines[1].Max(q=>q.EndMm),3750,"primary loads end at actual beam end");
         Near(plan.Forces.Sum(),(network.AreaLoad(1150)*.65+network.AreaLoad(200)*2.125/2)*3.6,"line loads use real length");
         var cross=new TransferCrossingBeamRow {BayNumber=1,PositionMm=200,WidthMm=650,DepthMm=1150};network.CrossingBeams=new[] {cross};network.CrossingSpacingsMm=new[] {350.0};bool blocked=false;try{network.Validate(common);}catch(ArgumentException){blocked=true;}Check(blocked,"crossing outside shortened adjacent beam is rejected");network.CrossingBeams=new TransferCrossingBeamRow[0];network.CrossingSpacingsMm=new double[0];
+        var notch=new[] {new ImportPoint(0,0),new ImportPoint(3900,0),new ImportPoint(3900,2125),new ImportPoint(2100,2125),new ImportPoint(2100,1900),new ImportPoint(1800,1900),new ImportPoint(1800,2125),new ImportPoint(0,2125)};
+        Check(!SlabFootprint.ValidEndCutbacks(notch,488),"interior notch remains unsupported");
+        Check(!SlabFootprint.ValidEndCutbacks(new[] {new ImportPoint(0,0),new ImportPoint(3900,2125),new ImportPoint(3900,0),new ImportPoint(0,2125)},488),"self-crossing loop rejected");
         var clock=Stopwatch.StartNew();var solved=TransferNetworkOptimizer.Optimize(common,network);clock.Stop();Check(solved!=null,"unequal-span system finds a fully checked solution");
         Near(solved.Beams[0].LengthMm,3600,"solver uses real shorter length");Near(solved.Beams[0].LongitudinalStartMm,150,"solver retains real shorter start");Near(solved.Beams[1].LengthMm,3900,"other beam retains its full length");
         double total=0;
@@ -52,6 +55,9 @@ internal static class IndividualSpanTests
             total+=b.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)+b.Transfer.ColumnSupportLoadKn(b.Transfer.CaseNames.Length-1);
         }
         Near(total,network.AreaLoad(1150)*.65*7.5+network.AreaLoad(200)*2.125*3.6,"system load is conserved using actual spans");
+        network.CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1950,WidthMm=650,DepthMm=900,BottomElevationMm=-900}};network.CrossingSpacingsMm=new[] {350.0};
+        var crossed=TransferNetworkOptimizer.Optimize(common,network);Check(crossed.CrossSupports.Length==1,"unequal beam spans retain crossing support");
+        Check(crossed.Beams.All(b=>b.MaxLegKn<=common.LegCapacityKn+1e-6),"unequal spans with crossing retain leg checks");
         imported.Apply(model);var reportedInput=model.CreateTowerInput(false);var reportClock=Stopwatch.StartNew();
         var reported=TransferNetworkOptimizer.Optimize(reportedInput,reportedInput.Network);reportClock.Stop();
         Check(reported.Beams.Length==5 && !reported.RequiresSeparateSlabFormwork,"reported five-beam area has complete transferred slab formwork");

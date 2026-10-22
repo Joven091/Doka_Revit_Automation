@@ -31,7 +31,7 @@ jobs:
           tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe --revit-selection-ui tests/revit-selection-preview/import.png
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Emit inspectable import preview
-        run: ./scripts/emit-ui-previews.ps1 -Directory tests/revit-selection-preview -Names import.png
+        run: ./scripts/emit-ui-previews.ps1 -Directory tests/revit-selection-preview -Names import.png,individual-spans.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
