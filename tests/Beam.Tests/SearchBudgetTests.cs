@@ -78,6 +78,15 @@ internal static class SearchBudgetTests
     }
     public static void Run()
     {
+        var batched=new BeamSearchTrace("parallel candidate counters");
+        System.Threading.Tasks.Parallel.For(0,4,worker=>
+        {
+            for(int i=0;i<513;i++)
+            {batched.Increment(BeamSearchCounter.TransferCandidates);batched.Increment(BeamSearchCounter.TransferLayoutsDeferred);}
+        });
+        Check(batched.Count(BeamSearchCounter.TransferCandidates)==2052 && batched.Count(BeamSearchCounter.TransferLayoutsDeferred)==2052,"live diagnostic counts include each worker's unflushed candidate events");
+        batched.Complete("Succeeded");
+        Check(batched.Count(BeamSearchCounter.TransferCandidates)==2052 && batched.Count(BeamSearchCounter.TransferLayoutsDeferred)==2052,"completion flush preserves exact parallel candidate counts");
         long now=0;var trace=new BeamSearchTrace("clock",searchTimeLimit:TimeSpan.FromSeconds(1),timestamp:()=>now);
         using(trace.Measure(BeamSearchStage.Geometry))now=Stopwatch.Frequency/2;
         Check(trace.Snapshot().Contains("Stage Geometry: 0.500 seconds; calls=1"),"stage timing uses the monotonic clock");

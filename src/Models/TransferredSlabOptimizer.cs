@@ -214,7 +214,74 @@ namespace EngineeringDashboard
     /// <summary>Transverse force transfer with continuous distributed primary design loads.</summary>
     public static class TransferredSlabOptimizer
     {
-        internal sealed class Geometry { public TowerStockPiece[] Stock; public double[] Positions; public bool[] Joined; public double[][] MemberSupports; }
+        internal sealed class Geometry
+        {
+            public TowerStockPiece[] Stock; public double[] Positions; public bool[] Joined; public double[][] MemberSupports;
+            internal SpanGeometryShape SpanShape;
+        }
+        // One immutable entry per already retained geometry. Unlike a short-lived
+        // dictionary, this survives traversal of the other stock/support families.
+        // Loads, material and capacities are deliberately evaluated on every use.
+        internal sealed class SpanGeometryContext
+        {
+            internal readonly double Edge;internal readonly double[] Boundaries;
+            internal SpanGeometryContext(double edge,BeamDistributedLoad[] bands)
+            {Edge=edge;Boundaries=bands.SelectMany(b=>new[] {b.StartMm,b.EndMm}).ToArray();}
+            internal bool Same(SpanGeometryContext other)
+            {
+                if(ReferenceEquals(this,other))return true;
+                if(other==null || Edge!=other.Edge || Boundaries.Length!=other.Boundaries.Length)return false;
+                for(int i=0;i<Boundaries.Length;i++)if(Boundaries[i]!=other.Boundaries[i])return false;
+                return true;
+            }
+        }
+        internal sealed class SpanGeometryShape
+        {
+            internal SpanGeometryContext Context;
+            internal double[] Tails,ClearSpans;
+        }
+        internal static SpanGeometryShape PrepareSpanShape(Geometry geometry,SpanGeometryContext context,BeamSearchTrace trace=null)
+        {
+            var found=Volatile.Read(ref geometry.SpanShape);
+            if(found!=null && context.Same(found.Context))
+            {if(trace?.EnableHotProfiling==true)trace.Increment(BeamSearchCounter.SpanGeometryHits);return found;}
+            if(trace?.EnableHotProfiling==true)trace.Increment(BeamSearchCounter.SpanGeometryBuilds);
+            var shape=new SpanGeometryShape {Context=context,Tails=new double[geometry.Stock.Length],ClearSpans=new double[geometry.Stock.Length]};
+            var bands=context.Boundaries;
+            for(int run=0;run<geometry.Stock.Length;run++)
+            {
+                var stock=geometry.Stock[run];var supports=geometry.MemberSupports[run];double origin=stock.StartMm+context.Edge;
+                for(int tail=0;tail<2;tail++)
+                {
+                    double a=tail==0 ? 0 : supports[supports.Length-1],b=tail==0 ? supports[0] : stock.StockLengthMm;
+                    bool unknown=false;for(int i=0;i<bands.Length;i+=2)if(bands[i+1]>origin+a && bands[i]<origin+b){unknown=true;break;}
+                    if(!unknown)shape.Tails[run]=Math.Max(shape.Tails[run],(b-a)/1000);
+                }
+                for(int span=0;span<=supports.Length;span++)
+                {
+                    double a=origin+(span==0 ? 0 : supports[span-1]),b=origin+(span==supports.Length ? stock.StockLengthMm : supports[span]);
+                    for(int i=0;i<bands.Length;i+=2)
+                    {
+                        if(bands[i+1]<=a)continue;if(bands[i]>=b)break;
+                        shape.ClearSpans[run]=Math.Max(shape.ClearSpans[run],(Math.Min(b,bands[i])-a)/1000);
+                        a=Math.Max(a,bands[i+1]);if(a>=b)break;
+                    }
+                    shape.ClearSpans[run]=Math.Max(shape.ClearSpans[run],(b-a)/1000);
+                }
+            }
+            Volatile.Write(ref geometry.SpanShape,shape);return shape;
+        }
+        internal static bool PreparedSpanShapeFits(TowerInput input,Geometry geometry,SpanGeometryContext context,double largest)
+        {
+            var shape=PrepareSpanShape(geometry,context,input.Trace);
+            for(int run=0;run<geometry.Stock.Length;run++)
+            {
+                double q=largest+input.Primary.SelfWeightKnM(geometry.Stock[run].StockLengthMm),tail=shape.Tails[run],span=shape.ClearSpans[run];
+                if(q*tail>input.Primary.ShearLimitKn+1e-7 || q*tail*tail/2>input.Primary.MomentLimitKnM+1e-7
+                    || q*span>2*input.Primary.ShearLimitKn+1e-7 || q*span*span>16*input.Primary.MomentLimitKnM+1e-7)return false;
+            }
+            return true;
+        }
         // Exact geometry identity; avoids formatting every support coordinate
         // into a temporary string while retaining first-occurrence ordering.
         internal sealed class GeometryKey : IEquatable<GeometryKey>
@@ -262,6 +329,7 @@ namespace EngineeringDashboard
             internal bool SpanPrepared;
             internal double[] MinimumLineLoads;
             internal BeamDistributedLoad[] UnknownSpans;
+            internal SpanGeometryContext SpanContext;
             public int[] DesignCases;
             public TransferMember[][] LowerByCase;
             public bool[] LowerCaseComputed;
@@ -1591,6 +1659,11 @@ namespace EngineeringDashboard
                 cross.SpanPrepared=true;
             }
             double largest=Math.Max(0,Math.Max(cross.MinimumLineLoads[0],cross.MinimumLineLoads[1]));
+            if(input.PrepareSpanGeometry && input.ReuseSearchWork)
+            {
+                if(cross.SpanContext==null || cross.SpanContext.Edge!=edge)cross.SpanContext=new SpanGeometryContext(edge,cross.UnknownSpans);
+                return PreparedSpanShapeFits(input,geometry,cross.SpanContext,largest);
+            }
             for(int run=0;run<geometry.Stock.Length;run++)
             {
                 var stock=geometry.Stock[run];var supports=geometry.MemberSupports[run];double origin=stock.StartMm+edge;

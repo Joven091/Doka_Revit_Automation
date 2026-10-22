@@ -122,6 +122,7 @@ internal static class ControlledPerformanceTests
             var input=Input(model);input.NetworkSearchWorkers=workers;input.Trace=new BeamSearchTrace("Controlled "+model+" "+variant,cancel.Token);Set(input.Trace,"EnableHotProfiling",profile);
             if(variant=="tight")input.Network=input.Network.WithSpacings(PlywoodSpacing.StandardSpacingsMm.Count-1);
             if(variant=="prior-policy"){Set(input,"SeedNetworkSearch",false);Set(input,"OptimizePrimaryResponses",false);}
+            if(variant=="no-span-geometry")Set(input,"PrepareSpanGeometry",false);
             if(variant=="no-preparation-reuse")Set(input,"ReuseTransversePreparations",false);
             if(variant=="no-seed")Set(input,"SeedNetworkSearch",false);
             if(variant=="crossing-reference")Set(input,"OptimizeCrossingSearch",false);

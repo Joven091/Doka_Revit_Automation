@@ -80,8 +80,30 @@ internal static class PreparedReceiverTests
             double length=material==PrimaryBeamMaterial.WS10 ? new[] {2500.0,3000,4000,4500}[sample%4] : 1800+random.Next(3200),edge=random.Next(151),start=random.Next(4000),left=100+random.Next(500),right=length-100-random.Next(500);
             var geometry=new TransferredSlabOptimizer.Geometry {Stock=new[] {new TowerStockPiece {StartMm=start,StockLengthMm=length}},MemberSupports=new[] {sample%2==0 ? new[] {left,right} : new[] {left,(left+right)/2,right}}};
             object cross=Activator.CreateInstance(crossType,true);input.PrepareReceiverChecks=false;bool expected=(bool)method.Invoke(null,new object[] {input,geometry,cross,edge,0});
-            input.PrepareReceiverChecks=true;bool actual=(bool)method.Invoke(null,new object[] {input,geometry,cross,edge,0});
-            Check(actual==expected,"necessary span screen preserves unknown footprint exclusions and signed load bounds");
+            input.PrepareReceiverChecks=true;input.PrepareSpanGeometry=false;
+            bool uncached=(bool)method.Invoke(null,new object[] {input,geometry,cross,edge,0});
+            input.PrepareSpanGeometry=true;bool actual=(bool)method.Invoke(null,new object[] {input,geometry,cross,edge,0});
+            Check(actual==expected && actual==uncached,"necessary span screen preserves unknown footprint exclusions and signed load bounds");
+            // Reuse the same geometry after a changed cover edge and transverse
+            // load. Its prepared dimensions must not freeze either decision.
+            edge+=sample%2==0 ? .000000001 : 150;
+            plan.OwnLoads[0].ValuePerMetre*=3;
+            cross=Activator.CreateInstance(crossType,true);input.PrepareSpanGeometry=false;
+            expected=(bool)method.Invoke(null,new object[] {input,geometry,cross,edge,0});
+            input.PrepareSpanGeometry=true;actual=(bool)method.Invoke(null,new object[] {input,geometry,cross,edge,0});
+            Check(actual==expected,"prepared geometry retains changed load and precise cover edge");
         }
+        var fixedGeometry=new TransferredSlabOptimizer.Geometry {Stock=new[] {new TowerStockPiece {StockLengthMm=3500}},MemberSupports=new[] {new[] {750.0,2750}}};
+        var bands=new[] {new BeamDistributedLoad {StartMm=300,EndMm=950},new BeamDistributedLoad {StartMm=2000,EndMm=2500}};
+        var context=new TransferredSlabOptimizer.SpanGeometryContext(50,bands);
+        var shape=TransferredSlabOptimizer.PrepareSpanShape(fixedGeometry,context);
+        Check(shape.Tails[0]==.75 && Math.Abs(shape.ClearSpans[0]-1.05)<1e-12,"overlapping tail excluded and longest clear interval retained");
+        Check(ReferenceEquals(shape,TransferredSlabOptimizer.PrepareSpanShape(fixedGeometry,new TransferredSlabOptimizer.SpanGeometryContext(50,bands))),"equal footprint values reuse the geometry preparation across option instances");
+        bands[1].StartMm+=1e-9;
+        Check(!ReferenceEquals(shape,TransferredSlabOptimizer.PrepareSpanShape(fixedGeometry,new TransferredSlabOptimizer.SpanGeometryContext(50,bands))),"precise footprint changes invalidate geometry preparation");
+        Check(context.Boundaries[2]==2000,"prepared context owns an immutable footprint snapshot");
+        var h20=new TowerInput();var steel=new TowerInput {PrimaryMaterial=PrimaryBeamMaterial.WS10};
+        Check(TransferredSlabOptimizer.PreparedSpanShapeFits(steel,fixedGeometry,context,31),"WS10 evaluates its own material limits and catalogue self-weight");
+        Check(!TransferredSlabOptimizer.PreparedSpanShapeFits(h20,fixedGeometry,context,31),"prepared geometry does not retain a previous material's capacity decision");
     }
 }
