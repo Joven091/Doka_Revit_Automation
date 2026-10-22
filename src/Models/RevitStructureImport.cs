@@ -333,7 +333,7 @@ namespace EngineeringDashboard
             var context=new RevitImportContext {DocumentTitle=snapshot.DocumentTitle,OriginXmm=ox+start*dx-beams[0].Centre*dy,OriginYmm=oy+start*dy+beams[0].Centre*dx,DirectionX=dx,DirectionY=dy,TopElevationMm=datum,References=references.ToArray(),Sources=mappings.ToArray()};
             try {context.Validate();}catch(ArgumentException ex){problems.Add(ex.Message);}
             result.LengthMm=length;result.Problems=problems.Distinct().ToArray();result.Notes=notes.Distinct().ToArray();
-            if(result.Problems.Length==0)result.Configuration=new TransferNetworkConfiguration {SupportFormatVersion=2,PlanOriginYmm=0,Beams=rows,Bays=bays.ToArray(),CrossingBeams=crossingRows.ToArray(),IndependentBeams=new IndependentBeamRow[0],RevitContext=context};
+            if(result.Problems.Length==0)result.Configuration=new TransferNetworkConfiguration {SupportFormatVersion=3,PlanOriginYmm=0,Beams=rows,Bays=bays.ToArray(),CrossingBeams=crossingRows.ToArray(),IndependentBeams=new IndependentBeamRow[0],RevitContext=context};
             return result;
         }
         private static RevitSourceMapping Map(string canvas,string id,string label)=>new RevitSourceMapping {CanvasLabel=canvas,SourceId=id,SourceLabel=label};

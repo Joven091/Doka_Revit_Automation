@@ -28,6 +28,7 @@ internal static class IndividualSpanTests
     internal static void Run()
     {
         var imported=RevitStructureImport.Build(ReportedGeometry(),"beam1");Check(imported.CanImport,string.Join(";",imported.Problems));
+        Check(imported.Configuration.SupportFormatVersion==3,"old releases must reject new geometry rather than silently discard it");
         Near(4203.392266845705,imported.LengthMm,"overall drawing extent");Near(3901.8316040039062,imported.Configuration.Beams[0].SpanLength(0),"short outer beam is not extended");Near(149.8652709960952,imported.Configuration.Beams[4].SpanStartMm,"actual start preserved");
         Check(imported.Configuration.Bays[0].Outline.Length==8 && imported.Configuration.Bays[3].Outline.Length==8,"concave corner loops retained");
         var model=new BeamCalculatorViewModel {UseTowers=true,UseBeamNetwork=true,TransferSlabLoads=true,MaximumConcreteEndOverhangMm=500,TowerLegCapacityKn=70};imported.Apply(model);
