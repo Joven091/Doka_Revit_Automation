@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using System.Collections.Generic;
 using EngineeringDashboard;
 
 internal static class RevitSelectionUiTests
@@ -14,6 +15,8 @@ internal static class RevitSelectionUiTests
     private static void Check(bool condition,string name){checks++;if(!condition)throw new Exception(name);}
     private static void Pump()=>Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));
     private static void Click(BeamFormworkWorkspace w,string name)=>w.Buttons[name].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    private static IEnumerable<T> Find<T>(DependencyObject parent) where T:DependencyObject
+    {for(int i=0;i<VisualTreeHelper.GetChildrenCount(parent);i++){var child=VisualTreeHelper.GetChild(parent,i);if(child is T value)yield return value;foreach(var nested in Find<T>(child))yield return nested;}}
     internal static void Run(string png)
     {
         var model=new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true,UseBeamNetwork=true,TransferSlabLoads=true,AllowCustomH20Lengths=false,TowerLegCapacityKn=50,FloorHeight=4000};
@@ -46,6 +49,25 @@ internal static class RevitSelectionUiTests
         Click(w,"Undo");Pump();Check(model.NetworkConfigurationXml==original && model.BeamLengthMm==originalLength && model.RevitContext==null,"undo restores complete old drawing");
         Click(w,"Redo");Pump();Check(model.RevitContext.References.Length==2 && model.BeamLengthMm==7000,"redo restores import and references");
         var empty=new RevitSelectionImportWindow(new RevitSelectionSnapshot());Check(!empty.ImportButton.IsEnabled && empty.PreviewCanvas==null,"empty selection cannot replace inputs");empty.Close();
+        string copied=null;
+        var blockedSource=RevitStructureImportTests.Sample();blockedSource.Beams[0].WidthMm=0;
+        var blocked=new RevitSelectionImportWindow(blockedSource) {CopyDiagnosticText=text=>copied=text};blocked.Show();Pump();
+        Check(blocked.DiagnoseButton.IsEnabled && !blocked.ImportButton.IsEnabled,"Diagnose stays enabled when geometry is blocked");
+        blocked.DiagnoseButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+        Check(blocked.Diagnostics!=null && blocked.Diagnostics.Title=="Revit drawing import diagnosis","Diagnose opens the import report window");
+        blocked.Diagnostics.RemarksBox.Text="Cannot import this selection";blocked.Diagnostics.CopyReport();
+        Check(copied.Contains("enter a valid width") && copied.Contains("Cannot import this selection") && copied.Contains("101"),"copy includes selection, rejection and remarks");
+        var diagnostic=blocked.Diagnostics;blocked.DiagnoseButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(ReferenceEquals(diagnostic,blocked.Diagnostics),"repeat Diagnose reuses its report window");
+        blocked.Activate();var table=Find<DataGrid>((DependencyObject)blocked.Content).First();table.SelectedItem=table.Items[0];table.CurrentCell=new DataGridCellInfo(table.Items[0],table.Columns[1]);table.Focus();Check(table.BeginEdit(),"review cell can be edited");Pump();
+        var rawInput=Find<TextBox>(table).Single(box=>box.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path?.Path=="WidthMm");rawInput.Text="invalid width";rawInput.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();
+        Check(blocked.BuildDiagnosticReport("").Contains("raw text: invalid width") && !blocked.ImportButton.IsEnabled,"diagnose captures invalid text rather than just its last valid numeric value");
+        blocked.Close();Pump();Check(!diagnostic.IsVisible,"closing import closes its diagnostic child");
+        var fault=new RevitSelectionImportWindow(RevitStructureImportTests.Sample()) {BuildPreview=(s,id)=>throw new InvalidOperationException("Unexpected preview fixture")};
+        fault.RefreshPreview();Check(!fault.ImportButton.IsEnabled && fault.DiagnoseButton.IsEnabled,"unexpected preview failure retains Diagnose");
+        Check(fault.BuildDiagnosticReport("").Contains("Unexpected preview fixture"),"unexpected exception is copyable without a preview result");fault.Close();
+        var readFailure=new BeamFormworkWorkspace(model,null,null,null,readRevitSelection:()=>throw new InvalidOperationException("Revit reader fixture"));readFailure.Show();Pump();
+        readFailure.ShowRevitImportPreview=dialog=> {Check(dialog.DiagnoseButton.IsEnabled && dialog.BuildDiagnosticReport("").Contains("Revit reader fixture"),"reader exceptions still open a diagnosable import window");dialog.Close();return false;};
+        Click(readFailure,"FromRevit");readFailure.Close();
         var missing=RevitStructureImportTests.Sample();missing.Beams[0].WidthMm=0;
         var edit=new RevitSelectionImportWindow(missing);Check(!edit.ImportButton.IsEnabled,"missing dimension blocks import");missing.Beams[0].WidthMm=800;edit.RefreshPreview();Check(edit.ImportButton.IsEnabled,"reviewed dimension enables import");edit.Close();
         var longWall=RevitStructureImportTests.Sample();longWall.Boundaries[0].Outline=RevitStructureImportTests.Rect(-200,300,-100000,100000);

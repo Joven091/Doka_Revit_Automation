@@ -84,11 +84,19 @@ namespace EngineeringDashboard
     internal sealed class RevitSelectionSnapshot
     {
         internal string DocumentTitle="";
+        internal string RevitVersion="",RevitBuild="",ActiveView="",ReadException="";
+        internal int SelectedCount=-1;
+        internal string[] SelectedIds=new string[0];
+        internal RevitSelectionElement[] Elements=new RevitSelectionElement[0];
         internal RevitSelectedBeam[] Beams=new RevitSelectedBeam[0];
         internal RevitSelectedSlab[] Slabs=new RevitSelectedSlab[0];
         internal RevitSelectedBoundary[] Boundaries=new RevitSelectedBoundary[0];
         internal string[] Problems=new string[0];
         internal string[] Notes=new string[0];
+    }
+    internal sealed class RevitSelectionElement
+    {
+        internal string SourceId="",Label="",Category="",FamilyType="",ElementClass="",Status="",Details="",Exception="";
     }
     internal sealed class RevitStructureImportResult
     {

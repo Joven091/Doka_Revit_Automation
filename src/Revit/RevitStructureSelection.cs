@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
@@ -23,34 +24,45 @@ namespace EngineeringDashboard
             var ui=app?.ActiveUIDocument;
             if(ui==null)return new RevitSelectionSnapshot {Problems=new[] {"Open a Revit project and select its beams, slabs, columns and walls first."}};
             var ids=ui.Selection.GetElementIds();
-            if(ids.Count==0)return new RevitSelectionSnapshot {Problems=new[] {"Select beams, slabs, columns and walls in Revit before opening the calculator."}};
-            if(ids.Count>200)return new RevitSelectionSnapshot {Problems=new[] {"Select one beam/slab area at a time (maximum 200 elements)."}};
+            var snapshot=new RevitSelectionSnapshot {DocumentTitle=ui.Document.Title,RevitVersion=app.Application.VersionName,RevitBuild=app.Application.VersionBuild,
+                ActiveView=ui.ActiveView?.Name??"",SelectedCount=ids.Count,SelectedIds=ids.OrderBy(i=>i.Value).Take(200).Select(i=>i.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToArray()};
+            if(ids.Count==0){snapshot.Problems=new[] {"Select beams, slabs, columns and walls in Revit before opening the calculator."};return snapshot;}
+            if(ids.Count>200){snapshot.Problems=new[] {"Select one beam/slab area at a time (maximum 200 elements)."};return snapshot;}
             var beams=new List<RevitSelectedBeam>();var slabs=new List<RevitSelectedSlab>();var boundaries=new List<RevitSelectedBoundary>();var problems=new List<string>();var notes=new List<string>();
+            var elements=new List<RevitSelectionElement>();
             foreach(var id in ids.OrderBy(i=>i.Value))
             {
-                var e=ui.Document.GetElement(id);if(e?.Category==null){notes.Add("An unavailable element was skipped.");continue;}
-                string label=Label(e),sourceId=e.Id.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                long category=e.Category.Id.Value;
-                bool beam=category==(long)BuiltInCategory.OST_StructuralFraming;
-                bool slab=e is Floor;
-                bool boundary=e is Wall || category==(long)BuiltInCategory.OST_StructuralColumns || category==(long)BuiltInCategory.OST_Columns;
-                if(!beam && !slab && !boundary){notes.Add(label+": skipped (select model beams, floors, columns and walls in the current document). ");continue;}
+                string sourceId=id.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),label="Element ["+id.Value+"]";
+                var record=new RevitSelectionElement {SourceId=sourceId,Label=label,Status="Reading"};elements.Add(record);
                 try
                 {
+                    var e=ui.Document.GetElement(id);
+                    if(e?.Category==null){record.Status="Skipped";record.Details="Unavailable element or category.";notes.Add(label+": an unavailable element was skipped.");continue;}
+                    label=Label(e);record.Label=label;record.Category=e.Category.Name+" ("+e.Category.Id.Value+")";record.ElementClass=e.GetType().FullName;
+                    var type=ui.Document.GetElement(e.GetTypeId());record.FamilyType=(e as FamilyInstance)?.Symbol?.FamilyName+" / "+type?.Name;
+                    long category=e.Category.Id.Value;
+                    bool beam=category==(long)BuiltInCategory.OST_StructuralFraming;
+                    bool slab=e is Floor;
+                    bool boundary=e is Wall || category==(long)BuiltInCategory.OST_StructuralColumns || category==(long)BuiltInCategory.OST_Columns;
+                    if(!beam && !slab && !boundary){record.Status="Skipped";record.Details="Not a beam, floor, column or wall in the current document.";notes.Add(label+": skipped (select model beams, floors, columns and walls in the current document). ");continue;}
                     var geometry=new GeometryData();
                     using(var options=new Options {DetailLevel=ViewDetailLevel.Fine,IncludeNonVisibleObjects=false,ComputeReferences=false})
                     {
                         using(var root=e.get_Geometry(options))if(root!=null)Collect(root,Transform.Identity,geometry);
                     }
-                    if(geometry.Points.Count==0){problems.Add(label+": no physical geometry could be read.");continue;}
+                    record.Details=GeometryDetails(geometry);
+                    if(geometry.Points.Count==0){record.Status="Blocked";problems.Add(label+": no physical geometry could be read.");continue;}
+                    record.Status="Read";
                     double bottom=geometry.Points.Min(p=>p.Z)*MmPerFoot,top=geometry.Points.Max(p=>p.Z)*MmPerFoot;
                     if(beam)
                     {
                         var line=(e.Location as LocationCurve)?.Curve as Line;
-                        if(line==null){problems.Add(label+": only straight horizontal beams can be imported.");continue;}
+                        record.Details+="\nLocation curve class: "+(e.Location as LocationCurve)?.Curve?.GetType().FullName;
+                        if(line==null){record.Status="Blocked";problems.Add(label+": only straight horizontal beams can be imported.");continue;}
                         var a=line.GetEndPoint(0);var b=line.GetEndPoint(1);var direction=b-a;
+                        record.Details+="\nLocation start XYZ (mm): "+Xyz(a)+"; end XYZ (mm): "+Xyz(b);
                         if(Math.Abs(direction.Z)*MmPerFoot>RevitStructureImport.ToleranceMm || Math.Sqrt(direction.X*direction.X+direction.Y*direction.Y)*MmPerFoot<=1)
-                        {problems.Add(label+": sloped or vertical framing cannot be imported.");continue;}
+                        {record.Status="Blocked";problems.Add(label+": sloped or vertical framing cannot be imported.");continue;}
                         var along=new XYZ(direction.X,direction.Y,0).Normalize();var across=new XYZ(-along.Y,along.X,0);
                         var offsets=geometry.Points.Select(p=>p.DotProduct(across)).ToArray();
                         double mid=(offsets.Min()+offsets.Max())/2;
@@ -62,6 +74,8 @@ namespace EngineeringDashboard
                         a+=along*(stations.Min()-a.DotProduct(along));b+=along*(stations.Max()-b.DotProduct(along));
                         bool rectangular=!geometry.HasCurvedFaces && Level(geometry.TopLevels) && Level(geometry.BottomLevels)
                             && geometry.Normals.All(n=>Axis(n,along) || Axis(n,across) || Axis(n,XYZ.BasisZ));
+                        record.Details+="\nRectangular section check: "+rectangular+"; transverse family offset (mm): "+RevitImportDiagnostics.Number(correction*MmPerFoot);
+                        if(!rectangular)record.Status="Blocked";
                         beams.Add(new RevitSelectedBeam {SourceId=sourceId,Label=label,Start=Point(a),End=Point(b),WidthMm=(offsets.Max()-offsets.Min())*MmPerFoot,DepthMm=top-bottom,BottomMm=bottom,
                             Problem=rectangular ? null : "The physical section is not a horizontal rectangular beam. Use a separate manual drawing."});
                     }
@@ -72,6 +86,8 @@ namespace EngineeringDashboard
                             && geometry.Normals.All(n=>Math.Abs(n.Z)<1e-6 || Axis(n,XYZ.BasisZ));
                         double area=PlanArea(outline);
                         bool complete=Math.Abs(area-geometry.ProjectedTopArea)<=Math.Max(1,area*1e-6);
+                        record.Details+="\nFlat slab check: "+flat+"; footprint area check: "+complete+"; hull area (mm2): "+RevitImportDiagnostics.Number(area);
+                        if(geometry.HasTopOpening || !complete || !flat)record.Status="Blocked";
                         slabs.Add(new RevitSelectedSlab {SourceId=sourceId,Label=label,Outline=outline,ThicknessMm=top-bottom,TopMm=top,
                             Problem=geometry.HasTopOpening || !complete ? "Slab openings and irregular outlines are not supported by this canvas." : flat ? null : "Only flat slabs of constant thickness can be imported."});
                     }
@@ -79,14 +95,28 @@ namespace EngineeringDashboard
                     {
                         var outline=Hull(geometry.Points);double area=PlanArea(outline);
                         bool complete=geometry.ProjectedTopArea>0 && Math.Abs(area-geometry.ProjectedTopArea)<=Math.Max(1,area*1e-6);
+                        record.Details+="\nBoundary footprint area check: "+complete+"; hull area (mm2): "+RevitImportDiagnostics.Number(area);
+                        if(!complete)record.Status="Blocked";
                         boundaries.Add(new RevitSelectedBoundary {SourceId=sourceId,Label=label,Kind=e is Wall ? "Wall" : "Column",Outline=outline,BottomMm=bottom,TopMm=top,
                             Problem=complete ? null : "Irregular column/wall footprints need a separate manual drawing."});
                     }
                 }
-                catch(Exception ex) when(ex is Autodesk.Revit.Exceptions.InvalidOperationException || ex is Autodesk.Revit.Exceptions.ArgumentException || ex is InvalidOperationException || ex is ArgumentException)
-                {problems.Add(label+": geometry could not be read. "+ex.Message);}
+                catch(Exception ex)
+                {record.Status="Failed";record.Exception=ex.ToString();problems.Add(label+": geometry could not be read. "+ex.Message);}
             }
-            return new RevitSelectionSnapshot {DocumentTitle=ui.Document.Title,Beams=beams.ToArray(),Slabs=slabs.ToArray(),Boundaries=boundaries.ToArray(),Problems=problems.ToArray(),Notes=notes.ToArray()};
+            snapshot.Beams=beams.ToArray();snapshot.Slabs=slabs.ToArray();snapshot.Boundaries=boundaries.ToArray();snapshot.Problems=problems.ToArray();snapshot.Notes=notes.ToArray();snapshot.Elements=elements.ToArray();return snapshot;
+        }
+        private static string Xyz(XYZ p)=>"("+RevitImportDiagnostics.Number(p.X*MmPerFoot)+", "+RevitImportDiagnostics.Number(p.Y*MmPerFoot)+", "+RevitImportDiagnostics.Number(p.Z*MmPerFoot)+")";
+        private static string GeometryDetails(GeometryData data)
+        {
+            var text=new StringBuilder();
+            text.AppendLine("Geometry: "+data.Points.Count+" triangulated vertices; "+data.Normals.Count+" planar faces; curved faces="+data.HasCurvedFaces+"; top opening="+data.HasTopOpening);
+            text.AppendLine("Top face levels (mm): "+string.Join(", ",data.TopLevels.Distinct().Select(z=>RevitImportDiagnostics.Number(z*MmPerFoot))));
+            text.AppendLine("Bottom face levels (mm): "+string.Join(", ",data.BottomLevels.Distinct().Select(z=>RevitImportDiagnostics.Number(z*MmPerFoot))));
+            text.AppendLine("Projected top area (mm2): "+RevitImportDiagnostics.Number(data.ProjectedTopArea));
+            text.AppendLine("Face normals: "+string.Join("; ",data.Normals.Select(n=>"("+RevitImportDiagnostics.Number(n.X)+", "+RevitImportDiagnostics.Number(n.Y)+", "+RevitImportDiagnostics.Number(n.Z)+")").Distinct()));
+            if(data.Points.Count>0)text.AppendLine("Physical world bounds XYZ (mm): "+Xyz(new XYZ(data.Points.Min(p=>p.X),data.Points.Min(p=>p.Y),data.Points.Min(p=>p.Z)))+" to "+Xyz(new XYZ(data.Points.Max(p=>p.X),data.Points.Max(p=>p.Y),data.Points.Max(p=>p.Z))));
+            return text.ToString();
         }
         private static string Label(Element e)
         {
