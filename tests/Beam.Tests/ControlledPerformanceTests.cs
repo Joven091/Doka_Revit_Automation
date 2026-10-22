@@ -18,6 +18,33 @@ internal static class ControlledPerformanceTests
     {target.GetType().GetField(field,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public)?.SetValue(target,value);}
     internal static BeamCalculatorViewModel Model(string model)
     {
+        if(model=="eight-x2" || model=="eight-core")
+        {
+            int beams=model=="eight-x2" ? 2 : 3;
+            var r=Model("eight-crossings");while(r.NetworkBeams.Count>beams+1)r.NetworkBeams.RemoveAt(r.NetworkBeams.Count-1);r.NetworkBeams.RemoveAt(0);
+            while(r.NetworkBays.Count>beams)r.NetworkBays.RemoveAt(r.NetworkBays.Count-1);r.NetworkBays.RemoveAt(0);
+            r.CrossingBeams.Clear();for(int bay=1;bay<beams;bay++)r.CrossingBeams.Add(new TransferCrossingBeamRow {BayNumber=bay,PositionMm=3450,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150});return r;
+        }
+        if(model=="eight-crossings")
+        {
+            var reported=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,
+                BeamLengthMm=6900,Depth=1450,Width=800,FloorHeight=3000,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,
+                CustomH20Scope=CustomH20LengthScope.Both,MaximumConcreteEndOverhangMm=75,StockEndSetbackMm=150,
+                Exclude600Standalone=true,IgnoreUplift=true,PlywoodDeflectionLimit="L/270",DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null)};
+            while(reported.NetworkBeams.Count<8)reported.AddNetworkBay();
+            for(int i=0;i<8;i++)
+            {
+                var beam=reported.NetworkBeams[i];beam.WidthMm=i%2==0 ? 800 : 650;
+                beam.DepthMm=i%2==0 ? 1750 : 1150;beam.BottomElevationMm=-beam.DepthMm;
+            }
+            var widths=new[] {2677.0,1875,3275,2275,2278,2272,2252};
+            for(int i=0;i<widths.Length;i++)
+            {
+                reported.NetworkBays[i].WidthMm=widths[i];reported.NetworkBays[i].ThicknessMm=300;
+                reported.CrossingBeams.Add(new TransferCrossingBeamRow {BayNumber=i+1,PositionMm=3450,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150});
+            }
+            return reported;
+        }
         if(model=="local-rows"){var reported=Model("search-error");reported.CrossingBeams.RemoveAt(2);return reported;}
         var vm=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,
             BeamLengthMm=model=="junction" ? 10800 : 10600,Depth=1750,Width=800,FloorHeight=3000,TowerLegCapacityKn=70,AllowCustomH20Lengths=model=="junction",MaximumConcreteEndOverhangMm=model=="junction" ? 75 : 175,StockEndSetbackMm=150,
@@ -76,8 +103,14 @@ internal static class ControlledPerformanceTests
         {
             if(seconds>0)cancel.CancelAfter(TimeSpan.FromSeconds(seconds));
             var input=Input(model);input.NetworkSearchWorkers=workers;input.Trace=new BeamSearchTrace("Controlled "+model+" "+variant,cancel.Token);Set(input.Trace,"EnableHotProfiling",profile);
+            if(variant=="tight")input.Network=input.Network.WithSpacings(PlywoodSpacing.StandardSpacingsMm.Count-1);
             if(variant=="prior-policy"){Set(input,"SeedNetworkSearch",false);Set(input,"OptimizePrimaryResponses",false);}
             if(variant=="no-seed")Set(input,"SeedNetworkSearch",false);
+            if(variant=="crossing-reference")Set(input,"OptimizeCrossingSearch",false);
+            if(variant=="feasibility")Set(input,"FirstCompleteNetworkOnly",true);
+            if(variant=="local-reference")Set(input,"LocalNetworkSearch",false);
+            if(variant=="receiver-reference"){Set(input,"ReuseReceiverSearches",false);Set(input,"WarmStartNetwork",false);}
+            if(variant=="receiver-cache-only")Set(input,"WarmStartNetwork",false);
             if(variant=="no-udl-reuse")Set(input,"OptimizePrimaryResponses",false);
             if(variant=="reference")Set(input,"PrepareReceiverChecks",false);
             int gc0=GC.CollectionCount(0),gc1=GC.CollectionCount(1),gc2=GC.CollectionCount(2);var process=Process.GetCurrentProcess();double cpuBefore=process.TotalProcessorTime.TotalSeconds;
@@ -88,7 +121,7 @@ internal static class ControlledPerformanceTests
                 while(!task.Wait(TimeSpan.FromSeconds(30)))
                 {
                     Console.WriteLine("PROGRESS wall="+timer.Elapsed.TotalSeconds.ToString("0.000",CultureInfo.InvariantCulture));
-                    Console.WriteLine(string.Join("\n",input.Trace.Snapshot().Split('\n').Where(l=>l.StartsWith("Profile ") || l.StartsWith("First complete") || l.StartsWith("Last network") || l.StartsWith("Network improvements") || l.StartsWith("Primary member analyses:") || l.StartsWith("Transferred layout candidates:"))));
+                    Console.WriteLine(string.Join("\n",input.Trace.Snapshot().Split('\n').Where(l=>l.StartsWith("Profile ") || l.StartsWith("First complete") || l.StartsWith("Last network") || l.StartsWith("Network improvements") || l.StartsWith("Current/last ") || l.StartsWith("Latest crossing") || l.StartsWith("Primary member analyses:") || l.StartsWith("Transferred layout candidates:") || l.StartsWith("Complete receiving-beam search cache hits:") || l.StartsWith("Passing warm-start networks:"))));
                 }
                 result=task.GetAwaiter().GetResult();
             }

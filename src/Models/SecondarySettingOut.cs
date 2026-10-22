@@ -231,7 +231,7 @@ namespace EngineeringDashboard
                 t.HasCustomPlywoodJoints=t.HasCustomPlywoodJoints || rows.Any(v=>Math.Abs(v.X-result.Beams[beam].Transfer.RowsMm[v.Design])>1e-7 && Math.Abs(result.Beams[beam].Transfer.RowsMm[v.Design]/SheetLength(result)-Math.Round(result.Beams[beam].Transfer.RowsMm[v.Design]/SheetLength(result)))<1e-7);
                 t.SettingOutRowsMm=rows.Select(v=>v.X).ToArray();t.SettingOutDesignRows=rows.Select(v=>v.Design).ToArray();
             }
-            var trial=new TransferNetworkResult {Input=result.Input,Beams=adjusted,Bays=result.Bays,BeamCentresMm=result.BeamCentresMm};
+            var trial=new TransferNetworkResult {Input=result.Input,Beams=adjusted,Bays=result.Bays,BeamCentresMm=result.BeamCentresMm,SlabCoveredLengthMm=result.SlabCoveredLengthMm,RowPhaseMm=result.RowPhaseMm};
             // Final checks cover complete physical stock, legs, frames and added H20s.
             var physical=NetworkSolids(trial).Where(keep).ToArray();
             var changed=physical.Where(s=>s.Name.Contains("/T") && !existing.Any(old=>old.Name==s.Name && old.X0==s.X0 && old.X1==s.X1)).ToArray();
