@@ -40,7 +40,8 @@ namespace EngineeringDashboard
             // slab-only custom scope, toggling custom search adds no receiver or
             // crossing stock options for this otherwise identical local problem.
             bool fixedSlabs=input.CustomH20Scope==CustomH20LengthScope.SlabSupports
-                && (t.LeftBayMm==0 || t.LeftPlan!=null) && (t.RightBayMm==0 || t.RightPlan!=null);
+                && (t.LeftBayMm==0 || t.LeftPlan!=null && !t.LeftPlan.IsCustomLength && input.StockLengthsMm.Contains(t.LeftPlan.StockLengthMm))
+                && (t.RightBayMm==0 || t.RightPlan!=null && !t.RightPlan.IsCustomLength && input.StockLengthsMm.Contains(t.RightPlan.StockLengthMm));
             var v=new List<double> {beam,!layoutIdentity && alternatives?1:0,(int)input.PrimaryMaterial,input.LengthMm,input.LegCapacityKn,input.DeflectionDenominator,input.DeflectionLimitMm,
                 input.StockEndSetbackMm,input.MaximumConcreteEndOverhangMm,layoutIdentity?0:input.EngineerMinimumStations,layoutIdentity?0:input.EngineerStationLimit,layoutIdentity?0:input.NetworkLegCeiling,
                 input.ReceiverTransverseOffsetMm,(int)input.CustomH20Scope,network.HasIndividualSpacings ? 0 : network.UpperSpacingMm,network.LocalRowGapMm,
@@ -118,7 +119,9 @@ namespace EngineeringDashboard
         internal CheckedPrefixKey(TowerInput common,TransferNetworkResult prefix)
         {
             beams=prefix.Beams.Select(b=>common.LocalNetworkSearch ? (object)b.ReceiverIdentity??b : b).ToArray();var n=prefix.Input;
-            var v=new List<double> {prefix.SlabCoveredLengthMm,prefix.RowPhaseMm,common.AllowCustomH20Lengths && common.CustomH20Scope!=CustomH20LengthScope.SlabSupports?1:0,(int)common.CustomH20Scope,
+            bool fixedCatalogueSlabs=common.CustomH20Scope==CustomH20LengthScope.SlabSupports
+                && prefix.Bays.All(p=>p==null || !p.IsCustomLength && common.StockLengthsMm.Contains(p.StockLengthMm));
+            var v=new List<double> {prefix.SlabCoveredLengthMm,prefix.RowPhaseMm,common.AllowCustomH20Lengths && !fixedCatalogueSlabs?1:0,(int)common.CustomH20Scope,
                 common.AllowLocalShutterExceptions?1:0,common.EngineerJunctionExtraTiers,common.EngineerMinimumStations,common.EngineerStationLimit,
                 common.LegCapacityKn,common.DeflectionDenominator,common.IgnoreUplift?1:0};
             for(int i=0;i<n.Beams.Length;i++)v.Add(n.BeamSpacing(i));

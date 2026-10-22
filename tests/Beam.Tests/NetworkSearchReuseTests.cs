@@ -28,8 +28,16 @@ internal static class NetworkSearchReuseTests
         Check(!stockKey.Equals(new ReceiverSolveKey(input,network,0,false)),"changed slab foot invalidates receiver reuse");input.TransferredSlab.RightPlan.NearFootMm-=25;
         input.TransferredSlab.RightPlan.StockLengthMm=1775;
         Check(!stockKey.Equals(new ReceiverSolveKey(input,network,0,false)),"changed slab stock invalidates receiver reuse");
+        input.TransferredSlab.RightPlan.IsCustomLength=true;stockKey=new ReceiverSolveKey(input,network,0,false);input.AllowCustomH20Lengths=false;
+        Check(!stockKey.Equals(new ReceiverSolveKey(input,network,0,false)),"custom slab permission remains significant for a fixed cut-length plan");
         input.TransferredSlab.RightPlan=null;input.AllowCustomH20Lengths=false;stockKey=new ReceiverSolveKey(input,network,0,false);input.AllowCustomH20Lengths=true;
         Check(!stockKey.Equals(new ReceiverSolveKey(input,network,0,false)),"free slab searches retain their custom eligibility in the key");
+        var catalogue=new UpperTransferPlan {StockLengthMm=1800,EdgeMm=236,NearFootMm=636,FarFootMm=636};
+        var prefix=new TransferNetworkResult {Input=network,Beams=Array.Empty<TowerLayout>(),Bays=new[] {catalogue,catalogue}};
+        input.AllowCustomH20Lengths=false;var prefixKey=new CheckedPrefixKey(input,prefix);input.AllowCustomH20Lengths=true;
+        Check(prefixKey.Equals(new CheckedPrefixKey(input,prefix)),"identical catalogue slab prefixes retain their checks across custom passes");
+        catalogue.IsCustomLength=true;prefixKey=new CheckedPrefixKey(input,prefix);input.AllowCustomH20Lengths=false;
+        Check(!prefixKey.Equals(new CheckedPrefixKey(input,prefix)),"prefix reuse retains cut-length eligibility");
         foreach(bool dedicated in new[] {false,true})
         {
             var common=new TowerInput {EngineerSearch=true,FullLoadingOnly=true,CoordinateCrossingLayouts=true,LengthMm=2450,
