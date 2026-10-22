@@ -609,16 +609,17 @@ namespace EngineeringDashboard
             TowerOptimizationException failure=null;
             var first=common;
             // Two-crossing junctions need the same checked seed/recovery route
-            // as larger networks. Each spacing trial establishes feasibility;
-            // the final pass still applies the complete design ranking.
-            bool denseSeedFirst=common.EngineerWorkflow && common.OptimizeCrossingSearch && common.AllowCustomH20Lengths && input.CrossingBeams.Length>=2;
+            // as larger networks, with either catalogue or custom stock. Each
+            // spacing trial establishes feasibility; the final pass still
+            // applies the complete design ranking.
+            bool checkedSeedFirst=common.EngineerWorkflow && common.OptimizeCrossingSearch && input.CrossingBeams.Length>=2;
             if(common.EngineerSearch && CrossBeamSupportOptimizer.Modern(input))
             {
                 // Start with the whole junction. A cheapest provisional receiver
                 // can obstruct its crossing and adds no useful uncoordinated pass.
                 first=common.CopyForSearch();first.CoordinateCrossingLayouts=true;
             }
-            if(!denseSeedFirst)
+            if(!checkedSeedFirst)
             {
                 try {return SearchSpacing(first,input);}
                 catch(TowerOptimizationException ex){failure=ex;}
@@ -626,20 +627,28 @@ namespace EngineeringDashboard
                 finally {common.Diagnostics=first.Diagnostics;}
             }
             var worker=common.CopyForSearch();worker.CoordinateCrossingLayouts=CrossBeamSupportOptimizer.Modern(input);
-            worker.FirstCompleteNetworkOnly=denseSeedFirst || common.FirstCompleteNetworkOnly;
+            worker.FirstCompleteNetworkOnly=checkedSeedFirst || common.FirstCompleteNetworkOnly;
             var attempted=new HashSet<string>();
             TransferNetworkResult best=null;
             Func<TransferNetworkInput,string> keyOf=n=>string.Join(";",n.BeamSpacingsMm.Concat(n.SlabSpacingsMm).Concat(n.CrossingSpacingsMm));
-            if(!denseSeedFirst && (!worker.CoordinateCrossingLayouts || first.CoordinateCrossingLayouts))attempted.Add(keyOf(input));
+            if(!checkedSeedFirst && (!worker.CoordinateCrossingLayouts || first.CoordinateCrossingLayouts))attempted.Add(keyOf(input));
             // Try a single category step before a blanket seed. Receiving-beam
             // failure must not automatically tighten slabs or dedicated crossings.
             var closer=input.WithSpacings(1);
             var seeds=new List<TransferNetworkInput>();
-            // Establish a fully checked complete custom network before spending
-            // exhaustive effort on marginal upper-foot/receiver combinations at
-            // every maximum pitch. The existing independent recovery below still
+            // Establish a fully checked complete network using the permitted
+            // project stock before exhaustive effort on marginal upper-foot/receiver
+            // combinations at every maximum pitch. Independent recovery still
             // attempts the requested maxima and intermediate permitted pitches.
-            if(denseSeedFirst)seeds.Add(input.WithSpacings(PlywoodSpacing.StandardSpacingsMm.Count-1));
+            if(checkedSeedFirst && !common.AllowCustomH20Lengths)
+            {
+                // Catalogue-only junctions often need a smaller beam pitch but
+                // can retain their slab and crossing maxima. Try that practical
+                // seed before densifying every category in the network.
+                var practical=input.WithSpacings();practical.BeamSpacingsMm=closer.BeamSpacingsMm;
+                practical.UpperSpacingMm=practical.BeamSpacingsMm.Min();seeds.Add(practical);
+            }
+            if(checkedSeedFirst)seeds.Add(input.WithSpacings(PlywoodSpacing.StandardSpacingsMm.Count-1));
             if(worker.CoordinateCrossingLayouts)seeds.Add(input);
             for(int group=0;group<3;group++)
             {
@@ -718,7 +727,7 @@ namespace EngineeringDashboard
                 foreach(var beam in best.Beams) {beam.SearchTimeLimitReached=true;beam.MinimumLegCountProven=false;}
             }
             common.Trace?.CheckUserCancellation();
-            if(denseSeedFirst && common.Trace?.BudgetReached!=true)
+            if(checkedSeedFirst && common.Trace?.BudgetReached!=true)
             {
                 worker.FirstCompleteNetworkOnly=false;
                 common.Trace?.Work("Optimizing final recovered network spacing");
@@ -1374,7 +1383,7 @@ namespace EngineeringDashboard
                 t.ReceivingCrossings=network.CrossingBeams.Where(c=>(c.BayNumber==beam || c.BayNumber==beam+1) && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows).ToArray();
                 t.LocalReceivingRows=true;
             }
-            var input=new TowerInput {LocalNetworkSearch=common.LocalNetworkSearch,PrepareSpanGeometry=common.PrepareSpanGeometry,ReuseTransversePreparations=common.ReuseTransversePreparations,PrepareReceiverChecks=common.PrepareReceiverChecks,OptimizePrimaryResponses=common.OptimizePrimaryResponses,SeedNetworkSearch=common.SeedNetworkSearch,ReceiverAlternatives=alternatives,EngineerSearch=common.EngineerSearch,EngineerMinimumStations=common.EngineerMinimumStations,FullLoadingOnly=common.FullLoadingOnly,DeferCrossingChecks=common.FullLoadingOnly && network.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && (c.BayNumber==beam || c.BayNumber==beam+1)),PrimaryMaterial=common.PrimaryMaterial,AllowLocalShutterExceptions=common.AllowLocalShutterExceptions,ReceiverTransverseOffsetMm=transverseOffset,IgnoreUplift=common.IgnoreUplift,Trace=common.Trace,ReuseSearchWork=common.ReuseSearchWork,PruneUneconomicCandidates=common.PruneUneconomicCandidates,StagePrimaryChecks=common.StagePrimaryChecks,ReuseNetworkNumerics=common.ReuseNetworkNumerics,ReuseTransverseNumerics=common.ReuseTransverseNumerics,LazySearchDiagnostics=common.LazySearchDiagnostics,DeferTransferLayout=common.DeferTransferLayout,SearchByLegTier=common.SearchByLegTier,NetworkLegCeiling=ceiling,AllowCustomH20Lengths=common.AllowCustomH20Lengths,CustomH20Scope=common.CustomH20Scope,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
+            var input=new TowerInput {LocalNetworkSearch=common.LocalNetworkSearch,ReuseCrossingLocalWork=common.ReuseCrossingLocalWork,PrepareSpanGeometry=common.PrepareSpanGeometry,ReuseTransversePreparations=common.ReuseTransversePreparations,PrepareReceiverChecks=common.PrepareReceiverChecks,OptimizePrimaryResponses=common.OptimizePrimaryResponses,SeedNetworkSearch=common.SeedNetworkSearch,ReceiverAlternatives=alternatives,EngineerSearch=common.EngineerSearch,EngineerMinimumStations=common.EngineerMinimumStations,FullLoadingOnly=common.FullLoadingOnly,DeferCrossingChecks=common.FullLoadingOnly && network.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && (c.BayNumber==beam || c.BayNumber==beam+1)),PrimaryMaterial=common.PrimaryMaterial,AllowLocalShutterExceptions=common.AllowLocalShutterExceptions,ReceiverTransverseOffsetMm=transverseOffset,IgnoreUplift=common.IgnoreUplift,Trace=common.Trace,ReuseSearchWork=common.ReuseSearchWork,PruneUneconomicCandidates=common.PruneUneconomicCandidates,StagePrimaryChecks=common.StagePrimaryChecks,ReuseNetworkNumerics=common.ReuseNetworkNumerics,ReuseTransverseNumerics=common.ReuseTransverseNumerics,LazySearchDiagnostics=common.LazySearchDiagnostics,DeferTransferLayout=common.DeferTransferLayout,SearchByLegTier=common.SearchByLegTier,NetworkLegCeiling=ceiling,AllowCustomH20Lengths=common.AllowCustomH20Lengths,CustomH20Scope=common.CustomH20Scope,LengthMm=common.LengthMm,LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockLengthsMm=common.StockLengthsMm,StockEndSetbackMm=common.StockEndSetbackMm,MaximumConcreteEndOverhangMm=common.MaximumConcreteEndOverhangMm,Exclude600Standalone=common.Exclude600Standalone,TransferredSlab=t,Diagnostics=common.Diagnostics,DiagnosticScope=$"B{beam+1} · "};
             if(common.EngineerWorkflow)
             {
                 var plan=EngineerPrimaryPlan.Create(common,network,beam,left!=null,right!=null);

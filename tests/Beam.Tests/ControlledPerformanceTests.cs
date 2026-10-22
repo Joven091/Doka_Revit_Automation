@@ -18,6 +18,16 @@ internal static class ControlledPerformanceTests
     {target.GetType().GetField(field,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public)?.SetValue(target,value);}
     internal static BeamCalculatorViewModel Model(string model)
     {
+        if(model=="eight-catalogue")
+        {
+            // Diagnostic captured 2026-10-22 09:50:02 UTC: project permits
+            // catalogue stock only and uses the L/350 plywood criterion.
+            var reported=Model("eight-crossings");reported.AllowCustomH20Lengths=false;
+            reported.PlywoodDeflectionLimit="L/350";reported.HasLeftSlab=false;reported.HasRightSlab=true;
+            reported.LeftSlabThickness=200;reported.RightSlabThickness=300;
+            reported.LeftSlabBayMm=3900;reported.RightSlabBayMm=3900;
+            return reported;
+        }
         if(model=="three-custom-slabs")
         {
             // Diagnostic captured 2026-10-22 05:58:51 UTC. Custom stock applies to slabs only.
@@ -99,6 +109,17 @@ internal static class ControlledPerformanceTests
     }
     internal static void Validate(TowerInput input,TransferNetworkResult result)
     {
+        if(!input.AllowCustomH20Lengths)
+        {
+            foreach(var b in result.Beams.Concat(result.CrossSupports.Where(c=>c.Towers!=null).Select(c=>c.Towers)))
+            {
+                if(b.StockPlan.Pieces.Any(p=>p.IsCustomLength || !input.PrimaryStockLengthsMm.Contains(p.StockLengthMm))
+                    || !input.StockLengthsMm.Contains(b.Transfer.LowerStockLengthMm)
+                    || b.Transfer.UpperMembers.Any(m=>!input.StockLengthsMm.Contains(m.LengthMm)))throw new Exception("Catalogue-only project used a cut H20 length.");
+            }
+            foreach(var m in result.CrossSupports.SelectMany(c=>c.Members))
+                if(!(m.IsPrimary ? input.PrimaryStockLengthsMm : input.StockLengthsMm).Contains(m.LengthMm))throw new Exception("Catalogue-only crossing used a cut H20 length.");
+        }
         foreach(var b in result.Beams)
         {
             if(b.MaxLegKn>input.LegCapacityKn+1e-8)throw new Exception("Reported benchmark leg capacity failed.");
@@ -122,6 +143,7 @@ internal static class ControlledPerformanceTests
             var input=Input(model);input.NetworkSearchWorkers=workers;input.Trace=new BeamSearchTrace("Controlled "+model+" "+variant,cancel.Token);Set(input.Trace,"EnableHotProfiling",profile);
             if(variant=="tight")input.Network=input.Network.WithSpacings(PlywoodSpacing.StandardSpacingsMm.Count-1);
             if(variant=="prior-policy"){Set(input,"SeedNetworkSearch",false);Set(input,"OptimizePrimaryResponses",false);}
+            if(variant=="no-crossing-local-reuse")Set(input,"ReuseCrossingLocalWork",false);
             if(variant=="no-span-geometry")Set(input,"PrepareSpanGeometry",false);
             if(variant=="no-preparation-reuse")Set(input,"ReuseTransversePreparations",false);
             if(variant=="no-seed")Set(input,"SeedNetworkSearch",false);

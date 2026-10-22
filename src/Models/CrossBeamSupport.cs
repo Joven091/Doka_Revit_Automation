@@ -116,7 +116,9 @@ namespace EngineeringDashboard
     internal sealed class CrossGeometryCache
     {
         internal readonly TransferredSlabOptimizer.ResponseCache<CrossGeometryKey,DedicatedCrossSearch> Results
-            =new TransferredSlabOptimizer.ResponseCache<CrossGeometryKey,DedicatedCrossSearch>(128);
+            =new TransferredSlabOptimizer.ResponseCache<CrossGeometryKey,DedicatedCrossSearch>(512);
+        internal readonly TransferredSlabOptimizer.ResponseCache<PrimaryBearingKey,PrimaryBearingSearch> PrimaryResults
+            =new TransferredSlabOptimizer.ResponseCache<PrimaryBearingKey,PrimaryBearingSearch>(512);
     }
     internal sealed class CrossGeometryKey : IEquatable<CrossGeometryKey>
     {
@@ -506,7 +508,12 @@ namespace EngineeringDashboard
                 if(joint!=null)return joint;
                 failure=reason;
             }
-            foreach(double spacing in r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(s=>s<=r.Input.CrossSpacing(index)) : new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,250,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7))
+            // At zero trim this inequality is independent of stock, loads and
+            // spacing. Preserve the junction fallback below, which can transfer
+            // the end zones onto existing receivers instead.
+            bool fullSpanFits=common.MaximumConcreteEndOverhangMm>=allowance.Near && common.MaximumConcreteEndOverhangMm>=allowance.Far;
+            if(!fullSpanFits)failure=$"X{index+1} dedicated: primary stock cannot keep the {allowance.Near:0.###}/{allowance.Far:0.###} mm side-shutter gaps within the entered {common.MaximumConcreteEndOverhangMm:0.###} mm concrete end allowance. Provide checked junction end-zone support.";
+            if(fullSpanFits)foreach(double spacing in r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.StandardSpacingsMm.Where(s=>s<=r.Input.CrossSpacing(index)) : new[] {Math.Min(r.Input.UpperSpacingMm,250),225.0,250,175,150}.Distinct().Where(s=>s<=r.Input.UpperSpacingMm+1e-7))
             {
                 var result=DedicatedCandidate(common,r,index,spacing,out string reason,allowance:allowance);
                 if(result!=null)reason=Clash(result.Solids,obstacleArray);
@@ -893,6 +900,9 @@ namespace EngineeringDashboard
         {
             failure=null;double span=r.Input.Bays[r.Input.CrossingBeams[index].BayNumber-1].WidthMm,central=span-near-far;
             var placements=new List<CrossPlacement>();
+            // Stock fit and imbalance depend on the bay/shift, not frame width
+            // or transverse offset. Share their exact result within this call.
+            var symmetryBounds=new Dictionary<Tuple<double,double>,double>();
             foreach(double width in widths.Where(w=>w!=600 || !common.Exclude600Standalone))
             {
                 var shifts=offsets.SelectMany(offset=>JunctionOffsets(common,r,index,width,offset,near,far,obstacles)).Distinct().ToArray();
@@ -902,7 +912,10 @@ namespace EngineeringDashboard
                     double brace=width==1524 ? bay : width,penalty=Math.Abs(brace-1500)<1e-7 ? 0 : Math.Abs(brace-1000)<1e-7 ? 500 : Math.Abs(brace-2000)<1e-7 ? 1500 : 2000;
                     foreach(double shift in shifts)
                     {
-                        double imbalance=ProjectedSymmetry(common,central,near,far,bay,shift,allowance);if(double.IsInfinity(imbalance))continue;
+                        var symmetryKey=Tuple.Create(bay,shift);
+                        if(!symmetryBounds.TryGetValue(symmetryKey,out double imbalance))
+                            symmetryBounds[symmetryKey]=imbalance=ProjectedSymmetry(common,central,near,far,bay,shift,allowance);
+                        if(double.IsInfinity(imbalance))continue;
                         foreach(double offset in offsets)placements.Add(new CrossPlacement {Width=width,Bay=bay,Shift=shift,Offset=offset,Brace=penalty,Symmetry=imbalance+2*Math.Abs(offset)});
                     }
                 }
@@ -969,6 +982,9 @@ namespace EngineeringDashboard
             // before accepting the complete combination, using the same checked
             // setting-out routine as the final centring pass.
             var fixedExisting=coordinateRows ? existing.Where(s=>!s.Name.StartsWith("B") || !s.Name.Contains("/T")).ToArray() : existing;
+            // Geometry is unchanged by trial load rechecks. Build this exact
+            // primary-bearing obstacle snapshot once for the complete candidate.
+            var primaryObstacles=existing.Where(s=>!s.Name.StartsWith("B") || !s.Name.Contains("/T")).Concat(concrete).ToArray();
             var accepted=new List<CrossBeamSupportResult>();
             // Check the mandatory/narrow junctions before flexible shared ones.
             // This changes traversal only; every accepted complete combination is
@@ -1001,7 +1017,7 @@ namespace EngineeringDashboard
                 string sharedFailure=null,towerFailure=null;
                 if(c.SupportMode!=CrossBeamSupportMode.DedicatedTowers)
                 {
-                    var onPrimary=PrimaryBearing(common,r,index,out string primaryFailure);
+                    var onPrimary=PrimaryBearing(common,r,index,out string primaryFailure,primaryObstacles);
                     if(onPrimary!=null)
                     {
                         primaryFailure=Clash(onPrimary.Solids,fixedExisting.Concat(concrete).Concat(accepted.SelectMany(a=>a.Solids)));
@@ -1364,12 +1380,18 @@ namespace EngineeringDashboard
             using(var hot=common.Trace?.Hot(BeamHotStage.CrossingRecheck))
             {
             var shared=supports.Where(s=>s.Bearings.Any(b=>b.Beam>=0)).ToArray();
-            r.Beams=originals.Select(Copy).ToArray();
+            // Lower-only trials build temporary members and never write a
+            // layout. Copy the layouts only for the terminal full recheck.
+            r.Beams=lowerOnly && common.EngineerWorkflow && common.OptimizeCrossingSearch ? originals : originals.Select(Copy).ToArray();
             for(int beam=0;beam<r.Beams.Length;beam++)
             {
                 var l=r.Beams[beam];var t=originals[beam].Transfer;int runs=l.StockPlan.Pieces.Length;
                 EngineerPrimaryPlan resolvedPlan=null;
                 var relevant=shared.Where(s=>s.Bearings.Any(b=>b.Beam==beam)).ToArray();
+                // A trial crossing changes only its receiving beams. Base
+                // members were already checked; the terminal full recheck still
+                // visits every beam before a complete network is accepted.
+                if(lowerOnly && common.EngineerWorkflow && common.OptimizeCrossingSearch && relevant.Length==0)continue;
                 var columnLoads=new List<ColumnEndStripLoad[]>();var cases=new List<TransferMember[]>();var lowerCases=new List<TransferMember[]>();var names=new List<string>();var left=Enumerable.Repeat(double.NegativeInfinity,l.PositionsMm.Length).ToArray();var right=Enumerable.Repeat(double.NegativeInfinity,left.Length).ToArray();
                 var minLeft=Enumerable.Repeat(double.PositiveInfinity,left.Length).ToArray();var minRight=Enumerable.Repeat(double.PositiveInfinity,left.Length).ToArray();
                 bool conservative=relevant.Length>8;
