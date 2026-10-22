@@ -7,7 +7,7 @@ internal static class UpdateEntryUiTests
 {
     internal static void Run()
     {
-        var model=new BeamCalculatorViewModel();int opened=0;
+        var model=new BeamCalculatorViewModel {UseTowers=true};int opened=0;
         var revit=new BeamFormworkWorkspace(model,null,null,null,checkForUpdates:()=>opened++);
         if(!revit.Buttons.ContainsKey("CheckUpdates"))throw new Exception("Revit workspace update entry missing");
         revit.Buttons["CheckUpdates"].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
