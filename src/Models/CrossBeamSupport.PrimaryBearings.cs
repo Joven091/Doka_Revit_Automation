@@ -4,28 +4,6 @@ using System.Linq;
 
 namespace EngineeringDashboard
 {
-    internal sealed class PrimaryBearingGeometryKey : IEquatable<PrimaryBearingGeometryKey>
-    {
-        readonly CrossGeometryKey geometry;readonly double[] values;readonly int hash;
-        internal PrimaryBearingGeometryKey(TowerInput common,TransferNetworkResult r,int index,FormworkSolid[] obstacles)
-        {
-            geometry=new CrossGeometryKey(r,index,CrossShutterAllowance.Standard,obstacles);
-            var data=new List<double> {common.StockEndSetbackMm,common.DeflectionDenominator,common.DeflectionLimitMm,common.IgnoreUplift ? 1 : 0,common.AllowCustomBeamLengths ? 1 : 0,common.StockLengthsMm.Length};
-            data.AddRange(common.StockLengthsMm);
-            double centre=r.Input.CrossingBeams[index].PositionMm,max=r.Input.CrossingBeams[index].WidthMm/2-40;
-            var offsets=obstacles.SelectMany(s=>new[] {Math.Abs(s.X0-40-centre),Math.Abs(s.X1+40-centre)}).Where(d=>d<=max+1e-7).Distinct().OrderBy(d=>d).ToArray();
-            data.Add(offsets.Length);data.AddRange(offsets);
-            for(int b=r.Input.CrossingBeams[index].BayNumber-1;b<=r.Input.CrossingBeams[index].BayNumber;b++)
-            {
-                var l=r.Beams[b];data.AddRange(new[] {l.WidthMm,l.TransverseOffsetMm,r.BeamCentresMm[b],(double)l.StockPlan.Pieces.Length});
-                foreach(var p in l.StockPlan.Pieces)data.AddRange(new[] {p.StartMm,p.EndMm});
-            }
-            values=data.ToArray();unchecked {int h=geometry.GetHashCode();foreach(double v in values)h=h*31+v.GetHashCode();hash=h;}
-        }
-        public override int GetHashCode()=>hash;
-        public override bool Equals(object obj)=>Equals(obj as PrimaryBearingGeometryKey);
-        public bool Equals(PrimaryBearingGeometryKey other)=>other!=null && hash==other.hash && geometry.Equals(other.geometry) && values.SequenceEqual(other.values);
-    }
     public static partial class CrossBeamSupportOptimizer
     {
         // Optimistic eligibility only. Actual primary axes, stock ends, loads and
@@ -68,26 +46,6 @@ namespace EngineeringDashboard
 
         internal static CrossBeamSupportResult PrimaryBearing(TowerInput common,TransferNetworkResult r,int index,out string failure)
         {
-            if(!PrimaryBearingPossible(common,r.Input,r.Input.CrossingBeams[index]))
-            {failure="Primary bearings are above the crossing H20 underside or no secondary stock can cover its span.";return null;}
-            var c=r.Input.CrossingBeams[index];
-            // Only solids touching this longitudinal crossing window can clash
-            // with a row or contribute a candidate clearance position.
-            var existing=(r.Beams.All(l=>l.StockPlan.Pieces.Length==0) ? Concrete(r)
-                : NetworkSolids(r).Where(s=>!s.Name.StartsWith("B") || !s.Name.Contains("/T")).Concat(Concrete(r)))
-                .Where(s=>s.X1>=c.PositionMm-c.WidthMm/2-80 && s.X0<=c.PositionMm+c.WidthMm/2+80).ToArray();
-            var cache=common.OptimizeCrossingSearch && common.ReuseSearchWork ? common.CrossingGeometryWork?.PrimaryBearings : null;
-            var key=cache==null ? null : new PrimaryBearingGeometryKey(common,r,index,existing);
-            if(cache!=null && cache.TryGetValue(key,out var saved))
-            {
-                common.Trace?.Increment(BeamSearchCounter.CrossingGeometryCacheHits);failure=saved.Failure;
-                var copy=saved.Result?.Copy();if(copy!=null)copy.Input=c;return copy;
-            }
-            var result=PrimaryBearingUncached(common,r,index,existing,out failure);
-            cache?.Store(key,new DedicatedCrossSearch {Result=result?.Copy(),Failure=failure});return result;
-        }
-        private static CrossBeamSupportResult PrimaryBearingUncached(TowerInput common,TransferNetworkResult r,int index,FormworkSolid[] existing,out string failure)
-        {
             failure=null;var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;
             if(!PrimaryBearingPossible(common,r.Input,c)){failure="Primary bearings are above the crossing H20 underside or no secondary stock can cover its span.";return null;}
             double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2,span=r.Input.Bays[bay].WidthMm;
@@ -98,6 +56,11 @@ namespace EngineeringDashboard
             var stocks=common.StockLengthsMm.Where(s=>s<=span+1e-7);
             if(common.AllowCustomBeamLengths)
                 stocks=stocks.Concat(new[] {25*Math.Ceiling((far-near+2*end)/25)}.Where(s=>s<=span+1e-7));
+            // Prepared receiver probes contain transverse data but no assembled
+            // primaries/slab scales. Reserve concrete there; the complete network
+            // checks every actual timber solid before accepting this option.
+            var existing=r.Beams.All(l=>l.StockPlan.Pieces.Length==0) ? Concrete(r).ToArray()
+                : NetworkSolids(r).Where(s=>!s.Name.StartsWith("B") || !s.Name.Contains("/T")).Concat(Concrete(r)).ToArray();
             foreach(double stock in stocks.Distinct().OrderBy(s=>s))
             {
                 double earliest=Math.Max(0,far+end-stock-face),latest=Math.Min(span-stock,near-end-face);

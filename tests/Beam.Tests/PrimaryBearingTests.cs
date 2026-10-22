@@ -21,14 +21,8 @@ internal static class PrimaryBearingTests
     internal static void Run()
     {
         var r=Fixture();var input=new TowerInput {EngineerSearch=true,FullLoadingOnly=true,StockEndSetbackMm=150,Exclude600Standalone=true,DeflectionDenominator=270,LegCapacityKn=70};
-        input.CrossingGeometryWork=new CrossGeometryCache();
         Check(CrossBeamSupportOptimizer.PrimaryBearingPossible(input,r.Input,r.Input.CrossingBeams[0]),"new path survives dedicated-stock screen");
         var support=CrossBeamSupportOptimizer.PrimaryBearing(input,r,0,out string failure);Check(support!=null,"1800 stock supported: "+failure);
-        var replay=CrossBeamSupportOptimizer.PrimaryBearing(input,r,0,out failure);var uncached=input.CopyForSearch();uncached.ReuseSearchWork=false;
-        Check(replay.Schedule==CrossBeamSupportOptimizer.PrimaryBearing(uncached,r,0,out failure).Schedule,"cached and uncached crossing designs agree exactly");
-        var shifted=Fixture();shifted.Beams[0].TransverseOffsetMm=25;
-        var moved=CrossBeamSupportOptimizer.PrimaryBearing(input,shifted,0,out failure);Check(moved!=null,"shifted bearing passes");
-        Near(moved.Members[0].StartMm+moved.Members[0].SupportsMm[0],775,"cached result invalidates when the actual primary axis moves");
         Check(support.Towers==null && support.UsesPrimaryBearings,"no new tower");Check(support.Members.All(m=>m.LengthMm==1800),"uses 1800 catalogue secondary");
         Check(support.Bearings.Where(b=>b.IsPrimaryBearing && b.Beam==0).All(b=>b.PrimaryLine==1 && b.FillerHeightMm==0),"direct B2-equivalent inner primary");
         Check(support.Bearings.Where(b=>b.IsPrimaryBearing && b.Beam==1).All(b=>b.PrimaryLine==0 && b.FillerHeightMm==600),"600 high transfer to deeper primary");
