@@ -1,0 +1,78 @@
+name: Revit shared-folder updater
+on:
+  pull_request:
+    paths:
+      - 'Directory.Build.props'
+      - 'MyRevitAddin.addin'
+      - 'installer.iss'
+      - 'src/**'
+      - 'tools/RevitUpdater/**'
+      - 'tests/Updates.*/**'
+      - 'scripts/*RevitUpdate.ps1'
+      - '.github/workflows/revit-updates.yml'
+  workflow_dispatch:
+concurrency:
+  group: revit-updates-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  update-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/Updates.Tests -c Release
+  windows-update:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build tests/Updates.Net48 -c Release --warnaserror
+      - run: tests/Updates.Net48/bin/Release/net48/Updates.Net48.exe
+      - name: Check Revit-only workspace entry
+        run: dotnet run --project tests/Beam.UiSmoke -c Release -- --updater-ui
+      - name: Check coming-soon release locks
+        run: dotnet run --project tests/D3Slab.UiSmoke -c Release -- --release-availability
+      - name: Build bootstrap installer
+        shell: pwsh
+        run: |
+          dotnet build src/MyRevitAddin.csproj -c Release --warnaserror /p:Version=1.1.0
+          if ($LASTEXITCODE -ne 0) { throw 'Bootstrap build failed' }
+          $compiler=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          & $compiler '/Oartifacts\bootstrap' installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Bootstrap installer failed' }
+      - name: Build candidate release and feed
+        shell: pwsh
+        run: |
+          dotnet build src/MyRevitAddin.csproj -c Release --warnaserror /p:Version=1.1.1
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed' }
+          $compiler=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          & $compiler '/Oartifacts\candidate' installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate installer failed' }
+          ./scripts/Publish-RevitUpdate.ps1 -Installer artifacts/candidate/Install_DokaRevitAutomation.exe -Version 1.1.1 -ReleaseNotes 'Revit add-in shared-folder update test.' -Destination artifacts/test-feed
+          ./scripts/Publish-RevitUpdate.ps1 -Installer artifacts/candidate/Install_DokaRevitAutomation.exe -Version 1.1.1 -ReleaseNotes 'Revit add-in shared-folder update test.' -Destination artifacts/test-feed
+      - name: Exercise deferred installation with actual installers
+        shell: pwsh
+        run: |
+          ./scripts/Test-RevitUpdate.ps1 -Bootstrap (Resolve-Path artifacts/bootstrap/Install_DokaRevitAutomation.exe) -Feed (Resolve-Path artifacts/test-feed) -Helper (Resolve-Path src/bin/Release/net48/Doka.RevitUpdater.exe) -Tests (Resolve-Path tests/Updates.Net48/bin/Release/net48/Updates.Net48.exe)
+      - name: Package reviewed test files
+        shell: pwsh
+        run: |
+          Copy-Item scripts/Publish-RevitUpdate.ps1 artifacts/
+          Copy-Item docs/revit-updates.md artifacts/README.md
+          Remove-Item artifacts/candidate -Recurse
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revit2024-updater-test-kit
+          path: artifacts/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: revit-update-failure-logs
+          path: ~/AppData/Local/DokaRevitAutomation/Updates/**/*.log
+          if-no-files-found: ignore

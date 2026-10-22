@@ -17,10 +17,12 @@ namespace EngineeringDashboard
             InitializeComponent();
         }
         private void BtnAccount_Click(object sender, RoutedEventArgs e) => MyRevitAddin.Access.AccessWindow.Manage(this);
+        private void BtnUpdates_Click(object sender, RoutedEventArgs e) => new MyRevitAddin.Updates.UpdateWindow { Owner=this }.ShowDialog();
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
 
         private void BtnDomeCalculator_Click(object sender, RoutedEventArgs e)
         {
+            if(!BtnDomeCalculator.IsEnabled)return;
             if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
             Hide();
             try
@@ -79,6 +81,7 @@ namespace EngineeringDashboard
             }
 
             BeamCalculatorWindow beamWindow = new BeamCalculatorWindow();
+            beamWindow.CheckForUpdates=()=>new MyRevitAddin.Updates.UpdateWindow {Owner=beamWindow}.ShowDialog();
             beamWindow.DataContext = _beamViewModel;
 
             beamWindow.ShowDialog();

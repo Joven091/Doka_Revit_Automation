@@ -48,6 +48,7 @@ internal static class Program
    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
    if(args.Contains("--preview-smoke"))return StandalonePreview.Run(true);
    if(args.Contains("--preview"))return StandalonePreview.Run();
+   if(args.Contains("--updater-ui")){UpdateEntryUiTests.Run();return 0;}
    if(args.Contains("--primary-bearing-ui")){PrimaryBearingUiTests.Run();return 0;}
    WorkspacePresentationTests.Run();
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));

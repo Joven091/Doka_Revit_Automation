@@ -23,10 +23,13 @@ static partial class Program
         var dome = (Button)launcher.FindName("BtnDomeCalculator");
         Check(new[] { slab, beam, back, dome }.All(b => b != null), "Four calculator choices available");
         double Gap(Button first, Button second) => second.TranslatePoint(new Point(), root).Y - first.TranslatePoint(new Point(0, first.ActualHeight), root).Y;
-        Check(Gap(back, dome) > Gap(slab, beam) + 20, "Beta choice separated from existing calculators");
-        Check(System.Windows.Automation.AutomationProperties.GetName(dome).Contains("beta"), "Accessible beta label");
+        Check(Gap(back, dome) > Gap(slab, beam) + 20, "Coming-soon choice separated from available calculators");
+        Check(!dome.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(dome).Contains("Coming soon"), "Dome disabled with accessible Coming soon label");
         Render(launcher, "doka-launcher.png", 600, 680);
-        // Exercise the real launcher handler and nested modal command. Close dialogs from the dispatcher.
+        // Locked launcher remains safe even when a click is raised programmatically.
+        dome.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Check(!Application.Current.Windows.OfType<MainWindow>().Any(w=>w.IsVisible), "Disabled Dome cannot launch");
+        // Exercise future calculator internals directly without unlocking the release UI.
         launcher.Show();
         MainViewModel? retained = null;
         for (int attempt = 0; attempt < 2; attempt++)
@@ -59,11 +62,11 @@ static partial class Program
                 }
                 input.Close();
             }), DispatcherPriority.ApplicationIdle);
-            dome.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            new MainWindow(retained ?? new MainViewModel()) {Owner=launcher}.ShowDialog();
             Check(launcher.IsVisible, "Closing calculator returns to launcher");
         }
         launcher.Close();
-        Console.WriteLine("PASS Real launcher, beta separation, nested modal ownership and retained state");
+        Console.WriteLine("PASS Coming-soon lock, direct calculator modal ownership and retained state");
     }
 
     private static void Render(Window window, string name, int width, int height)

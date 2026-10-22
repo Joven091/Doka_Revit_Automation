@@ -10,6 +10,7 @@
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Card" Property="Background" Value="#FFF6D6"/><Setter TargetName="Card" Property="BorderBrush" Value="#D4AA00"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Card" Property="Background" Value="#FFF2BF"/><Setter TargetName="Card" Property="BorderBrush" Value="#806500"/></Trigger>
      <Trigger Property="IsPressed" Value="True"><Setter TargetName="Card" Property="Background" Value="#F2CD24"/></Trigger>
+     <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Card" Property="Background" Value="#ECEFF1"/><Setter TargetName="Card" Property="Opacity" Value="0.6"/><Setter Property="Cursor" Value="Arrow"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
@@ -37,15 +38,15 @@
     <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><TextBlock Text="Backpropping" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="Support spacing and load transfer between floors." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
     <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
    </Grid></Button>
-   <Border BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Margin="0,24,0,12" Padding="0,12,0,0"><TextBlock Text="Beta calculator" Style="{StaticResource Hint}"/></Border>
-   <Button x:Name="BtnDomeCalculator" Style="{StaticResource Choice}" AutomationProperties.Name="Dome calculator beta" Click="BtnDomeCalculator_Click"><Grid>
+   <Border BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Margin="0,24,0,12" Padding="0,12,0,0"><TextBlock Text="Coming soon" Style="{StaticResource Hint}"/></Border>
+   <Button x:Name="BtnDomeCalculator" IsEnabled="False" Style="{StaticResource Choice}" AutomationProperties.Name="Dome calculator — Coming soon" Click="BtnDomeCalculator_Click"><Grid>
     <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
-    <Border Background="#FFF2BF" Width="48" Height="48"><Canvas Width="40" Height="40"><Path Data="M4,25 C4,3 36,3 36,25 M4,25 L36,25 M10,25 L10,35 M20,25 L20,35 M30,25 L30,35" Stroke="#647B8D" StrokeThickness="2"/><Path Data="M4,27 L36,27" Stroke="#D4AA00" StrokeThickness="3"/></Canvas></Border>
-    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><WrapPanel><TextBlock Text="Dome Calculator" FontSize="17" FontWeight="SemiBold"/><Border Background="#FFF2BF" BorderBrush="#D4AA00" BorderThickness="1" Padding="6,2" Margin="10,0,0,0"><TextBlock Text="BETA" FontSize="11" FontWeight="Bold" Foreground="#806500"/></Border></WrapPanel><TextBlock Text="Formwork loads, recommended spacings and beam diagrams." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
-    <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
+    <Border Background="#E4E7EA" Width="48" Height="48"><Canvas Width="40" Height="40"><Path Data="M4,25 C4,3 36,3 36,25 M4,25 L36,25 M10,25 L10,35 M20,25 L20,35 M30,25 L30,35" Stroke="#647B8D" StrokeThickness="2"/><Path Data="M4,27 L36,27" Stroke="#9BA5AE" StrokeThickness="3"/></Canvas></Border>
+    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><WrapPanel><TextBlock Text="Dome Calculator" FontSize="17" FontWeight="SemiBold"/><Border Background="#E4E7EA" BorderBrush="#B9C0C6" BorderThickness="1" Padding="6,2" Margin="10,0,0,0"><TextBlock Text="Coming soon" FontSize="11" FontWeight="SemiBold" Foreground="#59636D"/></Border></WrapPanel><TextBlock Text="Formwork loads, recommended spacings and beam diagrams." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
+    <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#59636D" VerticalAlignment="Center"/>
    </Grid></Button>
   </StackPanel></ScrollViewer>
-  <Border Grid.Row="2" BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,10,0,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Account / sign out" Margin="0,0,10,0" Click="BtnAccount_Click"/><Button Content="Close" IsCancel="True" MinWidth="80" Click="BtnClose_Click"/></StackPanel></Border>
+  <Border Grid.Row="2" BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,10,0,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Check for updates…" Margin="0,0,10,0" Click="BtnUpdates_Click"/><Button Content="Account / sign out" Margin="0,0,10,0" Click="BtnAccount_Click"/><Button Content="Close" IsCancel="True" MinWidth="80" Click="BtnClose_Click"/></StackPanel></Border>
  </Grid></Border>
 </Window>
 

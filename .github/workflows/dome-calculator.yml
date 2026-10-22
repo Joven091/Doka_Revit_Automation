@@ -63,6 +63,9 @@ jobs:
             MyRevitAddin.addin
             src/bin/Release/net48/MyRevitAddin.dll
             src/bin/Release/net48/OxyPlot*.dll
+            src/bin/Release/net48/Doka.RevitUpdater.exe
+            src/bin/Release/net48/update-settings.json
+            src/bin/Release/net48/access-settings.json
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
