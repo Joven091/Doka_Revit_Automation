@@ -165,6 +165,7 @@ namespace EngineeringDashboard
     }
     public class TransferBeamRow : INotifyPropertyChanged
     {
+        public string RevitSource {get;set;}
         public string Label {get;set;}
         private double maximumSecondarySpacing;
         [System.Xml.Serialization.XmlIgnore]
@@ -197,6 +198,7 @@ namespace EngineeringDashboard
     }
     public sealed class TransferBayRow : INotifyPropertyChanged
     {
+        public string RevitSource {get;set;}
         public string Label {get;set;}
         private double maximumSecondarySpacing;
         [System.Xml.Serialization.XmlIgnore]
@@ -217,6 +219,7 @@ namespace EngineeringDashboard
     }
     public sealed class TransferCrossingBeamRow : INotifyPropertyChanged
     {
+        public string RevitSource {get;set;}
         private double maximumSecondarySpacing;
         [System.Xml.Serialization.XmlIgnore]
         public double MaximumSecondarySpacingMm=>maximumSecondarySpacing;

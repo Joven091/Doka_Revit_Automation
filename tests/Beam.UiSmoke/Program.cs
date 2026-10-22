@@ -46,6 +46,7 @@ internal static class Program
   {
    System.Windows.Media.RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;
    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+   if(args.Contains("--revit-selection-ui")){RevitSelectionUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}
    if(args.Contains("--preview-smoke"))return StandalonePreview.Run(true);
    if(args.Contains("--preview"))return StandalonePreview.Run();
    if(args.Contains("--updater-ui")){UpdateEntryUiTests.Run();return 0;}

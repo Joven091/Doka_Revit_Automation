@@ -51,3 +51,7 @@ To launch from source with the .NET 10 SDK:
 ```
 
 The preview uses the production calculator views and numerical models with the existing test host. It does not replace Revit integration testing.
+
+## Create a drawing from Revit selection
+
+Select beams, slabs, columns and walls, then use **From Revit…** in the D3 beam workspace. Review the preview before replacing the drawing. See [supported layouts and workflow](docs/revit-selection-import.md).

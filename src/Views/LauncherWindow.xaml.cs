@@ -82,6 +82,7 @@ namespace EngineeringDashboard
 
             BeamCalculatorWindow beamWindow = new BeamCalculatorWindow();
             beamWindow.CheckForUpdates=()=>new MyRevitAddin.Updates.UpdateWindow {Owner=beamWindow}.ShowDialog();
+            beamWindow.ReadRevitSelection=()=>RevitStructureSelection.Read(Command.App);
             beamWindow.DataContext = _beamViewModel;
 
             beamWindow.ShowDialog();

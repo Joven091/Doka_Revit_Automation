@@ -99,6 +99,7 @@ namespace EngineeringDashboard
         internal int DrawnLegCount {get;private set;}
         internal int DrawnCrossH20Count {get;private set;}
         internal int DrawnSecondaryH20Count {get;private set;}
+        internal int DrawnReferenceCount {get;private set;}
         internal int DrawnBracedBayCount {get;private set;}
         internal readonly List<Tuple<int,string,double>> CrossingSettingOut=new List<Tuple<int,string,double>>();
         internal BeamFormworkCanvas(BeamCalculatorViewModel model)
@@ -128,6 +129,8 @@ namespace EngineeringDashboard
                 var bounds=beam.IsVertical ? new Rect(beam.StartXmm-half,beam.StartYmm,half*2,beam.LengthMm) : new Rect(beam.StartXmm,beam.StartYmm-half,beam.LengthMm,half*2);
                 minX=Math.Min(minX,bounds.Left);maxX=Math.Max(maxX,bounds.Right);min=Math.Min(min,bounds.Top);max=Math.Max(max,bounds.Bottom);
             }
+            foreach(var r in Model.RevitContext?.References??new RevitReferenceShape[0])foreach(var p in r.Outline)
+            {minX=Math.Min(minX,p.X);maxX=Math.Max(maxX,p.X);min=Math.Min(min,p.Y);max=Math.Max(max,p.Y);}
             return new Rect(minX,min,maxX-minX,max-min);
         }
         private TowerLayout Layout(int beam)=>!Model.IsCalculationValid ? null : Model.IsNetworkMode ? Model.NetworkResult?.Beams[beam] : Model.TowerResult;
@@ -252,10 +255,18 @@ namespace EngineeringDashboard
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc);crossingLabels.Clear();dimensionLines.Clear();sectionTarget=Rect.Empty;ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();SpacingTargets.Clear();dimensions.Clear();AnnotationLabels.Clear();AnnotationBounds.Clear();HorizontalDimensionLabels.Clear();annotations.Clear();AcrossDimensions.Clear();DrawnSpacingDimensionCount=DrawnH20ProfileCount=0;CrossingSettingOut.Clear();DrawnLegCount=DrawnCrossH20Count=DrawnBracedBayCount=0;
-            DrawnSecondaryH20Count=0;
+            DrawnSecondaryH20Count=DrawnReferenceCount=0;
             dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
             if(!ValidGeometry()) {Label(dc,"Correct geometry to draw the plan.",new Point(30,30));foreach(var annotation in annotations)dc.DrawDrawing(annotation);return;}
             var beams=Beams();var ys=Centres();SceneBounds=Bounds();
+            foreach(var reference in Model.RevitContext?.References??new RevitReferenceShape[0])
+            {
+                var outline=new StreamGeometry();using(var shape=outline.Open())
+                {shape.BeginFigure(Screen(reference.Outline[0].X,reference.Outline[0].Y),true,true);shape.PolyLineTo(reference.Outline.Skip(1).Select(p=>Screen(p.X,p.Y)).ToArray(),true,false);}
+                dc.DrawGeometry(new SolidColorBrush(Color.FromRgb(235,238,240)),new Pen(Brushes.SlateGray,1.2),outline);DrawnReferenceCount++;
+                double x=reference.Outline.Average(p=>p.X),y=reference.Outline.Average(p=>p.Y);
+                Label(dc,reference.Label,Screen(x,y),Brushes.SlateGray,centre:true);
+            }
             for(int i=0;i<beams.Length-1;i++)
             {
                 double top=ys[i]+beams[i].WidthMm/2,bottom=ys[i+1]-beams[i+1].WidthMm/2;

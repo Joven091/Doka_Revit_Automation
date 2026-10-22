@@ -53,6 +53,7 @@ namespace EngineeringDashboard
         private readonly List<Action> syncControls=new List<Action>();
         private readonly Stack<State> undo=new Stack<State>(),redo=new Stack<State>();
         private readonly Action save,load,export,refreshInputs,checkForUpdates;
+        private readonly Func<RevitSelectionSnapshot> readRevitSelection;
         internal Func<bool> ConfirmNewSession {get;set;}
         private bool changing,refreshQueued,closed;
         private bool sectionMode;
@@ -84,8 +85,9 @@ namespace EngineeringDashboard
             internal int SelectedIndex;
         }
         private const string StateProperties="Depth,Width,PlanOriginYmm,BeamLengthMm,TowerLegCapacityKn,PrimaryMaterial,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,Exclude600Standalone,DeflectionLimit,PlywoodDeflectionLimit,SelectedPlywood,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
-        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null,Action checkForUpdates=null)
+        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null,Action checkForUpdates=null,Func<RevitSelectionSnapshot> readRevitSelection=null)
         {
+            this.readRevitSelection=readRevitSelection;
             this.checkForUpdates=checkForUpdates;
             Model=model;save=saveInputs;load=loadInputs;export=exportReport;refreshInputs=refreshCalculatorInputs;
             ConfirmNewSession=()=>MessageBox.Show(DialogOwner,"Start a new beam formwork session? Current inputs, results and undo history will be cleared. Saved files are unchanged.","New session",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes;
@@ -534,6 +536,12 @@ namespace EngineeringDashboard
                 else
                 {var c=Model.CrossingBeams[index];Text("X"+(index+1)+" · crossing beam",true);Number("PositionMm","Position along beam (mm)",()=>c.PositionMm,v=>c.PositionMm=v,0);Number("WidthMm","Width (mm)",()=>c.WidthMm,v=>c.WidthMm=v);Number("DepthMm","Total depth (mm)",()=>c.DepthMm,c.SetDepthKeepingTopMm);Number("BottomElevationMm","Bottom / soffit elevation (mm)",()=>c.BottomElevationMm,v=>c.BottomElevationMm=v,-1000000);ConcreteTop(()=>c.BottomElevationMm,()=>c.DepthMm);Text("Cross-beam supports");var mode=new ComboBox {ItemsSource=c.SupportModes,DisplayMemberPath="Label",SelectedValuePath="Value",SelectedValue=c.SupportMode,Margin=new Thickness(0,0,0,12)};mode.SelectionChanged+=(sender,args)=> {if(changing || !(mode.SelectedValue is CrossBeamSupportMode value))return;if(CommitFields())Mutate(()=>c.SupportMode=value);else Refresh();};syncControls.Add(()=>mode.SelectedValue=c.SupportMode);properties.Children.Add(mode);Text("Slab bay");var bay=new ComboBox {ItemsSource=Model.NetworkBays.Select(s=>s.Label).ToArray(),SelectedIndex=c.BayNumber-1,Margin=new Thickness(0,0,0,12)};bay.SelectionChanged+=(s,e)=> {if(changing || bay.SelectedIndex<0)return;int choice=bay.SelectedIndex;if(CommitFields())Mutate(()=>c.BayNumber=choice+1);else Refresh();};syncControls.Add(()=>bay.SelectedIndex=c.BayNumber-1);properties.Children.Add(bay);}
                 if(Drawing.SelectedObjects.Length>1)Text(Drawing.SelectedObjects.Length+" objects selected. Shift-click toggles selection; Delete removes the selected areas.");
+                if(Drawing.SelectedObjects.Length==1 && Model.RevitContext!=null)
+                {
+                    object sourceRow=Drawing.SelectedKind==FormworkObject.Beam && !Model.IsNetworkMode ? Model.NetworkBeams.FirstOrDefault() : SelectedObject();
+                    string source=(sourceRow as TransferBeamRow)?.RevitSource??(sourceRow as TransferBayRow)?.RevitSource??(sourceRow as TransferCrossingBeamRow)?.RevitSource;
+                    if(!string.IsNullOrEmpty(source))Text("Revit: "+source+" · "+Model.RevitContext.DocumentTitle);
+                }
                 if(!Drawing.Formwork && !sectionMode)Text("Geometry commands: MV move · CO copy · CS create similar. Pick a beam, then type the two-letter command.");
                 if(Drawing.SelectedObjects.Length==1)CalculatedNumber(nameof(TransferBeamRow.MaximumSecondarySpacingMm),"Plywood spacing limit (mm)",SelectedObject());
                 if(Drawing.SelectedKind!=FormworkObject.Independent)Number("BeamLengthMm","Parallel beam length (mm)",()=>Model.BeamLengthMm,v=>Model.BeamLengthMm=v);
@@ -564,6 +572,7 @@ namespace EngineeringDashboard
             bool pending=editors.Any(e=>e.Dirty && e.Box.IsEnabled) || stringEditors.Any(e=>e.Dirty),valid=editors.Where(e=>e.Box.IsEnabled).All(ValidateEditor) && stringEditors.All(ValidateStock);
             Model.SetAdditionalTextInputErrors(this,pending);
             Buttons["NewSession"].IsEnabled=!Model.IsOptimizing;
+            if(Buttons.ContainsKey("FromRevit"))Buttons["FromRevit"].IsEnabled=!Model.IsOptimizing;
             Buttons["Calculate"].IsEnabled=valid && !Model.IsOptimizing;
             Buttons["Cancel"].IsEnabled=Model.CanCancelOptimization;
             Buttons["Formwork"].IsEnabled=Model.IsCalculationValid && !pending;

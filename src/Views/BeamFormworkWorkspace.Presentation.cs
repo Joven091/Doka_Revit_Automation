@@ -47,6 +47,7 @@ namespace EngineeringDashboard
             addMenu.Items.Add(MenuAction("AddCrossing","Crossing beam",()=> {if(CommitFields() && Model.IsNetworkMode){Geometry();Drawing.AddCrossing=true;Drawing.Cursor=Cursors.Cross;Drawing.InvalidateVisual();}}));
             var tools=new MenuItem {Header="_Tools",Padding=new Thickness(10,6,10,6)};tools.Items.Add(MenuAction("Diagnose","Diagnose…",ShowDiagnostics));menus.Items.Add(tools);
             edit.Children.Add(menus);edit.Children.Add(Button("Undo","Undo",()=>History(undo,redo)));edit.Children.Add(Button("Redo","Redo",()=>History(redo,undo)));
+            if(readRevitSelection!=null)edit.Children.Add(Button("FromRevit","From Revit…",ImportRevitSelection));
             edit.Children.Add(Button("Delete","Delete selection",RemoveSelected));toolbar.Children.Add(edit);return toolbar;
         }
         private FrameworkElement BuildViewToolbar()
