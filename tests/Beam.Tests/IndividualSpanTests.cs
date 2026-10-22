@@ -55,6 +55,8 @@ internal static class IndividualSpanTests
             total+=b.Transfer.PrimaryCases.Last().Sum(m=>m.Analysis.TotalLoadKn)+b.Transfer.ColumnSupportLoadKn(b.Transfer.CaseNames.Length-1);
         }
         Near(total,network.AreaLoad(1150)*.65*7.5+network.AreaLoad(200)*2.125*3.6,"system load is conserved using actual spans");
+        var options=TransferNetworkOptimizer.BeamOptions(common,solved,0);Check(options.Length>0,"unequal-span alternatives remain reviewable");
+        foreach(var option in options.Where(o=>o.Result!=null))Check(option.Result.Beams[0].StockPlan.Pieces.All(p=>p.StartMm>=150-1e-6 && p.EndMm<=3750+1e-6),"an alternative never borrows overlong stock from the other beam");
         network.CrossingBeams=new[] {new TransferCrossingBeamRow {BayNumber=1,PositionMm=1950,WidthMm=650,DepthMm=900,BottomElevationMm=-900}};network.CrossingSpacingsMm=new[] {350.0};
         var crossed=TransferNetworkOptimizer.Optimize(common,network);Check(crossed.CrossSupports.Length==1,"unequal beam spans retain crossing support");
         Check(crossed.Beams.All(b=>b.MaxLegKn<=common.LegCapacityKn+1e-6),"unequal spans with crossing retain leg checks");

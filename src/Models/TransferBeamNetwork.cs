@@ -1413,7 +1413,10 @@ namespace EngineeringDashboard
             if(network.DifferentSpans(common.LengthMm))
             {
                 var local=common.CopyForSearch();local.LengthMm=network.Beams[beam].SpanLength(common.LengthMm);local.LongitudinalStartMm=network.Beams[beam].SpanStartMm;
-                stockCovers=TransferredSlabOptimizer.StockCovers(local);
+                var allowed=TransferredSlabOptimizer.StockCovers(local);
+                // A protected option has a matching fixed geometry. Never replace
+                // its stock list with another span's larger coverage family.
+                stockCovers=geometryCache?.Fixed==null ? allowed : stockCovers.Where(c=>allowed.Any(a=>a.SequenceEqual(c))).ToArray();
                 if(stockCovers.Length==0)return null;
             }
             if(ceiling<stockCovers.Min(c=>c.Length)*4) {common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);return null;}

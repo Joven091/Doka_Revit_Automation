@@ -31,6 +31,7 @@ internal static class RevitSelectionUiTests
             dialog.Show();Pump();dialog.RefreshPreview();Pump();dialog.PreviewCanvas.Fit();Pump();
             Check(dialog.PreviewCanvas.DrawnReferenceCount==2,"preview draws both wall references");
             Check(dialog.PreviewCanvas.AnnotationLabels.Any(t=>t.Contains("Wall start")),"boundary labels appear in preview");
+            Check(dialog.PreviewCanvas.AnnotationLabels.Any(t=>t.StartsWith("S1")),"slab label remains visible beside boundary references");
             Check(dialog.PreviewCanvas.Model.BeamLengthMm*dialog.PreviewCanvas.Zoom>dialog.PreviewCanvas.ActualHeight*.65,"compact preview uses the available drawing area");
             Check(!dialog.PreviewCanvas.AnnotationLabels.Any(t=>t.StartsWith("Click:")),"read-only preview has no drawing-edit hints");
             if(png!=null)
