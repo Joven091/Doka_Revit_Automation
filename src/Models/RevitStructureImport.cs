@@ -217,6 +217,13 @@ namespace EngineeringDashboard
                 var covering=floorBoxes.Where(s=>s.Item2.Covers(start,end,y0,y1)).ToArray();
                 if(covering.Length!=1){problems.Add("S"+(i+1)+": select exactly one slab covering the complete clear bay.");continue;}
                 var floor=covering[0].Item1;usedFloors.Add(floor.SourceId);
+                foreach(var boundary in boundaries)
+                {
+                    var box=new Box(boundary.Item2);
+                    if(boundary.Item1.TopMm>=floor.TopMm-floor.ThicknessMm-ToleranceMm && boundary.Item1.BottomMm<=floor.TopMm+ToleranceMm
+                        && box.X1>start+ToleranceMm && box.X0<end-ToleranceMm && box.Y1>y0+ToleranceMm && box.Y0<y1-ToleranceMm)
+                        problems.Add("S"+(i+1)+": "+boundary.Item1.Label+" intersects the bay interior. Select one clear rectangular area.");
+                }
                 if(floor.ThicknessMm>Math.Min(rows[i].DepthMm,rows[i+1].DepthMm))problems.Add(floor.Label+": slab is thicker than an adjacent beam.");
                 bays.Add(new TransferBayRow {WidthMm=y1-y0,ThicknessMm=floor.ThicknessMm,RevitSource=floor.Label});mappings.Add(Map("S"+(i+1),floor.SourceId,floor.Label));
             }

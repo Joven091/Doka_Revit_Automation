@@ -40,7 +40,7 @@ namespace EngineeringDashboard
                     var geometry=new GeometryData();
                     using(var options=new Options {DetailLevel=ViewDetailLevel.Fine,IncludeNonVisibleObjects=false,ComputeReferences=false})
                     {
-                        var root=e.get_Geometry(options);if(root!=null)Collect(root,Transform.Identity,geometry);
+                        using(var root=e.get_Geometry(options))if(root!=null)Collect(root,Transform.Identity,geometry);
                     }
                     if(geometry.Points.Count==0){problems.Add(label+": no physical geometry could be read.");continue;}
                     double bottom=geometry.Points.Min(p=>p.Z)*MmPerFoot,top=geometry.Points.Max(p=>p.Z)*MmPerFoot;
@@ -56,6 +56,10 @@ namespace EngineeringDashboard
                         double mid=(offsets.Min()+offsets.Max())/2;
                         // The physical section centre may be offset from the family location line.
                         double correction=mid-a.DotProduct(across);a+=across*correction;b+=across*correction;
+                        // Respect physical end cutbacks/extensions as well as family justification.
+                        // The column/wall pass can then trim a beam that still reaches a support centre.
+                        var stations=geometry.Points.Select(p=>p.DotProduct(along)).ToArray();
+                        a+=along*(stations.Min()-a.DotProduct(along));b+=along*(stations.Max()-b.DotProduct(along));
                         bool rectangular=!geometry.HasCurvedFaces && Level(geometry.TopLevels) && Level(geometry.BottomLevels)
                             && geometry.Normals.All(n=>Axis(n,along) || Axis(n,across) || Axis(n,XYZ.BasisZ));
                         beams.Add(new RevitSelectedBeam {SourceId=sourceId,Label=label,Start=Point(a),End=Point(b),WidthMm=(offsets.Max()-offsets.Min())*MmPerFoot,DepthMm=top-bottom,BottomMm=bottom,
@@ -93,14 +97,14 @@ namespace EngineeringDashboard
         private static bool Axis(XYZ a,XYZ b)=>Math.Abs(Math.Abs(a.DotProduct(b))-1)<1e-6;
         private static bool Level(List<double> levels)=>levels.Count>0 && (levels.Max()-levels.Min())*MmPerFoot<=RevitStructureImport.ToleranceMm;
         private static double PlanArea(ImportPoint[] points)
-        {double sum=0;for(int i=0;i<points.Length;i++){var a=points[i];var b=points[(i+1)%points.Length];sum+=a.X*b.Y-a.Y*b.X;}return Math.Abs(sum)/2;}
+        {if(points.Length<3)return 0;double sum=0;var origin=points[0];for(int i=0;i<points.Length;i++){var a=points[i];var b=points[(i+1)%points.Length];sum+=(a.X-origin.X)*(b.Y-origin.Y)-(a.Y-origin.Y)*(b.X-origin.X);}return Math.Abs(sum)/2;}
         private static ImportPoint Point(XYZ p)=>new ImportPoint(p.X*MmPerFoot,p.Y*MmPerFoot);
         private static void Collect(GeometryElement element,Transform transform,GeometryData data)
         {
             foreach(var item in element)
             {
                 if(item is GeometryInstance instance)
-                {using(var symbol=instance.GetSymbolGeometry())Collect(symbol,transform.Multiply(instance.Transform),data);}
+                {using(var symbol=instance.GetSymbolGeometry())if(symbol!=null)Collect(symbol,transform.Multiply(instance.Transform),data);}
                 else if(item is Solid solid && solid.Volume>1e-9)
                 {
                     foreach(Face face in solid.Faces)

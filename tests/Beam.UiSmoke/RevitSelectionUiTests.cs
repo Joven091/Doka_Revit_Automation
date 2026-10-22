@@ -46,6 +46,8 @@ internal static class RevitSelectionUiTests
         var empty=new RevitSelectionImportWindow(new RevitSelectionSnapshot());Check(!empty.ImportButton.IsEnabled && empty.PreviewCanvas==null,"empty selection cannot replace inputs");empty.Close();
         var missing=RevitStructureImportTests.Sample();missing.Beams[0].WidthMm=0;
         var edit=new RevitSelectionImportWindow(missing);Check(!edit.ImportButton.IsEnabled,"missing dimension blocks import");missing.Beams[0].WidthMm=800;edit.RefreshPreview();Check(edit.ImportButton.IsEnabled,"reviewed dimension enables import");edit.Close();
+        var longWall=RevitStructureImportTests.Sample();longWall.Boundaries[0].Outline=RevitStructureImportTests.Rect(-200,300,-100000,100000);
+        var fit=new RevitSelectionImportWindow(longWall);fit.Show();Pump();fit.PreviewCanvas.Fit();Pump();Check(fit.PreviewCanvas.SceneBounds.Height<6000,"a long boundary wall cannot squash the imported beam view");fit.Close();
         w.ConfirmNewSession=()=>true;w.Buttons["NewSession"].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));Pump();Check(model.RevitContext==null && w.Drawing.DrawnReferenceCount==0,"new session clears boundary context");w.Close();
         Console.WriteLine("Passed "+checks+" Revit selection preview/canvas checks.");
     }

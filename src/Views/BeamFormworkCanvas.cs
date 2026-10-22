@@ -129,8 +129,10 @@ namespace EngineeringDashboard
                 var bounds=beam.IsVertical ? new Rect(beam.StartXmm-half,beam.StartYmm,half*2,beam.LengthMm) : new Rect(beam.StartXmm,beam.StartYmm-half,beam.LengthMm,half*2);
                 minX=Math.Min(minX,bounds.Left);maxX=Math.Max(maxX,bounds.Right);min=Math.Min(min,bounds.Top);max=Math.Max(max,bounds.Bottom);
             }
+            // A long building wall must not shrink the selected beam area to a speck.
+            double contextLeft=minX-600,contextRight=maxX+600,contextTop=min-600,contextBottom=max+600;
             foreach(var r in Model.RevitContext?.References??new RevitReferenceShape[0])foreach(var p in r.Outline)
-            {minX=Math.Min(minX,p.X);maxX=Math.Max(maxX,p.X);min=Math.Min(min,p.Y);max=Math.Max(max,p.Y);}
+            {minX=Math.Min(minX,Math.Max(contextLeft,p.X));maxX=Math.Max(maxX,Math.Min(contextRight,p.X));min=Math.Min(min,Math.Max(contextTop,p.Y));max=Math.Max(max,Math.Min(contextBottom,p.Y));}
             return new Rect(minX,min,maxX-minX,max-min);
         }
         private TowerLayout Layout(int beam)=>!Model.IsCalculationValid ? null : Model.IsNetworkMode ? Model.NetworkResult?.Beams[beam] : Model.TowerResult;
@@ -264,7 +266,8 @@ namespace EngineeringDashboard
                 var outline=new StreamGeometry();using(var shape=outline.Open())
                 {shape.BeginFigure(Screen(reference.Outline[0].X,reference.Outline[0].Y),true,true);shape.PolyLineTo(reference.Outline.Skip(1).Select(p=>Screen(p.X,p.Y)).ToArray(),true,false);}
                 dc.DrawGeometry(new SolidColorBrush(Color.FromRgb(235,238,240)),new Pen(Brushes.SlateGray,1.2),outline);DrawnReferenceCount++;
-                double x=reference.Outline.Average(p=>p.X),y=reference.Outline.Average(p=>p.Y);
+                double x=(Math.Max(SceneBounds.Left,reference.Outline.Min(p=>p.X))+Math.Min(SceneBounds.Right,reference.Outline.Max(p=>p.X)))/2;
+                double y=(Math.Max(SceneBounds.Top,reference.Outline.Min(p=>p.Y))+Math.Min(SceneBounds.Bottom,reference.Outline.Max(p=>p.Y)))/2;
                 Label(dc,reference.Label,Screen(x,y),Brushes.SlateGray,centre:true);
             }
             for(int i=0;i<beams.Length-1;i++)

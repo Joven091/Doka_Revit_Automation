@@ -62,6 +62,7 @@ internal static class RevitStructureImportTests
         Rejected(s=>s.Slabs=s.Slabs.Concat(s.Slabs).ToArray(),"exactly one slab");
         Rejected(s=>s.Boundaries=s.Boundaries.Concat(new[] {new RevitSelectedBoundary {SourceId="303",Label="Mid column",Kind="Column",Outline=Rect(3000,3500,-500,3500),BottomMm=0,TopMm=12000}}).ToArray(),"divides");
         Rejected(s=>s.Boundaries[0].Outline=Rect(-200,300,-200,4000),"partial or angled");
+        Rejected(s=>s.Boundaries=s.Boundaries.Concat(new[] {new RevitSelectedBoundary {SourceId="304",Label="Bay column",Kind="Column",Outline=Rect(3000,3500,1000,1500),BottomMm=0,TopMm=12000}}).ToArray(),"bay interior");
         Rejected(s=>s.Problems=new[] {"Unrecognized model geometry"},"Unrecognized");
         var upper=Sample();foreach(var b in upper.Boundaries)b.BottomMm=20000;
         var ur=RevitStructureImport.Build(upper);Check(ur.CanImport,string.Join(";",ur.Problems));Equal(7600,ur.LengthMm,"boundaries above the selected structure do not trim spans");
