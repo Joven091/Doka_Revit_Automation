@@ -12,6 +12,8 @@ internal static class CrossingSearchTests
         Check(network.Beams.Length==8 && network.Bays.Length==7 && network.CrossingBeams.Length==7,"exact reported model size");
         Check(network.Bays.Select(b=>b.WidthMm).SequenceEqual(new[] {2677.0,1875,3275,2275,2278,2272,2252}),"reported unequal clear bays retained");
         input.AllowCustomH20Lengths=false;
+        Check(CrossBeamSupportOptimizer.MandatoryStocksFit(input,network),"automatic X2 retains its new primary-bearing option");
+        network.CrossingBeams[1].SupportMode=CrossBeamSupportMode.DedicatedTowers;
         Check(!CrossBeamSupportOptimizer.MandatoryStocksFit(input,network),"1875 mm X2 cannot fit catalogue primary and permitted bracing");
         input.AllowCustomH20Lengths=true;
         Check(CrossBeamSupportOptimizer.MandatoryStocksFit(input,network),"custom primary is retained for full design checks");
@@ -25,6 +27,7 @@ internal static class CrossingSearchTests
         input.AllowLocalShutterExceptions=true;
         Check(CrossBeamSupportOptimizer.MandatoryStocksFit(input,network),"local 175 mm detail can retain 1500 mm stock");
         input=ControlledPerformanceTests.Input("eight-crossings");input.AllowCustomH20Lengths=false;input.AllowSeparateSlabFallback=false;
+        input.Network.CrossingBeams[1].SupportMode=CrossBeamSupportMode.DedicatedTowers;
         input.Trace=new BeamSearchTrace("mandatory catalogue crossing geometry");bool rejected=false;
         try{TransferNetworkOptimizer.Optimize(input,input.Network);}
         catch(TowerOptimizationException ex){rejected=ex.Details.Contains("X2") && ex.Details.Contains("1300") && ex.Details.Contains("1475");}
@@ -231,6 +234,7 @@ internal static class CrossingSearchTests
     static void Frames()
     {
         var input=ControlledPerformanceTests.Input("eight-crossings");var n=input.Network;
+        foreach(var c in n.CrossingBeams)c.SupportMode=CrossBeamSupportMode.DedicatedTowers;
         var g=new TransferredSlabOptimizer.Geometry {Positions=new[] {150.0,1150,2150,3150,4150,5150,6150},Joined=Enumerable.Repeat(true,6).ToArray()};
         Check(!CrossBeamSupportOptimizer.ReceiverFramesFit(input,n,1,g,0,2000,0),"wide continuous B2 frame blocks a mandatory X2 tower");
         Check(CrossBeamSupportOptimizer.ReceiverFramesFit(input,n,1,g,0,1524,0),"receiver screen retains an off-centre possibility until the other beam is known");

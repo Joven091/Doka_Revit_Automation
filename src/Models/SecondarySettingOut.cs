@@ -249,6 +249,11 @@ namespace EngineeringDashboard
             if(r.Input.PlywoodSheetLengthMm<=0)return true; // No sheet-joint information: keep the checked geometry.
             double sheet=r.Input.PlywoodSheetLengthMm;
             if(!independentSlabFeet && Math.Abs(x/sheet-Math.Round(x/sheet))<1e-7)return true;
+            // Primary-borne crossings do not require coincident main-secondary
+            // stations. The existing local move/fill pass checks plywood gaps
+            // and adds setting-out rows while retaining the checked design loads.
+            if(independentSlabFeet && r.CrossSupports.Any(s=>s.UsesPrimaryBearings && (s.Input.BayNumber==beam || s.Input.BayNumber==beam+1)
+                && Math.Abs(x-s.Input.PositionMm)<s.Input.WidthMm/2+80))return false;
             if(r.CrossSupports.SelectMany(s=>s.Bearings).Any(b=>b.Beam==beam && b.Row==row))return true;
             // Added rows also stay outside all crossing-concrete transfer footprints.
             return r.Input.CrossingBeams.Any(c=>(c.BayNumber==beam || c.BayNumber==beam+1) && Math.Abs(x-c.PositionMm)<c.WidthMm/2+80);
