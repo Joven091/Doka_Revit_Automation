@@ -117,6 +117,8 @@ namespace EngineeringDashboard
     {
         internal readonly TransferredSlabOptimizer.ResponseCache<CrossGeometryKey,DedicatedCrossSearch> Results
             =new TransferredSlabOptimizer.ResponseCache<CrossGeometryKey,DedicatedCrossSearch>(128);
+        internal readonly TransferredSlabOptimizer.ResponseCache<PrimaryBearingGeometryKey,DedicatedCrossSearch> PrimaryBearings
+            =new TransferredSlabOptimizer.ResponseCache<PrimaryBearingGeometryKey,DedicatedCrossSearch>(256);
     }
     internal sealed class CrossGeometryKey : IEquatable<CrossGeometryKey>
     {
