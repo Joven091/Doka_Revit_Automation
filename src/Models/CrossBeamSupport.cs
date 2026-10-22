@@ -217,8 +217,26 @@ namespace EngineeringDashboard
         // actual braced footprints, allowing continuous translations and ignoring
         // the other receiver, timber and loads. This optimistic screen cannot
         // approve a layout; complete crossing/member checks still follow.
+        // Fixed for a receiving-beam solve. Only crossings that may require an
+        // independent tower constrain its braced frame footprint. Direct-primary
+        // and stacked-bearing routes still receive their full final clash checks.
+        internal static IEnumerable<TransferCrossingBeamRow> ReceiverFrameCrossings(TowerInput common,TransferNetworkInput network,int beam)
+        {
+            foreach(var c in network.CrossingBeams)
+            {
+                if(c.BayNumber!=beam && c.BayNumber!=beam+1)continue;
+                int bay=c.BayNumber-1;
+                if(c.SupportMode==CrossBeamSupportMode.LegacySlabRows || c.SupportMode==CrossBeamSupportMode.ExistingSupportsOnly)continue;
+                if(PrimaryBearingPossible(common,network,c))continue;
+                if(c.SupportMode==CrossBeamSupportMode.Automatic && ValidFillerGap(c.BottomElevationMm,network.Beams[bay].BottomElevationMm,out var a)
+                    && ValidFillerGap(c.BottomElevationMm,network.Beams[bay+1].BottomElevationMm,out var b))continue;
+                yield return c;
+            }
+        }
         internal static bool ReceiverFramesFit(TowerInput common,TransferNetworkInput network,int beam,TransferredSlabOptimizer.Geometry geometry,double edge,double width,double offset)
         {
+            var crossings=ReceiverFrameCrossings(common,network,beam).ToArray();
+            if(crossings.Length==0)return true;
             var main=network.Beams[beam];double clearance=common.AllowLocalShutterExceptions ? 175 : 200;
             var frames=new System.Collections.Generic.List<double[]>();
             for(int first=0;first<geometry.Positions.Length;)
@@ -226,13 +244,9 @@ namespace EngineeringDashboard
                 int last=first;while(last<geometry.Joined.Length && geometry.Joined[last])last++;
                 frames.Add(new[] {geometry.Positions[first]+edge-40,geometry.Positions[last]+edge+40,offset-width/2-40,offset+width/2+40});first=last+1;
             }
-            foreach(var c in network.CrossingBeams.Where(c=>c.BayNumber==beam || c.BayNumber==beam+1))
+            foreach(var c in crossings)
             {
                 int bay=c.BayNumber-1;
-                if(c.SupportMode==CrossBeamSupportMode.LegacySlabRows || c.SupportMode==CrossBeamSupportMode.ExistingSupportsOnly)continue;
-                if(PrimaryBearingPossible(common,network,c))continue;
-                if(c.SupportMode==CrossBeamSupportMode.Automatic && ValidFillerGap(c.BottomElevationMm,network.Beams[bay].BottomElevationMm,out var a)
-                    && ValidFillerGap(c.BottomElevationMm,network.Beams[bay+1].BottomElevationMm,out var b))continue;
                 double span=network.Bays[bay].WidthMm,face=c.BayNumber==beam+1 ? main.WidthMm/2 : -main.WidthMm/2-span;
                 bool fits=false;
                 // Each possible braced group is at least this large. A connected

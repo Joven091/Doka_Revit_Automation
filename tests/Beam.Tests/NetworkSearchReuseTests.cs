@@ -13,7 +13,12 @@ internal static class NetworkSearchReuseTests
         Check(input.AllowCustomSlabLengths && !input.AllowCustomBeamLengths,"uploaded custom scope stays limited to slab supports");
         Check(network.CrossingBeams.All(c=>CrossBeamSupportOptimizer.PrimaryBearingPossible(input,network,c)),"negative-gap crossings can use primary bearings");
         Check(TransferNetworkOptimizer.MinimumDedicatedLegs(input,network)==0,"automatic direct-primary bearings reserve no fictitious tower legs");
+        Check(Enumerable.Range(0,network.Beams.Length).All(beam=>!CrossBeamSupportOptimizer.ReceiverFrameCrossings(input,network,beam).Any()),"direct-primary case has no independent crossing tower footprint to screen");
+        Check(CrossBeamSupportOptimizer.ReceiverFramesFit(input,network,1,null,0,1524,0),"unconstrained receivers avoid building frame solids entirely");
         network.CrossingBeams[0].SupportMode=CrossBeamSupportMode.DedicatedTowers;
+        Check(CrossBeamSupportOptimizer.ReceiverFrameCrossings(input,network,0).Single()==network.CrossingBeams[0]
+            && CrossBeamSupportOptimizer.ReceiverFrameCrossings(input,network,1).Single()==network.CrossingBeams[0]
+            && !CrossBeamSupportOptimizer.ReceiverFrameCrossings(input,network,2).Any(),"mandatory crossing towers still constrain both adjacent receivers and only those receivers");
         Check(TransferNetworkOptimizer.MinimumDedicatedLegs(input,network)==4,"forced dedicated tower still reserves four legs");
         network.CrossingBeams[1].BottomElevationMm=-1900;
         Check(TransferNetworkOptimizer.MinimumDedicatedLegs(input,network)==8,"crossing below all receiving options retains mandatory legs");

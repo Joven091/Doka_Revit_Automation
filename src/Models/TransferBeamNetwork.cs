@@ -1391,10 +1391,11 @@ namespace EngineeringDashboard
                 if(input.PrepareReceiverChecks && input.ReuseSearchWork && input.DeferTransferLayout && input.FullLoadingOnly && input.EngineerPlan?.UseDesignZones==true)
                 {
                     var frameChecks=new TransferredSlabOptimizer.ResponseCache<Tuple<TransferredSlabOptimizer.Geometry,double,double>,bool>(4096);
+                    bool checkFrames=CrossBeamSupportOptimizer.ReceiverFrameCrossings(input,network,beam).Any();
                     input.TransferReceiverPreparation=layout=>
                     {
                         var prepared=CrossBeamSupportOptimizer.PrepareReceiver(input,network,beam,layout);
-                        if(!input.OptimizeCrossingSearch || prepared==null)return prepared;
+                        if(!input.OptimizeCrossingSearch || prepared==null || !checkFrames)return prepared;
                         return (geometry,edge)=>
                         {
                             var key=Tuple.Create(geometry,edge,layout.WidthMm);
