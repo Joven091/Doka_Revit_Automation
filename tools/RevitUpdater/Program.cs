@@ -68,7 +68,7 @@ internal static class Program
             var plan=UpdateFiles.ReadPlan(Path.GetFullPath(args[at+1]),cache,installation);
             if(!UpdateFiles.SamePath(AppDomain.CurrentDomain.BaseDirectory,Path.GetDirectoryName(args[at+1])))throw new InvalidDataException("Run the staged updater beside its update plan.");
             string key;
-            using(var sha=SHA256.Create())key=BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(installation.ToLowerInvariant())))).Replace("-","");
+            using(var sha=SHA256.Create())key=BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(installation.ToLowerInvariant()))).Replace("-","");
             bool owned;
             using(var mutex=new Mutex(true,@"Global\DokaRevitUpdate-"+key,out owned))
             {
@@ -90,7 +90,8 @@ internal static class Program
     }
     internal static void Log(UpdatePlan plan,string text)
     {
-        File.AppendAllText(Path.Combine(Path.GetDirectoryName(plan.InstallerPath),"updater.log"),DateTime.UtcNow.ToString("O")+" "+text+Environment.NewLine);
+        try{File.AppendAllText(Path.Combine(Path.GetDirectoryName(plan.InstallerPath),"updater.log"),DateTime.UtcNow.ToString("O")+" "+text+Environment.NewLine);}
+        catch(IOException){}catch(UnauthorizedAccessException){}
     }
 }
 
