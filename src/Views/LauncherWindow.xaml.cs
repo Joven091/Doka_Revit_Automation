@@ -22,6 +22,7 @@ namespace EngineeringDashboard
 
         private void BtnDomeCalculator_Click(object sender, RoutedEventArgs e)
         {
+            if(!BtnDomeCalculator.IsEnabled)return;
             if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
             Hide();
             try

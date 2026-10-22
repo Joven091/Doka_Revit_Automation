@@ -2,6 +2,8 @@
 
 This feature updates the **Revit add-in only**. Standalone previews keep their existing distribution process. No GitHub account or stored GitHub token is needed on the team's computers.
 
+The first release shows **D3 slab** and **Dome Calculator** as disabled, grey **Coming soon** choices. Dokaflex slab, beam (including D3 beam shoring), and backpropping remain available.
+
 ## First installation
 
 1. Close Revit and run `bootstrap/Install_DokaRevitAutomation.exe` once on each team member's computer, under their own Windows account. This installs version 1.1.0 with the update button. Do not run it as a different administrator account: installation is per user.

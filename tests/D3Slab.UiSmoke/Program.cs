@@ -23,42 +23,31 @@ static class Program
  static void LauncherChecks()
  {
   using var approvedSession=new ApprovedLauncherSession(typeof(LauncherWindow).Assembly);
-  var launcher=new LauncherWindow();launcher.Show();D3SlabCalculatorViewModel retained=null;
-  for(int attempt=0;attempt<2;attempt++)
-  {
-   int current=attempt;
-   Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
-   {
-    var choice=Application.Current.Windows.OfType<SlabSystemWindow>().Single(w=>w.IsVisible);Check(choice.Owner==launcher,"slab choices owned by launcher");
-    Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
-    {
-     var calculator=Application.Current.Windows.OfType<D3SlabCalculatorWindow>().Single(w=>w.IsVisible);Check(calculator.Owner==launcher,"D3 calculator owned by launcher");
-     if(current==0){retained=calculator.Model;retained.LengthMm=6200;}
-     else Check(ReferenceEquals(retained,calculator.Model)&&calculator.Model.LengthMm==6200,"D3 reopening retains inputs");
-     calculator.Close();
-    }),DispatcherPriority.ApplicationIdle);
-    ((Button)choice.FindName("PickTowersButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-   }),DispatcherPriority.ApplicationIdle);
-   ((Button)launcher.FindName("BtnFlexCalculator")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(launcher.IsVisible,"closing D3 returns to launcher");
-  }
-  // Change system from the existing Dokaflex window, then select D3 without returning to launcher.
+  var launcher=new LauncherWindow();launcher.Show();
+  var dome=(Button)launcher.FindName("BtnDomeCalculator");
+  Check(!dome.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(dome).Contains("Coming soon"),"Dome is disabled and labelled Coming soon");
+  dome.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+  Check(!Application.Current.Windows.OfType<EngineeringDashboard.Dome.MainWindow>().Any(w=>w.IsVisible),"Dome click cannot launch the locked calculator");
   Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
   {
-   var choice=Application.Current.Windows.OfType<SlabSystemWindow>().Single(w=>w.IsVisible);
+   var choice=Application.Current.Windows.OfType<SlabSystemWindow>().Single(w=>w.IsVisible);Check(choice.Owner==launcher,"slab choices owned by launcher");
+   var towers=(Button)choice.FindName("PickTowersButton");
+   Check(!towers.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(towers).Contains("Coming soon"),"D3 slab is disabled and labelled Coming soon");
+   towers.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+   Check(!choice.UseD3 && choice.IsVisible && !Application.Current.Windows.OfType<D3SlabCalculatorWindow>().Any(w=>w.IsVisible),"D3 slab click cannot select or launch the locked system");
    Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
    {
-    var flex=Application.Current.Windows.OfType<FlexCalculatorWindow>().Single(w=>w.IsVisible);Check(flex.Owner==launcher,"Dokaflex calculator owned by launcher");
+    var flex=Application.Current.Windows.OfType<FlexCalculatorWindow>().Single(w=>w.IsVisible);Check(flex.Owner==launcher,"Dokaflex remains available");
     Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
     {
      var second=Application.Current.Windows.OfType<SlabSystemWindow>().Single(w=>w.IsVisible);
-     Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>Application.Current.Windows.OfType<D3SlabCalculatorWindow>().Single(w=>w.IsVisible).Close()),DispatcherPriority.ApplicationIdle);
-     ((Button)second.FindName("PickTowersButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+     Check(!((Button)second.FindName("PickTowersButton")).IsEnabled,"change-system picker keeps D3 slab locked");second.Close();
     }),DispatcherPriority.ApplicationIdle);
-    Call(flex,"ChangeSystem_Click",null,new RoutedEventArgs());Check(flex.ChangeSystemRequested,"Dokaflex change system returns to choices");
+    Call(flex,"ChangeSystem_Click",null,new RoutedEventArgs());Check(flex.ChangeSystemRequested,"Dokaflex can return to system choices");
    }),DispatcherPriority.ApplicationIdle);
    ((Button)choice.FindName("PickPropsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
   }),DispatcherPriority.ApplicationIdle);
-  ((Button)launcher.FindName("BtnFlexCalculator")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(launcher.IsVisible,"system switch returns to launcher");launcher.Close();
+  ((Button)launcher.FindName("BtnFlexCalculator")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(launcher.IsVisible,"closing choices returns to launcher");launcher.Close();
  }
  [STAThread]static int Main(string[] args)
  {
@@ -69,6 +58,7 @@ static class Program
    RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;
    new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};
    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+   if(args.Contains("--release-availability")){LauncherChecks();Console.WriteLine("PASS first-release calculator availability");return 0;}
    var vm=new D3SlabCalculatorViewModel();window=new D3SlabCalculatorWindow(vm);Render(window);
    var button=Get<Button>(window,"OptimizeButton");Check(button.IsEnabled,"initial inputs allow optimization");Check(!Get<Button>(window,"SaveButton").IsEnabled,"save waits for calculation");
    var inputs=(System.Collections.Generic.Dictionary<string,TextBox>)window.GetType().GetField("Inputs",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(window);

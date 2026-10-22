@@ -35,6 +35,8 @@ jobs:
       - run: tests/Updates.Net48/bin/Release/net48/Updates.Net48.exe
       - name: Check Revit-only workspace entry
         run: dotnet run --project tests/Beam.UiSmoke -c Release -- --updater-ui
+      - name: Check coming-soon release locks
+        run: dotnet run --project tests/D3Slab.UiSmoke -c Release -- --release-availability
       - name: Build bootstrap installer
         shell: pwsh
         run: |
