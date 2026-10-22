@@ -118,9 +118,16 @@ namespace EngineeringDashboard
                 result.Name=at.Length>0 ? "Beam + "+string.Join(" + ",at.Select(c=>"X"+(c.I+1))) : plan.SlabLoads.Count>0 ? "Beam + Slab" : "Beam";
                 double pitch=plan.ReferenceSpacingMm/1000;
                 double reaction=EngineerPrimaryPlan.Reactions(plan.SecondaryBasis,plan.LoadsAt(position))[line]*pitch;
+                double primaryTransfer=at.Where(c=>plan.PrimaryBearingTransfers.ContainsKey(c.I)).Sum(c=>plan.PrimaryBearingTransfers[c.I][line]);
                 result.Lines.Add($"Positioned beam-secondary reaction: {LoadValue.Format(reaction,5)} kN");
                 result.Lines.Add($"Beam secondary spacing: {plan.ReferenceSpacingMm:0.###} mm ({pitch:0.###} m)");
-                result.Lines.Add($"UDL = {LoadValue.Format(reaction,5)} / {pitch:0.###} = {LoadValue.Format(reaction/pitch,5)} kN/m");
+                foreach(var c in at.Where(c=>plan.PrimaryBearingTransfers.ContainsKey(c.I) && Math.Abs(plan.PrimaryBearingTransfers[c.I][line])>1e-10))
+                {
+                    double transfer=plan.PrimaryBearingTransfers[c.I][line],width=c.C.WidthMm/1000;
+                    result.Lines.Add($"X{c.I+1} primary-bearing reactions: {LoadValue.Format(transfer*width,5)} / {width:0.###} = {LoadValue.Format(transfer,5)} kN/m");
+                }
+                result.Lines.Add(Math.Abs(primaryTransfer)<1e-10 ? $"UDL = {LoadValue.Format(reaction,5)} / {pitch:0.###} = {LoadValue.Format(reaction/pitch,5)} kN/m"
+                    : $"UDL = {LoadValue.Format(reaction,5)} / {pitch:0.###} + {LoadValue.Format(primaryTransfer,5)} = {LoadValue.Format(reaction/pitch+primaryTransfer,5)} kN/m");
                 foreach(var c in at)result.Lines.Add($"X{c.I+1} footprint: {c.C.PositionMm-c.C.WidthMm/2:0.###}–{c.C.PositionMm+c.C.WidthMm/2:0.###} mm · full width {c.C.WidthMm:0.###} mm");
                 foreach(var c in at)if(plan.CrossingResultantOffsetsMm.TryGetValue(c.I,out var offsets) && Math.Abs(offsets[line])>.001)
                     result.Lines.Add($"Physical transfer resultant offset: {offsets[line]:0.###} mm; full-width UDL design zone.");

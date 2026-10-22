@@ -32,6 +32,7 @@ namespace EngineeringDashboard
         internal readonly Dictionary<int,PositionedSecondaryLoad[]> SlabLoads=new Dictionary<int,PositionedSecondaryLoad[]>();
         internal readonly Dictionary<int,PositionedSecondaryLoad[]> CrossingLoads=new Dictionary<int,PositionedSecondaryLoad[]>();
         internal readonly Dictionary<int,double[]> CrossingTransfers=new Dictionary<int,double[]>();
+        internal readonly Dictionary<int,double[]> PrimaryBearingTransfers=new Dictionary<int,double[]>();
         internal readonly Dictionary<int,double[]> CrossingResultantOffsetsMm=new Dictionary<int,double[]>();
         internal readonly Dictionary<int,double> SlabLedgerForces=new Dictionary<int,double>();
         private readonly ConcurrentDictionary<string,EngineerPrimaryPlan> resolvedCache=new ConcurrentDictionary<string,EngineerPrimaryPlan>();
@@ -153,7 +154,7 @@ namespace EngineeringDashboard
                 // stations do not alter this statically determinate reaction split.
                 cacheKey=FormattableString.Invariant($"{receivingBeam}|{result.BeamCentresMm[receivingBeam]:R}|{pendingAssignments}|{common.LegCapacityKn:R}|{common.PrimaryMaterial}|")
                     +string.Join(";",supports.Select(s=>FormattableString.Invariant($"{s.Input.BayNumber},{s.Input.PositionMm:R},{s.Input.WidthMm:R},{s.UsesSpreader},{s.SlabEdgeLoadKn:R}")+":"
-                        +string.Join(",",s.Bearings.Where(b=>b.Beam==receivingBeam).Select(b=>FormattableString.Invariant($"{b.Xmm:R}/{b.Ymm:R}/{b.ReactionKn:R}/{b.Label}/{b.IsConcreteEndZone}/{b.IsShutterEndZone}/{b.EndZoneStartMm:R}/{b.EndZoneEndMm:R}/{t.LowerCases[0][b.Row].StartMm:R}")))))
+                        +string.Join(",",s.Bearings.Where(b=>b.Beam==receivingBeam).Select(b=>FormattableString.Invariant($"{b.Xmm:R}/{b.Ymm:R}/{b.ReactionKn:R}/{b.Label}/{b.IsConcreteEndZone}/{b.IsShutterEndZone}/{b.EndZoneStartMm:R}/{b.EndZoneEndMm:R}/{b.PrimaryLine}/{(b.IsPrimaryBearing ? 0 : t.LowerCases[0][b.Row].StartMm):R}")))))
                     +"|"+string.Join(";",Network.CrossingBeams.Select(c=>FormattableString.Invariant($"{c.BayNumber}/{c.PositionMm:R}/{c.WidthMm:R}/{c.DepthMm:R}/{c.BottomElevationMm:R}/{c.SupportMode}")));
                 if(resolvedCache.TryGetValue(cacheKey,out var cached))return cached;
             }
@@ -166,11 +167,18 @@ namespace EngineeringDashboard
                 if(index<0)index=Array.FindIndex(Network.CrossingBeams,c=>c.BayNumber==support.Input.BayNumber && Math.Abs(c.PositionMm-support.Input.PositionMm)<1e-7 && Math.Abs(c.WidthMm-support.Input.WidthMm)<1e-7);
                 if(index<0)return null;
                 if(!plan.HasPositionedLoads && support.UsesSpreader){plan.CrossingTransfers.Remove(index);continue;}
-                var sources=new List<PositionedSecondaryLoad>();var force=new double[2];var longitudinalMoment=new double[2];
+                var sources=new List<PositionedSecondaryLoad>();var force=new double[2];var directForce=new double[2];var longitudinalMoment=new double[2];
                 // Shared ledger loads stay in the normal slab design allocation, once.
                 // The physical secondary checks still include every ledger reaction.
                 foreach(var bearing in support.Bearings.Where(b=>b.Beam==receivingBeam && (!support.UsesSpreader || b.Label!="Slab edge ledger")))
                 {
+                    if(bearing.IsPrimaryBearing)
+                    {
+                        force[bearing.PrimaryLine]+=bearing.ReactionKn;
+                        directForce[bearing.PrimaryLine]+=bearing.ReactionKn;
+                        longitudinalMoment[bearing.PrimaryLine]+=bearing.ReactionKn*(bearing.Xmm-support.Input.PositionMm);
+                        continue;
+                    }
                     var lower=t.LowerCases[0][bearing.Row];double origin=result.BeamCentresMm[receivingBeam]+lower.StartMm;
                     bool uniform=bearing.IsConcreteEndZone && !bearing.IsShutterEndZone;
                     var load=new PositionedSecondaryLoad {Name=$"X{index+1} "+(uniform ? "junction strip" : bearing.IsShutterEndZone ? "side-shutter transfer" : "bearing reaction"),Bay=support.Input.BayNumber-1,IsUniform=uniform,
@@ -185,6 +193,7 @@ namespace EngineeringDashboard
                 var grouped=sources.GroupBy(q=>Tuple.Create(q.Name,q.PositionMm,q.EndMm,q.IsUniform)).Select(g=>new PositionedSecondaryLoad {Name=g.Key.Item1,Bay=g.First().Bay,PositionMm=g.Key.Item2,EndMm=g.Key.Item3,IsUniform=g.Key.Item4,ValuePerMetre=g.Sum(q=>q.ValuePerMetre)}).ToArray();
                 plan.CrossingLoads[index]=grouped;
                 plan.CrossingTransfers[index]=force.Select(f=>f*1000/support.Input.WidthMm).ToArray();
+                if(directForce.Any(f=>Math.Abs(f)>1e-10))plan.PrimaryBearingTransfers[index]=directForce.Select(f=>f*1000/support.Input.WidthMm).ToArray();
                 plan.CrossingResultantOffsetsMm[index]=Enumerable.Range(0,2).Select(line=>Math.Abs(force[line])<1e-9 ? 0 : longitudinalMoment[line]/force[line]).ToArray();
                 int bay=support.Input.BayNumber-1;
                 if(!support.UsesSpreader && plan.CarriesBay(bay) && support.SlabEdgeLoadKn>0)

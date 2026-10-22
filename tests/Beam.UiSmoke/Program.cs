@@ -48,6 +48,7 @@ internal static class Program
    SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
    if(args.Contains("--preview-smoke"))return StandalonePreview.Run(true);
    if(args.Contains("--preview"))return StandalonePreview.Run();
+   if(args.Contains("--primary-bearing-ui")){PrimaryBearingUiTests.Run();return 0;}
    WorkspacePresentationTests.Run();
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));
    if(args.Contains("--actual-loading-ui")){MemberLoadingUiTests.Run();CrossSupportUiTests.PrimaryZones(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--positioned-ui")){PositionedTransferUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}

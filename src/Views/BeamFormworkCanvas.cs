@@ -452,7 +452,7 @@ namespace EngineeringDashboard
                 {
                     var point=SolverScreen(bearing.Xmm,bearing.Ymm);
                     string description=bearing.IsConcreteEndZone ? $"X{support.CrossingIndex+1} concrete end zone on B{bearing.Beam+1}/T{bearing.Row+1}"+(bearing.IsShutterEndZone ? $" via side shutter · height {bearing.FillerHeightMm:0.###} mm" : "")+$" · load {bearing.ReactionKn:0.###} kN included in H20, primary and leg checks"
-                        : $"X{support.CrossingIndex+1} bearing {bearing.Label??($"B{bearing.Beam+1}/T{bearing.Row+1}")} · filler {bearing.FillerHeightMm:0.###} mm · reaction {bearing.ReactionKn:0.###} kN";
+                        : $"X{support.CrossingIndex+1} bearing {bearing.Label??($"B{bearing.Beam+1}/T{bearing.Row+1}")} · "+(bearing.IsPrimaryBearing ? "vertical transfer " : "filler ")+$"{bearing.FillerHeightMm:0.###} mm · reaction {bearing.ReactionKn:0.###} kN";
                     LegTargets.Add(Tuple.Create(new Rect(point.X-5,point.Y-5,10,10),description));
                     if(bearing.IsConcreteEndZone && bearing==support.Bearings.First(b=>b.IsConcreteEndZone && b.Beam==bearing.Beam))
                     {
