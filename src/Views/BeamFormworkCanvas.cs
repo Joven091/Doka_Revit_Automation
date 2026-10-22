@@ -375,9 +375,10 @@ namespace EngineeringDashboard
                 if(!layout.Primary.IsWS10)DrawnH20ProfileCount+=2;
                 MemberTargets.Add(Tuple.Create(MemberHit(first,last),encoded,run,line));
             }
-            if(ShowSecondaryH20s && layout.Transfer!=null)for(int row=0;row<layout.Transfer.RowsMm.Length;row++)
+            if(ShowSecondaryH20s && layout.Transfer!=null)for(int physical=0;physical<layout.Transfer.PhysicalRowCount;physical++)
             {
-                var t=layout.Transfer;var first=IndependentScreen(beam,t.RowsMm[row],t.LowerStockStartMm);var last=IndependentScreen(beam,t.RowsMm[row],t.LowerStockStartMm+t.LowerStockLengthMm);
+                var t=layout.Transfer;int row=t.PhysicalRowDesignIndex(physical);double station=t.PhysicalRowPosition(physical);
+                var first=IndependentScreen(beam,station,t.LowerStockStartMm);var last=IndependentScreen(beam,station,t.LowerStockStartMm+t.LowerStockLengthMm);
                 H20Drawing.Plan(dc,first,last,1,memberBeam==encoded && memberRun==layout.StockPlan.Pieces.Length+row);DrawnSecondaryH20Count++;
                 MemberTargets.Add(Tuple.Create(MemberHit(first,last),encoded,layout.StockPlan.Pieces.Length+row,0));
             }
@@ -451,7 +452,7 @@ namespace EngineeringDashboard
                 {
                     var point=SolverScreen(bearing.Xmm,bearing.Ymm);
                     string description=bearing.IsConcreteEndZone ? $"X{support.CrossingIndex+1} concrete end zone on B{bearing.Beam+1}/T{bearing.Row+1}"+(bearing.IsShutterEndZone ? $" via side shutter · height {bearing.FillerHeightMm:0.###} mm" : "")+$" · load {bearing.ReactionKn:0.###} kN included in H20, primary and leg checks"
-                        : $"X{support.CrossingIndex+1} bearing {bearing.Label??($"B{bearing.Beam+1}/T{bearing.Row+1}")} · filler {bearing.FillerHeightMm:0.###} mm · reaction {bearing.ReactionKn:0.###} kN";
+                        : $"X{support.CrossingIndex+1} bearing {bearing.Label??($"B{bearing.Beam+1}/T{bearing.Row+1}")} · "+(bearing.IsPrimaryBearing ? "vertical transfer " : "filler ")+$"{bearing.FillerHeightMm:0.###} mm · reaction {bearing.ReactionKn:0.###} kN";
                     LegTargets.Add(Tuple.Create(new Rect(point.X-5,point.Y-5,10,10),description));
                     if(bearing.IsConcreteEndZone && bearing==support.Bearings.First(b=>b.IsConcreteEndZone && b.Beam==bearing.Beam))
                     {

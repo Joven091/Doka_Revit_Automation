@@ -71,7 +71,7 @@ internal static class NextSearchSpeedTests
         {
             var loads=new[] {new BeamDistributedLoad {StartMm=0,EndMm=2450,KnPerM=q}};
             var source=new TransferMember {LengthMm=2450,SupportsMm=stations,H20Count=2,Uniform=loads,Points=new BeamPointLoad[0]};
-            var result=(TransferMember)analyze.Invoke(null,new object[] {source,source.Points,loads,receiving,"fully loaded"});
+            var result=(TransferMember)analyze.Invoke(null,new object[] {source,source.Points,loads,receiving,"fully loaded",false});
             Same(result.Analysis,LoadedBeamAnalysis.AnalyzeSigned(2450,stations,loads,source.Points,control.Primary.EI,270),2450);
         }
         Check(receiving.Trace.Count(BeamSearchCounter.UniformPrimaryCacheHits)>0,"receiving primary checks reuse the attached worker's shape cache");

@@ -231,7 +231,7 @@ namespace EngineeringDashboard
                 t.HasCustomPlywoodJoints=t.HasCustomPlywoodJoints || rows.Any(v=>Math.Abs(v.X-result.Beams[beam].Transfer.RowsMm[v.Design])>1e-7 && Math.Abs(result.Beams[beam].Transfer.RowsMm[v.Design]/SheetLength(result)-Math.Round(result.Beams[beam].Transfer.RowsMm[v.Design]/SheetLength(result)))<1e-7);
                 t.SettingOutRowsMm=rows.Select(v=>v.X).ToArray();t.SettingOutDesignRows=rows.Select(v=>v.Design).ToArray();
             }
-            var trial=new TransferNetworkResult {Input=result.Input,Beams=adjusted,Bays=result.Bays,BeamCentresMm=result.BeamCentresMm};
+            var trial=new TransferNetworkResult {Input=result.Input,Beams=adjusted,Bays=result.Bays,BeamCentresMm=result.BeamCentresMm,SlabCoveredLengthMm=result.SlabCoveredLengthMm,RowPhaseMm=result.RowPhaseMm};
             // Final checks cover complete physical stock, legs, frames and added H20s.
             var physical=NetworkSolids(trial).Where(keep).ToArray();
             var changed=physical.Where(s=>s.Name.Contains("/T") && !existing.Any(old=>old.Name==s.Name && old.X0==s.X0 && old.X1==s.X1)).ToArray();
@@ -249,6 +249,12 @@ namespace EngineeringDashboard
             if(r.Input.PlywoodSheetLengthMm<=0)return true; // No sheet-joint information: keep the checked geometry.
             double sheet=r.Input.PlywoodSheetLengthMm;
             if(!independentSlabFeet && Math.Abs(x/sheet-Math.Round(x/sheet))<1e-7)return true;
+            // Primary-borne crossings do not require coincident main-secondary
+            // stations. The existing local move/fill pass checks plywood gaps
+            // and adds setting-out rows while retaining the checked design loads.
+            if(independentSlabFeet && r.CrossSupports.Any(s=>s.UsesPrimaryBearings && (s.Input.BayNumber==beam || s.Input.BayNumber==beam+1)
+                && Math.Abs(x-s.Input.PositionMm)<s.Input.WidthMm/2+80)
+                && !r.CrossSupports.Any(s=>!s.UsesPrimaryBearings && s.Bearings.Any(b=>b.Beam==beam && b.Row==row && !b.IsConcreteEndZone)))return false;
             if(r.CrossSupports.SelectMany(s=>s.Bearings).Any(b=>b.Beam==beam && b.Row==row))return true;
             // Added rows also stay outside all crossing-concrete transfer footprints.
             return r.Input.CrossingBeams.Any(c=>(c.BayNumber==beam || c.BayNumber==beam+1) && Math.Abs(x-c.PositionMm)<c.WidthMm/2+80);

@@ -188,15 +188,18 @@ namespace EngineeringDashboard
             }
             return rows.ToArray();
         }
-        internal static double[] FillRequiredRows(double start,double end,double maximum,double[] required,bool customJoints=false)
+        internal static double[] FillRequiredRows(double start,double end,double maximum,double[] required,bool customJoints=false,double[] primaryJoints=null)
         {
+            var joints=primaryJoints??new double[0];
+            Func<double,bool> clear=x=>joints.All(j=>Math.Abs(x-j)>=40-1e-7);
             var mandatory=required.Distinct().OrderBy(x=>x).ToArray();
+            if(mandatory.Any(x=>!clear(x)))throw new ArgumentException("A receiving H20 straddles an independent primary joint.");
             for(int i=1;i<mandatory.Length;i++)
                 if(mandatory[i]-mandatory[i-1]<80-1e-7)
                     throw new ArgumentException(string.Format(System.Globalization.CultureInfo.InvariantCulture,
                         "Required H20 rows at {0:0.###} and {1:0.###} mm are {2:0.###} mm apart; minimum row separation is 80 mm (H20 flange width).",
                         mandatory[i-1],mandatory[i],mandatory[i]-mandatory[i-1]));
-            var coverageAnchors=SheetSupportRows(start,end,50000);
+            var coverageAnchors=SheetSupportRows(start,end,50000).Where(clear).ToArray();
             var anchors=coverageAnchors.ToList();
             // Only original coverage-end anchors are replaceable. Never remove a
             // previously inserted mandatory row: the transfer grid still maps its load.
@@ -217,7 +220,15 @@ namespace EngineeringDashboard
             var result=new List<double> {sorted[0]};
             for(int i=1;i<sorted.Length;i++)
             {
-                while(sorted[i]-result.Last()>maximum+1e-7)result.Add(Math.Min(result.Last()+maximum,sorted[i]-80));
+                while(sorted[i]-result.Last()>maximum+1e-7)
+                {
+                    double previous=result.Last(),target=Math.Min(previous+maximum,sorted[i]-80);
+                    if(joints.Length==0){result.Add(target);continue;}
+                    var choices=new[] {target}.Concat(joints.SelectMany(j=>new[] {j-40,j+40}))
+                        .Where(x=>x>=previous+80-1e-7 && x<=target+1e-7 && clear(x)).OrderByDescending(x=>x).ToArray();
+                    if(choices.Length==0)throw new ArgumentException("No receiving H20 clears the primary joints within the maximum spacing.");
+                    result.Add(choices[0]);
+                }
                 result.Add(sorted[i]);
             }
             return result.ToArray();
@@ -281,9 +292,11 @@ namespace EngineeringDashboard
         // The site bearer permits a nearby lower receiver to serve a slab foot
         // without moving the upper H20. Combine opposite-side transfers only;
         // distinct loaded rows from the same slab remain distinct receivers.
-        internal static ReceivingRowLayout Coordinate(double start,double end,double maximum,ReceivingRowRequest[] requests)
+        internal static ReceivingRowLayout Coordinate(double start,double end,double maximum,ReceivingRowRequest[] requests,double[] primaryJoints=null)
         {
             const double flange=80,tolerance=1e-7;
+            var joints=primaryJoints??new double[0];
+            Func<double,bool> clear=x=>joints.All(j=>Math.Abs(x-j)>=flange/2-tolerance);
             var clusters=new List<Cluster>();var mapping=new Cluster[requests.Length];
             foreach(int index in Enumerable.Range(0,requests.Length).OrderByDescending(i=>requests[i].Crossing).ThenBy(i=>requests[i].PositionMm))
             {
@@ -295,7 +308,7 @@ namespace EngineeringDashboard
                 {
                     double a=Math.Max(lo,cluster.Minimum),b=Math.Min(hi,cluster.Maximum);if(a>b+tolerance)continue;
                     var choices=new[] {cluster.X,x,Math.Max(a,Math.Min(b,(cluster.X+x)/2)),a,b};
-                    foreach(double candidate in choices.Where(v=>v>=a-tolerance && v<=b+tolerance).Distinct().OrderBy(v=>Math.Abs(v-cluster.X)))
+                    foreach(double candidate in choices.Where(v=>v>=a-tolerance && v<=b+tolerance && clear(v)).Distinct().OrderBy(v=>Math.Abs(v-cluster.X)))
                     {
                         if(clusters.Any(c=>c!=cluster && Math.Abs(c.X-candidate)<flange-tolerance))continue;
                         cluster.X=candidate;cluster.Minimum=a;cluster.Maximum=b;cluster.Sides|=request.Sides;selected=cluster;break;
@@ -305,7 +318,8 @@ namespace EngineeringDashboard
                 if(selected==null)
                 {
                     var choices=new[] {Math.Max(lo,Math.Min(hi,x)),lo,hi}.Concat(clusters.SelectMany(c=>new[] {c.X-flange,c.X+flange}))
-                        .Where(v=>v>=lo-tolerance && v<=hi+tolerance).Distinct().OrderBy(v=>Math.Abs(v-x)).ThenBy(v=>v).ToArray();
+                        .Concat(joints.SelectMany(j=>new[] {j-flange/2,j+flange/2}))
+                        .Where(v=>v>=lo-tolerance && v<=hi+tolerance && clear(v)).Distinct().OrderBy(v=>Math.Abs(v-x)).ThenBy(v=>v).ToArray();
                     foreach(double candidate in choices)
                     {
                         if(clusters.Any(c=>Math.Abs(c.X-candidate)<flange-tolerance))continue;
@@ -316,7 +330,7 @@ namespace EngineeringDashboard
                 mapping[index]=selected;
             }
             var required=clusters.Select(c=>c.X).OrderBy(x=>x).ToArray();
-            return new ReceivingRowLayout {RowsMm=PlywoodSpacing.FillRequiredRows(start,end,maximum,required,true),ReceiversMm=mapping.Select(c=>c.X).ToArray()};
+            return new ReceivingRowLayout {RowsMm=PlywoodSpacing.FillRequiredRows(start,end,maximum,required,true,joints),ReceiversMm=mapping.Select(c=>c.X).ToArray()};
         }
     }
 

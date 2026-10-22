@@ -6,9 +6,10 @@ The first release shows **D3 slab** and **Dome Calculator** as disabled, grey **
 
 ## First installation
 
-1. Close Revit and run `bootstrap/Install_DokaRevitAutomation.exe` once on each team member's computer, under their own Windows account. This installs version 1.1.0 with the update button. Do not run it as a different administrator account: installation is per user.
-2. Reopen Revit. Open **Engineering Dashboard → Check for updates**. In the beam drawing workspace, use **File → Check for updates**. **Add-Ins → External Tools → Check for Doka updates** also works independently of calculator sign-in.
-3. Once a newer release is published, select **Install after Revit closes**. The installer is copied locally and checked. A small updater window waits while Revit remains open. Save and close all your Revit windows when convenient; then reopen Revit after installation completes.
+1. Download and extract the `revit2024-team-release` artifact from the **Revit 2024 team installer** workflow on main. It includes the latest calculations and the updater; the first combined release is 1.1.2. The release owner runs `Publish-to-company.cmd` while connected to the company network with write access. The script publishes the versioned installer first and `latest.json` last.
+2. Team members copy `S:\MEA\ENG\Joven\BeamCalculator\Updates\DokaRevitAutomation-1.1.2.exe` to their own computer, close Revit, and run it under their own Windows account. Administrator elevation is not required. Do not run it as a different administrator account: installation is per user.
+3. Reopen Revit 2024. Open **Engineering Dashboard → Check for updates**. In the beam drawing workspace, use **File → Check for updates**. **Add-Ins → External Tools → Check for Doka updates** also works independently of calculator sign-in.
+4. Once a newer release is published, select **Install after Revit closes**. The installer is copied locally and checked. A small updater window waits while Revit remains open. Save and close all your Revit windows when convenient; then reopen Revit after installation completes.
 
 The updater never closes Revit or its models. A designer can cancel before installation begins. If they log off or cancel while waiting, they can check again next time. There is no Windows service or startup task.
 
@@ -23,11 +24,11 @@ This is the same location as `S:\MEA\ENG\Joven\BeamCalculator\Updates`. The UNC 
 Build a reviewed installer with a version higher than the team's current version. On a Windows release machine:
 
 ```powershell
-dotnet build src/MyRevitAddin.csproj -c Release /p:Version=1.1.1
+dotnet build src/MyRevitAddin.csproj -c Release /p:Version=1.1.3
 & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss
 .\scripts\Publish-RevitUpdate.ps1 `
   -Installer .\artifacts\installer\Install_DokaRevitAutomation.exe `
-  -Version 1.1.1 `
+  -Version 1.1.3 `
   -ReleaseNotes 'Describe the approved changes here.'
 ```
 
@@ -35,7 +36,7 @@ The script validates the installer version, copies it with a versioned name, ver
 
 ## Test before publishing to the team
 
-The CI artifact `revit2024-updater-test-kit` includes a bootstrap installer, a `test-feed` containing the 1.1.1 test installer and manifest, and the publishing script. These installers use the current main calculation code plus the updater; they do not include the pending calculation PRs.
+The separate CI artifact `revit2024-updater-test-kit` is an integration-test fixture with 1.1.0/1.1.1 installers and a `test-feed`. Use `revit2024-team-release` to distribute the combined release to the team; an older test-kit download does not contain subsequent calculation changes.
 
 Test on a spare Windows account/computer first. Copy `test-feed` into a temporary company folder. After installing the bootstrap, edit the installed `update-settings.json` to point `sourceDirectory` to that test folder, keeping JSON backslashes escaped. Test checking, preparing, cancelling, closing Revit, reopening, and checking the displayed version. Only publish a reviewed release to the permanent company folder when that trial passes. Custom update settings are preserved during updates; restore the permanent UNC path after the trial.
 

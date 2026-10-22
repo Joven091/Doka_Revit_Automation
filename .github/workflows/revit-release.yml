@@ -1,0 +1,82 @@
+name: Revit 2024 team installer
+on:
+  pull_request:
+    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
+  push:
+    branches: [main]
+    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
+  workflow_dispatch:
+concurrency:
+  group: revit-release-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/Updates.Tests -c Release
+      - run: dotnet run --project tests/Beam.Tests -c Release -- --primary-bearings
+      - run: dotnet build tests/Beam.Net48 -c Release --warnaserror
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --primary-bearings
+      - run: dotnet run --project tests/Beam.UiSmoke -c Release -- --updater-ui
+      - run: dotnet run --project tests/Beam.UiSmoke -c Release --no-build -- --primary-bearing-ui
+      - run: dotnet run --project tests/D3Slab.UiSmoke -c Release -- --release-availability
+      - run: dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
+      - name: Build and verify team installer
+        shell: pwsh
+        run: |
+          $compiler=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          & $compiler installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+          $installer=(Resolve-Path artifacts/installer/Install_DokaRevitAutomation.exe).Path
+          $version=([version][Diagnostics.FileVersionInfo]::GetVersionInfo($installer).FileVersion).ToString(3)
+          $installed=Start-Process -FilePath $installer -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCLOSEAPPLICATIONS /NORESTARTAPPLICATIONS' -Wait -PassThru
+          if ($installed.ExitCode -ne 0) { throw 'Installer launch failed' }
+          $addin=Join-Path $env:APPDATA 'Autodesk\Revit\Addins\2024'
+          $actual=([version][Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $addin 'MyRevitAddin.dll')).FileVersion).ToString(3)
+          if ($actual -ne $version) { throw 'Installed add-in version differs from the release' }
+          foreach ($name in @('MyRevitAddin.addin','Doka.RevitUpdater.exe','update-settings.json','access-settings.json')) {
+            if (-not (Test-Path (Join-Path $addin $name))) { throw "Installed file missing: $name" }
+          }
+          $release='artifacts/revit2024-team-release'
+          New-Item -ItemType Directory -Force $release | Out-Null
+          Copy-Item $installer "$release/Install_DokaRevitAutomation.exe"
+          Copy-Item scripts/Publish-RevitUpdate.ps1 "$release/Publish-RevitUpdate.ps1"
+          ./scripts/Publish-RevitUpdate.ps1 -Installer $installer -Version $version -ReleaseNotes "Revit 2024 release $version: latest beam calculations and company-folder updates." -Destination $release
+          @{
+            version=$version; sourceCommit=$env:GITHUB_SHA; revitVersion=2024
+            installerSha256=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          } | ConvertTo-Json | Set-Content "$release/release-info.json"
+          @"
+          @echo off
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Publish-RevitUpdate.ps1" -Installer "%~dp0Install_DokaRevitAutomation.exe" -Version $version -ReleaseNotes "Revit 2024 release $version: latest beam calculations and company-folder updates."
+          if errorlevel 1 goto failed
+          echo Published. Team installer: S:\MEA\ENG\Joven\BeamCalculator\Updates\DokaRevitAutomation-$version.exe
+          pause
+          exit /b 0
+          :failed
+          echo Publication failed. Check company network access and write permissions above.
+          pause
+          exit /b 1
+          "@ | Set-Content "$release/Publish-to-company.cmd" -Encoding ascii
+          @"
+          Revit 2024 team release $version
+          Source: $env:GITHUB_SHA
+
+          Release owner: Extract the entire ZIP to a local folder. While connected to the company network, run Publish-to-company.cmd. It publishes the versioned installer and then latest.json to the configured company Updates folder. You need write access; the team needs read access.
+
+          First installation: Team members copy S:\MEA\ENG\Joven\BeamCalculator\Updates\DokaRevitAutomation-$version.exe to their computer, close all Revit windows, run it under their own Windows account, and reopen Revit 2024. Administrator elevation is not required.
+
+          Future updates: Publish a higher-version release. Team members use Check for updates in the dashboard or the beam File menu, then save and close Revit when ready. The updater waits for Revit to close before installation.
+
+          This installer includes the current calculations and the updater. D3 slab and Dome remain grey Coming soon choices. Box-out design remains outside the beam calculator scope. Actual Revit operation and access to the company share must be checked on a company computer.
+          "@ | Set-Content "$release/README.txt" -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revit2024-team-release
+          path: artifacts/revit2024-team-release/
+          if-no-files-found: error

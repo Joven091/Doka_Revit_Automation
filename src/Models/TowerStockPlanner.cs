@@ -79,6 +79,7 @@ namespace EngineeringDashboard
             input.AllowCustomH20Lengths = false;
             try { stock = RunPass(input,false,search); } catch (ArgumentException) { }
             finally { input.AllowCustomH20Lengths = true; }
+            if(input.FirstCompleteNetworkOnly && stock is TransferNetworkResult)return stock;
             if(input.Trace?.BudgetReached==true)return TimeLimited(stock??throw new BeamSearchDeadlineException());
             try
             {
