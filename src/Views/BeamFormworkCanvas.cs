@@ -375,9 +375,10 @@ namespace EngineeringDashboard
                 if(!layout.Primary.IsWS10)DrawnH20ProfileCount+=2;
                 MemberTargets.Add(Tuple.Create(MemberHit(first,last),encoded,run,line));
             }
-            if(ShowSecondaryH20s && layout.Transfer!=null)for(int row=0;row<layout.Transfer.RowsMm.Length;row++)
+            if(ShowSecondaryH20s && layout.Transfer!=null)for(int physical=0;physical<layout.Transfer.PhysicalRowCount;physical++)
             {
-                var t=layout.Transfer;var first=IndependentScreen(beam,t.RowsMm[row],t.LowerStockStartMm);var last=IndependentScreen(beam,t.RowsMm[row],t.LowerStockStartMm+t.LowerStockLengthMm);
+                var t=layout.Transfer;int row=t.PhysicalRowDesignIndex(physical);double station=t.PhysicalRowPosition(physical);
+                var first=IndependentScreen(beam,station,t.LowerStockStartMm);var last=IndependentScreen(beam,station,t.LowerStockStartMm+t.LowerStockLengthMm);
                 H20Drawing.Plan(dc,first,last,1,memberBeam==encoded && memberRun==layout.StockPlan.Pieces.Length+row);DrawnSecondaryH20Count++;
                 MemberTargets.Add(Tuple.Create(MemberHit(first,last),encoded,layout.StockPlan.Pieces.Length+row,0));
             }
