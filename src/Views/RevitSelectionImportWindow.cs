@@ -14,6 +14,7 @@ namespace EngineeringDashboard
         private readonly DataGrid beamTable,slabTable;
         private readonly TextBlock summary=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,10,0,10)};
         private readonly ContentControl preview=new ContentControl();
+        private readonly Expander importNotes=new Expander {Visibility=Visibility.Collapsed,Margin=new Thickness(0,0,0,8)};
         internal readonly Button ImportButton=new Button {Content="Use this drawing",MinWidth=130,Margin=new Thickness(8,0,0,0)};
         internal RevitStructureImportResult Result {get;private set;}
         internal BeamFormworkCanvas PreviewCanvas {get;private set;}
@@ -23,8 +24,8 @@ namespace EngineeringDashboard
             Title="Create drawing from Revit selection";Width=1100;Height=850;MinWidth=850;MinHeight=650;
             WindowStartupLocation=WindowStartupLocation.CenterOwner;FontFamily=new FontFamily("Segoe UI");FontSize=13;Background=Brushes.WhiteSmoke;
             Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("pack://application:,,,/MyRevitAddin;component/Views/CalculatorStyles.xaml",UriKind.Absolute)});
-            var root=new Grid {Margin=new Thickness(20)};Content=root;
-            foreach(var height in new[] {GridLength.Auto,GridLength.Auto,new GridLength(220),new GridLength(1,GridUnitType.Star),GridLength.Auto,GridLength.Auto})root.RowDefinitions.Add(new RowDefinition {Height=height});
+            var root=new Grid {Margin=new Thickness(20),Background=Brushes.WhiteSmoke};Content=new Border {Background=Brushes.WhiteSmoke,Child=root};
+            foreach(var height in new[] {GridLength.Auto,GridLength.Auto,new GridLength(150),new GridLength(1,GridUnitType.Star),GridLength.Auto,GridLength.Auto})root.RowDefinitions.Add(new RowDefinition {Height=height});
             var heading=new StackPanel();heading.Children.Add(new TextBlock {Text="Create drawing from Revit",FontSize=20,FontWeight=FontWeights.SemiBold});
             heading.Children.Add(new TextBlock {Text="Review the geometry before importing. Columns and walls mark the clear beam limits.",Margin=new Thickness(0,6,0,12),TextWrapping=TextWrapping.Wrap});root.Children.Add(heading);
             var options=new WrapPanel {Margin=new Thickness(0,0,0,12)};Grid.SetRow(options,1);root.Children.Add(options);
@@ -38,7 +39,8 @@ namespace EngineeringDashboard
             tabs.Items.Add(new TabItem {Header="Slabs",Content=slabTable});
             tabs.Items.Add(new TabItem {Header="Columns & walls",Content=new ListBox {ItemsSource=snapshot.Boundaries.Select(b=>b.Kind+" · "+b.Label).ToArray(),BorderThickness=new Thickness(0)}});
             Grid.SetRow(preview,3);root.Children.Add(preview);
-            var details=new ScrollViewer {Content=summary,MaxHeight=145,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};Grid.SetRow(details,4);root.Children.Add(details);
+            var detailContent=new StackPanel();detailContent.Children.Add(summary);detailContent.Children.Add(importNotes);
+            var details=new ScrollViewer {Content=detailContent,MaxHeight=145,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};Grid.SetRow(details,4);root.Children.Add(details);
             var footer=new DockPanel {LastChildFill=true,Margin=new Thickness(0,8,0,0)};Grid.SetRow(footer,5);root.Children.Add(footer);
             var buttons=new StackPanel {Orientation=Orientation.Horizontal};DockPanel.SetDock(buttons,Dock.Right);footer.Children.Add(buttons);
             var cancel=new Button {Content="Cancel",IsCancel=true,MinWidth=90};buttons.Children.Add(cancel);buttons.Children.Add(ImportButton);ImportButton.SetResourceReference(StyleProperty,"PrimaryAction");
@@ -62,14 +64,15 @@ namespace EngineeringDashboard
             if(valid)
             {
                 var model=new BeamCalculatorViewModel {UseTowers=true};Result.Apply(model);
-                PreviewCanvas=new BeamFormworkCanvas(model) {IsHitTestVisible=false};preview.Content=PreviewCanvas;
+                PreviewCanvas=new BeamFormworkCanvas(model) {IsHitTestVisible=false,ImportPreviewMode=true};PreviewCanvas.ClearSelection();preview.Content=PreviewCanvas;
                 summary.Foreground=Brushes.DarkSlateGray;
                 summary.Text=$"{Result.Configuration.Beams.Length} beams · {Result.Configuration.Bays.Length} slab bays · {Result.Configuration.CrossingBeams.Length} crossings · {Result.Configuration.RevitContext.References.Length} column/wall references\nClear beam length: {Result.LengthMm:0.###} mm. Canvas elevation 0 = Revit {Result.Configuration.RevitContext.TopElevationMm:0.###} mm.\nReview floor height and shared settings before calculating. This is a geometry snapshot.";
-                if(Result.Notes.Length>0)summary.Text+="\n"+string.Join("\n",Result.Notes);
+                importNotes.Visibility=Result.Notes.Length>0 ? Visibility.Visible : Visibility.Collapsed;importNotes.Header="Import notes ("+Result.Notes.Length+")";
+                importNotes.Content=new TextBlock {Text=string.Join("\n",Result.Notes),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,6,0,0)};
             }
             else
             {
-                PreviewCanvas=null;preview.Content=new TextBlock {Text="Review the items below to create the drawing preview.",HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Foreground=Brushes.SlateGray};
+                importNotes.Visibility=Visibility.Collapsed;PreviewCanvas=null;preview.Content=new TextBlock {Text="Review the items below to create the drawing preview.",HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Foreground=Brushes.SlateGray};
                 summary.Foreground=Brushes.Firebrick;summary.Text=string.Join("\n",Result.Problems);
                 if(!committed || Errors(beamTable) || Errors(slabTable))summary.Text="Correct the highlighted number in the review table.\n"+summary.Text;
             }

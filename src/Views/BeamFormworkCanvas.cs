@@ -17,6 +17,7 @@ namespace EngineeringDashboard
         internal int SelectedIndex;
         internal bool Formwork, AllDimensions, AddCrossing, ShowSecondaryH20s;
         internal bool HideDimensions;
+        internal bool ImportPreviewMode;
         internal double SectionPositionMm=double.NaN;
         internal event Action<double> SectionPositionChanged;
         private bool draggingSection;
@@ -139,8 +140,8 @@ namespace EngineeringDashboard
         internal void Fit()
         {
             if(!ValidGeometry() || ActualWidth<100 || ActualHeight<100)return;
-            SceneBounds=Bounds();Zoom=Math.Max(.001,Math.Min((ActualWidth-140)/SceneBounds.Width,(ActualHeight-160)/Math.Max(500,SceneBounds.Height)));
-            Pan=new Point((ActualWidth-SceneBounds.Width*Zoom)/2-SceneBounds.Left*Zoom,70-SceneBounds.Top*Zoom);fitted=true;InvalidateVisual();
+            SceneBounds=Bounds();Zoom=Math.Max(.001,Math.Min((ActualWidth-(ImportPreviewMode ? 100 : 140))/SceneBounds.Width,(ActualHeight-(ImportPreviewMode ? 80 : 160))/Math.Max(500,SceneBounds.Height)));
+            Pan=new Point((ActualWidth-SceneBounds.Width*Zoom)/2-SceneBounds.Left*Zoom,(ImportPreviewMode ? 20 : 70)-SceneBounds.Top*Zoom);fitted=true;InvalidateVisual();
         }
         internal void RefitIfNeeded(){if(fitted)Fit();}
         internal void PreserveView()=>fitted=false;
@@ -334,7 +335,7 @@ namespace EngineeringDashboard
                 var colour=windowEnd.X<mouseStart.X ? Colors.SeaGreen : Colors.DodgerBlue;
                 dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(25,colour.R,colour.G,colour.B)),new Pen(new SolidColorBrush(colour),1){DashStyle=windowEnd.X<mouseStart.X ? DashStyles.Dash : DashStyles.Solid},new Rect(mouseStart,windowEnd));
             }
-            Label(dc,AddCrossing ? "Click a slab bay to place a crossing beam." : Formwork ? "Wheel: zoom · middle drag: pan · double-click: fit · click beam/H20: diagrams · Esc: clear" : "Click: select · Shift-click: toggle · drag blank space: window/crossing selection · Delete: remove · Esc: clear",new Point(16,ActualHeight-25),Brushes.SlateGray);
+            if(!ImportPreviewMode)Label(dc,AddCrossing ? "Click a slab bay to place a crossing beam." : Formwork ? "Wheel: zoom · middle drag: pan · double-click: fit · click beam/H20: diagrams · Esc: clear" : "Click: select · Shift-click: toggle · drag blank space: window/crossing selection · Delete: remove · Esc: clear",new Point(16,ActualHeight-25),Brushes.SlateGray);
             foreach(var callout in crossingLabels)CrossingCallout(dc,callout.Item1,callout.Item2);
             if(Model.IsCalculationValid && TowerBeamAnalysis.Finite(SectionPositionMm))
             {
