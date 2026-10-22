@@ -18,6 +18,23 @@ internal static class ControlledPerformanceTests
     {target.GetType().GetField(field,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public)?.SetValue(target,value);}
     internal static BeamCalculatorViewModel Model(string model)
     {
+        if(model=="three-custom-slabs")
+        {
+            // Diagnostic captured 2026-10-22 05:58:51 UTC. Custom stock applies to slabs only.
+            var reported=new BeamCalculatorViewModel {HasSelectedSupportSystem=true,UseTowers=true,TransferSlabLoads=true,UseBeamNetwork=true,
+                Depth=1450,Width=800,BeamLengthMm=6900,FloorHeight=3000,TowerLegCapacityKn=70,AllowCustomH20Lengths=true,
+                CustomH20Scope=CustomH20LengthScope.SlabSupports,IgnoreUplift=true,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=150,
+                Exclude600Standalone=false,PlywoodDeflectionLimit="L/350",DeflectionLimit=BeamCalculatorViewModel.RestoreDeflectionOption("L/270",null),
+                HasLeftSlab=false,HasRightSlab=true,LeftSlabThickness=200,RightSlabThickness=300,LeftSlabBayMm=3900,RightSlabBayMm=3900};
+            while(reported.NetworkBeams.Count<3)reported.AddNetworkBay();
+            for(int i=0;i<3;i++){var beam=reported.NetworkBeams[i];beam.WidthMm=i==1 ? 800 : 650;beam.DepthMm=i==1 ? 1750 : 1150;beam.BottomElevationMm=-beam.DepthMm;}
+            for(int i=0;i<2;i++)
+            {
+                reported.NetworkBays[i].WidthMm=i==0 ? 2272 : 2252;reported.NetworkBays[i].ThicknessMm=300;
+                reported.CrossingBeams.Add(new TransferCrossingBeamRow {BayNumber=i+1,PositionMm=3450,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150});
+            }
+            return reported;
+        }
         if(model=="eight-x2" || model=="eight-core")
         {
             int beams=model=="eight-x2" ? 2 : 3;
@@ -105,6 +122,7 @@ internal static class ControlledPerformanceTests
             var input=Input(model);input.NetworkSearchWorkers=workers;input.Trace=new BeamSearchTrace("Controlled "+model+" "+variant,cancel.Token);Set(input.Trace,"EnableHotProfiling",profile);
             if(variant=="tight")input.Network=input.Network.WithSpacings(PlywoodSpacing.StandardSpacingsMm.Count-1);
             if(variant=="prior-policy"){Set(input,"SeedNetworkSearch",false);Set(input,"OptimizePrimaryResponses",false);}
+            if(variant=="no-preparation-reuse")Set(input,"ReuseTransversePreparations",false);
             if(variant=="no-seed")Set(input,"SeedNetworkSearch",false);
             if(variant=="crossing-reference")Set(input,"OptimizeCrossingSearch",false);
             if(variant=="feasibility")Set(input,"FirstCompleteNetworkOnly",true);

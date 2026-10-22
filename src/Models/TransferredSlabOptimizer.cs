@@ -279,6 +279,12 @@ namespace EngineeringDashboard
             internal double[] SharedSlabRowsMm,LeftSourceScales,RightSourceScales;
             internal bool Adjusted;
             public string Key;
+            // Moving physical rows around a stock joint retains the exact checked
+            // design rows, tributaries and source loads under the bearer assumption.
+            // Physical clearances still use Key/SettingOutRows for each geometry.
+            internal string SourceAnalysisKey;
+            internal string AnalysisKey=>SourceAnalysisKey??Key;
+            internal string CheckKey(TowerInput input)=>input.ReuseTransversePreparations ? AnalysisKey : Key;
             internal readonly Dictionary<Tuple<double,double>,RowSlice> Slices=new Dictionary<Tuple<double,double>,RowSlice>();
             internal RowSlice Slice(TowerStockPiece stock)
             {
@@ -788,7 +794,7 @@ namespace EngineeringDashboard
                 var adjusted=new RowGrid {Rows=source.Rows,Tributaries=source.Tributaries,LeftScales=source.LeftScales,RightScales=source.RightScales,
                     LeftPhysicalScales=source.LeftPhysicalScales,RightPhysicalScales=source.RightPhysicalScales,SlabRowIndices=source.SlabRowIndices,
                     SlabSourceRowIndices=source.SlabSourceRowIndices,SharedSlabRowsMm=source.SharedSlabRowsMm,LeftSourceScales=source.LeftSourceScales,RightSourceScales=source.RightSourceScales,
-                    Adjusted=true,SettingOutRows=placed.RowsMm,SettingOutDesignRows=mapping,Key=source.Key+"|joints:"+key};
+                    Adjusted=true,SettingOutRows=placed.RowsMm,SettingOutDesignRows=mapping,SourceAnalysisKey=source.AnalysisKey,Key=source.Key+"|joints:"+key};
                 source.JointLayouts[key]=adjusted;return adjusted;
             }
             catch(ArgumentException){return null;}
@@ -1303,9 +1309,9 @@ namespace EngineeringDashboard
         private static TransferMember[] LowerCase(TowerInput input,CrossOption cross,double width,RowGrid grid,double edge,int c)
         {
             input.Trace?.CheckCancellation();
-            if(cross.RowKey!=grid.Key)
+            if(cross.RowKey!=grid.CheckKey(input))
             {
-                cross.RowKey=grid.Key;
+                cross.RowKey=grid.CheckKey(input);
                 cross.LowerByCase=new TransferMember[cross.Cases.Length][];
                 cross.LowerCaseComputed=new bool[cross.Cases.Length];
             }
@@ -1554,8 +1560,9 @@ namespace EngineeringDashboard
         }
         private static bool AcceptTransverseCases(TowerInput input,CrossOption cross,double width,RowGrid grid,double edge)
         {
-            if(input.ReuseSearchWork && cross.TransverseKey==grid.Key)return cross.TransversePassed;
-            cross.TransverseKey=grid.Key;cross.TransversePassed=false;cross.PreparedReceiver=null;
+            string key=grid.CheckKey(input);
+            if(input.ReuseSearchWork && cross.TransverseKey==key)return cross.TransversePassed;
+            cross.TransverseKey=key;cross.TransversePassed=false;cross.PreparedReceiver=null;
             var ls=grid.LeftScales;var rs=grid.RightScales;
             if(cross.Left!=null && !Pass(input,cross.Left.Analysis,Math.Max(ls.Max(),input.TransferredSlab.SlabSpacing(true)/1000),1,input.Diagnostics,input.DiagnosticScope+"Left slab H20",1,()=> $"governing row T{Array.IndexOf(ls,ls.Max())+1} · stock {cross.Left.Stock:0} mm")
                 || cross.Right!=null && !Pass(input,cross.Right.Analysis,Math.Max(rs.Max(),input.TransferredSlab.SlabSpacing(false)/1000),1,input.Diagnostics,input.DiagnosticScope+"Right slab H20",1,()=> $"governing row T{Array.IndexOf(rs,rs.Max())+1} · stock {cross.Right.Stock:0} mm"))return false;

@@ -234,6 +234,7 @@ namespace EngineeringDashboard
         internal bool FirstCompleteNetworkOnly;
         internal NetworkSeedCompletion NetworkSeedCompletion;
         internal bool ReuseReceiverSearches=true,WarmStartNetwork=true,LocalNetworkSearch=true;
+        internal bool ReuseTransversePreparations=true;
         internal NetworkReceiverCache NetworkReceiverWork;
         internal NetworkPrefixCache NetworkPrefixWork;
         internal TransferNetworkResult NetworkWarmStart;

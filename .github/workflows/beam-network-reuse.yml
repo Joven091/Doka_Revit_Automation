@@ -1,0 +1,65 @@
+name: Beam network reuse and reported-case benchmark
+on:
+  pull_request:
+    paths: ['src/Models/**', 'tests/Beam.Tests/**', 'tests/Beam.Net48/**', '.github/workflows/beam-network-reuse.yml']
+concurrency:
+  group: beam-network-reuse-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  production-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build tests/Beam.Net48 -c Release --warnaserror
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --network-search-reuse
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --prepared-receivers
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --primary-joint-rows
+      - name: Complete reported three-beam model on the production runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/network-reuse | Out-Null
+          tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --controlled-performance --model three-custom-slabs --seconds 900 | Tee-Object -FilePath artifacts/network-reuse/optimized-net48.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: work/network-baseline
+      - name: Build the previous solver with exactly the same input driver
+        shell: pwsh
+        run: |
+          Copy-Item tests/Beam.Tests/ControlledPerformanceTests.cs work/network-baseline/tests/Beam.Tests/
+          dotnet build work/network-baseline/tests/Beam.Net48 -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Complete previous version on the same runner
+        shell: pwsh
+        run: |
+          work/network-baseline/tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --controlled-performance --model three-custom-slabs --seconds 900 | Tee-Object -FilePath artifacts/network-reuse/baseline-net48.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compare complete designs and elapsed time
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          root=Path('artifacts/network-reuse')
+          before=(root/'baseline-net48.txt').read_text(encoding='utf-8-sig')
+          after=(root/'optimized-net48.txt').read_text(encoding='utf-8-sig')
+          def design(text):
+              assert 'prefixOnly=False' in text, 'A cancelled prefix is not a complete benchmark'
+              return text.split('FINGERPRINT BEGIN\n',1)[1].split('FINGERPRINT END',1)[0].strip()
+          assert design(before)==design(after), 'Selected geometry, UDLs, reactions or quantities changed'
+          elapsed=lambda text:float(re.search(r'PERFORMANCE .*? wall=([\d.]+)',text)[1])
+          old,new=elapsed(before),elapsed(after)
+          assert new<old, 'Reported-case runtime did not improve'
+          summary=f'Complete production-runtime search: {old:.3f} s -> {new:.3f} s ({old/new:.2f}x).\nSelected geometry, UDLs, reactions and material quantities match.\n'
+          print(summary)
+          (root/'comparison.txt').write_text(summary)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beam-network-reuse-benchmark
+          path: artifacts/network-reuse/
+          if-no-files-found: ignore
