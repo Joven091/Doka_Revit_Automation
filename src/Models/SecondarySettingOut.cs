@@ -254,7 +254,7 @@ namespace EngineeringDashboard
             // and adds setting-out rows while retaining the checked design loads.
             if(independentSlabFeet && r.CrossSupports.Any(s=>s.UsesPrimaryBearings && (s.Input.BayNumber==beam || s.Input.BayNumber==beam+1)
                 && Math.Abs(x-s.Input.PositionMm)<s.Input.WidthMm/2+80)
-                && !r.CrossSupports.Any(s=>!s.UsesPrimaryBearings && s.Bearings.Any(b=>b.Beam==beam && b.Row==row)))return false;
+                && !r.CrossSupports.Any(s=>!s.UsesPrimaryBearings && s.Bearings.Any(b=>b.Beam==beam && b.Row==row && !b.IsConcreteEndZone)))return false;
             if(r.CrossSupports.SelectMany(s=>s.Bearings).Any(b=>b.Beam==beam && b.Row==row))return true;
             // Added rows also stay outside all crossing-concrete transfer footprints.
             return r.Input.CrossingBeams.Any(c=>(c.BayNumber==beam || c.BayNumber==beam+1) && Math.Abs(x-c.PositionMm)<c.WidthMm/2+80);

@@ -58,6 +58,8 @@ internal static class PrimaryBearingTests
         Check(!(bool)protectedRow.Invoke(null,new object[] {r,0,3,3180.0,true}),"primary-bearing layout can adjust a local receiving row");
         r.CrossSupports=new[] {support,new CrossBeamSupportResult {Bearings=new[] {new CrossBeamBearing {Beam=0,Row=3}}}};
         Check((bool)protectedRow.Invoke(null,new object[] {r,0,3,3180.0,true}),"another crossing's required receiving row remains protected");
+        r.CrossSupports[1].Bearings[0].IsConcreteEndZone=true;
+        Check(!(bool)protectedRow.Invoke(null,new object[] {r,0,3,3180.0,true}),"a shutter end strip permits local bearer-supported setting-out");
         r.CrossSupports=new[] {support};
         Populate(r,input);input.Diagnostics=new TowerSearchDiagnostics(270);
         double beforePrimary=r.Input.Beams.Sum(b=>r.Input.AreaLoad(b.DepthMm)*b.WidthMm/1000)*6.9;
