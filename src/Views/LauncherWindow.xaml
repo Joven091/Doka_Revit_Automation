@@ -45,7 +45,7 @@
     <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
    </Grid></Button>
   </StackPanel></ScrollViewer>
-  <Border Grid.Row="2" BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,10,0,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Account / sign out" Margin="0,0,10,0" Click="BtnAccount_Click"/><Button Content="Close" IsCancel="True" MinWidth="80" Click="BtnClose_Click"/></StackPanel></Border>
+  <Border Grid.Row="2" BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,10,0,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Check for updates…" Margin="0,0,10,0" Click="BtnUpdates_Click"/><Button Content="Account / sign out" Margin="0,0,10,0" Click="BtnAccount_Click"/><Button Content="Close" IsCancel="True" MinWidth="80" Click="BtnClose_Click"/></StackPanel></Border>
  </Grid></Border>
 </Window>
 

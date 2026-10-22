@@ -52,7 +52,7 @@ namespace EngineeringDashboard
         private readonly List<StringEditor> stringEditors=new List<StringEditor>();
         private readonly List<Action> syncControls=new List<Action>();
         private readonly Stack<State> undo=new Stack<State>(),redo=new Stack<State>();
-        private readonly Action save,load,export,refreshInputs;
+        private readonly Action save,load,export,refreshInputs,checkForUpdates;
         internal Func<bool> ConfirmNewSession {get;set;}
         private bool changing,refreshQueued,closed;
         private bool sectionMode;
@@ -84,8 +84,9 @@ namespace EngineeringDashboard
             internal int SelectedIndex;
         }
         private const string StateProperties="Depth,Width,PlanOriginYmm,BeamLengthMm,TowerLegCapacityKn,PrimaryMaterial,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,Exclude600Standalone,DeflectionLimit,PlywoodDeflectionLimit,SelectedPlywood,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
-        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null)
+        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null,Action checkForUpdates=null)
         {
+            this.checkForUpdates=checkForUpdates;
             Model=model;save=saveInputs;load=loadInputs;export=exportReport;refreshInputs=refreshCalculatorInputs;
             ConfirmNewSession=()=>MessageBox.Show(DialogOwner,"Start a new beam formwork session? Current inputs, results and undo history will be cleared. Saved files are unchanged.","New session",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes;
             if(Model.IsTransferMode && !Model.UseBeamNetwork)Model.UseBeamNetwork=true;

@@ -17,4 +17,13 @@
     <VendorId>DOKA</VendorId>
     <VendorDescription>Doka Designer</VendorDescription>
   </AddIn>
+  <AddIn Type="Command">
+    <Text>Check for Doka updates</Text>
+    <Description>Check the company folder for a Revit 2024 add-in update</Description>
+    <Assembly>MyRevitAddin.dll</Assembly>
+    <FullClassName>MyRevitAddin.Updates.UpdateCommand</FullClassName>
+    <ClientId>c6dedce1-4571-4b7c-b781-1f338826be41</ClientId>
+    <VendorId>DOKA</VendorId>
+    <VendorDescription>Doka Designer</VendorDescription>
+  </AddIn>
 </RevitAddIns>

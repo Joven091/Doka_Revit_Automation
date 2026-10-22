@@ -39,6 +39,7 @@ namespace EngineeringDashboard
             file.Items.Add(MenuAction("Load","Open inputs…",()=> {if(!CommitFields())return;var old=Capture();load?.Invoke();if(closed)return;if(!Same(old,Capture())){undo.Push(old);redo.Clear();}BuildProperties();Refresh();Drawing.Fit();}));
             file.Items.Add(MenuAction("Save","Save inputs…",()=> {if(CommitFields())save?.Invoke();}));
             file.Items.Add(new Separator());file.Items.Add(MenuAction("Export","Export report…",()=> {if(CommitFields())export?.Invoke();}));
+            if(checkForUpdates!=null){file.Items.Add(new Separator());file.Items.Add(MenuAction("CheckUpdates","Check for updates…",checkForUpdates));}
             addMenu=new MenuItem {Header="+ _Add",Padding=new Thickness(10,6,10,6)};menus.Items.Add(addMenu);
             addMenu.Items.Add(MenuAction("AddAbove","Bay above selected beam",()=>AddBay(true)));
             addMenu.Items.Add(MenuAction("AddBelow","Bay below selected beam",()=>AddBay(false)));

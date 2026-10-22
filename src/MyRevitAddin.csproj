@@ -28,6 +28,8 @@
 
   <ItemGroup>
     <None Update="access-settings.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="update-settings.json" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="../tools/RevitUpdater/Doka.RevitUpdater.csproj" ReferenceOutputAssembly="false" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Security" />
@@ -37,4 +39,7 @@
     <Reference Include="System.Xaml" />
   </ItemGroup>
 
+  <Target Name="CopyRevitUpdater" AfterTargets="Build">
+    <Copy SourceFiles="../tools/RevitUpdater/bin/$(Configuration)/net48/Doka.RevitUpdater.exe" DestinationFolder="$(TargetDir)" />
+  </Target>
 </Project>
