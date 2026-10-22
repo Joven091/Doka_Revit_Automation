@@ -46,14 +46,14 @@ jobs:
           New-Item -ItemType Directory -Force $release | Out-Null
           Copy-Item $installer "$release/Install_DokaRevitAutomation.exe"
           Copy-Item scripts/Publish-RevitUpdate.ps1 "$release/Publish-RevitUpdate.ps1"
-          ./scripts/Publish-RevitUpdate.ps1 -Installer $installer -Version $version -ReleaseNotes "Revit 2024 release $version: latest beam calculations and company-folder updates." -Destination $release
+          ./scripts/Publish-RevitUpdate.ps1 -Installer $installer -Version $version -ReleaseNotes "Revit 2024 release ${version}: latest beam calculations and company-folder updates." -Destination $release
           @{
             version=$version; sourceCommit=$env:GITHUB_SHA; revitVersion=2024
             installerSha256=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
           } | ConvertTo-Json | Set-Content "$release/release-info.json"
           @"
           @echo off
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Publish-RevitUpdate.ps1" -Installer "%~dp0Install_DokaRevitAutomation.exe" -Version $version -ReleaseNotes "Revit 2024 release $version: latest beam calculations and company-folder updates."
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Publish-RevitUpdate.ps1" -Installer "%~dp0Install_DokaRevitAutomation.exe" -Version $version -ReleaseNotes "Revit 2024 release ${version}: latest beam calculations and company-folder updates."
           if errorlevel 1 goto failed
           echo Published. Team installer: S:\MEA\ENG\Joven\BeamCalculator\Updates\DokaRevitAutomation-$version.exe
           pause
