@@ -1,0 +1,40 @@
+name: Revit company-folder publisher
+on:
+  pull_request:
+    paths: ['scripts/Publish-RevitUpdate.ps1', 'scripts/Test-RevitPublisher.ps1', 'docs/revit-updates.md', '.github/workflows/revit-publisher.yml']
+  push:
+    branches: [main]
+    paths: ['scripts/Publish-RevitUpdate.ps1', 'scripts/Test-RevitPublisher.ps1', '.github/workflows/revit-publisher.yml']
+  workflow_dispatch:
+concurrency:
+  group: revit-publisher-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  publisher:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Windows PowerShell 5.1
+        shell: powershell
+        run: ./scripts/Test-RevitPublisher.ps1
+      - name: Test PowerShell 7
+        shell: pwsh
+        run: ./scripts/Test-RevitPublisher.ps1
+      - name: Package publisher-only correction
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/revit-publisher-fix | Out-Null
+          Copy-Item scripts/Publish-RevitUpdate.ps1 artifacts/revit-publisher-fix/
+          @'
+          Replace only Publish-RevitUpdate.ps1 in your previously extracted release folder with this corrected file, then run your existing Publish-to-company.cmd again.
+
+          Keep the original installer EXE: the update feed verifies its exact checksum. No new installer or Revit installation is required for this publisher correction.
+
+          If publication still reports Access denied, check whether latest.json is Read-only. Ask the folder owner/IT for Modify permission, including rename/delete, on latest.json and the Updates folder. Creating new files alone is insufficient. Do not delete the live latest.json file as a workaround.
+          '@ | Set-Content artifacts/revit-publisher-fix/README.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revit-publisher-fix
+          path: artifacts/revit-publisher-fix/
+          if-no-files-found: error
