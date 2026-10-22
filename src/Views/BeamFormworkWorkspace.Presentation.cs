@@ -69,7 +69,7 @@ namespace EngineeringDashboard
             sectionControls.Children.Add(new TextBlock {Text="A–A position (mm)",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,8,0)});
             sectionControls.Children.Add(SectionPosition);sectionControls.Children.Add(SectionPositionInput);sectionBar.Children.Add(sectionControls);
             SectionPosition.ValueChanged+=(s,e)=> {if(!syncingSection)SetSectionPosition(e.NewValue);};
-            Action commit=()=> {if(double.TryParse(SectionPositionInput.Text,NumberStyles.Float,CultureInfo.CurrentCulture,out var x) && TowerBeamAnalysis.Finite(x) && x>=0 && x<=Model.BeamLengthMm){SectionPositionInput.ClearValue(BorderBrushProperty);SetSectionPosition(x);}else SectionPositionInput.BorderBrush=Brushes.Firebrick;};
+            Action commit=()=> {if(double.TryParse(SectionPositionInput.Text,NumberStyles.Float,CultureInfo.CurrentCulture,out var x) && TowerBeamAnalysis.Finite(x) && x>=0 && x<=Model.DrawingLengthMm){SectionPositionInput.ClearValue(BorderBrushProperty);SetSectionPosition(x);}else SectionPositionInput.BorderBrush=Brushes.Firebrick;};
             SectionPositionInput.KeyDown+=(s,e)=> {if(e.Key==Key.Enter){commit();e.Handled=true;}};SectionPositionInput.LostKeyboardFocus+=(s,e)=>commit();
             var container=new StackPanel();container.Children.Add(toolbar);container.Children.Add(sectionBar);return container;
         }
@@ -77,14 +77,14 @@ namespace EngineeringDashboard
         {
             if(syncingSection || !TowerBeamAnalysis.Finite(x))return;
             syncingSection=true;
-            try {x=Math.Max(0,Math.Min(Model.BeamLengthMm,x));Section.SectionPositionMm=Drawing.SectionPositionMm=x;SectionPosition.Maximum=Model.BeamLengthMm;SectionPosition.Value=x;SectionPositionInput.Text=x.ToString("0.###",CultureInfo.CurrentCulture);Section.InvalidateVisual();Drawing.InvalidateVisual();}
+            try {x=Math.Max(0,Math.Min(Model.DrawingLengthMm,x));Section.SectionPositionMm=Drawing.SectionPositionMm=x;SectionPosition.Maximum=Model.DrawingLengthMm;SectionPosition.Value=x;SectionPositionInput.Text=x.ToString("0.###",CultureInfo.CurrentCulture);Section.InvalidateVisual();Drawing.InvalidateVisual();}
             finally {syncingSection=false;}
         }
         private void RefreshSectionControls()
         {
             if(Model.NetworkResult!=null && Model.IsCalculationValid)
             {
-                SetSectionPosition(TowerBeamAnalysis.Finite(Drawing.SectionPositionMm) ? Drawing.SectionPositionMm : Model.BeamLengthMm/2);
+                SetSectionPosition(TowerBeamAnalysis.Finite(Drawing.SectionPositionMm) ? Drawing.SectionPositionMm : Model.DrawingLengthMm/2);
                 if(!ReferenceEquals(governingResult,Model.NetworkResult))
                 {
                     governingResult=Model.NetworkResult;GoverningMembers.Children.Clear();GoverningMembers.Children.Add(new TextBlock {Text="Governing members",FontWeight=FontWeights.SemiBold});

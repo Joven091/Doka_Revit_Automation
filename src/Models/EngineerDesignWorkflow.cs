@@ -25,7 +25,7 @@ namespace EngineeringDashboard
         internal bool UseDesignZones;
         internal TransferNetworkInput Network;
         internal int Beam;
-        internal double LengthMm,ReferenceSpacingMm;
+        internal double LengthMm,StartMm,ReferenceSpacingMm;
         internal bool LeftSlab,RightSlab,IsResolved;
         internal TransferMember SecondaryBasis;
         internal PositionedSecondaryLoad[] OwnLoads=new PositionedSecondaryLoad[0];
@@ -41,13 +41,13 @@ namespace EngineeringDashboard
         internal bool HasCrossings=>Adjacent(Network,Beam).Any();
         internal static EngineerPrimaryPlan Create(TowerInput common,TransferNetworkInput network,int beam,bool leftSlab=true,bool rightSlab=true)
         {
-            var plan=new EngineerPrimaryPlan {Network=network,Beam=beam,LengthMm=common.LengthMm,LeftSlab=leftSlab,RightSlab=rightSlab,
+            var plan=new EngineerPrimaryPlan {Network=network,Beam=beam,LengthMm=common.LengthMm,StartMm=common.LongitudinalStartMm,LeftSlab=leftSlab,RightSlab=rightSlab,
                 UseDesignZones=network.CrossingBeams.Where(c=>c.BayNumber==beam || c.BayNumber==beam+1).All(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows)};
             plan.Refresh(common);return plan;
         }
         private EngineerPrimaryPlan CopyBasis()
         {
-            var copy=new EngineerPrimaryPlan {Network=Network,Beam=Beam,LengthMm=LengthMm,LeftSlab=LeftSlab,RightSlab=RightSlab,UseDesignZones=UseDesignZones,ReferenceSpacingMm=ReferenceSpacingMm,SecondaryBasis=SecondaryBasis,OwnLoads=OwnLoads};
+            var copy=new EngineerPrimaryPlan {Network=Network,Beam=Beam,LengthMm=LengthMm,StartMm=StartMm,LeftSlab=LeftSlab,RightSlab=RightSlab,UseDesignZones=UseDesignZones,ReferenceSpacingMm=ReferenceSpacingMm,SecondaryBasis=SecondaryBasis,OwnLoads=OwnLoads};
             foreach(var source in SlabLoads)copy.SlabLoads[source.Key]=source.Value;
             return copy;
         }
@@ -88,7 +88,8 @@ namespace EngineeringDashboard
         private PositionedSecondaryLoad[] NormalLoads(int bay)
         {
             if(!SlabLoads.TryGetValue(bay,out var loads))return new PositionedSecondaryLoad[0];
-            double force=loads.Sum(q=>q.ValuePerMetre),normalLength=LengthMm-Network.CrossingBeams.Where(c=>c.BayNumber==bay+1 && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows).Sum(c=>c.WidthMm);
+            double reference=Network.ReferenceLengthMm>0 ? Network.ReferenceLengthMm : StartMm+LengthMm;
+            double force=loads.Sum(q=>q.ValuePerMetre),normalLength=Network.BayEnd(bay,reference)-Network.BayStart(bay,reference)-Network.CrossingBeams.Where(c=>c.BayNumber==bay+1 && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows).Sum(c=>c.WidthMm);
             double fraction=SlabLedgerForces.TryGetValue(bay,out var ledger) && normalLength>1e-7 && force>1e-10 ? 1-ledger*1000/normalLength/force : 1;
             if(fraction< -1e-7)throw new ArgumentException("Crossing slab transfer exceeds the available slab load.");
             return loads.Select(q=>q.Scaled(Math.Max(0,fraction))).ToArray();
@@ -98,6 +99,8 @@ namespace EngineeringDashboard
             var loads=new List<PositionedSecondaryLoad>(OwnLoads);
             foreach(int bay in new[] {Beam-1,Beam}.Where(b=>b>=0 && b<Network.Bays.Length))
             {
+                double reference=Network.ReferenceLengthMm>0 ? Network.ReferenceLengthMm : StartMm+LengthMm;
+                if(x<Network.BayStart(bay,reference)-1e-7 || x>Network.BayEnd(bay,reference)+1e-7)continue;
                 var crossing=Network.CrossingBeams.Select((c,i)=>new {C=c,I=i}).FirstOrDefault(c=>c.C.BayNumber==bay+1 && c.C.SupportMode!=CrossBeamSupportMode.LegacySlabRows && x>=c.C.PositionMm-c.C.WidthMm/2-1e-7 && x<c.C.PositionMm+c.C.WidthMm/2-1e-7);
                 if(crossing==null)loads.AddRange(NormalLoads(bay));
                 else if(CrossingLoads.TryGetValue(crossing.I,out var assigned))loads.AddRange(assigned);
@@ -109,16 +112,17 @@ namespace EngineeringDashboard
             var network=Network;double own=network.AreaLoad(network.Beams[Beam].DepthMm)*network.Beams[Beam].WidthMm/2000;
             var ownReaction=HasPositionedLoads ? Reactions(SecondaryBasis,OwnLoads) : new[] {own,own};
             var lines=new[] {new List<BeamDistributedLoad>(),new List<BeamDistributedLoad>()};
-            for(int line=0;line<2;line++)lines[line].Add(new BeamDistributedLoad {StartMm=0,EndMm=LengthMm,KnPerM=ownReaction[line]});
+            for(int line=0;line<2;line++)lines[line].Add(new BeamDistributedLoad {StartMm=StartMm,EndMm=StartMm+LengthMm,KnPerM=ownReaction[line]});
             foreach(int bay in new[] {Beam-1,Beam}.Where(b=>b>=0 && b<network.Bays.Length))
             {
                 double slab=CarriesBay(bay) ? network.AreaLoad(network.Bays[bay].ThicknessMm)*network.Bays[bay].WidthMm/2000 : 0;
                 var cuts=network.CrossingBeams.Where(c=>c.BayNumber==bay+1 && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows).OrderBy(c=>c.PositionMm).ToArray();
-                double normalLength=LengthMm-cuts.Sum(c=>c.WidthMm);
+                double bayStart=network.BayStart(bay,network.ReferenceLengthMm>0 ? network.ReferenceLengthMm : StartMm+LengthMm),bayEnd=network.BayEnd(bay,network.ReferenceLengthMm>0 ? network.ReferenceLengthMm : StartMm+LengthMm);
+                double normalLength=bayEnd-bayStart-cuts.Sum(c=>c.WidthMm);
                 if(!HasPositionedLoads && SlabLedgerForces.TryGetValue(bay,out double ledger) && normalLength>1e-7)slab-=ledger*1000/normalLength;
                 if(slab< -1e-7)throw new ArgumentException("Crossing slab transfer exceeds the available slab load.");
                 var normal=HasPositionedLoads ? Reactions(SecondaryBasis,NormalLoads(bay)) : new[] {bay==Beam-1 ? Math.Max(0,slab) : 0,bay==Beam ? Math.Max(0,slab) : 0};
-                double start=0;
+                double start=bayStart;
                 foreach(var cut in cuts)
                 {
                     double a=cut.PositionMm-cut.WidthMm/2,z=cut.PositionMm+cut.WidthMm/2;int index=Array.IndexOf(network.CrossingBeams,cut);
@@ -134,7 +138,7 @@ namespace EngineeringDashboard
                     }
                     start=z;
                 }
-                if(start<LengthMm)for(int line=0;line<2;line++)lines[line].Add(new BeamDistributedLoad {StartMm=start,EndMm=LengthMm,KnPerM=normal[line]});
+                if(start<bayEnd)for(int line=0;line<2;line++)lines[line].Add(new BeamDistributedLoad {StartMm=start,EndMm=bayEnd,KnPerM=normal[line]});
             }
             foreach(var assigned in CrossingTransfers)
             {
@@ -217,7 +221,7 @@ namespace EngineeringDashboard
             var result=new List<ColumnEndStripLoad>();
             foreach(int end in new[] {0,1})
             {
-                double a=end==0 ? 0 : last,z=end==0 ? first : LengthMm;if(z<=a+1e-7)continue;
+                double a=end==0 ? Math.Min(StartMm,Lines.SelectMany(l=>l).Min(q=>q.StartMm)) : last,z=end==0 ? first : Math.Max(StartMm+LengthMm,Lines.SelectMany(l=>l).Max(q=>q.EndMm));if(z<=a+1e-7)continue;
                 var force=new double[2];var moment=new double[2];
                 for(int line=0;line<2;line++)foreach(var q in Loads(a,z-a,line,active))
                 {double f=q.KnPerM*(q.EndMm-q.StartMm)/1000;force[line]+=f;moment[line]+=f*(a+(q.StartMm+q.EndMm)/2)/1000;}

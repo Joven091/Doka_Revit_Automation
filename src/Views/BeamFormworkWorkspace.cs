@@ -295,7 +295,7 @@ namespace EngineeringDashboard
                 draftVertical=false;
                 var b=Model.IsNetworkMode ? Model.NetworkBeams[draftIndex] : Model.StandaloneDefinition();
                 draftBeam=new TransferBeamRow {WidthMm=b.WidthMm,DepthMm=b.DepthMm,BottomElevationMm=b.BottomElevationMm};
-                draftSource=new Rect(0,ys[draftIndex]-b.WidthMm/2,Model.BeamLengthMm,b.WidthMm);
+                draftSource=new Rect(Model.BeamSpanStart(draftIndex),ys[draftIndex]-b.WidthMm/2,Model.BeamSpanLength(draftIndex),b.WidthMm);
             }
             else
             {
@@ -349,7 +349,7 @@ namespace EngineeringDashboard
             if(draftKind==FormworkObject.Independent)
             {var beam=draftIndependent.Copy();beam.StartXmm+=point.X-draftBase.Value.X;beam.StartYmm+=point.Y-draftBase.Value.Y;Drawing.DraftPreview=IndependentRect(beam);return;}
             var destination=DraftDestination(point);
-            if(draftKind==FormworkObject.Beam)Drawing.DraftPreview=new Rect(0,destination.Item3-draftSource.Height/2,Model.BeamLengthMm,draftSource.Height);
+            if(draftKind==FormworkObject.Beam)Drawing.DraftPreview=new Rect(draftSource.X,destination.Item3-draftSource.Height/2,draftSource.Width,draftSource.Height);
             else if(destination.Item1>=0)
             {
                 var ys=Drawing.Centres();int bay=destination.Item1;double top=ys[bay]+Model.NetworkBeams[bay].WidthMm/2,bottom=ys[bay+1]-Model.NetworkBeams[bay+1].WidthMm/2;
@@ -492,7 +492,11 @@ namespace EngineeringDashboard
         private bool ValidateEditor(NumberEditor editor)
         {
             bool valid=double.TryParse(editor.Box.Text,NumberStyles.Float,CultureInfo.CurrentCulture,out var v) && TowerBeamAnalysis.Finite(v) && v>=editor.Minimum;
-            editor.Box.BorderBrush=valid ? Brushes.SlateGray : Brushes.Firebrick;editor.Error.Text=$"Enter a number of at least {editor.Minimum:0.###}.";editor.Error.Visibility=valid ? Visibility.Collapsed : Visibility.Visible;return valid;
+            string reason=null;
+            if(valid && Drawing.SelectedKind==FormworkObject.Beam && (editor.Box.Name=="EditSpanStartMm" || editor.Box.Name=="EditBeamLengthMm"))
+                try {Model.ValidateBeamSpan(Drawing.SelectedIndex,editor.Box.Name=="EditSpanStartMm" ? v : Model.BeamSpanStart(Drawing.SelectedIndex),editor.Box.Name=="EditBeamLengthMm" ? v : Model.BeamSpanLength(Drawing.SelectedIndex));}
+                catch(ArgumentException ex){valid=false;reason=ex.Message;}
+            editor.Box.BorderBrush=valid ? Brushes.SlateGray : Brushes.Firebrick;editor.Error.Text=reason??$"Enter a number of at least {editor.Minimum:0.###}.";editor.Error.Visibility=valid ? Visibility.Collapsed : Visibility.Visible;return valid;
         }
         private bool ValidateStock(StringEditor editor)
         {
@@ -532,7 +536,7 @@ namespace EngineeringDashboard
                     else {Number("WidthMm","Width (mm)",()=>Model.Width,v=>Model.Width=v);Number("DepthMm","Depth (mm)",()=>Model.Depth,v=>Model.Depth=v);}
                 }
                 else if(Drawing.SelectedKind==FormworkObject.Slab)
-                {var s=Model.NetworkBays[index];Text("S"+(index+1)+" · slab",true);Number("WidthMm","Clear span (mm)",()=>s.WidthMm,v=>s.WidthMm=v);Number("ThicknessMm","Thickness (mm)",()=>s.ThicknessMm,v=>s.ThicknessMm=v);}
+                {var s=Model.NetworkBays[index];Text("S"+(index+1)+" · slab",true);Number("WidthMm","Clear span (mm)",()=>s.WidthMm,v=>{s.Outline=null;s.WidthMm=v;});Number("ThicknessMm","Thickness (mm)",()=>s.ThicknessMm,v=>s.ThicknessMm=v);}
                 else
                 {var c=Model.CrossingBeams[index];Text("X"+(index+1)+" · crossing beam",true);Number("PositionMm","Position along beam (mm)",()=>c.PositionMm,v=>c.PositionMm=v,0);Number("WidthMm","Width (mm)",()=>c.WidthMm,v=>c.WidthMm=v);Number("DepthMm","Total depth (mm)",()=>c.DepthMm,c.SetDepthKeepingTopMm);Number("BottomElevationMm","Bottom / soffit elevation (mm)",()=>c.BottomElevationMm,v=>c.BottomElevationMm=v,-1000000);ConcreteTop(()=>c.BottomElevationMm,()=>c.DepthMm);Text("Cross-beam supports");var mode=new ComboBox {ItemsSource=c.SupportModes,DisplayMemberPath="Label",SelectedValuePath="Value",SelectedValue=c.SupportMode,Margin=new Thickness(0,0,0,12)};mode.SelectionChanged+=(sender,args)=> {if(changing || !(mode.SelectedValue is CrossBeamSupportMode value))return;if(CommitFields())Mutate(()=>c.SupportMode=value);else Refresh();};syncControls.Add(()=>mode.SelectedValue=c.SupportMode);properties.Children.Add(mode);Text("Slab bay");var bay=new ComboBox {ItemsSource=Model.NetworkBays.Select(s=>s.Label).ToArray(),SelectedIndex=c.BayNumber-1,Margin=new Thickness(0,0,0,12)};bay.SelectionChanged+=(s,e)=> {if(changing || bay.SelectedIndex<0)return;int choice=bay.SelectedIndex;if(CommitFields())Mutate(()=>c.BayNumber=choice+1);else Refresh();};syncControls.Add(()=>bay.SelectedIndex=c.BayNumber-1);properties.Children.Add(bay);}
                 if(Drawing.SelectedObjects.Length>1)Text(Drawing.SelectedObjects.Length+" objects selected. Shift-click toggles selection; Delete removes the selected areas.");
@@ -544,11 +548,16 @@ namespace EngineeringDashboard
                 }
                 if(!Drawing.Formwork && !sectionMode)Text("Geometry commands: MV move · CO copy · CS create similar. Pick a beam, then type the two-letter command.");
                 if(Drawing.SelectedObjects.Length==1)CalculatedNumber(nameof(TransferBeamRow.MaximumSecondarySpacingMm),"Plywood spacing limit (mm)",SelectedObject());
-                if(Drawing.SelectedKind!=FormworkObject.Independent)Number("BeamLengthMm","Parallel beam length (mm)",()=>Model.BeamLengthMm,v=>Model.BeamLengthMm=v);
+                if(Drawing.SelectedKind==FormworkObject.Beam)
+                {
+                    Number("SpanStartMm","Start position (mm)",()=>Model.BeamSpanStart(index),v=>Model.SetBeamSpan(index,v,Model.BeamSpanLength(index)),0);
+                    Number("BeamLengthMm","Beam length (mm)",()=>Model.BeamSpanLength(index),v=>Model.SetBeamSpan(index,Model.BeamSpanStart(index),v));
+                }
                 CalculatedNumber("UpperSupportSpacingMm","Plywood spacing limit across beams (mm)");
                 Fields["UpperSupportSpacingMm"].Visibility=Visibility.Collapsed;
                 properties.Children.RemoveAt(properties.Children.Count-2);
                 int selectionControls=properties.Children.Count;var objectFields=new HashSet<string>(Fields.Keys);
+                Number("AllBeamLengthMm","All parallel beam lengths (mm)",()=>Model.BeamLengthMm,Model.SetAllBeamLengths);
                 BuildSharedSettings();
                 foreach(var key in Fields.Keys.Where(k=>!objectFields.Contains(k)))sharedFields.Add(key);
                 while(properties.Children.Count>selectionControls){var child=properties.Children[selectionControls];properties.Children.RemoveAt(selectionControls);SharedProperties.Children.Add(child);}

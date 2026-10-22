@@ -48,6 +48,16 @@ internal static class RevitSelectionUiTests
         Check(!model.IsCalculationValid && w.Buttons["Undo"].IsEnabled,"import invalidates results and can be undone");
         Click(w,"Undo");Pump();Check(model.NetworkConfigurationXml==original && model.BeamLengthMm==originalLength && model.RevitContext==null,"undo restores complete old drawing");
         Click(w,"Redo");Pump();Check(model.RevitContext.References.Length==2 && model.BeamLengthMm==7000,"redo restores import and references");
+        w.Drawing.Select(FormworkObject.Beam,0);Pump();
+        Check(w.TryEditDimension("BeamLengthMm","6500",out string dimensionError),"selected beam length edit: "+dimensionError);Pump();
+        Check(model.BeamSpanLength(0)==6500 && model.BeamSpanLength(1)==7000,"dimension changes only the selected parallel beam");
+        Click(w,"Undo");Pump();Check(model.BeamSpanLength(0)==7000 && model.BeamSpanLength(1)==7000,"undo restores per-beam length");
+        Click(w,"Redo");Pump();Check(model.BeamSpanLength(0)==6500,"redo restores selected length edit");
+        Check(!w.TryEditDimension("BeamLengthMm","3000",out dimensionError),"cannot cut off a connected crossing");
+        Click(w,"Undo");Pump();
+        var variable=RevitStructureImport.Build(IndividualSpanTests.ReportedGeometry(),"beam1");w.ApplyRevitImport(variable);Pump();w.Drawing.Fit();Pump();
+        Check(model.NetworkBays[0].Outline.Length==8 && model.BeamSpanStart(0)>149,"canvas accepts different ends and actual cutbacks");
+        Check(w.Drawing.AnnotationLabels.Any(t=>t.Contains("3901.832")),"canvas labels the actual short beam length");
         var empty=new RevitSelectionImportWindow(new RevitSelectionSnapshot());Check(!empty.ImportButton.IsEnabled && empty.PreviewCanvas==null,"empty selection cannot replace inputs");empty.Close();
         string copied=null;
         var blockedSource=RevitStructureImportTests.Sample();blockedSource.Beams[0].WidthMm=0;

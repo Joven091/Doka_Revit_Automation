@@ -347,11 +347,11 @@ namespace EngineeringDashboard
         {
             for(int b=0;b<r.Beams.Length;b++)
             {
-                var i=r.Input.Beams[b];double y=r.BeamCentresMm[b];yield return new FormworkSolid {Name=$"B{b+1} concrete",X0=0,X1=r.Beams[b].LengthMm,Y0=y-i.WidthMm/2,Y1=y+i.WidthMm/2,Z0=i.BottomElevationMm,Z1=i.BottomElevationMm+i.DepthMm};
+                var i=r.Input.Beams[b];double y=r.BeamCentresMm[b];yield return new FormworkSolid {Name=$"B{b+1} concrete",X0=r.Beams[b].LongitudinalStartMm,X1=r.Beams[b].LongitudinalEndMm,Y0=y-i.WidthMm/2,Y1=y+i.WidthMm/2,Z0=i.BottomElevationMm,Z1=i.BottomElevationMm+i.DepthMm};
             }
             for(int bay=0;bay<r.Input.Bays.Length;bay++)
             {
-                double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2,top=Math.Max(r.Input.Beams[bay].BottomElevationMm+r.Input.Beams[bay].DepthMm,r.Input.Beams[bay+1].BottomElevationMm+r.Input.Beams[bay+1].DepthMm),start=0;
+                double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2,top=Math.Max(r.Input.Beams[bay].BottomElevationMm+r.Input.Beams[bay].DepthMm,r.Input.Beams[bay+1].BottomElevationMm+r.Input.Beams[bay+1].DepthMm),start=r.Input.BayStart(bay,r.Input.Extent(r.Beams.Max(b=>b.LongitudinalEndMm)));
                 var cuts=r.Input.CrossingBeams.Where(c=>c.BayNumber==bay+1 && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows).OrderBy(c=>c.PositionMm).ToArray();
                 foreach(var cut in cuts)
                 {
@@ -359,7 +359,7 @@ namespace EngineeringDashboard
                     if(end>start)yield return new FormworkSolid {Name=$"S{bay+1} concrete",X0=start,X1=end,Y0=face,Y1=face+r.Input.Bays[bay].WidthMm,Z0=top-r.Input.Bays[bay].ThicknessMm,Z1=top};
                     start=cut.PositionMm+cut.WidthMm/2;
                 }
-                if(start<r.Beams[0].LengthMm)yield return new FormworkSolid {Name=$"S{bay+1} concrete",X0=start,X1=r.Beams[0].LengthMm,Y0=face,Y1=face+r.Input.Bays[bay].WidthMm,Z0=top-r.Input.Bays[bay].ThicknessMm,Z1=top};
+                if(start<r.Input.BayEnd(bay,r.Input.Extent(r.Beams.Max(b=>b.LongitudinalEndMm))))yield return new FormworkSolid {Name=$"S{bay+1} concrete",X0=start,X1=r.Input.BayEnd(bay,r.Input.Extent(r.Beams.Max(b=>b.LongitudinalEndMm))),Y0=face,Y1=face+r.Input.Bays[bay].WidthMm,Z0=top-r.Input.Bays[bay].ThicknessMm,Z1=top};
             }
             foreach(var c in r.Input.CrossingBeams.Where(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows))
             {
@@ -963,10 +963,24 @@ namespace EngineeringDashboard
         // Do not mutate the DP's shared tower layouts while evaluating a cross arrangement.
         private static TowerLayout Copy(TowerLayout l)
         {
-            return new TowerLayout {EngineerSearch=l.EngineerSearch,SearchAssumedLegKn=l.SearchAssumedLegKn,SearchInitialLegsPerLine=l.SearchInitialLegsPerLine,PrimaryMaterial=l.PrimaryMaterial,IgnoreUplift=l.IgnoreUplift,MinimumLeftReactions=l.MinimumLeftReactions,MinimumRightReactions=l.MinimumRightReactions,Transfer=l.Transfer,PositionsMm=l.PositionsMm,Joined=l.Joined,WidthMm=l.WidthMm,TransverseOffsetMm=l.TransverseOffsetMm,Rotated=l.Rotated,LengthMm=l.LengthMm,ConcreteEndOverhangMm=l.ConcreteEndOverhangMm,LeftReactions=l.LeftReactions,RightReactions=l.RightReactions,LeftLineLoad=l.LeftLineLoad,RightLineLoad=l.RightLineLoad,LegCapacityKn=l.LegCapacityKn,MaxLegKn=l.MaxLegKn,StockPlan=l.StockPlan,DeflectionDenominator=l.DeflectionDenominator,DeflectionLimitMm=l.DeflectionLimitMm,MomentKnM=l.MomentKnM,ShearKn=l.ShearKn,DeflectionMm=l.DeflectionMm,Utilization=l.Utilization,Governing=l.Governing,CentringNotice=l.CentringNotice,Tested=l.Tested,MinimumLegCountProven=l.MinimumLegCountProven,SearchTimeLimitReached=l.SearchTimeLimitReached};
+            return new TowerLayout {EngineerSearch=l.EngineerSearch,SearchAssumedLegKn=l.SearchAssumedLegKn,SearchInitialLegsPerLine=l.SearchInitialLegsPerLine,PrimaryMaterial=l.PrimaryMaterial,IgnoreUplift=l.IgnoreUplift,MinimumLeftReactions=l.MinimumLeftReactions,MinimumRightReactions=l.MinimumRightReactions,Transfer=l.Transfer,PositionsMm=l.PositionsMm,Joined=l.Joined,WidthMm=l.WidthMm,TransverseOffsetMm=l.TransverseOffsetMm,Rotated=l.Rotated,LengthMm=l.LengthMm,LongitudinalStartMm=l.LongitudinalStartMm,ConcreteEndOverhangMm=l.ConcreteEndOverhangMm,LeftReactions=l.LeftReactions,RightReactions=l.RightReactions,LeftLineLoad=l.LeftLineLoad,RightLineLoad=l.RightLineLoad,LegCapacityKn=l.LegCapacityKn,MaxLegKn=l.MaxLegKn,StockPlan=l.StockPlan,DeflectionDenominator=l.DeflectionDenominator,DeflectionLimitMm=l.DeflectionLimitMm,MomentKnM=l.MomentKnM,ShearKn=l.ShearKn,DeflectionMm=l.DeflectionMm,Utilization=l.Utilization,Governing=l.Governing,CentringNotice=l.CentringNotice,Tested=l.Tested,MinimumLegCountProven=l.MinimumLegCountProven,SearchTimeLimitReached=l.SearchTimeLimitReached};
         }
         internal static bool Complete(TowerInput common,TransferNetworkResult r,bool partial=false)
         {
+            for(int bay=0;bay<r.Bays.Length;bay++)if(r.Bays[bay]!=null && r.Input.Bays[bay].Outline!=null)
+            {
+                var p=r.Bays[bay];
+                for(int row=0;row<r.SlabRowsMm.Length;row++)
+                {
+                    var t=r.Beams[bay].Transfer;
+                    bool active=t.RightSlabSourceScales!=null ? t.RightSlabSourceScales[row]>0 : r.SlabBeamRow(bay,row)>=0 && (t.RightUpperScales?[r.SlabBeamRow(bay,row)]??0)>0;
+                    if(!active)continue;
+                    double x=r.SlabRowsMm[row];
+                    foreach(double y in new[] {p.EdgeMm,p.NearFootMm,r.Input.Bays[bay].WidthMm-p.FarFootMm,r.Input.Bays[bay].WidthMm-p.EdgeMm})
+                        if(!r.Input.BayContains(bay,x-40,y) || !r.Input.BayContains(bay,x+40,y))
+                        {Reject(common,$"S{bay+1}: slab H20 at {x:0.###} mm crosses an actual corner cutback.");return false;}
+                }
+            }
             if(!Modern(r.Input))return true;
             var original=r.Beams;var existing=NetworkSolids(r).ToArray();var concrete=Concrete(r).ToArray();
             string baselineClash=Clash(existing,concrete);
@@ -1088,7 +1102,7 @@ namespace EngineeringDashboard
             for(int bay=0;bay<r.Bays.Length;bay++)if(r.Bays[bay]!=null)
             {
                 double removed=r.Input.CrossingBeams.Where(c=>c.BayNumber==bay+1 && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows).Sum(c=>c.WidthMm);
-                expectedSlab+=r.Input.AreaLoad(r.Input.Bays[bay].ThicknessMm)*(common.LengthMm-removed)*r.Input.Bays[bay].WidthMm/1e6;
+                expectedSlab+=r.Input.AreaLoad(r.Input.Bays[bay].ThicknessMm)*(r.Input.BayEnd(bay,common.LengthMm)-r.Input.BayStart(bay,common.LengthMm)-removed)*r.Input.Bays[bay].WidthMm/1e6;
                 expectedSlab-=accepted.Where(s=>s.Input.BayNumber==bay+1).Sum(s=>SlabEdgeLoads(r,s.CrossingIndex).Sum(p=>p.Kn))*r.Input.Bays[bay].WidthMm/1000;
                 expectedSlab+=r.Input.CrossingBeams.Where(c=>c.BayNumber==bay+1 && c.SupportMode==CrossBeamSupportMode.LegacySlabRows).Sum(c=>(r.Input.AreaLoad(c.DepthMm)-r.Input.AreaLoad(r.Input.Bays[bay].ThicknessMm))*c.WidthMm*r.Input.Bays[bay].WidthMm/1e6);
             }

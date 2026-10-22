@@ -43,7 +43,7 @@ namespace EngineeringDashboard
             var update=new Button {Content="Update preview",MinWidth=120};update.Click+=(s,e)=>RefreshPreview();options.Children.Add(update);
             DiagnoseButton.ToolTip="Copy selected-element geometry and import errors for review.";DiagnoseButton.Click+=(s,e)=>ShowDiagnostics();options.Children.Add(DiagnoseButton);
             var tabs=new TabControl {Margin=new Thickness(0,0,0,12)};Grid.SetRow(tabs,2);root.Children.Add(tabs);
-            beamTable=Table(snapshot.Beams);beamTable.Columns.Add(Column("Revit beam","Label",true,240));beamTable.Columns.Add(Column("Width (mm)","WidthMm"));beamTable.Columns.Add(Column("Depth (mm)","DepthMm"));beamTable.Columns.Add(Column("Soffit (Revit mm)","BottomMm"));
+            beamTable=Table(snapshot.Beams);beamTable.Columns.Add(Column("Revit beam","Label",true,240));beamTable.Columns.Add(Column("Length (mm)","LengthMm",true));beamTable.Columns.Add(Column("Width (mm)","WidthMm"));beamTable.Columns.Add(Column("Depth (mm)","DepthMm"));beamTable.Columns.Add(Column("Soffit (Revit mm)","BottomMm"));
             tabs.Items.Add(new TabItem {Header="Beams",Content=beamTable});
             slabTable=Table(snapshot.Slabs);slabTable.Columns.Add(Column("Revit slab","Label",true,240));slabTable.Columns.Add(Column("Thickness (mm)","ThicknessMm"));slabTable.Columns.Add(Column("Top (Revit mm)","TopMm"));
             tabs.Items.Add(new TabItem {Header="Slabs",Content=slabTable});

@@ -53,7 +53,7 @@ internal static class RevitStructureImportTests
         var tr=RevitStructureImport.Build(three);Check(tr.CanImport,string.Join(";",tr.Problems));Check(tr.Configuration.CrossingBeams.Length==2 && tr.Configuration.CrossingBeams.All(x=>x.RevitSource=="Crossing [103]"),"one Revit crossing splits exactly at main beam rows");
         Rejected(s=>s.Beams[0].WidthMm=0,"enter a valid width");Rejected(s=>s.Beams[0].DepthMm=double.NaN,"enter a valid width");
         Rejected(s=>s.Beams[0].Problem="Sloped framing","Sloped framing");Rejected(s=>s.Beams[1].End.Y=3100,"diagonal");
-        Rejected(s=>s.Beams[1].End.X=1000,"different clear start/end");Rejected(s=>s.Beams[2].Start.Y=700,"partial bay");
+        var unequal=Sample();unequal.Beams[1].End.X=1000;var unequalResult=RevitStructureImport.Build(unequal,"101");Check(unequalResult.CanImport,"different clear spans import");Equal(700,unequalResult.Configuration.Beams[1].SpanStartMm,"individual start after wall trim");Equal(6300,unequalResult.Configuration.Beams[1].SpanLength(7000),"individual physical length");Rejected(s=>s.Beams[2].Start.Y=700,"partial bay");
         Rejected(s=>s.Beams[2].End.Y=4000,"crossing endpoints");Rejected(s=>s.Beams[2].BottomMm+=50,"one level");
         Rejected(s=>s.Slabs=new RevitSelectedSlab[0],"complete clear bay");Rejected(s=>s.Slabs[0].ThicknessMm=2000,"thicker");
         Rejected(s=>s.Slabs[0].Outline=Rect(1000,7000,-400,3400),"complete clear bay");

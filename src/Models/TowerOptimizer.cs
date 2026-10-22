@@ -277,6 +277,10 @@ namespace EngineeringDashboard
         public TransferredSlabInput TransferredSlab { get; set; }
         public TransferNetworkInput Network {get;set;}
         public double LengthMm { get; set; }
+        // Network coordinates remain shared even when concrete spans differ.
+        internal double LongitudinalStartMm;
+        internal double LongitudinalEndMm=>LongitudinalStartMm+LengthMm;
+        internal double CoverStart(double coverage)=>LongitudinalStartMm+(LengthMm-coverage)/2;
         public double LegCapacityKn { get; set; }
         public double TotalLineLoad { get; set; }
         // Moment of transverse line loads about the concrete beam centre, kN (kN/m * m).
@@ -328,6 +332,8 @@ namespace EngineeringDashboard
         public double WidthMm { get; internal set; }
         public bool Rotated { get; internal set; }
         public double LengthMm { get; internal set; }
+        public double LongitudinalStartMm {get;internal set;}
+        public double LongitudinalEndMm=>LongitudinalStartMm+LengthMm;
         public double ConcreteEndOverhangMm { get; internal set; }
         public double LeftLineLoad { get; internal set; }
         public double RightLineLoad { get; internal set; }
@@ -369,7 +375,7 @@ namespace EngineeringDashboard
         public double BraceLocationPenalty=>EngineerTowerSearch.BraceLocationPenalty(PositionsMm,Joined,WidthMm,Rotated);
         public double CantileverImbalanceMm=>StockPlan?.Pieces==null || PositionsMm==null ? 0 : StockPlan.Pieces.Sum(p=>Math.Abs((PositionsMm[p.FirstSupport]-p.StartMm)-(p.EndMm-PositionsMm[p.LastSupport])));
         public double SecondarySymmetryErrorMm=>Transfer==null ? 0 : Transfer.LowerCases.Take(1).SelectMany(c=>c).Take(1).Concat(Transfer.UpperMembers).Select(m=>m.SupportsMm.Length<2 ? 0 : Math.Abs(m.SupportsMm.First()-(m.LengthMm-m.SupportsMm.Last()))).DefaultIfEmpty().Max();
-        public double SymmetryErrorMm=>TowerOptimizer.SymmetryError(PositionsMm,StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray(),LengthMm/2)+(EngineerSearch ? CantileverImbalanceMm+SecondarySymmetryErrorMm : 0);
+        public double SymmetryErrorMm=>TowerOptimizer.SymmetryError(PositionsMm,StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray(),LongitudinalStartMm+LengthMm/2)+(EngineerSearch ? CantileverImbalanceMm+SecondarySymmetryErrorMm : 0);
         public string Governing { get; internal set; }
         public int Tested { get; internal set; }
         public bool MinimumLegCountProven { get; internal set; }
@@ -467,6 +473,13 @@ namespace EngineeringDashboard
             if(input?.Network!=null)return TransferNetworkOptimizer.Optimize(input,input.Network).Beams[0];
             if (input?.TransferredSlab != null) return TransferredSlabOptimizer.Optimize(input);
             Validate(input);
+            if(input.LongitudinalStartMm!=0)
+            {
+                var local=input.CopyForSearch();local.LongitudinalStartMm=0;var layout=Optimize(local);
+                layout.LongitudinalStartMm=input.LongitudinalStartMm;layout.PositionsMm=layout.PositionsMm.Select(x=>x+input.LongitudinalStartMm).ToArray();
+                foreach(var p in layout.StockPlan.Pieces)p.StartMm+=input.LongitudinalStartMm;
+                return layout;
+            }
             return TowerStockPlanner.SearchWithCustom(input,()=>OptimizeCore(input),Better);
         }
         private static TowerLayout OptimizeCore(TowerInput input)

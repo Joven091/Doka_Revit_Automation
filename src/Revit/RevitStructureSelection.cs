@@ -17,6 +17,7 @@ namespace EngineeringDashboard
             internal readonly List<XYZ> Normals=new List<XYZ>();
             internal bool HasCurvedFaces,HasTopOpening;
             internal double ProjectedTopArea;
+            internal readonly List<ImportPoint[]> TopOutlines=new List<ImportPoint[]>();
             internal readonly List<double> TopLevels=new List<double>(),BottomLevels=new List<double>();
         }
         internal static RevitSelectionSnapshot Read(UIApplication app)
@@ -72,16 +73,21 @@ namespace EngineeringDashboard
                         // The column/wall pass can then trim a beam that still reaches a support centre.
                         var stations=geometry.Points.Select(p=>p.DotProduct(along)).ToArray();
                         a+=along*(stations.Min()-a.DotProduct(along));b+=along*(stations.Max()-b.DotProduct(along));
-                        bool rectangular=!geometry.HasCurvedFaces && Level(geometry.TopLevels) && Level(geometry.BottomLevels)
+                        double? nominalDepth=ReadDepth(e,type,out string depthSource);
+                        bool rectangular=!geometry.HasCurvedFaces && Level(geometry.TopLevels) && (nominalDepth.HasValue || Level(geometry.BottomLevels))
                             && geometry.Normals.All(n=>Axis(n,along) || Axis(n,across) || Axis(n,XYZ.BasisZ));
-                        record.Details+="\nRectangular section check: "+rectangular+"; transverse family offset (mm): "+RevitImportDiagnostics.Number(correction*MmPerFoot);
+                        double depth=nominalDepth??(top-bottom);
+                        record.Details+="\nBeam depth (mm): "+RevitImportDiagnostics.Number(depth)+"; source: "+depthSource
+                            +"\nJoined geometry soffit (mm): "+RevitImportDiagnostics.Number(bottom)+"; section soffit (mm): "+RevitImportDiagnostics.Number(top-depth)
+                            +"\nRectangular section check: "+rectangular+"; transverse family offset (mm): "+RevitImportDiagnostics.Number(correction*MmPerFoot);
                         if(!rectangular)record.Status="Blocked";
-                        beams.Add(new RevitSelectedBeam {SourceId=sourceId,Label=label,Start=Point(a),End=Point(b),WidthMm=(offsets.Max()-offsets.Min())*MmPerFoot,DepthMm=top-bottom,BottomMm=bottom,
+                        beams.Add(new RevitSelectedBeam {SourceId=sourceId,Label=label,Start=Point(a),End=Point(b),WidthMm=(offsets.Max()-offsets.Min())*MmPerFoot,DepthMm=depth,BottomMm=top-depth,
                             Problem=rectangular ? null : "The physical section is not a horizontal rectangular beam. Use a separate manual drawing."});
                     }
                     else if(slab)
                     {
-                        var outline=Hull(geometry.Points);
+                        // Preserve concave corner cutbacks; a convex hull invents bearing surface.
+                        var outline=geometry.TopOutlines.OrderByDescending(PlanArea).FirstOrDefault()??new ImportPoint[0];
                         bool flat=!geometry.HasCurvedFaces && Level(geometry.TopLevels) && Level(geometry.BottomLevels)
                             && geometry.Normals.All(n=>Math.Abs(n.Z)<1e-6 || Axis(n,XYZ.BasisZ));
                         double area=PlanArea(outline);
@@ -89,7 +95,7 @@ namespace EngineeringDashboard
                         record.Details+="\nFlat slab check: "+flat+"; footprint area check: "+complete+"; hull area (mm2): "+RevitImportDiagnostics.Number(area);
                         if(geometry.HasTopOpening || !complete || !flat)record.Status="Blocked";
                         slabs.Add(new RevitSelectedSlab {SourceId=sourceId,Label=label,Outline=outline,ThicknessMm=top-bottom,TopMm=top,
-                            Problem=geometry.HasTopOpening || !complete ? "Slab openings and irregular outlines are not supported by this canvas." : flat ? null : "Only flat slabs of constant thickness can be imported."});
+                            Problem=geometry.HasTopOpening || !complete ? "Slab openings or disconnected top faces are not supported by this canvas." : flat ? null : "Only flat slabs of constant thickness can be imported."});
                     }
                     else
                     {
@@ -118,6 +124,29 @@ namespace EngineeringDashboard
             if(data.Points.Count>0)text.AppendLine("Physical world bounds XYZ (mm): "+Xyz(new XYZ(data.Points.Min(p=>p.X),data.Points.Min(p=>p.Y),data.Points.Min(p=>p.Z)))+" to "+Xyz(new XYZ(data.Points.Max(p=>p.X),data.Points.Max(p=>p.Y),data.Points.Max(p=>p.Z))));
             return text.ToString();
         }
+        private static double? ReadDepth(Element instance,Element type,out string source)
+        {
+            // Read a length parameter, never digits in a type/family name. Prefer
+            // Revit's section-height definition, then conventional family fields.
+            foreach(string name in new[] {"STRUCTURAL_SECTION_COMMON_HEIGHT","FAMILY_HEIGHT_PARAM"})
+                if(Enum.TryParse(name,out BuiltInParameter id))foreach(var owner in new[] {instance,type})
+                {
+                    var parameter=owner?.get_Parameter(id);var value=LengthParameter(parameter);
+                    if(value.HasValue){source=(owner==instance ? "instance " : "type ")+name;return value;}
+                }
+            foreach(string name in new[] {"h","Height","Depth","Overall Height"})foreach(var owner in new[] {instance,type})
+            {
+                var values=(owner?.GetParameters(name)??new List<Parameter>()).Select(p=>LengthParameter(p)).Where(v=>v.HasValue).Select(v=>v.Value).Distinct().ToArray();
+                if(values.Length==1){source=(owner==instance ? "instance " : "type ")+name;return values[0];}
+            }
+            source="rectangular physical geometry (no section-depth parameter)";return null;
+        }
+        private static double? LengthParameter(Parameter parameter)
+        {
+            if(parameter==null || !parameter.HasValue || parameter.StorageType!=StorageType.Double || parameter.Definition.GetDataType()!=SpecTypeId.Length)return null;
+            double value=parameter.AsDouble()*MmPerFoot;
+            return TowerBeamAnalysis.Finite(value) && value>0 && value<=10000 ? value : (double?)null;
+        }
         private static string Label(Element e)
         {
             string mark=e.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString();
@@ -143,7 +172,16 @@ namespace EngineeringDashboard
                         {
                             var normal=transform.OfVector(planar.FaceNormal).Normalize();data.Normals.Add(normal);
                             if(normal.Z>.999999 && planar.EdgeLoops.Size>1)data.HasTopOpening=true;
-                            if(normal.Z>.999999){data.TopLevels.Add(transform.OfPoint(planar.Origin).Z);data.ProjectedTopArea+=planar.Area*normal.Z*MmPerFoot*MmPerFoot;}
+                            if(normal.Z>.999999)
+                            {
+                                data.TopLevels.Add(transform.OfPoint(planar.Origin).Z);data.ProjectedTopArea+=planar.Area*normal.Z*MmPerFoot*MmPerFoot;
+                                foreach(EdgeArray loop in planar.EdgeLoops)
+                                {
+                                    var vertices=new List<ImportPoint>();
+                                    foreach(Edge edge in loop)using(var curve=edge.AsCurveFollowingFace(planar))vertices.Add(Point(transform.OfPoint(curve.GetEndPoint(0))));
+                                    if(vertices.Count>=3)data.TopOutlines.Add(vertices.ToArray());
+                                }
+                            }
                             if(normal.Z<-.999999)data.BottomLevels.Add(transform.OfPoint(planar.Origin).Z);
                         }
                         else data.HasCurvedFaces=true;
