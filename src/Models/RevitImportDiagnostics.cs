@@ -73,7 +73,7 @@ namespace EngineeringDashboard
                 if(result.Configuration!=null)
                 {
                     var c=result.Configuration;var context=c.RevitContext;
-                    text.AppendLine("Clear beam length (mm): "+Number(result.LengthMm));
+                    text.AppendLine("Drawing length (mm): "+Number(result.LengthMm));
                     foreach(var b in c.Beams)text.AppendLine(b.Label+" actual span (mm): start="+Number(b.SpanStartMm)+"; end="+Number(b.SpanEnd(result.LengthMm))+"; length="+Number(b.SpanLength(result.LengthMm)));
                     text.AppendLine("Canvas rows: beams="+c.Beams.Length+"; bays="+c.Bays.Length+"; crossings="+c.CrossingBeams.Length);
                     if(context!=null)text.AppendLine("Canvas origin in Revit (mm): "+Point(new ImportPoint(context.OriginXmm,context.OriginYmm))+"; direction="+Point(new ImportPoint(context.DirectionX,context.DirectionY))+"; concrete datum="+Number(context.TopElevationMm));

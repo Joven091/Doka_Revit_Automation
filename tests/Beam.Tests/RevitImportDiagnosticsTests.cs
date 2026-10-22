@@ -23,7 +23,7 @@ internal static class RevitImportDiagnosticsTests
         Check(report.Contains("Selected elements: 7") && report.Contains("999") && report.Contains("Unsupported category"),"skipped selected elements are retained");
         Check(report.Contains("Rectangular / 800x1750") && report.Contains("24 vertices"),"family and geometry evidence retained");
         Check(report.Contains("Chosen main-direction element ID: 101") && report.Contains("Geometry tolerance (mm): 1"),"direction and validation tolerance captured");
-        Check(report.Contains("Clear beam length (mm): 7000") && report.Contains("X1 <- 103"),"mapped canvas geometry is traceable");
+        Check(report.Contains("Drawing length (mm): 7000") && report.Contains("X1 <- 103"),"mapped canvas geometry is traceable");
         Check(report.Contains("Cannot import my bay") && report.Contains("Remarks:"),"user remarks included");
         source.Beams[0].WidthMm=0;result=RevitStructureImport.Build(source,"101");report=Report(false,"Beam A | Width (mm) | raw text: bad number");
         Check(report.Contains("Preview status: Blocked") && report.Contains("enter a valid width"),"blocking reasons included");

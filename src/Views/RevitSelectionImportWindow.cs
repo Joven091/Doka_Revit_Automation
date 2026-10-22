@@ -116,7 +116,7 @@ namespace EngineeringDashboard
                 var model=new BeamCalculatorViewModel {UseTowers=true};Result.Apply(model);
                 PreviewCanvas=new BeamFormworkCanvas(model) {IsHitTestVisible=false,ImportPreviewMode=true};PreviewCanvas.ClearSelection();preview.Content=PreviewCanvas;
                 summary.Foreground=Brushes.DarkSlateGray;
-                summary.Text=$"{Result.Configuration.Beams.Length} beams · {Result.Configuration.Bays.Length} slab bays · {Result.Configuration.CrossingBeams.Length} crossings · {Result.Configuration.RevitContext.References.Length} column/wall references\nClear beam length: {Result.LengthMm:0.###} mm. Canvas elevation 0 = Revit {Result.Configuration.RevitContext.TopElevationMm:0.###} mm.\nReview floor height and shared settings before calculating. This is a geometry snapshot.";
+                summary.Text=$"{Result.Configuration.Beams.Length} beams · {Result.Configuration.Bays.Length} slab bays · {Result.Configuration.CrossingBeams.Length} crossings · {Result.Configuration.RevitContext.References.Length} column/wall references\nDrawing length: {Result.LengthMm:0.###} mm. Each beam retains its own endpoints. Canvas elevation 0 = Revit {Result.Configuration.RevitContext.TopElevationMm:0.###} mm.\nReview floor height and shared settings before calculating. This is a geometry snapshot.";
                 importNotes.Visibility=Result.Notes.Length>0 ? Visibility.Visible : Visibility.Collapsed;importNotes.Header="Import notes ("+Result.Notes.Length+")";
                 importNotes.Content=new TextBlock {Text=string.Join("\n",Result.Notes),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,6,0,0)};
             }
