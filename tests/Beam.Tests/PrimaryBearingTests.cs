@@ -12,7 +12,7 @@ internal static class PrimaryBearingTests
     {
         var beam=new[] {new TransferBeamRow {WidthMm=650,DepthMm=1150,BottomElevationMm=-1150},new TransferBeamRow {WidthMm=800,DepthMm=1750,BottomElevationMm=-1750}};
         var crossing=new TransferCrossingBeamRow {BayNumber=1,PositionMm=3450,WidthMm=650,DepthMm=1150,BottomElevationMm=-1150};
-        var network=new TransferNetworkInput {Beams=beam,Bays=new[] {new TransferBayRow {WidthMm=1875,ThicknessMm=300}},CrossingBeams=new[] {crossing},UpperSpacingMm=305};
+        var network=new TransferNetworkInput {PlywoodSheetLengthMm=2440,Beams=beam,Bays=new[] {new TransferBayRow {WidthMm=1875,ThicknessMm=300}},CrossingBeams=new[] {crossing},UpperSpacingMm=305};
         var layouts=Enumerable.Range(0,2).Select(i=>new TowerLayout {LengthMm=6900,WidthMm=1500,PositionsMm=new[] {750.0,2250,3750,5250},Joined=new[] {true,true,true},
             StockPlan=new TowerStockPlan {Pieces=new[] {new TowerStockPiece {StartMm=0,StockLengthMm=6900,FirstSupport=0,LastSupport=3}}},
             Transfer=new TransferredSlabResult {RowsMm=new[] {150.0,1400,2450,3180,3485,3790,4900,6100,6750},LowerStockStartMm=i==0 ? -900 : -1225,LowerStockLengthMm=i==0 ? 1800 : 2450,EnteredUpperSpacingMm=305,UpperMembers=Array.Empty<TransferMember>()}}).ToArray();
@@ -36,6 +36,22 @@ internal static class PrimaryBearingTests
             Check(m.SupportsMm[0]>=150 && m.LengthMm-m.SupportsMm[1]>=150,"both stock end setbacks checked");
         }
         Check(support.Solids.All(s=>s.Member!=null),"box-out has no drawn solid");
+        var prepared=Fixture();foreach(var l in prepared.Beams)l.StockPlan.Pieces=Array.Empty<TowerStockPiece>();prepared.Bays[0]=new UpperTransferPlan();
+        Check(CrossBeamSupportOptimizer.PrimaryBearing(input,prepared,0,out failure)!=null,"transverse-only receiver probe does not read unassembled slab scales");
+        var jointFixture=Fixture();
+        foreach(var l in jointFixture.Beams)l.StockPlan.Pieces=new[] {new TowerStockPiece {StockLengthMm=3450},new TowerStockPiece {StartMm=3450,StockLengthMm=3450}};
+        var atJoint=CrossBeamSupportOptimizer.PrimaryBearing(input,jointFixture,0,out failure);
+        Check(atJoint!=null && atJoint.SecondaryStationsMm.All(x=>Math.Abs(x-3450)>=40),"secondary flange avoids a primary stock joint");
+        var tooShort=Fixture();foreach(var l in tooShort.Beams)l.WidthMm=1000;
+        Check(CrossBeamSupportOptimizer.PrimaryBearing(input,tooShort,0,out failure)==null,"stock cannot omit either actual end setback");
+        var overloaded=Fixture();overloaded.Input.CrossingBeams[0].DepthMm=20000;
+        Check(CrossBeamSupportOptimizer.PrimaryBearing(input,overloaded,0,out failure)==null,"additional H20s cannot bypass capacity limits");
+        r.CrossSupports=new[] {support};
+        var protectedRow=typeof(CrossBeamSupportOptimizer).GetMethod("ProtectedRow",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
+        Check(!(bool)protectedRow.Invoke(null,new object[] {r,0,3,3180.0,true}),"primary-bearing layout can adjust a local receiving row");
+        r.CrossSupports=new[] {support,new CrossBeamSupportResult {Bearings=new[] {new CrossBeamBearing {Beam=0,Row=3}}}};
+        Check((bool)protectedRow.Invoke(null,new object[] {r,0,3,3180.0,true}),"another crossing's required receiving row remains protected");
+        r.CrossSupports=new[] {support};
         Populate(r,input);input.Diagnostics=new TowerSearchDiagnostics(270);
         double beforePrimary=r.Input.Beams.Sum(b=>r.Input.AreaLoad(b.DepthMm)*b.WidthMm/1000)*6.9;
         double beforeSecondary=r.Beams.Sum(l=>l.Transfer.LowerCases[0].Sum(m=>m.Analysis.TotalLoadKn));

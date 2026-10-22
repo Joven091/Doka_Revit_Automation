@@ -51,7 +51,11 @@ namespace EngineeringDashboard
             var stocks=common.StockLengthsMm.Where(s=>s<=span+1e-7);
             if(common.AllowCustomBeamLengths)
                 stocks=stocks.Concat(new[] {25*Math.Ceiling((far-near+2*end)/25)}.Where(s=>s<=span+1e-7));
-            var existing=NetworkSolids(r).Where(s=>!s.Name.StartsWith("B") || !s.Name.Contains("/T")).Concat(Concrete(r)).ToArray();
+            // Prepared receiver probes contain transverse data but no assembled
+            // primaries/slab scales. Reserve concrete there; the complete network
+            // checks every actual timber solid before accepting this option.
+            var existing=r.Beams.All(l=>l.StockPlan.Pieces.Length==0) ? Concrete(r).ToArray()
+                : NetworkSolids(r).Where(s=>!s.Name.StartsWith("B") || !s.Name.Contains("/T")).Concat(Concrete(r)).ToArray();
             foreach(double stock in stocks.Distinct().OrderBy(s=>s))
             {
                 double earliest=Math.Max(0,far+end-stock-face),latest=Math.Min(span-stock,near-end-face);
