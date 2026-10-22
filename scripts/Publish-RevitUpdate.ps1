@@ -49,7 +49,7 @@ try {
     }
     [IO.File]::WriteAllText($temporary, ($manifest | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
     # Publish metadata last. Readers see either the complete old or complete new release.
-    if ([IO.File]::Exists($latest)) { [IO.File]::Replace($temporary, $latest, $null) }
+    if ([IO.File]::Exists($latest)) { [IO.File]::Replace($temporary, $latest, [NullString]::Value) }
     else { [IO.File]::Move($temporary, $latest) }
     Write-Output "Published Revit 2024 version $Version to $Destination"
 } finally {
