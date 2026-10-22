@@ -36,6 +36,13 @@ internal static class PrimaryBearingTests
             Check(m.SupportsMm[0]>=150 && m.LengthMm-m.SupportsMm[1]>=150,"both stock end setbacks checked");
         }
         Check(support.Solids.All(s=>s.Member!=null),"box-out has no drawn solid");
+        var ledgerFixture=Fixture();ledgerFixture.Bays[0]=new UpperTransferPlan();ledgerFixture.SlabCoveredLengthMm=6900;
+        ledgerFixture.Beams[0].Transfer.SharedSlabRowsMm=Array.Empty<double>(); // Isolate ledger reactions from upper-slab obstacle geometry.
+        ledgerFixture.Input.BeamSpacingsMm=new[] {305.0,305};ledgerFixture.Input.SlabSpacingsMm=new[] {488.0};ledgerFixture.Input.CrossingSpacingsMm=new[] {305.0};
+        var withLedgers=CrossBeamSupportOptimizer.PrimaryBearing(input,ledgerFixture,0,out failure);
+        Check(withLedgers!=null && withLedgers.SlabEdgeLoadKn>0,"actual slab-edge ledgers are mandatory in assembled crossing: "+failure);
+        Near(withLedgers.LoadKn,r.Input.AreaLoad(1150)*.65*1.875+withLedgers.SlabEdgeLoadKn,"assembled crossing includes all ledger force");
+        Near(withLedgers.Bearings.Sum(b=>b.ReactionKn),withLedgers.LoadKn,"all ledger and concrete bearings conserve force");
         var prepared=Fixture();foreach(var l in prepared.Beams)l.StockPlan.Pieces=Array.Empty<TowerStockPiece>();prepared.Bays[0]=new UpperTransferPlan();
         Check(CrossBeamSupportOptimizer.PrimaryBearing(input,prepared,0,out failure)!=null,"transverse-only receiver probe does not read unassembled slab scales");
         var jointFixture=Fixture();

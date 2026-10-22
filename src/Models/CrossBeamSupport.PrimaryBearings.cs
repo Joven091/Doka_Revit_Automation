@@ -24,8 +24,13 @@ namespace EngineeringDashboard
             if(adjacent.Length==0)return null;
             var centres=new double[network.Beams.Length];
             for(int i=1;i<centres.Length;i++)centres[i]=centres[i-1]+network.Beams[i-1].WidthMm/2+network.Bays[i-1].WidthMm+network.Beams[i].WidthMm/2;
+            // Opposite receivers and slab allocations are not assembled yet.
+            // Keep this preliminary screen optimistic: reserve crossing concrete
+            // here, then include actual slab-edge ledgers in Complete/Recheck.
+            // A mirrored ledger split can otherwise discard a viable receiver
+            // before its real adjacent primary axes are known.
             var mirror=new TransferNetworkResult {Input=network,Beams=Enumerable.Repeat(probe,network.Beams.Length).ToArray(),
-                Bays=network.Bays.Select((b,i)=>probe.Transfer.PrimaryPlan.CarriesBay(i) ? new UpperTransferPlan() : null).ToArray(),BeamCentresMm=centres,
+                Bays=new UpperTransferPlan[network.Bays.Length],BeamCentresMm=centres,
                 SlabCoveredLengthMm=common.TransferredSlab.FixedCoveredLengthMm??common.LengthMm};
             var supports=new List<CrossBeamSupportResult>();
             foreach(var c in adjacent)
