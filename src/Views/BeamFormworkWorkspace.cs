@@ -493,6 +493,9 @@ namespace EngineeringDashboard
         private bool ValidateEditor(NumberEditor editor)
         {
             bool valid=double.TryParse(editor.Box.Text,NumberStyles.Float,CultureInfo.CurrentCulture,out var v) && TowerBeamAnalysis.Finite(v) && v>=editor.Minimum;
+            // Display formatting must not shorten an unchanged imported span.
+            // Only a real edit replaces its full-precision geometric value.
+            if(valid && !editor.Dirty){v=editor.Get();valid=TowerBeamAnalysis.Finite(v) && v>=editor.Minimum;}
             string reason=null;
             if(valid && Drawing.SelectedKind==FormworkObject.Beam && (editor.Box.Name=="EditSpanStartMm" || editor.Box.Name=="EditBeamLengthMm"))
                 try {Model.ValidateBeamSpan(Drawing.SelectedIndex,editor.Box.Name=="EditSpanStartMm" ? v : Model.BeamSpanStart(Drawing.SelectedIndex),editor.Box.Name=="EditBeamLengthMm" ? v : Model.BeamSpanLength(Drawing.SelectedIndex));}

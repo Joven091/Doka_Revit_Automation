@@ -127,6 +127,8 @@ internal static class RevitSelectionUiTests
         SaveImage(perimeterPreview,"perimeter-import.png",png);perimeterPreview.Close();
         w.ApplyRevitImport(columnGroup);Pump();w.Drawing.Fit();Pump();
         Check(w.Drawing.DrawnRevitPartCount==12 && w.RevitPartSelector.Items.Count==12,"all column-supported members reach the working canvas");
+        string untouchedGeometry=model.NetworkConfigurationXml;
+        Check(w.CommitFields() && model.NetworkConfigurationXml==untouchedGeometry,"rounded display values cannot reject or change an untouched span meeting a crossing face");
         var columnTarget=w.Drawing.CombinedObjectTargets.First(h=>h.Item1=="perimeter:523745" && h.Item3==FormworkObject.Beam);
         Check(w.Drawing.SelectAt(new Point(columnTarget.Item2.Left+columnTarget.Item2.Width/2,columnTarget.Item2.Top+columnTarget.Item2.Height/2)),"523745 is selectable as a column-supported member");Pump();
         Check(model.ActiveRevitDrawingKey=="perimeter:523745" && model.NetworkBeams.Count==1 && model.StandaloneDefinition().RevitSource.Contains("523745") && Math.Abs(model.BeamSpanLength(0)-13600)<.001,"selected member retains its Revit ID and 13.6 m column-face span");
