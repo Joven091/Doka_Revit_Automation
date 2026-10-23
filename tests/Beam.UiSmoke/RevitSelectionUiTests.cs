@@ -111,6 +111,15 @@ internal static class RevitSelectionUiTests
         var member=w.Drawing.CombinedObjectTargets.Last(h=>h.Item3==FormworkObject.Beam);
         Check(w.Drawing.SelectAt(new Point(member.Item2.Left+member.Item2.Width/2,member.Item2.Top+member.Item2.Height/2)),"solved column beam is clickable");Pump();
         Check(w.Diagrams!=null && model.IsCalculationValid,"selecting a component opens its existing member diagrams and preserves results");
+        var aligned=RevitStructureImport.Build(RevitAlignmentFixtures.AlignedAreas(),"523732");
+        var alignedPreview=new RevitSelectionImportWindow(RevitAlignmentFixtures.AlignedAreas());alignedPreview.Show();Pump();alignedPreview.RefreshPreview();Pump();alignedPreview.PreviewCanvas?.Fit();Pump();
+        Check(alignedPreview.ImportButton.IsEnabled && alignedPreview.PreviewCanvas.DrawnRevitPartCount==11 && alignedPreview.PreviewCanvas.DrawnReferenceCount==12,"5 mm alignment repair previews all five clear areas, six column beams and twelve columns");
+        Check(alignedPreview.BuildDiagnosticReport("").Contains("Geometry tolerance (mm): 5"),"fixed alignment allowance is diagnosable without an import setting");
+        SaveImage(alignedPreview,"aligned-import.png",png);alignedPreview.Close();
+        w.ApplyRevitImport(aligned);Pump();w.Drawing.Fit();Pump();
+        Check(w.Drawing.DrawnRevitPartCount==11 && model.RevitDrawings.Length==11 && w.RevitPartSelector.Items.Count==11 && (string)((Button)w.Buttons["Calculate"]).Content=="Calculate all","alignment repair reaches the combined working canvas");
+        Click(w,"Undo");Pump();Check(w.Drawing.DrawnRevitPartCount==9,"Undo restores the complete previous combined drawing");
+        Click(w,"Redo");Pump();Check(w.Drawing.DrawnRevitPartCount==11 && !model.AllowCustomH20Lengths && model.TowerLegCapacityKn==70,"Redo retains all aligned parts and project settings");
         var obstructed=RevitColumnImportTests.ReportedSelection();foreach(var p in obstructed.Boundaries[1].Outline)p.Y+=20;
         var obstacle=new RevitSelectionImportWindow(obstructed);Check(!obstacle.ImportButton.IsEnabled && obstacle.BuildDiagnosticReport("").Contains("intersects the bay interior"),"genuine interior obstruction remains blocked and diagnosable");obstacle.Close();
         var empty=new RevitSelectionImportWindow(new RevitSelectionSnapshot());Check(!empty.ImportButton.IsEnabled && empty.PreviewCanvas==null,"empty selection cannot replace inputs");empty.Close();

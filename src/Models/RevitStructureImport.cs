@@ -328,7 +328,10 @@ namespace EngineeringDashboard
     }
     internal static class RevitStructureImport
     {
-        internal const double ToleranceMm=1;
+        // Fixed import alignment leeway. Section sizes and physical obstruction
+        // checks retain their original precision; this is not a capacity margin.
+        internal const double ToleranceMm=5;
+        internal const double PrecisionMm=1;
         private sealed class Box
         {
             internal double X0,X1,Y0,Y1;
@@ -346,8 +349,8 @@ namespace EngineeringDashboard
             var result=new List<Beam>();
             foreach(var beam in beams.OrderBy(b=>b.Centre).ThenBy(b=>b.Start).ThenBy(b=>b.Source.SourceId,StringComparer.Ordinal))
             {
-                var preceding=result.LastOrDefault(b=>Math.Abs(b.Centre-beam.Centre)<=ToleranceMm && Math.Abs(b.Source.WidthMm-beam.Source.WidthMm)<=ToleranceMm
-                    && Math.Abs(b.Source.DepthMm-beam.Source.DepthMm)<=ToleranceMm && Math.Abs(b.Bottom-beam.Bottom)<=ToleranceMm
+                var preceding=result.LastOrDefault(b=>Math.Abs(b.Centre-beam.Centre)<=ToleranceMm && Math.Abs(b.Source.WidthMm-beam.Source.WidthMm)<=PrecisionMm
+                    && Math.Abs(b.Source.DepthMm-beam.Source.DepthMm)<=PrecisionMm && Math.Abs(b.Bottom-beam.Bottom)<=PrecisionMm
                     && beam.Start<=b.End+ToleranceMm && beam.End>=b.Start-ToleranceMm);
                 if(preceding==null){result.Add(beam);continue;}
                 preceding.Start=Math.Min(preceding.Start,beam.Start);preceding.End=Math.Max(preceding.End,beam.End);
@@ -372,9 +375,9 @@ namespace EngineeringDashboard
         {
             outline=ImportPolygon.StraightCorners(outline);
             if(outline==null || outline.Length!=4 || outline.Any(p=>!Finite(p)))return false;
-            var b=new Box(outline);return b.X1-b.X0>ToleranceMm && b.Y1-b.Y0>ToleranceMm
+            var b=new Box(outline);return b.X1-b.X0>PrecisionMm && b.Y1-b.Y0>PrecisionMm
                 && new[] {new ImportPoint(b.X0,b.Y0),new ImportPoint(b.X0,b.Y1),new ImportPoint(b.X1,b.Y0),new ImportPoint(b.X1,b.Y1)}
-                    .All(c=>outline.Any(p=>Math.Abs(c.X-p.X)<=ToleranceMm && Math.Abs(c.Y-p.Y)<=ToleranceMm));
+                    .All(c=>outline.Any(p=>Math.Abs(c.X-p.X)<=PrecisionMm && Math.Abs(c.Y-p.Y)<=PrecisionMm));
         }
         internal static RevitStructureImportResult Build(RevitSelectionSnapshot snapshot,string directionId=null)
         {
@@ -396,7 +399,7 @@ namespace EngineeringDashboard
             if(chosen==null || source.Beams.Length>45 || source.Slabs.Length==0 || source.Slabs.Length>30 || source.Boundaries.Length>100 || source.Problems.Length>0 || source.Beams.Any(b=>b.Problem!=null || !Finite(b.Start) || !Finite(b.End)
                 || new[] {b.WidthMm,b.DepthMm,b.BottomMm}.Any(v=>!TowerBeamAnalysis.Finite(v)) || b.WidthMm<=0 || b.DepthMm<=0)
                 || source.Slabs.Any(s=>s.Problem!=null || !TowerBeamAnalysis.Finite(s.ThicknessMm) || s.ThicknessMm<=0 || !TowerBeamAnalysis.Finite(s.TopMm))
-                || source.Boundaries.Any(b=>b.Problem!=null || !ImportPolygon.Convex(b.Outline,ToleranceMm)))return new RevitImportArea[0];
+                || source.Boundaries.Any(b=>b.Problem!=null || !ImportPolygon.Convex(b.Outline,PrecisionMm)))return new RevitImportArea[0];
             double length=Length(chosen);if(length<=ToleranceMm)return new RevitImportArea[0];
             double dx=(chosen.End.X-chosen.Start.X)/length,dy=(chosen.End.Y-chosen.Start.Y)/length;
             if(dx< -1e-6 || Math.Abs(dx)<=1e-6 && dy<0){dx=-dx;dy=-dy;}
@@ -412,15 +415,19 @@ namespace EngineeringDashboard
             var floors=source.Slabs.Select(s=>Tuple.Create(s,s.Outline?.Select(local).ToArray())).ToArray();
             if(floors.Any(s=>!SlabFootprint.ValidEndCutbacks(s.Item2,SlabFootprint.EndAllowance(s.Item1.ThicknessMm))))return new RevitImportArea[0];
             double datum=source.Slabs[0].TopMm;
-            if(source.Slabs.Any(s=>Math.Abs(s.TopMm-datum)>ToleranceMm) || source.Beams.Any(b=>Math.Abs(b.BottomMm+b.DepthMm-datum)>ToleranceMm))return new RevitImportArea[0];
+            if(source.Slabs.Any(s=>Math.Abs(s.TopMm-datum)>PrecisionMm) || source.Beams.Any(b=>Math.Abs(b.BottomMm+b.DepthMm-datum)>PrecisionMm))return new RevitImportArea[0];
             var nodes=ConnectedBeams(parallel,new List<string>()).ToArray();
             var edges=new List<Tuple<int,int,string[]>>();
             for(int i=0;i<nodes.Length;i++)for(int j=i+1;j<nodes.Length;j++)
             {
                 var a=nodes[i];var b=nodes[j];
-                if(b.Centre-a.Centre<=ToleranceMm || nodes.Any(n=>n.Centre>a.Centre+ToleranceMm && n.Centre<b.Centre-ToleranceMm))continue;
+                if(b.Centre-a.Centre<=ToleranceMm)continue;
                 double x0=Math.Max(a.Start,b.Start),x1=Math.Min(a.End,b.End),y0=a.Centre+a.Source.WidthMm/2,y1=b.Centre-b.Source.WidthMm/2;
                 if(x1-x0<=ToleranceMm || y1-y0<500)continue;
+                // A beam in a different longitudinal span is not an intervening
+                // support. Its centre line must not prevent this bay pairing.
+                if(nodes.Any(n=>n.Centre>a.Centre+ToleranceMm && n.Centre<b.Centre-ToleranceMm
+                    && Math.Min(n.End,x1)-Math.Max(n.Start,x0)>ToleranceMm))continue;
                 var panels=floors.Where(f=> {var box=new Box(f.Item2);return box.Y0<=y0+ToleranceMm && box.Y1>=y1-ToleranceMm && box.X1>x0+ToleranceMm && box.X0<x1-ToleranceMm;}).Select(f=>f.Item1.SourceId).ToArray();
                 if(panels.Length>0)edges.Add(Tuple.Create(i,j,panels));
             }
@@ -470,7 +477,7 @@ namespace EngineeringDashboard
             var references=new List<RevitReferenceShape>();var boundaries=new List<Tuple<RevitSelectedBoundary,ImportPoint[]>>();
             foreach(var s in snapshot.Boundaries)
             {
-                if(s.Problem!=null || !ImportPolygon.Convex(s.Outline,ToleranceMm)) {problems.Add(s.Label+": "+(s.Problem??"Cannot read a complete convex boundary footprint."));continue;}
+                if(s.Problem!=null || !ImportPolygon.Convex(s.Outline,PrecisionMm)) {problems.Add(s.Label+": "+(s.Problem??"Cannot read a complete convex boundary footprint."));continue;}
                 var outline=s.Outline.Select(local).ToArray();boundaries.Add(Tuple.Create(s,outline));
                 references.Add(new RevitReferenceShape {SourceId=s.SourceId,Label=s.Label,Kind=s.Kind,Outline=outline});
             }
@@ -486,13 +493,13 @@ namespace EngineeringDashboard
                 var beam=new Beam {Source=s,Parts=new[] {s},Start=along ? Math.Min(a.X,b.X) : Math.Min(a.Y,b.Y),End=along ? Math.Max(a.X,b.X) : Math.Max(a.Y,b.Y),Centre=along ? (a.Y+b.Y)/2 : (a.X+b.X)/2,Bottom=s.BottomMm};
                 foreach(var boundary in boundaries)
                 {
-                    if(boundary.Item1.TopMm<s.BottomMm-ToleranceMm || boundary.Item1.BottomMm>s.BottomMm+s.DepthMm+ToleranceMm)continue;
+                    if(boundary.Item1.TopMm<s.BottomMm-PrecisionMm || boundary.Item1.BottomMm>s.BottomMm+s.DepthMm+PrecisionMm)continue;
                     var outline=along ? boundary.Item2 : boundary.Item2.Select(p=>new ImportPoint(p.Y,p.X)).ToArray();var box=new Box(outline);
-                    if(box.Y1<=beam.Centre-s.WidthMm/2+ToleranceMm || box.Y0>=beam.Centre+s.WidthMm/2-ToleranceMm || box.X1<=beam.Start+ToleranceMm || box.X0>=beam.End-ToleranceMm)continue;
-                    if(!Rectangle(outline) || box.Y0>beam.Centre-s.WidthMm/2+ToleranceMm || box.Y1<beam.Centre+s.WidthMm/2-ToleranceMm)
+                    if(box.Y1<=beam.Centre-s.WidthMm/2+PrecisionMm || box.Y0>=beam.Centre+s.WidthMm/2-PrecisionMm || box.X1<=beam.Start+PrecisionMm || box.X0>=beam.End-PrecisionMm)continue;
+                    if(!Rectangle(outline) || box.Y0>beam.Centre-s.WidthMm/2+PrecisionMm || box.Y1<beam.Centre+s.WidthMm/2-PrecisionMm)
                     {problems.Add(s.Label+": "+boundary.Item1.Label+" has a partial or angled end face. Set this beam's clear limits manually in a separate drawing.");continue;}
-                    if(box.X0<=beam.Start+ToleranceMm && box.X1<beam.End-ToleranceMm){beam.Start=box.X1;notes.Add(s.Label+": start at the face of "+boundary.Item1.Label+".");}
-                    else if(box.X1>=beam.End-ToleranceMm && box.X0>beam.Start+ToleranceMm){beam.End=box.X0;notes.Add(s.Label+": end at the face of "+boundary.Item1.Label+".");}
+                    if(box.X0<=beam.Start+PrecisionMm && box.X1<beam.End-PrecisionMm){beam.Start=box.X1;notes.Add(s.Label+": start at the face of "+boundary.Item1.Label+".");}
+                    else if(box.X1>=beam.End-PrecisionMm && box.X0>beam.Start+PrecisionMm){beam.End=box.X0;notes.Add(s.Label+": end at the face of "+boundary.Item1.Label+".");}
                     else problems.Add(s.Label+": "+boundary.Item1.Label+" divides the selected span. Import one clear span at a time.");
                 }
                 if(beam.End-beam.Start<=ToleranceMm){problems.Add(s.Label+": no clear span remains between the selected boundaries.");continue;}
@@ -515,8 +522,8 @@ namespace EngineeringDashboard
                 floorBoxes.Add(Tuple.Create(s,new Box(outline)));floorOutlines[s.SourceId]=outline;
             }
             double datum=floorBoxes.Count>0 ? floorBoxes[0].Item1.TopMm : beams[0].Source.BottomMm+beams[0].Source.DepthMm;
-            if(beams.Concat(crosses).Any(b=>Math.Abs(b.Source.BottomMm+b.Source.DepthMm-datum)>ToleranceMm)
-                || floorBoxes.Any(s=>Math.Abs(s.Item1.TopMm-datum)>ToleranceMm))problems.Add("Selected beams and slabs must share a concrete top elevation. Import one level at a time.");
+            if(beams.Concat(crosses).Any(b=>Math.Abs(b.Source.BottomMm+b.Source.DepthMm-datum)>PrecisionMm)
+                || floorBoxes.Any(s=>Math.Abs(s.Item1.TopMm-datum)>PrecisionMm))problems.Add("Selected beams and slabs must share a concrete top elevation. Import one level at a time.");
             var rows=beams.Select((b,i)=>new TransferBeamRow {Label="B"+(i+1),SpanStartMm=b.Start-start,SpanLengthMm=b.End-b.Start,WidthMm=b.Source.WidthMm,DepthMm=b.Source.DepthMm,BottomElevationMm=b.Bottom-datum,RevitSource=string.Join("; ",b.Parts.Select(p=>p.Label))}).ToArray();
             var bays=new List<TransferBayRow>();var mappings=new List<RevitSourceMapping>();var usedFloors=new HashSet<string>();
             for(int i=0;i<beams.Count;i++)foreach(var part in beams[i].Parts)mappings.Add(Map("B"+(i+1),part.SourceId,part.Label));
@@ -529,7 +536,7 @@ namespace EngineeringDashboard
                     && s.Item2.X1>bayStart+ToleranceMm && s.Item2.X0<bayEnd-ToleranceMm).ToArray();
                 if(covering.Length==0){problems.Add("S"+(i+1)+": select slab panels covering the complete clear bay.");continue;}
                 var floor=covering[0].Item1;
-                if(covering.Any(p=>Math.Abs(p.Item1.ThicknessMm-floor.ThicknessMm)>ToleranceMm || Math.Abs(p.Item1.TopMm-floor.TopMm)>ToleranceMm))
+                if(covering.Any(p=>Math.Abs(p.Item1.ThicknessMm-floor.ThicknessMm)>PrecisionMm || Math.Abs(p.Item1.TopMm-floor.TopMm)>PrecisionMm))
                 {problems.Add("S"+(i+1)+": slab panels must have matching thickness and top elevation.");continue;}
                 var clipped=covering.Select(p=>SlabFootprint.Clip(floorOutlines[p.Item1.SourceId],bayStart,bayEnd,y0,y1)).ToArray();
                 ImportPoint[] bayOutline;
@@ -548,9 +555,9 @@ namespace EngineeringDashboard
                 foreach(var boundary in boundaries)
                 {
                     var box=new Box(boundary.Item2);
-                    if(boundary.Item1.TopMm>=floor.TopMm-floor.ThicknessMm-ToleranceMm && boundary.Item1.BottomMm<=floor.TopMm+ToleranceMm
-                        && box.X1>bayStart+ToleranceMm && box.X0<bayEnd-ToleranceMm && box.Y1>y0+ToleranceMm && box.Y0<y1-ToleranceMm
-                        && clipped.Any(p=>ImportPolygon.InteriorOverlap(p,boundary.Item2,bayStart,bayEnd,y0,y1,ToleranceMm)))
+                    if(boundary.Item1.TopMm>=floor.TopMm-floor.ThicknessMm-PrecisionMm && boundary.Item1.BottomMm<=floor.TopMm+PrecisionMm
+                        && box.X1>bayStart+PrecisionMm && box.X0<bayEnd-PrecisionMm && box.Y1>y0+PrecisionMm && box.Y0<y1-PrecisionMm
+                        && clipped.Any(p=>ImportPolygon.InteriorOverlap(p,boundary.Item2,bayStart,bayEnd,y0,y1,PrecisionMm)))
                         problems.Add("S"+(i+1)+": "+boundary.Item1.Label+" intersects the bay interior. Select one clear rectangular area.");
                 }
                 if(floor.ThicknessMm>Math.Min(rows[i].DepthMm,rows[i+1].DepthMm))problems.Add(floor.Label+": slab is thicker than an adjacent beam.");

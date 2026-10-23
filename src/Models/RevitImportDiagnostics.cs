@@ -61,6 +61,7 @@ namespace EngineeringDashboard
             text.AppendLine("Preview status: "+(previewCanImport ? "Ready to import" : "Blocked"));
             text.AppendLine("Chosen main-direction element ID: "+(directionId??"none"));
             text.AppendLine("Geometry tolerance (mm): "+Number(RevitStructureImport.ToleranceMm));
+            text.AppendLine("Section and obstruction precision (mm): "+Number(RevitStructureImport.PrecisionMm));
             text.AppendLine("--- Original Revit selection (before review edits) ---");text.AppendLine(originalSelection??CaptureSelection(source));
             text.AppendLine("--- Current reviewed geometry ---");AppendGeometry(text,source);
             text.AppendLine("--- Review table and validation ---");text.AppendLine(reviewState??"No review text available.");

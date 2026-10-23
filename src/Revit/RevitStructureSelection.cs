@@ -62,7 +62,7 @@ namespace EngineeringDashboard
                         if(line==null){record.Status="Blocked";problems.Add(label+": only straight horizontal beams can be imported.");continue;}
                         var a=line.GetEndPoint(0);var b=line.GetEndPoint(1);var direction=b-a;
                         record.Details+="\nLocation start XYZ (mm): "+Xyz(a)+"; end XYZ (mm): "+Xyz(b);
-                        if(Math.Abs(direction.Z)*MmPerFoot>RevitStructureImport.ToleranceMm || Math.Sqrt(direction.X*direction.X+direction.Y*direction.Y)*MmPerFoot<=1)
+                        if(Math.Abs(direction.Z)*MmPerFoot>RevitStructureImport.PrecisionMm || Math.Sqrt(direction.X*direction.X+direction.Y*direction.Y)*MmPerFoot<=1)
                         {record.Status="Blocked";problems.Add(label+": sloped or vertical framing cannot be imported.");continue;}
                         var along=new XYZ(direction.X,direction.Y,0).Normalize();var across=new XYZ(-along.Y,along.X,0);
                         var offsets=geometry.Points.Select(p=>p.DotProduct(across)).ToArray();
@@ -103,7 +103,7 @@ namespace EngineeringDashboard
                         // project coordinates. Retain the double-precision face
                         // edges for beam limits, references and slab intersections.
                         var outline=geometry.TopOutlines.OrderByDescending(PlanArea).FirstOrDefault()??new ImportPoint[0];
-                        double area=PlanArea(outline),tolerance=RevitStructureImport.ToleranceMm;
+                        double area=PlanArea(outline),tolerance=RevitStructureImport.PrecisionMm;
                         bool complete=!geometry.HasCurvedFaces && !geometry.HasTopOpening
                             && ImportPolygon.BoundaryMatches(outline,geometry.Points.Select(Point).ToArray(),geometry.ProjectedTopArea,tolerance);
                         record.Details+="\nBoundary footprint source: planar face edge loop; geometry tolerance (mm): "+RevitImportDiagnostics.Number(tolerance)
@@ -162,7 +162,7 @@ namespace EngineeringDashboard
             return text.Substring(0,Math.Min(200,text.Length))+" ["+e.Id.Value+"]";
         }
         private static bool Axis(XYZ a,XYZ b)=>Math.Abs(Math.Abs(a.DotProduct(b))-1)<1e-6;
-        private static bool Level(List<double> levels)=>levels.Count>0 && (levels.Max()-levels.Min())*MmPerFoot<=RevitStructureImport.ToleranceMm;
+        private static bool Level(List<double> levels)=>levels.Count>0 && (levels.Max()-levels.Min())*MmPerFoot<=RevitStructureImport.PrecisionMm;
         private static double PlanArea(ImportPoint[] points)
         {if(points.Length<3)return 0;double sum=0;var origin=points[0];for(int i=0;i<points.Length;i++){var a=points[i];var b=points[(i+1)%points.Length];sum+=(a.X-origin.X)*(b.Y-origin.Y)-(a.Y-origin.Y)*(b.X-origin.X);}return Math.Abs(sum)/2;}
         private static ImportPoint Point(XYZ p)=>new ImportPoint(p.X*MmPerFoot,p.Y*MmPerFoot);
