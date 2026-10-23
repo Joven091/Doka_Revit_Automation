@@ -50,6 +50,14 @@ internal static class RevitJunctionTests
         var combined=Model();result.Apply(combined);var saved=combined.NetworkConfigurationXml;var restored=Model();restored.BeamLengthMm=combined.BeamLengthMm;restored.NetworkConfigurationXml=saved;
         Check(restored.RevitSceneModels().Length==11 && restored.RevitSceneModels().All(p=>p.Item2.CreateTowerInput(false)!=null),"combined save/load retains eleven valid calculation inputs");
         Check(restored.TowerLegCapacityKn==70 && !restored.AllowCustomH20Lengths,"import retains project leg and catalogue settings");
+        var otherAxis=RevitStructureImport.Build(RevitJunctionFixtures.Reported(),"523885");
+        Check(otherAxis.CanImport && otherAxis.Areas.Length==11,"orthogonal main direction recognizes the same selected junctions");
+        var otherModel=Model();otherAxis.Apply(otherModel);
+        Check(otherModel.RevitSceneModels().Length==11 && otherModel.RevitSceneModels().All(p=>p.Item2.CreateTowerInput(false)!=null),"large orthogonal area can be applied to the combined canvas");
+        Check(otherModel.RevitDrawings.All(d=>d.Key.Length<=300) && otherModel.RevitDrawings.Any(d=>d.Key.StartsWith("sources:")),"large source lists have bounded keys without losing their mappings");
+        var reordered=RevitJunctionFixtures.Reported();reordered.Beams=reordered.Beams.Reverse().ToArray();reordered.Slabs=reordered.Slabs.Reverse().ToArray();
+        var reorderedResult=RevitStructureImport.Build(reordered,"523885");
+        Check(reorderedResult.CanImport && reorderedResult.Areas.Select(a=>a.Key).OrderBy(k=>k).SequenceEqual(otherAxis.Areas.Select(a=>a.Key).OrderBy(k=>k)),"compact drawing keys are stable across source enumeration order");
         string report=RevitImportDiagnostics.Build(source,original,"523475",result,true,"",null,"");
         Check(report.Contains("fills the junction") && report.Contains("523551") && report.Contains("523565"),"diagnostics explain both selected crossings and the original endpoints");
 

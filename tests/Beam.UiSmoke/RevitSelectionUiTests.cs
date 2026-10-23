@@ -140,7 +140,11 @@ internal static class RevitSelectionUiTests
         var junctionPreview=new RevitSelectionImportWindow(junctionSource);junctionPreview.Show();Pump();junctionPreview.RefreshPreview();Pump();junctionPreview.PreviewCanvas?.Fit();Pump();
         Check(junctionPreview.ImportButton.IsEnabled && junctionPreview.Result.Areas.Length==11 && junctionPreview.PreviewCanvas.DrawnRevitPartCount==11 && junctionPreview.PreviewCanvas.DrawnReferenceCount==12,"75-element junction report previews all five areas, six column beams and twelve columns");
         Check(junctionPreview.BuildDiagnosticReport("").Contains("fills the junction") && junctionPreview.BuildDiagnosticReport("").Contains("Preview status: Ready to import"),"both recognized junctions are ready and explained in Diagnose");
-        SaveImage(junctionPreview,"junction-import.png",png);junctionPreview.Close();
+        SaveImage(junctionPreview,"junction-import.png",png);
+        var junctionDirection=Find<ComboBox>(junctionPreview).Single(b=>b.SelectedValuePath=="SourceId");junctionDirection.SelectedValue="523885";Pump();junctionPreview.RefreshPreview();Pump();
+        Check(junctionPreview.ImportButton.IsEnabled && junctionPreview.PreviewCanvas.DrawnRevitPartCount==11 && string.IsNullOrEmpty(junctionPreview.LastPreviewException),"orthogonal direction previews a large connected area without a saved-identity exception");
+        junctionDirection.SelectedValue="523475";Pump();junctionPreview.RefreshPreview();Pump();
+        Check(junctionPreview.ImportButton.IsEnabled && junctionPreview.Result.Areas.Count(a=>a.Result.Configuration.Bays.Length>0)==5,"changing direction back restores all five clear areas");junctionPreview.Close();
         w.ApplyRevitImport(junctionGroup);Pump();w.Drawing.Fit();Pump();
         Check(w.Drawing.DrawnRevitPartCount==11 && w.RevitPartSelector.Items.Count==11,"junctions reach the combined working canvas");
         var junctionArea=junctionGroup.Areas.Single(a=>a.SourceIds.Contains("523625"));
