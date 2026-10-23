@@ -133,6 +133,7 @@ namespace EngineeringDashboard
         internal string DirectionId;
         internal string[] SourceIds;
         internal RevitStructureImportResult Result;
+        internal RevitSelectionSnapshot Geometry;
     }
     internal static class ImportPolygon
     {
@@ -326,7 +327,7 @@ namespace EngineeringDashboard
                 .GroupBy(v=>Tuple.Create(Math.Round(v.X,6),Math.Round(v.Y,6))).Select(g=>g.First()).ToArray();
         }
     }
-    internal static class RevitStructureImport
+    internal static partial class RevitStructureImport
     {
         // Fixed import alignment leeway. Section sizes and physical obstruction
         // checks retain their original precision; this is not a capacity margin.
@@ -384,6 +385,11 @@ namespace EngineeringDashboard
             var complete=BuildSingle(snapshot,directionId);
             if(complete.CanImport)return complete;
             var areas=ClearAreas(snapshot,directionId);
+            if(areas.Length<2 || areas.Any(a=>!a.Result.CanImport))
+            {
+                var perimeter=ColumnSupportedAreas(snapshot,directionId);
+                if(perimeter.Length>1)areas=perimeter;
+            }
             if(areas.Length<2)return complete;
             var problems=areas.Where(a=>!a.Result.CanImport).SelectMany(a=>a.Result.Problems.Select(p=>a.Label+": "+p)).ToArray();
             if(problems.Length>0)return new RevitStructureImportResult {Areas=areas,Problems=problems};
@@ -391,7 +397,7 @@ namespace EngineeringDashboard
             var configuration=BeamCalculatorViewModel.ReadNetwork(drawings[0].ConfigurationXml);
             configuration.SupportFormatVersion=4;configuration.RevitDrawings=drawings;configuration.ActiveRevitDrawingKey=drawings[0].Key;
             return new RevitStructureImportResult {Configuration=configuration,LengthMm=drawings[0].LengthMm,Areas=areas,
-                Notes=areas.SelectMany(a=>a.Result.Notes.Select(n=>a.Label+": "+n)).Concat(new[] {"Combined canvas: "+areas.Count(a=>a.Label.StartsWith("Area ",StringComparison.Ordinal))+" clear areas and "+areas.Count(a=>!a.Label.StartsWith("Area ",StringComparison.Ordinal))+" column-to-column beams. All members retain their Revit positions; columns separate the support calculations."}).ToArray()};
+                Notes=areas.SelectMany(a=>a.Result.Notes.Select(n=>a.Label+": "+n)).Concat(new[] {"Combined canvas: "+areas.Count(a=>a.Label.StartsWith("Area ",StringComparison.Ordinal))+" clear areas and "+areas.Count(a=>!a.Label.StartsWith("Area ",StringComparison.Ordinal))+" column-to-column beams. All members retain their Revit positions; column faces and beam junctions define the calculation parts."}).ToArray()};
         }
         private static RevitImportArea[] ClearAreas(RevitSelectionSnapshot source,string directionId)
         {
@@ -459,7 +465,7 @@ namespace EngineeringDashboard
             {
                 var selection=new RevitSelectionSnapshot {DocumentTitle=source.DocumentTitle,Beams=members,Slabs=panels,Boundaries=source.Boundaries};
                 var ids=members.Select(b=>b.SourceId).Concat(panels.Select(s=>s.SourceId)).Distinct().OrderBy(id=>id,StringComparer.Ordinal).ToArray();
-                areas.Add(new RevitImportArea {Key=string.Join("/",ids),Label=label,SourceIds=ids,DirectionId=axis,Result=BuildSingle(selection,axis)});
+                areas.Add(new RevitImportArea {Key=string.Join("/",ids),Label=label,SourceIds=ids,DirectionId=axis,Geometry=selection,Result=BuildSingle(selection,axis)});
             }
         }
         private static RevitStructureImportResult BuildSingle(RevitSelectionSnapshot snapshot,string directionId=null)

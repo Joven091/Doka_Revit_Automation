@@ -75,6 +75,7 @@ namespace EngineeringDashboard
                 {
                     text.AppendLine("Combined drawing part: "+area.Label+"; direction="+area.DirectionId+"; source IDs="+string.Join(", ",area.SourceIds)+"; ready="+area.Result.CanImport);
                     foreach(var mapping in area.Result.Configuration?.RevitContext?.Sources??new RevitSourceMapping[0])text.AppendLine("  "+mapping.CanvasLabel+" <- "+mapping.SourceId+" | "+mapping.SourceLabel);
+                    if(area.Geometry!=null){text.AppendLine("--- Detached calculation-part geometry: "+area.Label+" ---");AppendGeometry(text,area.Geometry);}
                 }
                 if(result.Configuration!=null)
                 {

@@ -49,12 +49,12 @@ internal static class RevitAlignmentTests
         Check(RevitStructureImport.Build(disjoint,"523732").CanImport,"a genuinely offset beam in another longitudinal span cannot block neighbouring supports here");
         var changedThickness=RevitAlignmentFixtures.AlignedAreas();changedThickness.Slabs.Single(s=>s.SourceId=="583621").ThicknessMm+=3;
         Check(!RevitStructureImport.Build(changedThickness,"523732").CanImport,"5 mm positional leeway cannot merge different slab thicknesses");
-        var newReport=RevitAlignmentFixtures.ColumnTerminations();var unsupported=RevitStructureImport.Build(newReport,"523456");
+        var newReport=RevitAlignmentFixtures.ColumnTerminations();var perimeter=RevitStructureImport.Build(newReport,"523456");
         Check(newReport.Beams.Length==41 && newReport.Slabs.Length==23 && newReport.Boundaries.Length==12,"exact 76-element report fixture");
-        Check(!unsupported.CanImport && unsupported.Problems.Any(p=>p.Contains("523745") && p.Contains("crossing endpoints")),"new report has genuine column-bounded/partial-bay topology beyond alignment tolerance");
+        Check(perimeter.CanImport && perimeter.Areas.Length==12,"column-supported members now import with actual connections beyond alignment tolerance");
         var edge=newReport.Beams.Single(b=>b.SourceId=="523745");var column=newReport.Boundaries.Single(b=>b.SourceId=="523381");var row=newReport.Beams.Single(b=>b.SourceId=="523864");
         Check(Math.Abs(Math.Min(edge.Start.Y,edge.End.Y)-column.Outline.Max(p=>p.Y))<1,"reported beam really stops at its column face");
         Check(Math.Min(edge.Start.Y,edge.End.Y)-(row.Start.Y+row.WidthMm/2)>299,"column face is about 300 mm from the row face, not a 5 mm placement error");
-        Console.WriteLine("Passed "+checks+" Revit alignment and diagnostic replay checks. Previous report: 11 combined parts accepted; new 76-element topology remains blocked.");
+        Console.WriteLine("Passed "+checks+" Revit alignment and diagnostic replay checks. Previous report: 11 combined parts; 76-element report: 12 combined parts.");
     }
 }
