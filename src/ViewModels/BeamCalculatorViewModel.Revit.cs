@@ -53,7 +53,8 @@ namespace EngineeringDashboard
             string xml=SerializeNetwork(configuration??CurrentNetwork(false));
             if(active.ConfigurationXml==xml && active.LengthMm==BeamLengthMm)return;
             active.ConfigurationXml=xml;active.LengthMm=BeamLengthMm;
-            revitDrawingModels[active.Key]=DrawingModel(active);
+            // Capturing a diagnostic/undo snapshot must also work while numeric
+            // inputs are invalid. Validate when switching or calculating instead.
         }
         private static Dictionary<string,BeamCalculatorViewModel> ValidateRevitDrawings(TransferNetworkConfiguration configuration)
         {
@@ -89,6 +90,9 @@ namespace EngineeringDashboard
         {
             if(!HasCombinedRevitDrawing || key==ActiveRevitDrawingKey || IsOptimizing)return;
             CaptureActiveRevitDrawing();var drawings=RevitDrawings;var models=revitDrawingModels;
+            var previous=drawings.Single(d=>d.Key==ActiveRevitDrawingKey);
+            if(models[previous.Key].NetworkConfigurationXml!=previous.ConfigurationXml || models[previous.Key].BeamLengthMm!=previous.LengthMm)
+                models[previous.Key]=DrawingModel(previous);
             var definition=drawings.Single(d=>d.Key==key);var target=models[key];bool valid=IsCalculationValid;
             BeamLengthMm=definition.LengthMm;NetworkConfigurationXml=definition.ConfigurationXml;
             useBeamNetwork=NetworkBeams.Count>1;transferSlabLoads=useBeamNetwork;
@@ -110,16 +114,18 @@ namespace EngineeringDashboard
         }
         private async Task OptimizeCombinedRevitAsync(bool useTimeLimit)
         {
-            CaptureActiveRevitDrawing();var definitions=RevitDrawings;int revision=towerRevision;
-            var models=definitions.ToDictionary(d=>d.Key,d=> {var model=DrawingModel(d);CopyProjectInputs(model);return model;});
+            var definitions=RevitDrawings;int revision=towerRevision;
+            Dictionary<string,BeamCalculatorViewModel> models=null;
             var cancellation=towerCancellation=new CancellationTokenSource();
             var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs(),cancellation.Token,null);
             IsOptimizing=true;IsCalculationValid=false;TowerResult=null;NetworkResult=null;TowerFailureDetails="";WarningMessage="Searching all imported areas…";NotifyTower();
             try
             {
+                CaptureActiveRevitDrawing();models=definitions.ToDictionary(d=>d.Key,d=> {var model=DrawingModel(d);CopyProjectInputs(model);return model;});
                 foreach(var definition in definitions)
                 {
                     cancellation.Token.ThrowIfCancellationRequested();runningRevitDrawing=models[definition.Key];
+                    if(revision!=towerRevision){trace.Complete("Discarded: inputs changed during search");return;}
                     combinedSearchProgress=definition.Label+" ("+(Array.IndexOf(definitions,definition)+1)+"/"+definitions.Length+")";NotifyTower();
                     await runningRevitDrawing.OptimizeTowersAsync(useTimeLimit);
                     cancellation.Token.ThrowIfCancellationRequested();

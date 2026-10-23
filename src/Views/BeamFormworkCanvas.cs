@@ -180,7 +180,7 @@ namespace EngineeringDashboard
         internal void SelectWindow(Point start,Point end,bool add=false)
         {
             if(Formwork || AddCrossing || CanInteract!=null && !CanInteract())return;
-            if(Model.HasCombinedRevitDrawing && !singleRevitPart){var active=Model.RevitSceneModels().Single(p=>p.Item1.Key==Model.ActiveRevitDrawingKey);PartCanvas(active).SelectWindow(start,end,add);return;}
+            if(Model.HasCombinedRevitDrawing && !singleRevitPart){var activePart=Model.RevitSceneModels().Single(p=>p.Item1.Key==Model.ActiveRevitDrawingKey);PartCanvas(activePart).SelectWindow(start,end,add);return;}
             var window=new Rect(start,end);bool crossing=end.X<start.X;
             var hits=ObjectTargets.Where(h=>crossing ? window.IntersectsWith(h.Item1) : window.Contains(h.Item1)).Select(h=>Tuple.Create(h.Item2,h.Item3)).Distinct().OrderBy(h=>h.Item1).ThenBy(h=>h.Item2).ToArray();
             if(!add)selection.Clear();foreach(var hit in hits)selection.Add(hit);
