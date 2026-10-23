@@ -21,6 +21,19 @@ Column and wall footprints use the actual planar-face edge loop. Mesh hulls rema
 
 Redundant points along a straight column face are removed for rectangular-face recognition. Original face loops remain in Diagnose and in the references. Connected collinear beam elements with matching section and soffit form one canvas row; every original element ID maps to that row. Real gaps at columns remain separate spans. Compatible slab panels can form one bay when their actual outlines, together with the selected crossing-beam strips, cover it. Polygon union preserves corner cuts and rejects openings and disconnected coverage. Crossing concrete remains a crossing load and is counted once.
 
+In version 1.1.13 or later, collinear pieces can also form one logical row when
+a selected perpendicular beam occupies the full interruption and covers the
+row width. Its depth and soffit must match the joined pieces within the existing
+1 mm section precision; its faces meet their ends within the fixed 5 mm plan
+allowance. This recognizes selected junction concrete, rather than increasing
+the gap tolerance or extending raw Revit elements. A column/wall overlapping
+the junction still separates the clear spans. Missing or incomplete crossings,
+real gaps and incompatible sections remain blocked. Original endpoints, source
+IDs and junction notes remain in Diagnose. The row includes the junction core;
+crossing loads cover the adjacent clear bays, so that core is counted once.
+The 75-element report imports as five areas and six column-to-column members,
+retaining all 39 beam IDs, 24 slab IDs and 12 column references on one canvas.
+
 Import alignment has a fixed 5 mm allowance, with no extra import setting. This applies to plan connections, recognition of beam lines and small corner deviations when joining compatible slab panels. Candidate neighbouring beams must overlap in their longitudinal spans; a beam elsewhere in the drawing cannot block their pairing. Section compatibility, concrete levels, column/wall footprint checks and actual obstruction checks retain their existing 1 mm precision. Imported widths, depths, slab thicknesses and calculation formulas are unchanged. Diagnose reports both tolerances and retains the original reviewed geometry. The 48-element alignment report imports as five clear areas and six column-to-column beams on one combined canvas. Column-supported connections in the separate 76-element report are handled by the connection classification described below; the 5 mm allowance never extends those members through the roughly 300 mm column zone.
 
 In version 1.1.12 or later, perpendicular perimeter members ending on selected column/wall faces retain their actual clear spans as separately checked column-to-column members on the combined canvas. They are not forced into internal crossing-beam rules. Internal crossing members must still meet the actual neighbouring beams. The importer checks column footprints, elevations and both end faces before assigning a member to this mode. Missing end columns, genuine end gaps and interior obstructions remain blocked.

@@ -345,20 +345,43 @@ namespace EngineeringDashboard
             internal RevitSelectedBeam[] Parts;
             internal double Start,End,Centre,Bottom;
         }
-        private static List<Beam> ConnectedBeams(List<Beam> beams,List<string> notes)
+        private static List<Beam> ConnectedBeams(List<Beam> beams,List<string> notes,IEnumerable<Beam> crossings=null,
+            IEnumerable<Tuple<RevitSelectedBoundary,ImportPoint[]>> boundaries=null)
         {
+            var across=(crossings??Enumerable.Empty<Beam>()).ToArray();
+            var obstacles=(boundaries??Enumerable.Empty<Tuple<RevitSelectedBoundary,ImportPoint[]>>()).ToArray();
             var result=new List<Beam>();
             foreach(var beam in beams.OrderBy(b=>b.Centre).ThenBy(b=>b.Start).ThenBy(b=>b.Source.SourceId,StringComparer.Ordinal))
             {
                 var preceding=result.LastOrDefault(b=>Math.Abs(b.Centre-beam.Centre)<=ToleranceMm && Math.Abs(b.Source.WidthMm-beam.Source.WidthMm)<=PrecisionMm
                     && Math.Abs(b.Source.DepthMm-beam.Source.DepthMm)<=PrecisionMm && Math.Abs(b.Bottom-beam.Bottom)<=PrecisionMm
-                    && beam.Start<=b.End+ToleranceMm && beam.End>=b.Start-ToleranceMm);
+                    && (beam.Start<=b.End+ToleranceMm && beam.End>=b.Start-ToleranceMm
+                        || ConnectingCrossing(b,beam,across,obstacles)!=null));
                 if(preceding==null){result.Add(beam);continue;}
+                var junction=ConnectingCrossing(preceding,beam,across,obstacles);
                 preceding.Start=Math.Min(preceding.Start,beam.Start);preceding.End=Math.Max(preceding.End,beam.End);
                 preceding.Parts=preceding.Parts.Concat(beam.Parts).ToArray();
                 notes.Add("Connected beam segments: "+string.Join(", ",preceding.Parts.Select(p=>p.SourceId))+". Original Revit IDs retained.");
+                if(junction!=null)notes.Add("Selected crossing "+junction.Source.Label+" fills the junction between these collinear segments. Original endpoints remain in Diagnose; the junction concrete belongs to the connected row and crossing loads cover the clear slab bays only.");
             }
             return result.OrderBy(b=>b.Centre).ThenBy(b=>b.Source.SourceId,StringComparer.Ordinal).ToList();
+        }
+        private static Beam ConnectingCrossing(Beam a,Beam b,Beam[] crossings,Tuple<RevitSelectedBoundary,ImportPoint[]>[] boundaries)
+        {
+            var left=a.Start<=b.Start ? a : b;var right=ReferenceEquals(left,a) ? b : a;
+            double from=left.End,to=right.Start;
+            if(to-from<=ToleranceMm)return null;
+            double y0=Math.Min(a.Centre-a.Source.WidthMm/2,b.Centre-b.Source.WidthMm/2),
+                y1=Math.Max(a.Centre+a.Source.WidthMm/2,b.Centre+b.Source.WidthMm/2);
+            // This is selected concrete at a beam junction, not additional gap
+            // tolerance. A column/wall still separates its own clear spans.
+            if(boundaries.Any(o=>o.Item1.TopMm>=a.Bottom-PrecisionMm && o.Item1.BottomMm<=a.Bottom+a.Source.DepthMm+PrecisionMm
+                && ImportPolygon.InteriorOverlap(new[] {new ImportPoint(from,y0),new ImportPoint(to,y0),new ImportPoint(to,y1),new ImportPoint(from,y1)},
+                    o.Item2,from,to,y0,y1,PrecisionMm)))return null;
+            return crossings.FirstOrDefault(c=>Math.Abs(c.Centre-c.Source.WidthMm/2-from)<=ToleranceMm
+                && Math.Abs(c.Centre+c.Source.WidthMm/2-to)<=ToleranceMm
+                && c.Start<=y0+ToleranceMm && c.End>=y1-ToleranceMm
+                && Math.Abs(c.Source.DepthMm-a.Source.DepthMm)<=PrecisionMm && Math.Abs(c.Bottom-a.Bottom)<=PrecisionMm);
         }
         internal static string DefaultDirection(RevitSelectionSnapshot snapshot)
         {
@@ -422,7 +445,7 @@ namespace EngineeringDashboard
             if(floors.Any(s=>!SlabFootprint.ValidEndCutbacks(s.Item2,SlabFootprint.EndAllowance(s.Item1.ThicknessMm))))return new RevitImportArea[0];
             double datum=source.Slabs[0].TopMm;
             if(source.Slabs.Any(s=>Math.Abs(s.TopMm-datum)>PrecisionMm) || source.Beams.Any(b=>Math.Abs(b.BottomMm+b.DepthMm-datum)>PrecisionMm))return new RevitImportArea[0];
-            var nodes=ConnectedBeams(parallel,new List<string>()).ToArray();
+            var nodes=ConnectedBeams(parallel,new List<string>(),crossing,source.Boundaries.Select(b=>Tuple.Create(b,b.Outline.Select(local).ToArray()))).ToArray();
             var edges=new List<Tuple<int,int,string[]>>();
             for(int i=0;i<nodes.Length;i++)for(int j=i+1;j<nodes.Length;j++)
             {
@@ -511,7 +534,7 @@ namespace EngineeringDashboard
                 if(beam.End-beam.Start<=ToleranceMm){problems.Add(s.Label+": no clear span remains between the selected boundaries.");continue;}
                 (along ? beams : crosses).Add(beam);
             }
-            beams=ConnectedBeams(beams,notes);
+            beams=ConnectedBeams(beams,notes,crosses,boundaries);
             if(beams.Count==0 || beams.Count>15){problems.Add("The drawing requires 1–15 parallel beams.");result.Problems=problems.Distinct().ToArray();return result;}
             double start=beams.Min(b=>b.Start),end=beams.Max(b=>b.End),length=end-start;
             if(length>50000)problems.Add("The clear beam length exceeds the canvas limit of 50,000 mm.");

@@ -66,7 +66,7 @@ namespace EngineeringDashboard
                     && Math.Min(p.End,c.Centre+c.Source.WidthMm/2)-Math.Max(p.Start,c.Centre-c.Source.WidthMm/2)>ToleranceMm)).ToArray();
             if(perimeter.Length==0)return new RevitImportArea[0];
             var internalCrosses=across.Except(perimeter).ToArray();
-            var logical=ConnectedBeams(parallel.Select(b=>new Beam {Source=b.Source,Parts=b.Parts,Start=b.Start,End=b.End,Centre=b.Centre,Bottom=b.Bottom}).ToList(),new List<string>());
+            var logical=ConnectedBeams(parallel.Select(b=>new Beam {Source=b.Source,Parts=b.Parts,Start=b.Start,End=b.End,Centre=b.Centre,Bottom=b.Bottom}).ToList(),new List<string>(),internalCrosses,boundaries);
             double x0=parallel.Min(p=>p.Start),x1=parallel.Max(p=>p.End),allowance=floors.Max(f=>SlabFootprint.EndAllowance(f.Item1.ThicknessMm));
             // A row ending at a T junction does not continue across the other
             // side of the slab. Split the calculation strip there, rather than
