@@ -51,13 +51,13 @@ namespace EngineeringDashboard
         // Optional deadline for explicitly requested diagnostic runs; normal calculation is unrestricted.
         internal TimeSpan TowerSearchTimeLimit {get;set;}=TimeSpan.FromSeconds(25);
         public bool IsOptimizing { get; private set; }
-        public string SearchProgressText=>towerCancellation?.IsCancellationRequested==true ? "Stopping the search…" : beamSearchTrace?.ProgressText??"Preparing the calculation";
+        public string SearchProgressText=>HasCombinedRevitDrawing && IsOptimizing ? combinedSearchProgress : towerCancellation?.IsCancellationRequested==true ? "Stopping the search…" : beamSearchTrace?.ProgressText??"Preparing the calculation";
         public double SearchElapsedSeconds=>beamSearchTrace?.ElapsedSeconds??0;
         public bool CanCancelOptimization => IsOptimizing && towerCancellation!=null && !towerCancellation.IsCancellationRequested;
         public void CancelOptimization()
         {
             if(!CanCancelOptimization)return;
-            towerCancellation.Cancel();WarningMessage="Cancelling tower analysis…";NotifyTower();
+            towerCancellation.Cancel();runningRevitDrawing?.CancelOptimization();WarningMessage="Cancelling tower analysis…";NotifyTower();
         }
         public string TowerFailureDetails {get;private set;}="";
         public bool HasTowerFailure=>!string.IsNullOrEmpty(TowerFailureDetails);
@@ -107,6 +107,7 @@ namespace EngineeringDashboard
         public async Task OptimizeTowersAsync(bool useTimeLimit=false)
         {
             if (!UseTowers || IsOptimizing) return;
+            if(HasCombinedRevitDrawing){await OptimizeCombinedRevitAsync(useTimeLimit);return;}
             var cancellation=towerCancellation=new CancellationTokenSource();
             var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs(),cancellation.Token,useTimeLimit ? TowerSearchTimeLimit : (TimeSpan?)null);
             int revision = towerRevision; networkBeamOptions.Clear(); IsOptimizing = true; TowerResult = null; NetworkResult=null;IndependentBeamResults=new TowerLayout[0]; TowerFailureDetails=""; IsCalculationValid = false;

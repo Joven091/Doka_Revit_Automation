@@ -300,7 +300,7 @@ namespace EngineeringDashboard
         }
         private static FormworkSolid Timber(string name,double x,double y,double length,bool alongX,double top,TransferMember member=null)
             =>new FormworkSolid {Name=name,X0=alongX ? x : x-40,X1=alongX ? x+length : x+40,Y0=alongX ? y-40 : y,Y1=alongX ? y+40 : y+length,Z0=top-200,Z1=top,Member=member};
-        private static IEnumerable<FormworkSolid> PrimarySolids(string name,double x,double y,double length,bool alongX,double top,PrimaryBeamProfile profile,TransferMember member=null)
+        internal static IEnumerable<FormworkSolid> PrimarySolids(string name,double x,double y,double length,bool alongX,double top,PrimaryBeamProfile profile,TransferMember member=null)
         {
             if(!profile.IsWS10) {foreach(int pair in new[] {-1,1})yield return Timber(name,x+(alongX ? 0 : pair*40),y+(alongX ? pair*40 : 0),length,alongX,top,member);yield break;}
             double half=profile.WidthMm/2;

@@ -115,6 +115,7 @@ namespace EngineeringDashboard
             Drawing.CanInteract=()=>!Model.IsOptimizing && CommitFields();
             Drawing.SelectionChanged+=()=> {InspectorTabs.SelectedIndex=0;BuildProperties();Refresh();
                 if(Drawing.SelectedKind==FormworkObject.Slab && Drawing.SelectedObjects.Length==1)SeparateSlabNotice.ShowBay(Drawing.SelectedIndex);};
+            Drawing.ActiveRevitPartChanged+=()=> {ClearDiagrams();refreshInputs?.Invoke();BuildProperties();Refresh();};
             Drawing.DimensionSelected+=OpenDimensionEditor;
             Drawing.BeamOptionsRequested+=async beam=>await NetworkBeamOptionsMenu.OpenAsync(Model,beam,Drawing,()=> {ClearDiagrams();Drawing.RefitIfNeeded();Refresh();});
             Drawing.GeometryContextRequested+=OpenGeometryMenu;
@@ -577,6 +578,7 @@ namespace EngineeringDashboard
         private void ClearDiagrams(){Diagrams?.Close();Diagrams=null;diagramBeam=-1;Drawing.SelectMember(-1,-1,0);Section.SelectMember(-1,-1,0);}
         private void Refresh()
         {
+            RefreshCombinedRevitControls();
             properties.IsEnabled=SharedProperties.IsEnabled=!Model.IsOptimizing;
             Drawing.InvalidateVisual();changing=true;try {foreach(var e in editors)if(!e.Dirty && !e.Box.IsKeyboardFocused)e.Box.Text=e.Get().ToString("0.###",CultureInfo.CurrentCulture);foreach(var e in stringEditors)if(!e.Dirty && !e.Box.IsKeyboardFocused)e.Box.Text=e.Get();foreach(var sync in syncControls)sync();}finally {changing=false;}
             bool pending=editors.Any(e=>e.Dirty && e.Box.IsEnabled) || stringEditors.Any(e=>e.Dirty),valid=editors.Where(e=>e.Box.IsEnabled).All(ValidateEditor) && stringEditors.All(ValidateStock);
@@ -608,7 +610,7 @@ namespace EngineeringDashboard
             else Section.SetResult(Model.NetworkResult);
             RefreshSectionControls();
             Drawing.RefitIfNeeded();
-            status.Text=pending ? (valid ? "Finish editing, then calculate." : "Correct the red input before continuing.") : Model.IsOptimizing ? Model.SearchProgressText : Model.IsCalculationValid ? "Results ready · click a member to open diagrams." : Model.HasTowerFailure ? "No solution found · open calculation failure details." : "Needs recalculation · "+Model.WarningMessage;
+            status.Text=pending ? (valid ? "Finish editing, then calculate." : "Correct the red input before continuing.") : Model.IsOptimizing ? Model.SearchProgressText : Model.IsCalculationValid ? (Model.HasCombinedRevitDrawing ? Model.CombinedRevitSummary+" · click any member for diagrams." : "Results ready · click a member to open diagrams.") : Model.HasTowerFailure ? "No solution found · open calculation failure details." : "Needs recalculation · "+Model.WarningMessage;
             removalInfo.Text=RemovalPreview;removalInfo.Visibility=!sectionMode && !Drawing.Formwork && Drawing.SelectedObjects.Length>0 ? Visibility.Visible : Visibility.Collapsed;
             RefreshResults(pending);
             failureExpander.Visibility=Model.HasTowerFailure ? Visibility.Visible : Visibility.Collapsed;

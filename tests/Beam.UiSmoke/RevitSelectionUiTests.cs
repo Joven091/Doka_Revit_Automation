@@ -22,7 +22,7 @@ internal static class RevitSelectionUiTests
         var model=new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true,UseBeamNetwork=true,TransferSlabLoads=true,AllowCustomH20Lengths=false,TowerLegCapacityKn=50,FloorHeight=4000};
         string original=model.NetworkConfigurationXml;double originalLength=model.BeamLengthMm;
         var standalone=new BeamFormworkWorkspace(model,null,null,null);Check(!standalone.Buttons.ContainsKey("FromRevit"),"standalone has no live Revit command");standalone.Close();
-        int reads=0;bool columnSelection=false;var w=new BeamFormworkWorkspace(model,null,null,null,readRevitSelection:()=> {reads++;return columnSelection ? RevitColumnImportTests.ReportedSelection() : RevitStructureImportTests.Sample();});w.Show();Pump();
+        int reads=0;bool columnSelection=false;var w=new BeamFormworkWorkspace(model,null,null,null,readRevitSelection:()=> {reads++;return columnSelection ? RevitImportFixtures.Columns() : RevitStructureImportTests.Sample();});w.Show();Pump();
         Check(w.Buttons.ContainsKey("FromRevit"),"Revit host has visible import button");
         w.ShowRevitImportPreview=dialog=> {Check(dialog.Result.CanImport && dialog.ImportButton.IsEnabled,"valid preview ready");dialog.Close();return false;};
         Click(w,"FromRevit");Check(reads==1 && model.NetworkConfigurationXml==original && model.BeamLengthMm==originalLength,"cancel does not replace canvas");
@@ -85,6 +85,31 @@ internal static class RevitSelectionUiTests
         Check(!model.AllowCustomH20Lengths && model.TowerLegCapacityKn==50,"column fix preserves project stock and capacity settings");
         Click(w,"Undo");Pump();Check(model.RevitContext.References.Length==0,"undo restores the earlier drawing without columns");
         Click(w,"Redo");Pump();Check(model.RevitContext.References.Length==4 && model.NetworkBays[0].Outline.Length>=8,"redo preserves columns and cutbacks");
+        var group=RevitStructureImport.Build(RevitImportFixtures.Areas(),"523766");
+        var combinedPreview=new RevitSelectionImportWindow(RevitImportFixtures.Areas());combinedPreview.Show();Pump();combinedPreview.RefreshPreview();Pump();combinedPreview.PreviewCanvas.Fit();Pump();
+        Check(combinedPreview.ImportButton.IsEnabled && combinedPreview.Result.Areas.Length==9,"the full multi-span selection enables one combined import");
+        Check(combinedPreview.PreviewCanvas.DrawnRevitPartCount==9 && combinedPreview.PreviewCanvas.DrawnReferenceCount==10,"all four areas, five column beams and ten columns share one preview");
+        Check(combinedPreview.BuildDiagnosticReport("").Contains("523933") && combinedPreview.BuildDiagnosticReport("").Contains("Combined drawing part:"),"full source mapping remains diagnosable");
+        SaveImage(combinedPreview,"combined-import.png",png);combinedPreview.Close();
+        w.ApplyRevitImport(group);Pump();w.Drawing.Fit();Pump();
+        Check(model.RevitDrawings.Length==9 && w.Drawing.DrawnRevitPartCount==9 && w.Drawing.DrawnReferenceCount==10,"accepted combined drawing retains every part");
+        Check((string)((Button)w.Buttons["Calculate"]).Content=="Calculate all" && w.RevitPartSelector.Items.Count==9,"combined calculation and active-part inspector are explicit");
+        var target=w.Drawing.CombinedObjectTargets.Last(h=>h.Item3==FormworkObject.Beam);var point=new Point(target.Item2.Left+target.Item2.Width/2,target.Item2.Top+target.Item2.Height/2);
+        Check(w.Drawing.SelectAt(point) && model.ActiveRevitDrawingKey==target.Item1,"clicking a beam activates its own component without hiding the others");Pump();
+        Check(w.Drawing.DrawnRevitPartCount==9,"selection retains the whole canvas");
+        Click(w,"Undo");Pump();Check(!model.HasCombinedRevitDrawing && model.NetworkBeams.Count==5,"Undo restores the previous full drawing");
+        Click(w,"Redo");Pump();Check(model.RevitDrawings.Length==9 && w.Drawing.DrawnRevitPartCount==9,"Redo restores all combined geometry");
+        model.TowerLegCapacityKn=70;model.MaximumConcreteEndOverhangMm=500;
+        var calculation=w.CalculateAsync();var timeout=System.Diagnostics.Stopwatch.StartNew();
+        while(!calculation.IsCompleted && timeout.Elapsed.TotalSeconds<180){Pump();System.Threading.Thread.Sleep(10);}
+        if(!calculation.IsCompleted){model.CancelOptimization();throw new Exception("Combined canvas calculation exceeded the UI test timeout.");}
+        calculation.GetAwaiter().GetResult();Pump();
+        Check(model.IsCalculationValid && model.RevitSceneModels().All(p=>p.Item2.IsCalculationValid),"Calculate all verifies every area and column beam");
+        Check(w.Drawing.Formwork && w.Drawing.DrawnRevitPartCount==9 && w.Drawing.DrawnLegCount==model.CombinedLegCount,"one formwork canvas renders all checked towers");
+        SaveImage(w,"combined-formwork.png",png);
+        var member=w.Drawing.CombinedObjectTargets.Last(h=>h.Item3==FormworkObject.Beam);
+        Check(w.Drawing.SelectAt(new Point(member.Item2.Left+member.Item2.Width/2,member.Item2.Top+member.Item2.Height/2)),"solved column beam is clickable");Pump();
+        Check(w.Diagrams!=null && model.IsCalculationValid,"selecting a component opens its existing member diagrams and preserves results");
         var obstructed=RevitColumnImportTests.ReportedSelection();foreach(var p in obstructed.Boundaries[1].Outline)p.Y+=20;
         var obstacle=new RevitSelectionImportWindow(obstructed);Check(!obstacle.ImportButton.IsEnabled && obstacle.BuildDiagnosticReport("").Contains("intersects the bay interior"),"genuine interior obstruction remains blocked and diagnosable");obstacle.Close();
         var empty=new RevitSelectionImportWindow(new RevitSelectionSnapshot());Check(!empty.ImportButton.IsEnabled && empty.PreviewCanvas==null,"empty selection cannot replace inputs");empty.Close();
@@ -113,5 +138,12 @@ internal static class RevitSelectionUiTests
         var fit=new RevitSelectionImportWindow(longWall);fit.Show();Pump();fit.PreviewCanvas.Fit();Pump();Check(fit.PreviewCanvas.SceneBounds.Height<6000,"a long boundary wall cannot squash the imported beam view");fit.Close();
         w.ConfirmNewSession=()=>true;w.Buttons["NewSession"].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));Pump();Check(model.RevitContext==null && w.Drawing.DrawnReferenceCount==0,"new session clears boundary context");w.Close();
         Console.WriteLine("Passed "+checks+" Revit selection preview/canvas checks.");
+    }
+    private static void SaveImage(Window window,string name,string sample)
+    {
+        if(sample==null)return;
+        var content=(FrameworkElement)window.Content;content.UpdateLayout();
+        var bitmap=new RenderTargetBitmap((int)content.ActualWidth,(int)content.ActualHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(content);
+        var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.Combine(Path.GetDirectoryName(sample),name)))encoder.Save(file);
     }
 }

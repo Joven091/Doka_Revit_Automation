@@ -286,6 +286,19 @@ namespace EngineeringDashboard
             var record=CaptureCalculation(); var vm=(BeamCalculatorViewModel)DataContext;
             if (vm.UseTowers)
             {
+                if(vm.HasCombinedRevitDrawing)
+                {
+                    var combined=new List<CalculationField> {CalculationFiles.Field("CombinedCanvas",vm.CombinedRevitSummary)};
+                    foreach(var part in vm.RevitSceneModels())
+                    {
+                        var model=part.Item2;
+                        combined.Add(CalculationFiles.Field(part.Item1.Label+" · source mapping",string.Join("\n",model.RevitContext.Sources.Select(s=>s.CanvasLabel+" ← "+s.SourceId+" · "+s.SourceLabel))));
+                        combined.Add(CalculationFiles.Field(part.Item1.Label+" · calculation",model.NetworkResult?.Summary??model.TowerResult.Summary));
+                        combined.Add(CalculationFiles.Field(part.Item1.Label+" · support schedule",model.NetworkResult?.Schedule??model.TowerResult.Schedule));
+                        combined.Add(CalculationFiles.Field(part.Item1.Label+" · stock schedule",model.NetworkResult?.Beams==null ? model.TowerResult.StockSchedule : string.Join("\n",model.NetworkResult.Beams.Select(b=>b.StockSchedule))));
+                    }
+                    return CalculationFiles.Report("Beam — combined Revit drawing",record.Inputs,combined,vm.TowerCalculationBasis);
+                }
                 var tower = vm.TowerResult;
                 var fields = new List<CalculationField> { CalculationFiles.Field("PlywoodLabel", vm.PlywoodLabel), CalculationFiles.Field("PlywoodChartReference", vm.SelectedPlywood.ChartReference), CalculationFiles.Field("MaximumSecondarySpacingMm", vm.MaximumSecondarySpacingMm), CalculationFiles.Field("PlywoodPressureKnM2", vm.PlywoodPressureKnM2), CalculationFiles.Field("PlywoodCriterion", vm.PlywoodCriterion), CalculationFiles.Field("SecondarySpacingGoverning", vm.SecondarySpacingGoverning), CalculationFiles.Field("SecondarySpacingSummary", vm.SecondarySpacingSummary),CalculationFiles.Field("ElementSpacingLimits",vm.ElementPlywoodSpacingSummary), CalculationFiles.Field("Layout", tower.Summary), CalculationFiles.Field("GoverningCheck", tower.Governing), CalculationFiles.Field("ConcreteEndOverhangMm", tower.ConcreteEndOverhangMm), CalculationFiles.Field("CurrentLegLoad", tower.LegLoadSummary), CalculationFiles.Field("OptimizationBasis", tower.CapacityBasis), CalculationFiles.Field("UpliftAcceptance", tower.UpliftSummary),
                     CalculationFiles.Field("LegUtilizationPercent", tower.MaxLegKn / vm.TowerLegCapacityKn * 100), CalculationFiles.Field("SupportSchedule", tower.Schedule),

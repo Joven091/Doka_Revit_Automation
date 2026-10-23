@@ -21,6 +21,8 @@ namespace EngineeringDashboard
         public TransferCrossingBeamRow[] CrossingBeams {get;set;}
         public IndependentBeamRow[] IndependentBeams {get;set;}
         public RevitImportContext RevitContext {get;set;}
+        public RevitDrawingDefinition[] RevitDrawings {get;set;}
+        public string ActiveRevitDrawingKey {get;set;}
     }
     public partial class BeamCalculatorViewModel
     {
@@ -97,21 +99,21 @@ namespace EngineeringDashboard
         public string NetworkSelectedLabel=>IsNetworkMode ? $"Inspecting B{SelectedNetworkBeam+1}" : "";
         public string NetworkConfigurationXml
         {
-            get {using(var text=new StringWriter(CultureInfo.InvariantCulture)) {new XmlSerializer(typeof(TransferNetworkConfiguration)).Serialize(text,new TransferNetworkConfiguration {SupportFormatVersion=NetworkBeams.Any(b=>b.SpanLengthMm.HasValue || b.SpanStartMm!=0) || NetworkBays.Any(b=>b.Outline!=null) ? 3 : 2,PlanOriginYmm=PlanOriginYmm,Beams=NetworkBeams.Count<=1 && !IsNetworkMode ? new[] {StandaloneDefinition()} : NetworkBeams.ToArray(),Bays=NetworkBays.ToArray(),CrossingBeams=CrossingBeams.ToArray(),IndependentBeams=IndependentBeams.ToArray(),RevitContext=RevitContext});return text.ToString();}}
+            get=>SerializeNetwork(CurrentNetwork(true));
             set
             {
-                TransferNetworkConfiguration config;
-                using(var text=new StringReader(value??""))using(var reader=XmlReader.Create(text,new XmlReaderSettings {DtdProcessing=DtdProcessing.Prohibit,XmlResolver=null,MaxCharactersInDocument=500000}))
-                    config=(TransferNetworkConfiguration)new XmlSerializer(typeof(TransferNetworkConfiguration)).Deserialize(reader);
+                var config=ReadNetwork(value);
                 if(config?.Beams==null || config.Bays==null || config.Beams.Length<1 || config.Beams.Length>TransferNetworkInput.MaximumBeamCount || config.Bays.Length!=config.Beams.Length-1 || config.Beams.Any(b=>b==null) || config.Bays.Any(b=>b==null))throw new ArgumentException("Invalid saved beam/slab network.");
                 if(config.CrossingBeams!=null && (config.CrossingBeams.Length>30 || config.CrossingBeams.Any(c=>c==null)))throw new ArgumentException("Invalid saved crossing beams.");
                 if(config.Beams.Length==1 && config.CrossingBeams?.Length>0)throw new ArgumentException("A standalone beam cannot contain slab crossing beams.");
                 if(!TowerBeamAnalysis.Finite(config.PlanOriginYmm) || Math.Abs(config.PlanOriginYmm)>1000000)throw new ArgumentException("Invalid saved drawing origin.");
                 if(config.IndependentBeams!=null) {if(config.IndependentBeams.Length>30 || config.IndependentBeams.Any(b=>b==null))throw new ArgumentException("Invalid saved independent beams.");foreach(var b in config.IndependentBeams)b.Validate();}
-                if(config.SupportFormatVersion<0 || config.SupportFormatVersion>3)throw new ArgumentException("Unsupported cross-beam support format.");
+                if(config.SupportFormatVersion<0 || config.SupportFormatVersion>4)throw new ArgumentException("Unsupported cross-beam support format.");
                 foreach(var b in config.Beams)b.ValidateSpan(BeamLengthMm);
                 if(config.Bays.Any(b=>b.Outline!=null && (b.Outline.Length<4 || b.Outline.Length>64 || b.Outline.Any(p=>p==null || !TowerBeamAnalysis.Finite(p.X) || !TowerBeamAnalysis.Finite(p.Y) || p.X<0 || p.X>50000 || p.Y< -1 || p.Y>b.WidthMm+1))))throw new ArgumentException("Invalid saved slab outline.");
                 config.RevitContext?.Validate();
+                var checkedDrawings=ValidateRevitDrawings(config);
+                RevitDrawings=config.RevitDrawings??new RevitDrawingDefinition[0];ActiveRevitDrawingKey=config.ActiveRevitDrawingKey??"";revitDrawingModels=checkedDrawings;
                 RevitContext=config.RevitContext;
                 if(config.SupportFormatVersion<2)foreach(var c in config.CrossingBeams??new TransferCrossingBeamRow[0])c.SupportMode=CrossBeamSupportMode.LegacySlabRows;
                 PlanOriginYmm=config.PlanOriginYmm;ClearIndependentBeams();foreach(var b in config.IndependentBeams??new IndependentBeamRow[0])IndependentBeams.Add(b);UnsubscribeNetwork();NetworkBeams.Clear();NetworkBays.Clear();CrossingBeams.Clear();foreach(var c in config.CrossingBeams??new TransferCrossingBeamRow[0])CrossingBeams.Add(c);foreach(var b in config.Beams)NetworkBeams.Add(b);foreach(var b in config.Bays)NetworkBays.Add(b);SubscribeNetwork();if(NetworkBeams.Count==1)SetStandaloneMode();Changed();NotifyNetwork();

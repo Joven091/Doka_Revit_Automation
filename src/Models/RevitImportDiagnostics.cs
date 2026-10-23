@@ -70,6 +70,11 @@ namespace EngineeringDashboard
             else
             {
                 text.AppendLine("Geometry builder accepts selection: "+result.CanImport);Lines(text,"Import problems",result.Problems);Lines(text,"Import notes",result.Notes);
+                foreach(var area in result.Areas)
+                {
+                    text.AppendLine("Combined drawing part: "+area.Label+"; direction="+area.DirectionId+"; source IDs="+string.Join(", ",area.SourceIds)+"; ready="+area.Result.CanImport);
+                    foreach(var mapping in area.Result.Configuration?.RevitContext?.Sources??new RevitSourceMapping[0])text.AppendLine("  "+mapping.CanvasLabel+" <- "+mapping.SourceId+" | "+mapping.SourceLabel);
+                }
                 if(result.Configuration!=null)
                 {
                     var c=result.Configuration;var context=c.RevitContext;
