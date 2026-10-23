@@ -218,8 +218,9 @@ namespace EngineeringDashboard
             Rect box;
             if(rotate) {box=new Rect(at.X-f.Height/2-2,at.Y-f.Width/2-1,f.Height+4,f.Width+2);at=new Point(at.X-f.Height/2,at.Y+f.Width/2);}
             else {if(centre)at.X-=f.Width/2;box=new Rect(at.X-2,at.Y-1,f.Width+4,f.Height+2);}
-            if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>ActualHeight || AnnotationBounds.Any(r=>r.IntersectsWith(box)))return false;
+            if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>ActualHeight || AnnotationBounds.Any(r=>r.IntersectsWith(box)) || sharedRevitAnnotations?.Any(r=>r.IntersectsWith(box))==true)return false;
             AnnotationBounds.Add(box);AnnotationLabels.Add(text);
+            sharedRevitAnnotations?.Add(box);
             // Draw masks last so later structure and dimension lines cannot cross the text.
             var drawing=new DrawingGroup();using(var overlay=drawing.Open()){overlay.DrawRectangle(Brushes.White,null,box);if(rotate)overlay.PushTransform(new RotateTransform(-90,at.X,at.Y));overlay.DrawText(f,at);if(rotate)overlay.Pop();}annotations.Add(drawing);return true;
         }

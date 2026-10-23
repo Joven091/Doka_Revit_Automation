@@ -26,8 +26,11 @@ namespace EngineeringDashboard
         private BeamCalculatorViewModel runningRevitDrawing;
         private string combinedSearchProgress="";
         internal bool HasCombinedRevitDrawing=>RevitDrawings.Length>1;
-        internal string CombinedRevitSummary=>!HasCombinedRevitDrawing ? "" : RevitDrawings.Length+" connected areas and column-to-column beams · "+CombinedLegCount+" tower legs";
-        internal int CombinedLegCount=>RevitSceneModels().Sum(p=>p.Item2.NetworkResult?.LegCount??p.Item2.TowerResult?.LegCount??0);
+        internal string CombinedRevitSummary=>!HasCombinedRevitDrawing ? "" : RevitDrawings.Length+" drawing parts · "+CombinedLegCount+" tower legs · "+CombinedH20Count+" H20s"+(CombinedWS10Count>0 ? " · "+CombinedWS10Count+" WS10s" : "");
+        internal int CombinedLegCount=>RevitSceneModels().Sum(p=>(p.Item2.NetworkResult?.LegCount??p.Item2.TowerResult?.LegCount??0)+p.Item2.IndependentBeamResults.Sum(b=>b.LegCount));
+        private static int LayoutH20s(TowerLayout layout)=>layout==null ? 0 : layout.StockPlan.TotalH20Count+(layout.Transfer?.AdditionalH20Count??0);
+        internal int CombinedH20Count=>RevitSceneModels().Sum(p=>(p.Item2.NetworkResult?.H20Count??LayoutH20s(p.Item2.TowerResult))+p.Item2.IndependentBeamResults.Sum(LayoutH20s));
+        internal int CombinedWS10Count=>RevitSceneModels().Sum(p=>(p.Item2.NetworkResult?.WS10Count??p.Item2.TowerResult?.StockPlan.WS10Count??0)+p.Item2.IndependentBeamResults.Sum(b=>b.StockPlan.WS10Count));
         internal static string SerializeNetwork(TransferNetworkConfiguration configuration)
         {using(var text=new StringWriter(CultureInfo.InvariantCulture)){new XmlSerializer(typeof(TransferNetworkConfiguration)).Serialize(text,configuration);return text.ToString();}}
         internal static TransferNetworkConfiguration ReadNetwork(string xml)

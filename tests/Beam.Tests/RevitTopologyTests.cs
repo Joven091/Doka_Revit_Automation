@@ -34,6 +34,8 @@ internal static class RevitTopologyTests
         Check(combined.CanImport,"native 36-element drawing: "+string.Join(";",combined.Problems));
         Check(combined.Areas.Length==9 && combined.Areas.Count(a=>a.Result.Configuration.Bays.Length>0)==4,"four column-bounded clear areas plus five column-to-column beams");
         Check(combined.Configuration.SupportFormatVersion==4 && combined.Configuration.RevitDrawings.Length==9,"combined drawing is an explicit new saved-file format");
+        var otherLevel=RevitImportFixtures.Areas();otherLevel.Beams.Last().BottomMm+=50;
+        Check(!RevitStructureImport.Build(otherLevel,"523766").CanImport,"partitioning cannot hide an incompatible concrete level");
         var allMappings=combined.Areas.SelectMany(a=>a.Result.Configuration.RevitContext.Sources).ToArray();
         Check(allMappings.Select(s=>s.SourceId).Distinct().OrderBy(s=>s).SequenceEqual(source.Beams.Select(b=>b.SourceId).Concat(source.Slabs.Select(s=>s.SourceId)).OrderBy(s=>s)),"all eighteen beam and eight slab IDs retained without omissions");
         Check(allMappings.GroupBy(s=>s.SourceId).All(g=>g.Count()==1),"each selected concrete member is assigned exactly once");
@@ -43,6 +45,9 @@ internal static class RevitTopologyTests
         Check(model.HasCombinedRevitDrawing && model.RevitSceneModels().Length==9,"one document contains every component");
         string saved=model.NetworkConfigurationXml;var restored=Model();restored.BeamLengthMm=model.BeamLengthMm;restored.NetworkConfigurationXml=saved;
         Check(restored.RevitDrawings.Length==9 && restored.RevitSceneModels().All(p=>p.Item2.RevitContext.References.Length==10),"save/load retains the whole combined drawing and all columns");
+        var duplicate=BeamCalculatorViewModel.ReadNetwork(saved);duplicate.RevitDrawings[1].Key=duplicate.RevitDrawings[0].Key;
+        bool rejected=false;try {restored.NetworkConfigurationXml=BeamCalculatorViewModel.SerializeNetwork(duplicate);}catch(ArgumentException){rejected=true;}
+        Check(rejected && restored.RevitDrawings.Length==9,"a duplicate saved component is rejected before replacing the drawing");
         string first=model.ActiveRevitDrawingKey,second=model.RevitDrawings.Last().Key;double old=model.BeamSpanLength(0);
         model.SetBeamSpan(0,model.BeamSpanStart(0),old-1);model.ActivateRevitDrawing(second);model.ActivateRevitDrawing(first);
         Near(old-1,model.BeamSpanLength(0),"switching parts preserves active-area geometry edits");
@@ -61,10 +66,16 @@ internal static class RevitTopologyTests
             }
         }
         Check(legs==model.CombinedLegCount,"combined quantities include every component exactly once");
+        Check(model.CombinedRevitClash()==null,"modeled stock tails and full tower footprints remain separate across components");
+        var moved=model.RevitSceneModels()[2].Item2;var occupied=model.RevitSceneModels()[1].Item2;double oldX=moved.RevitContext.OriginXmm,oldY=moved.RevitContext.OriginYmm;
+        moved.RevitContext.OriginXmm=occupied.RevitContext.OriginXmm;moved.RevitContext.OriginYmm=occupied.RevitContext.OriginYmm;
+        Check(model.CombinedRevitClash()!=null,"a real inter-component collision is detected in common coordinates");moved.RevitContext.OriginXmm=oldX;moved.RevitContext.OriginYmm=oldY;
         int expectedLegs=model.CombinedLegCount;model.ActivateRevitDrawing(second);Check(model.IsCalculationValid && model.TowerResult!=null && model.CombinedLegCount==expectedLegs,"selecting a solved component preserves all results and totals");
         Check(model.BuildDiagnosticReport().Contains("Combined Revit drawing calculations") && model.BuildDiagnosticReport().Contains("523933"),"diagnostics retain every component calculation and source ID");
         Console.WriteLine("Reported 36-element combined import and full calculation: "+clock.Elapsed.TotalSeconds.ToString("0.000")+" s; "+legs+" legs; 9 components.");
         var pair=Model();panels.Apply(pair);var input=pair.CreateTowerInput();Check(input.Network.Beams.Length==2 && input.Network.Bays.Length==1 && input.Network.CrossingBeams.Length==1,"split-beam/floor case reaches the unchanged engineering input factory");
+        var cancelled=Model();combined.Apply(cancelled);var pending=cancelled.OptimizeTowersAsync();cancelled.CancelOptimization();pending.GetAwaiter().GetResult();
+        Check(!cancelled.IsOptimizing && !cancelled.IsCalculationValid && cancelled.WarningMessage.Contains("cancelled"),"Cancel stops the combined search without accepting partial results");
         Console.WriteLine("Passed "+checks+" Revit topology and combined-drawing checks.");
     }
 }

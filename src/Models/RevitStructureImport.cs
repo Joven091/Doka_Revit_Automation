@@ -411,6 +411,8 @@ namespace EngineeringDashboard
             }
             var floors=source.Slabs.Select(s=>Tuple.Create(s,s.Outline?.Select(local).ToArray())).ToArray();
             if(floors.Any(s=>!SlabFootprint.ValidEndCutbacks(s.Item2,SlabFootprint.EndAllowance(s.Item1.ThicknessMm))))return new RevitImportArea[0];
+            double datum=source.Slabs[0].TopMm;
+            if(source.Slabs.Any(s=>Math.Abs(s.TopMm-datum)>ToleranceMm) || source.Beams.Any(b=>Math.Abs(b.BottomMm+b.DepthMm-datum)>ToleranceMm))return new RevitImportArea[0];
             var nodes=ConnectedBeams(parallel,new List<string>()).ToArray();
             var edges=new List<Tuple<int,int,string[]>>();
             for(int i=0;i<nodes.Length;i++)for(int j=i+1;j<nodes.Length;j++)

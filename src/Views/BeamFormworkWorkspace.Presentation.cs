@@ -21,7 +21,7 @@ namespace EngineeringDashboard
         private MenuItem addMenu;
         private TransferNetworkResult governingResult;
         private bool syncingSection;
-        internal readonly ComboBox RevitPartSelector=new ComboBox {MinWidth=190,DisplayMemberPath="Label",SelectedValuePath="Key",Margin=new Thickness(8,0,8,0),Visibility=Visibility.Collapsed,ToolTip="Active part for editing and section diagrams; the canvas always shows all parts."};
+        internal readonly ComboBox RevitPartSelector=new ComboBox {Width=225,Height=30,VerticalAlignment=VerticalAlignment.Center,DisplayMemberPath="Label",SelectedValuePath="Key",Margin=new Thickness(0,0,12,0),Visibility=Visibility.Collapsed,ToolTip="Active part for editing and section diagrams; the canvas always shows all parts."};
         private bool syncingRevitPart;
         private void RefreshCombinedRevitControls()
         {
@@ -63,11 +63,10 @@ namespace EngineeringDashboard
         private FrameworkElement BuildViewToolbar()
         {
             var toolbar=new DockPanel {Margin=new Thickness(10,0,10,6),LastChildFill=true};
-            var modes=new StackPanel {Orientation=Orientation.Horizontal};DockPanel.SetDock(modes,Dock.Left);toolbar.Children.Add(modes);
+            var modes=new StackPanel {Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Top};DockPanel.SetDock(modes,Dock.Left);toolbar.Children.Add(modes);
             modes.Children.Add(Button("Geometry","Geometry",Geometry));
             modes.Children.Add(Button("Formwork","Formwork",()=> {if(!CommitFields())return;CancelDrafting();sectionMode=false;Drawing.Formwork=true;Drawing.AddCrossing=false;Drawing.CancelSelectionGesture();Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;Drawing.InvalidateVisual();Drawing.Fit();Refresh();}));
             modes.Children.Add(Button("Section","Section",()=> {if(!CommitFields())return;CancelDrafting();sectionMode=true;Drawing.AddCrossing=false;Drawing.CancelSelectionGesture();Drawing.Visibility=Visibility.Collapsed;sectionHost.Visibility=Visibility.Visible;Refresh();}));
-            modes.Children.Add(RevitPartSelector);
             RevitPartSelector.SelectionChanged+=(s,e)=> {if(syncingRevitPart || !(RevitPartSelector.SelectedValue is string key) || !CommitFields())return;Model.ActivateRevitDrawing(key);Drawing.ClearSelection();ClearDiagrams();refreshInputs?.Invoke();BuildProperties();Refresh();};
             foreach(var tab in modes.Children.OfType<Button>()){tab.Margin=new Thickness(0);tab.SetResourceReference(StyleProperty,"ViewTab");}
             var display=new WrapPanel {HorizontalAlignment=HorizontalAlignment.Right};toolbar.Children.Add(display);
@@ -78,6 +77,7 @@ namespace EngineeringDashboard
             display.Children.Add(Button("ZoomOut","−",()=>Zoom(1/1.25)));display.Children.Add(Button("ZoomIn","+",()=>Zoom(1.25)));display.Children.Add(Button("Fit","Fit",()=> {if(sectionMode)SectionViewport.Fit();else Drawing.Fit();}));
             // Section position also appears on the plan, so users can place the cut before switching views.
             var sectionBar=new WrapPanel {Margin=new Thickness(10,3,10,5)};
+            sectionBar.Children.Add(RevitPartSelector);
             sectionControls.Children.Add(new TextBlock {Text="A–A position (mm)",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,8,0)});
             sectionControls.Children.Add(SectionPosition);sectionControls.Children.Add(SectionPositionInput);sectionBar.Children.Add(sectionControls);
             SectionPosition.ValueChanged+=(s,e)=> {if(!syncingSection)SetSectionPosition(e.NewValue);};

@@ -11,6 +11,7 @@ namespace EngineeringDashboard
         private bool singleRevitPart;
         private string revitPartPrefix,pressedRevitPart;
         private RevitImportContext combinedFrame;
+        private IList<Rect> sharedRevitAnnotations;
         private readonly Dictionary<string,BeamFormworkCanvas> revitCanvases=new Dictionary<string,BeamFormworkCanvas>();
         internal event Action ActiveRevitPartChanged;
         internal readonly List<Tuple<string,Rect,FormworkObject,int>> CombinedObjectTargets=new List<Tuple<string,Rect,FormworkObject,int>>();
@@ -67,11 +68,12 @@ namespace EngineeringDashboard
                 var points=reference.Outline.Select(p=>CombinedScreen(ProjectRevit(new Point(p.X,p.Y),part.Item2.RevitContext,RevitFrame))).ToArray();
                 var polygon=new StreamGeometry();using(var shape=polygon.Open()){shape.BeginFigure(points[0],true,true);shape.PolyLineTo(points.Skip(1).ToArray(),true,false);}
                 dc.DrawGeometry(new SolidColorBrush(Color.FromRgb(235,238,240)),new Pen(Brushes.SlateGray,1.2),polygon);DrawnReferenceCount++;
-                Label(dc,reference.Label,new Point(points.Average(p=>p.X),points.Average(p=>p.Y)),Brushes.SlateGray,true);
+                Label(dc,reference.Kind=="Column" ? "C"+reference.SourceId : reference.Label,new Point(points.Average(p=>p.X),points.Average(p=>p.Y)),Brushes.SlateGray,true);
             }
             foreach(var part in parts)
             {
                 var child=PartCanvas(part);bool active=part.Item1.Key==Model.ActiveRevitDrawingKey;
+                child.sharedRevitAnnotations=AnnotationBounds;
                 child.ImportPreviewMode=true;child.Formwork=Formwork && Model.IsCalculationValid;child.AllDimensions=AllDimensions && active;
                 child.HideDimensions=HideDimensions || !active;child.ShowSecondaryH20s=ShowSecondaryH20s;
                 child.Measure(new Size(ActualWidth,ActualHeight));child.Arrange(new Rect(0,0,ActualWidth,ActualHeight));child.Zoom=Zoom;child.Pan=Pan;
@@ -81,7 +83,7 @@ namespace EngineeringDashboard
                 child.OnRender(dc);DrawnRevitPartCount++;
                 foreach(var hit in child.ObjectTargets){CombinedObjectTargets.Add(Tuple.Create(part.Item1.Key,hit.Item1,hit.Item2,hit.Item3));ObjectTargets.Add(hit);}
                 MemberTargets.AddRange(child.MemberTargets);LegTargets.AddRange(child.LegTargets);SpacingTargets.AddRange(child.SpacingTargets);
-                AnnotationLabels.AddRange(child.AnnotationLabels);AnnotationBounds.AddRange(child.AnnotationBounds);
+                AnnotationLabels.AddRange(child.AnnotationLabels);
                 DrawnLegCount+=child.DrawnLegCount;DrawnCrossH20Count+=child.DrawnCrossH20Count;DrawnSecondaryH20Count+=child.DrawnSecondaryH20Count;
                 DrawnBracedBayCount+=child.DrawnBracedBayCount;DrawnH20ProfileCount+=child.DrawnH20ProfileCount;
                 if(active)sectionTarget=child.sectionTarget;

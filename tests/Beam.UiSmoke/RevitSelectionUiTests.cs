@@ -106,6 +106,7 @@ internal static class RevitSelectionUiTests
         calculation.GetAwaiter().GetResult();Pump();
         Check(model.IsCalculationValid && model.RevitSceneModels().All(p=>p.Item2.IsCalculationValid),"Calculate all verifies every area and column beam");
         Check(w.Drawing.Formwork && w.Drawing.DrawnRevitPartCount==9 && w.Drawing.DrawnLegCount==model.CombinedLegCount,"one formwork canvas renders all checked towers");
+        Check(!w.Drawing.AnnotationBounds.SelectMany((a,i)=>w.Drawing.AnnotationBounds.Skip(i+1).Select(b=>a.IntersectsWith(b))).Any(overlap=>overlap),"labels share one collision check across every drawing part");
         SaveImage(w,"combined-formwork.png",png);
         var member=w.Drawing.CombinedObjectTargets.Last(h=>h.Item3==FormworkObject.Beam);
         Check(w.Drawing.SelectAt(new Point(member.Item2.Left+member.Item2.Width/2,member.Item2.Top+member.Item2.Height/2)),"solved column beam is clickable");Pump();
