@@ -21,6 +21,16 @@ namespace EngineeringDashboard
         private MenuItem addMenu;
         private TransferNetworkResult governingResult;
         private bool syncingSection;
+        internal readonly ComboBox RevitPartSelector=new ComboBox {Width=225,Height=30,VerticalAlignment=VerticalAlignment.Center,DisplayMemberPath="Label",SelectedValuePath="Key",Margin=new Thickness(0,0,12,0),Visibility=Visibility.Collapsed,ToolTip="Active part for editing and section diagrams; the canvas always shows all parts."};
+        private bool syncingRevitPart;
+        private void RefreshCombinedRevitControls()
+        {
+            syncingRevitPart=true;
+            try {RevitPartSelector.Visibility=Model.HasCombinedRevitDrawing ? Visibility.Visible : Visibility.Collapsed;RevitPartSelector.IsEnabled=!Model.IsOptimizing;
+                RevitPartSelector.ItemsSource=Model.RevitDrawings;RevitPartSelector.SelectedValue=Model.ActiveRevitDrawingKey;
+                ((Button)Buttons["Calculate"]).Content=Model.HasCombinedRevitDrawing ? "Calculate all" : "Calculate";}
+            finally {syncingRevitPart=false;}
+        }
 
         private FrameworkElement BuildToolbar(Action changeSystem)
         {
@@ -47,15 +57,17 @@ namespace EngineeringDashboard
             addMenu.Items.Add(MenuAction("AddCrossing","Crossing beam",()=> {if(CommitFields() && Model.IsNetworkMode){Geometry();Drawing.AddCrossing=true;Drawing.Cursor=Cursors.Cross;Drawing.InvalidateVisual();}}));
             var tools=new MenuItem {Header="_Tools",Padding=new Thickness(10,6,10,6)};tools.Items.Add(MenuAction("Diagnose","Diagnose…",ShowDiagnostics));menus.Items.Add(tools);
             edit.Children.Add(menus);edit.Children.Add(Button("Undo","Undo",()=>History(undo,redo)));edit.Children.Add(Button("Redo","Redo",()=>History(redo,undo)));
+            if(readRevitSelection!=null)edit.Children.Add(Button("FromRevit","From Revit…",ImportRevitSelection));
             edit.Children.Add(Button("Delete","Delete selection",RemoveSelected));toolbar.Children.Add(edit);return toolbar;
         }
         private FrameworkElement BuildViewToolbar()
         {
             var toolbar=new DockPanel {Margin=new Thickness(10,0,10,6),LastChildFill=true};
-            var modes=new StackPanel {Orientation=Orientation.Horizontal};DockPanel.SetDock(modes,Dock.Left);toolbar.Children.Add(modes);
+            var modes=new StackPanel {Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Top};DockPanel.SetDock(modes,Dock.Left);toolbar.Children.Add(modes);
             modes.Children.Add(Button("Geometry","Geometry",Geometry));
             modes.Children.Add(Button("Formwork","Formwork",()=> {if(!CommitFields())return;CancelDrafting();sectionMode=false;Drawing.Formwork=true;Drawing.AddCrossing=false;Drawing.CancelSelectionGesture();Drawing.Visibility=Visibility.Visible;sectionHost.Visibility=Visibility.Collapsed;Drawing.InvalidateVisual();Drawing.Fit();Refresh();}));
             modes.Children.Add(Button("Section","Section",()=> {if(!CommitFields())return;CancelDrafting();sectionMode=true;Drawing.AddCrossing=false;Drawing.CancelSelectionGesture();Drawing.Visibility=Visibility.Collapsed;sectionHost.Visibility=Visibility.Visible;Refresh();}));
+            RevitPartSelector.SelectionChanged+=(s,e)=> {if(syncingRevitPart || !(RevitPartSelector.SelectedValue is string key) || !CommitFields())return;Model.ActivateRevitDrawing(key);Drawing.ClearSelection();ClearDiagrams();refreshInputs?.Invoke();BuildProperties();Refresh();};
             foreach(var tab in modes.Children.OfType<Button>()){tab.Margin=new Thickness(0);tab.SetResourceReference(StyleProperty,"ViewTab");}
             var display=new WrapPanel {HorizontalAlignment=HorizontalAlignment.Right};toolbar.Children.Add(display);
             display.Children.Add(new TextBlock {Text="Dimensions",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(10,0,6,0)});display.Children.Add(dimensionMode);
@@ -65,10 +77,11 @@ namespace EngineeringDashboard
             display.Children.Add(Button("ZoomOut","−",()=>Zoom(1/1.25)));display.Children.Add(Button("ZoomIn","+",()=>Zoom(1.25)));display.Children.Add(Button("Fit","Fit",()=> {if(sectionMode)SectionViewport.Fit();else Drawing.Fit();}));
             // Section position also appears on the plan, so users can place the cut before switching views.
             var sectionBar=new WrapPanel {Margin=new Thickness(10,3,10,5)};
+            sectionBar.Children.Add(RevitPartSelector);
             sectionControls.Children.Add(new TextBlock {Text="A–A position (mm)",VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,8,0)});
             sectionControls.Children.Add(SectionPosition);sectionControls.Children.Add(SectionPositionInput);sectionBar.Children.Add(sectionControls);
             SectionPosition.ValueChanged+=(s,e)=> {if(!syncingSection)SetSectionPosition(e.NewValue);};
-            Action commit=()=> {if(double.TryParse(SectionPositionInput.Text,NumberStyles.Float,CultureInfo.CurrentCulture,out var x) && TowerBeamAnalysis.Finite(x) && x>=0 && x<=Model.BeamLengthMm){SectionPositionInput.ClearValue(BorderBrushProperty);SetSectionPosition(x);}else SectionPositionInput.BorderBrush=Brushes.Firebrick;};
+            Action commit=()=> {if(double.TryParse(SectionPositionInput.Text,NumberStyles.Float,CultureInfo.CurrentCulture,out var x) && TowerBeamAnalysis.Finite(x) && x>=0 && x<=Model.DrawingLengthMm){SectionPositionInput.ClearValue(BorderBrushProperty);SetSectionPosition(x);}else SectionPositionInput.BorderBrush=Brushes.Firebrick;};
             SectionPositionInput.KeyDown+=(s,e)=> {if(e.Key==Key.Enter){commit();e.Handled=true;}};SectionPositionInput.LostKeyboardFocus+=(s,e)=>commit();
             var container=new StackPanel();container.Children.Add(toolbar);container.Children.Add(sectionBar);return container;
         }
@@ -76,14 +89,14 @@ namespace EngineeringDashboard
         {
             if(syncingSection || !TowerBeamAnalysis.Finite(x))return;
             syncingSection=true;
-            try {x=Math.Max(0,Math.Min(Model.BeamLengthMm,x));Section.SectionPositionMm=Drawing.SectionPositionMm=x;SectionPosition.Maximum=Model.BeamLengthMm;SectionPosition.Value=x;SectionPositionInput.Text=x.ToString("0.###",CultureInfo.CurrentCulture);Section.InvalidateVisual();Drawing.InvalidateVisual();}
+            try {x=Math.Max(0,Math.Min(Model.DrawingLengthMm,x));Section.SectionPositionMm=Drawing.SectionPositionMm=x;SectionPosition.Maximum=Model.DrawingLengthMm;SectionPosition.Value=x;SectionPositionInput.Text=x.ToString("0.###",CultureInfo.CurrentCulture);Section.InvalidateVisual();Drawing.InvalidateVisual();}
             finally {syncingSection=false;}
         }
         private void RefreshSectionControls()
         {
             if(Model.NetworkResult!=null && Model.IsCalculationValid)
             {
-                SetSectionPosition(TowerBeamAnalysis.Finite(Drawing.SectionPositionMm) ? Drawing.SectionPositionMm : Model.BeamLengthMm/2);
+                SetSectionPosition(TowerBeamAnalysis.Finite(Drawing.SectionPositionMm) ? Drawing.SectionPositionMm : Model.DrawingLengthMm/2);
                 if(!ReferenceEquals(governingResult,Model.NetworkResult))
                 {
                     governingResult=Model.NetworkResult;GoverningMembers.Children.Clear();GoverningMembers.Children.Add(new TextBlock {Text="Governing members",FontWeight=FontWeights.SemiBold});

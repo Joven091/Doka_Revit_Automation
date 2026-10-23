@@ -51,13 +51,13 @@ namespace EngineeringDashboard
         // Optional deadline for explicitly requested diagnostic runs; normal calculation is unrestricted.
         internal TimeSpan TowerSearchTimeLimit {get;set;}=TimeSpan.FromSeconds(25);
         public bool IsOptimizing { get; private set; }
-        public string SearchProgressText=>towerCancellation?.IsCancellationRequested==true ? "Stopping the search…" : beamSearchTrace?.ProgressText??"Preparing the calculation";
+        public string SearchProgressText=>HasCombinedRevitDrawing && IsOptimizing ? combinedSearchProgress : towerCancellation?.IsCancellationRequested==true ? "Stopping the search…" : beamSearchTrace?.ProgressText??"Preparing the calculation";
         public double SearchElapsedSeconds=>beamSearchTrace?.ElapsedSeconds??0;
         public bool CanCancelOptimization => IsOptimizing && towerCancellation!=null && !towerCancellation.IsCancellationRequested;
         public void CancelOptimization()
         {
             if(!CanCancelOptimization)return;
-            towerCancellation.Cancel();WarningMessage="Cancelling tower analysis…";NotifyTower();
+            towerCancellation.Cancel();runningRevitDrawing?.CancelOptimization();WarningMessage="Cancelling tower analysis…";NotifyTower();
         }
         public string TowerFailureDetails {get;private set;}="";
         public bool HasTowerFailure=>!string.IsNullOrEmpty(TowerFailureDetails);
@@ -71,7 +71,7 @@ namespace EngineeringDashboard
         public string TowerStockSchedule => TowerResult?.StockSchedule ?? "";
         public string TowerSearchNote => TowerResult == null ? "" : TowerResult.SearchNote + " Tested layouts: " + TowerResult.Tested + ".";
         public const string TowerAssumptions = "Two primary lines use the selected material and its stated strength/stiffness basis. Each stock member is analyzed separately with at least two supports, full uniform load, rigid non-settling supports and free ends. Catalogue primary lengths (or optional custom lengths for H20 only) have no internal gaps, overlaps or projection beyond the concrete ends. Additional custom lengths are multiples of 25 mm; enabling them retains a better stock-only solution. Symmetric concrete end overhang is allowed up to the entered limit (default 75 mm). Only the concrete load directly over the actual primary stock length is included. Concrete beyond the primary ends contributes no load to these checks. Adjacent member ends are independent; no shared support, mechanical butt splice or bending continuity is assumed at a member break. The support-centre setback from every stock end is a planning allowance (default 150 mm), not a verified bearing/head detail. Exact secondary placement and load transfer near member ends require detailing. Deflection criteria L/500, L/350 (default) or L/270 apply separately to each support span and end overhang, including support rotation; L is not the concrete or primary stock length. Legacy fixed limits remain as saved. Checks include every member's shear, moment, deflection and leg reactions. Cross bays 600/1000/1500/2000 mm; frames 1524 mm. Rotated towers are isolated with a common transverse width. Search ranks legs, braced bays, primary quantity, then governing utilization; it is bounded, not an exhaustive global optimum. Enter a permissible leg load applicable to the actual tower configuration. The selected plywood chart sets the secondary spacing limit. Secondary H20s, sheet joints/orientation/end details, local bearing, tower height/bracing/stability, tower self-weight and foundations are outside this calculation. Tower layouts are report-only; existing prop-spacing Revit parameters cannot represent them.";
-        private TowerInput CreateTowerInput(bool checkPlywood = true)
+        internal TowerInput CreateTowerInput(bool checkPlywood = true)
         {
             if (textErrors) throw new ArgumentException("Correct the highlighted input before optimizing.");
             if(!IsNetworkMode) {Check(Depth, "Beam depth", true); Check(Width, "Beam width", true);}
@@ -87,7 +87,7 @@ namespace EngineeringDashboard
             if (checkPlywood) ValidatePlywoodSpacing();
             double left = HasLeftSlab && !IsTransferMode ? AreaLoad(LeftSlabThickness) * SlabStripWidthMm / 1000 : 0;
             double right = HasRightSlab && !IsTransferMode ? AreaLoad(RightSlabThickness) * SlabStripWidthMm / 1000 : 0;
-            var input = new TowerInput { FullLoadingOnly=!ReplayConstructionStages, EngineerSearch=!ReplayConstructionStages, PrimaryMaterial=PrimaryMaterial, LengthMm = BeamLengthMm, LegCapacityKn = TowerLegCapacityKn, DeflectionLimitMm = DeflectionLimit.Millimetres, DeflectionDenominator = DeflectionLimit.Denominator,
+            var input = new TowerInput { FullLoadingOnly=!ReplayConstructionStages, EngineerSearch=!ReplayConstructionStages, PrimaryMaterial=PrimaryMaterial, LengthMm = IsNetworkMode ? BeamLengthMm : BeamSpanLength(0), LongitudinalStartMm=IsNetworkMode ? 0 : BeamSpanStart(0), LegCapacityKn = TowerLegCapacityKn, DeflectionLimitMm = DeflectionLimit.Millimetres, DeflectionDenominator = DeflectionLimit.Denominator,
                 IgnoreUplift = IgnoreUplift, AllowCustomH20Lengths = AllowCustomH20Lengths, CustomH20Scope = CustomH20Scope, Exclude600Standalone = Exclude600Standalone, MaximumConcreteEndOverhangMm = MaximumConcreteEndOverhangMm, StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
                 TotalLineLoad = IsNetworkMode ? 0 : AreaLoad(Depth) * Width / 1000 + left + right,
                 TransverseLoadMoment = IsTransferMode ? 0 : (right - left) * (Width + (HasAnySlab ? SlabStripWidthMm : 0)) / 2000 };
@@ -107,6 +107,7 @@ namespace EngineeringDashboard
         public async Task OptimizeTowersAsync(bool useTimeLimit=false)
         {
             if (!UseTowers || IsOptimizing) return;
+            if(HasCombinedRevitDrawing){await OptimizeCombinedRevitAsync(useTimeLimit);return;}
             var cancellation=towerCancellation=new CancellationTokenSource();
             var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs(),cancellation.Token,useTimeLimit ? TowerSearchTimeLimit : (TimeSpan?)null);
             int revision = towerRevision; networkBeamOptions.Clear(); IsOptimizing = true; TowerResult = null; NetworkResult=null;IndependentBeamResults=new TowerLayout[0]; TowerFailureDetails=""; IsCalculationValid = false;
