@@ -117,7 +117,7 @@ namespace EngineeringDashboard
                 if(Drawing.SelectedKind==FormworkObject.Slab && Drawing.SelectedObjects.Length==1)SeparateSlabNotice.ShowBay(Drawing.SelectedIndex);};
             Drawing.ActiveRevitPartChanged+=()=> {ClearDiagrams();refreshInputs?.Invoke();BuildProperties();Refresh();};
             Drawing.DimensionSelected+=OpenDimensionEditor;
-            Drawing.BeamOptionsRequested+=async beam=>await NetworkBeamOptionsMenu.OpenAsync(Model,beam,Drawing,()=> {ClearDiagrams();Drawing.RefitIfNeeded();Refresh();});
+            Drawing.BeamOptionsRequested+=async beam=>await NetworkBeamOptionsMenu.OpenAsync(Model,beam,Drawing,()=> {Model.ValidateCombinedRevitResult();ClearDiagrams();Drawing.RefitIfNeeded();Refresh();});
             Drawing.GeometryContextRequested+=OpenGeometryMenu;
             Drawing.DraftPointRequested+=AcceptDraftPoint;Drawing.DraftPointerChanged+=PreviewDraftPoint;
             Drawing.SectionPositionChanged+=position=>SetSectionPosition(position);

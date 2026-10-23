@@ -96,6 +96,7 @@ namespace EngineeringDashboard
             var previous=drawings.Single(d=>d.Key==ActiveRevitDrawingKey);
             if(models[previous.Key].NetworkConfigurationXml!=previous.ConfigurationXml || models[previous.Key].BeamLengthMm!=previous.LengthMm)
                 models[previous.Key]=DrawingModel(previous);
+            else if(IsCalculationValid)models[previous.Key].CopyRevitResult(this);
             var definition=drawings.Single(d=>d.Key==key);var target=models[key];bool valid=IsCalculationValid;
             BeamLengthMm=definition.LengthMm;NetworkConfigurationXml=definition.ConfigurationXml;
             useBeamNetwork=NetworkBeams.Count>1;transferSlabLoads=useBeamNetwork;
@@ -160,7 +161,7 @@ namespace EngineeringDashboard
             var previous=new List<FormworkSolid>();var previousConcrete=new List<FormworkSolid>();
             foreach(var definition in RevitDrawings)
             {
-                var model=revitDrawingModels[definition.Key];if(!model.IsCalculationValid)return null;
+                var model=definition.Key==ActiveRevitDrawingKey && IsCalculationValid ? this : revitDrawingModels[definition.Key];if(!model.IsCalculationValid)return null;
                 var concrete=new List<FormworkSolid>();var solids=new List<FormworkSolid>();
                 if(model.NetworkResult!=null)
                 {
@@ -193,6 +194,13 @@ namespace EngineeringDashboard
                 return new FormworkSolid {Name=label+" / "+solid.Name,TowerOwner=label+" / "+solid.TowerOwner,IsLeg=solid.IsLeg,IsTowerEnvelope=solid.IsTowerEnvelope,IsSideShutter=solid.IsSideShutter,
                     X0=points.Min(p=>p.X),X1=points.Max(p=>p.X),Y0=points.Min(p=>p.Y),Y1=points.Max(p=>p.Y),Z0=solid.Z0+context.TopElevationMm-frame.TopElevationMm,Z1=solid.Z1+context.TopElevationMm-frame.TopElevationMm};
             }
+        }
+        internal void ValidateCombinedRevitResult()
+        {
+            if(!HasCombinedRevitDrawing || !IsCalculationValid)return;
+            string clash=CombinedRevitClash();
+            if(clash==null)revitDrawingModels[ActiveRevitDrawingKey].CopyRevitResult(this);
+            else {IsCalculationValid=false;TowerFailureDetails=clash;WarningMessage="The selected alternative clashes with another drawing part. Recalculate or choose a different arrangement.";NotifyTower();}
         }
     }
 }

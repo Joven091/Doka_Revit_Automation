@@ -72,6 +72,9 @@ internal static class RevitTopologyTests
         Check(model.CombinedRevitClash()!=null,"a real inter-component collision is detected in common coordinates");moved.RevitContext.OriginXmm=oldX;moved.RevitContext.OriginYmm=oldY;
         int expectedLegs=model.CombinedLegCount;model.ActivateRevitDrawing(second);Check(model.IsCalculationValid && model.TowerResult!=null && model.CombinedLegCount==expectedLegs,"selecting a solved component preserves all results and totals");
         Check(model.BuildDiagnosticReport().Contains("Combined Revit drawing calculations") && model.BuildDiagnosticReport().Contains("523933"),"diagnostics retain every component calculation and source ID");
+        moved.RevitContext.OriginXmm=occupied.RevitContext.OriginXmm;moved.RevitContext.OriginYmm=occupied.RevitContext.OriginYmm;
+        model.ValidateCombinedRevitResult();Check(!model.IsCalculationValid && model.HasTowerFailure,"an alternative cannot bypass inter-component clearance checks");
+        moved.RevitContext.OriginXmm=oldX;moved.RevitContext.OriginYmm=oldY;
         Console.WriteLine("Reported 36-element combined import and full calculation: "+clock.Elapsed.TotalSeconds.ToString("0.000")+" s; "+legs+" legs; 9 components.");
         var pair=Model();panels.Apply(pair);var input=pair.CreateTowerInput();Check(input.Network.Beams.Length==2 && input.Network.Bays.Length==1 && input.Network.CrossingBeams.Length==1,"split-beam/floor case reaches the unchanged engineering input factory");
         var cancelled=Model();combined.Apply(cancelled);var pending=cancelled.OptimizeTowersAsync();cancelled.CancelOptimization();pending.GetAwaiter().GetResult();
