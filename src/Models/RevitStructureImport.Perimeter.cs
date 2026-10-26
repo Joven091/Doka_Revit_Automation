@@ -25,7 +25,7 @@ namespace EngineeringDashboard
         }
         private static RevitImportArea[] TryColumnSupportedAreas(RevitSelectionSnapshot source,string directionId)
         {
-            if(source.Problems.Length>0 || source.Beams.Length>45 || source.Slabs.Length==0 || source.Slabs.Length>30 || source.Boundaries.Length>100
+            if(source.Problems.Length>0 || source.Slabs.Length==0 || source.Boundaries.Length>100
                 || source.Beams.Any(b=>b.Problem!=null || !Finite(b.Start) || !Finite(b.End) || new[] {b.WidthMm,b.DepthMm,b.BottomMm}.Any(v=>!TowerBeamAnalysis.Finite(v)) || b.WidthMm<=0 || b.DepthMm<=0)
                 || source.Slabs.Any(s=>s.Problem!=null || !TowerBeamAnalysis.Finite(s.ThicknessMm) || s.ThicknessMm<=0 || !TowerBeamAnalysis.Finite(s.TopMm))
                 || source.Boundaries.Any(b=>b.Problem!=null || !ImportPolygon.Convex(b.Outline,PrecisionMm))
@@ -76,7 +76,9 @@ namespace EngineeringDashboard
             {
                 double end=start ? beam.Start : beam.End;
                 if(end-x0<=allowance || x1-end<=allowance)continue;
-                if(!internalCrosses.Any(c=>Math.Abs(end-(c.Centre+(start ? -1 : 1)*c.Source.WidthMm/2))<=ToleranceMm
+                // Joined Revit members can end at either face of the selected
+                // perpendicular member; retain the face actually captured.
+                if(!internalCrosses.Any(c=>Math.Min(Math.Abs(end-(c.Centre-c.Source.WidthMm/2)),Math.Abs(end-(c.Centre+c.Source.WidthMm/2)))<=ToleranceMm
                     && c.End>=beam.Centre-beam.Source.WidthMm/2-ToleranceMm && c.Start<=beam.Centre+beam.Source.WidthMm/2+ToleranceMm))return new RevitImportArea[0];
                 candidates.Add(end);
             }
@@ -90,7 +92,6 @@ namespace EngineeringDashboard
                 cuts.Add(cut);
             }
             var limits=new[] {x0}.Concat(cuts).Concat(new[] {x1}).OrderBy(x=>x).ToArray();
-            if(limits.Length>32)return new RevitImportArea[0];
             double Snap(double value)=>cuts.Where(c=>Math.Abs(c-value)<=ToleranceMm).OrderBy(c=>Math.Abs(c-value)).DefaultIfEmpty(value).First();
             var areas=new List<RevitImportArea>();
             for(int index=0;index<limits.Length-1;index++)

@@ -24,6 +24,7 @@ jobs:
       - run: dotnet run --project tests/Beam.Tests -c Release -- --revit-alignment
       - run: dotnet run --project tests/Beam.Tests -c Release -- --revit-perimeter
       - run: dotnet run --project tests/Beam.Tests -c Release -- --revit-junctions
+      - run: dotnet run --project tests/Beam.Tests -c Release -- --revit-selection-size
       - run: dotnet run --project tests/Beam.Tests -c Release -- --individual-spans
       - run: dotnet build tests/Beam.Net48 -c Release --warnaserror
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --revit-selection
@@ -31,6 +32,7 @@ jobs:
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --revit-alignment
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --revit-perimeter
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --revit-junctions
+      - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --revit-selection-size
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --individual-spans
       - run: dotnet build tests/Beam.UiSmoke -c Release --warnaserror
       - name: Review, preview, replacement and undo
@@ -39,7 +41,7 @@ jobs:
           tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe --revit-selection-ui tests/revit-selection-preview/import.png
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Emit inspectable import preview
-        run: ./scripts/emit-ui-previews.ps1 -Directory tests/revit-selection-preview -Names import.png,individual-spans.png,column-cutbacks.png,combined-import.png,combined-formwork.png,aligned-import.png,perimeter-import.png,column-member-selected.png,junction-import.png,junction-row-selected.png
+        run: ./scripts/emit-ui-previews.ps1 -Directory tests/revit-selection-preview -Names import.png,individual-spans.png,column-cutbacks.png,combined-import.png,combined-formwork.png,aligned-import.png,perimeter-import.png,column-member-selected.png,junction-import.png,junction-row-selected.png,large-selection-import.png,large-crossing-selected.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:

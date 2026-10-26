@@ -42,7 +42,7 @@ namespace EngineeringDashboard
         {
             if(new[] {OriginXmm,OriginYmm,DirectionX,DirectionY,TopElevationMm}.Any(v=>!TowerBeamAnalysis.Finite(v))
                 || Math.Abs(DirectionX*DirectionX+DirectionY*DirectionY-1)>1e-6 || References==null || References.Length>100
-                || Sources==null || Sources.Length>100 || (DocumentTitle?.Length??0)>256)throw new ArgumentException("Invalid Revit import reference.");
+                || Sources==null || (DocumentTitle?.Length??0)>256)throw new ArgumentException("Invalid Revit import reference.");
             foreach(var r in References)
                 if(r==null || r.Outline==null || r.Outline.Length<3 || r.Outline.Length>64 || (r.Label?.Length??0)>256 || (r.SourceId?.Length??0)>64
                     || r.Outline.Any(p=>p==null || !TowerBeamAnalysis.Finite(p.X) || !TowerBeamAnalysis.Finite(p.Y) || Math.Abs(p.X)>1000000 || Math.Abs(p.Y)>1000000))
@@ -434,7 +434,7 @@ namespace EngineeringDashboard
         private static RevitImportArea[] ClearAreas(RevitSelectionSnapshot source,string directionId)
         {
             var chosen=source.Beams.FirstOrDefault(b=>b.SourceId==(directionId??DefaultDirection(source)));
-            if(chosen==null || source.Beams.Length>45 || source.Slabs.Length==0 || source.Slabs.Length>30 || source.Boundaries.Length>100 || source.Problems.Length>0 || source.Beams.Any(b=>b.Problem!=null || !Finite(b.Start) || !Finite(b.End)
+            if(chosen==null || source.Slabs.Length==0 || source.Boundaries.Length>100 || source.Problems.Length>0 || source.Beams.Any(b=>b.Problem!=null || !Finite(b.Start) || !Finite(b.End)
                 || new[] {b.WidthMm,b.DepthMm,b.BottomMm}.Any(v=>!TowerBeamAnalysis.Finite(v)) || b.WidthMm<=0 || b.DepthMm<=0)
                 || source.Slabs.Any(s=>s.Problem!=null || !TowerBeamAnalysis.Finite(s.ThicknessMm) || s.ThicknessMm<=0 || !TowerBeamAnalysis.Finite(s.TopMm))
                 || source.Boundaries.Any(b=>b.Problem!=null || !ImportPolygon.Convex(b.Outline,PrecisionMm)))return new RevitImportArea[0];
@@ -506,8 +506,8 @@ namespace EngineeringDashboard
             var chosen=snapshot.Beams.FirstOrDefault(b=>b.SourceId==(directionId??DefaultDirection(snapshot)));
             if(chosen==null || !Finite(chosen.Start) || !Finite(chosen.End) || Length(chosen)<ToleranceMm)
             {problems.Add("Select at least one straight, horizontal beam in Revit.");result.Problems=problems.ToArray();return result;}
-            if(snapshot.Beams.Length>45 || snapshot.Slabs.Length>30 || snapshot.Boundaries.Length>100)
-            {result.Problems=new[] {"Select a smaller beam/slab area (up to 15 parallel beams, 30 crossings and 100 boundary references)."};return result;}
+            if(snapshot.Boundaries.Length>100)
+            {result.Problems=new[] {"Use at most 100 column/wall references in a calculation area."};return result;}
             double dx=(chosen.End.X-chosen.Start.X)/Length(chosen),dy=(chosen.End.Y-chosen.Start.Y)/Length(chosen);
             if(dx< -1e-6 || Math.Abs(dx)<=1e-6 && dy<0){dx=-dx;dy=-dy;}
             double ox=chosen.Start.X,oy=chosen.Start.Y;
@@ -543,6 +543,9 @@ namespace EngineeringDashboard
                 if(beam.End-beam.Start<=ToleranceMm){problems.Add(s.Label+": no clear span remains between the selected boundaries.");continue;}
                 (along ? beams : crosses).Add(beam);
             }
+            // Revit can split either orientation into touching elements. Join
+            // those crossing pieces before testing complete-bay coverage.
+            crosses=ConnectedBeams(crosses,notes);
             beams=ConnectedBeams(beams,notes,crosses,boundaries);
             if(beams.Count==0 || beams.Count>15){problems.Add("The drawing requires 1–15 parallel beams.");result.Problems=problems.Distinct().ToArray();return result;}
             double start=beams.Min(b=>b.Start),end=beams.Max(b=>b.End),length=end-start;
@@ -617,8 +620,9 @@ namespace EngineeringDashboard
                     double y0=beams[i].Centre+rows[i].WidthMm/2,y1=beams[i+1].Centre-rows[i+1].WidthMm/2;
                     if(c.Start>y0+ToleranceMm || c.End<y1-ToleranceMm)continue;
                     if(c.Centre-c.Source.WidthMm/2<Math.Max(beams[i].Start,beams[i+1].Start)-ToleranceMm || c.Centre+c.Source.WidthMm/2>Math.Min(beams[i].End,beams[i+1].End)+ToleranceMm){problems.Add(c.Source.Label+": the crossing lies outside the clear beam span.");continue;}
-                    crossingRows.Add(new TransferCrossingBeamRow {BayNumber=i+1,PositionMm=c.Centre-start,WidthMm=c.Source.WidthMm,DepthMm=c.Source.DepthMm,BottomElevationMm=c.Bottom-datum,SupportMode=CrossBeamSupportMode.Automatic,RevitSource=c.Source.Label});
-                    mappings.Add(Map("X"+crossingRows.Count,c.Source.SourceId,c.Source.Label));matched++;
+                    var parts=c.Parts.Where(p=> {double a=local(p.Start).Y,b=local(p.End).Y;return Math.Min(Math.Max(a,b),y1)-Math.Max(Math.Min(a,b),y0)>PrecisionMm;}).ToArray();
+                    crossingRows.Add(new TransferCrossingBeamRow {BayNumber=i+1,PositionMm=c.Centre-start,WidthMm=c.Source.WidthMm,DepthMm=c.Source.DepthMm,BottomElevationMm=c.Bottom-datum,SupportMode=CrossBeamSupportMode.Automatic,RevitSource=string.Join("; ",parts.Select(p=>p.Label))});
+                    foreach(var part in parts)mappings.Add(Map("X"+crossingRows.Count,part.SourceId,part.Label));matched++;
                 }
                 if(matched==0 || c.Start<beams[0].Centre-rows[0].WidthMm/2-ToleranceMm || c.End>beams.Last().Centre+rows.Last().WidthMm/2+ToleranceMm)
                     problems.Add(c.Source.Label+": crossing endpoints must connect the selected parallel beams and cover complete slab bays.");

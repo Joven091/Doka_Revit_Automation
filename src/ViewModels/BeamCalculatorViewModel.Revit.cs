@@ -64,7 +64,7 @@ namespace EngineeringDashboard
             var drawings=configuration.RevitDrawings??new RevitDrawingDefinition[0];var models=new Dictionary<string,BeamCalculatorViewModel>();
             if(drawings.Length==0)
             {if(configuration.SupportFormatVersion==4)throw new ArgumentException("The combined drawing is missing its areas.");return models;}
-            if(configuration.SupportFormatVersion!=4 || drawings.Length<2 || drawings.Length>45 || drawings.Any(d=>d==null || string.IsNullOrWhiteSpace(d.Key)
+            if(configuration.SupportFormatVersion!=4 || drawings.Length<2 || drawings.Any(d=>d==null || string.IsNullOrWhiteSpace(d.Key)
                 || d.Key.Length>300 || (d.Label?.Length??0)>256 || !TowerBeamAnalysis.Finite(d.LengthMm) || d.LengthMm<=0 || d.LengthMm>50000
                 || d.ConfigurationXml==null || d.ConfigurationXml.Length>150000) || drawings.Select(d=>d.Key).Distinct().Count()!=drawings.Length
                 || !drawings.Any(d=>d.Key==configuration.ActiveRevitDrawingKey))throw new ArgumentException("Invalid combined Revit drawing.");

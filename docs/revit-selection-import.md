@@ -36,6 +36,23 @@ retaining all 39 beam IDs, 24 slab IDs and 12 column references on one canvas.
 Both main-direction choices can be previewed and applied. Large connected areas
 use a compact stable drawing identity while retaining their full source mappings.
 
+Version 1.1.14 removes the raw 45-beam selection gate without replacing it with
+another beam-count limit. Raw slab-panel counts, source-mapping counts and the
+combined drawing-part count no longer reject otherwise valid connected geometry.
+The importer groups source pieces and partitions areas before applying the
+existing per-network geometry validation. Existing file-size, dimension,
+boundary and engineering checks still apply. Tests include 221 source pieces
+forming one row, 50 slab panels forming one bay, and 46 separate drawing areas.
+
+T-junction partitioning recognizes the actual face met by a member, including
+near-face and far-face joined Revit geometry. Compatible touching crossing pieces
+are joined before testing complete-bay coverage. Every resulting crossing
+segment maps only to source pieces that overlap its actual clear bay; the
+original captured geometry remains unchanged. The 90-element diagnostic imports
+all 49 beam IDs, 29 slab IDs and 12 columns as two calculation strips plus ten
+column-supported members on the combined canvas. Original beam intervals and slab
+patches are retained without duplication, within the fixed plan-alignment allowance.
+
 Import alignment has a fixed 5 mm allowance, with no extra import setting. This applies to plan connections, recognition of beam lines and small corner deviations when joining compatible slab panels. Candidate neighbouring beams must overlap in their longitudinal spans; a beam elsewhere in the drawing cannot block their pairing. Section compatibility, concrete levels, column/wall footprint checks and actual obstruction checks retain their existing 1 mm precision. Imported widths, depths, slab thicknesses and calculation formulas are unchanged. Diagnose reports both tolerances and retains the original reviewed geometry. The 48-element alignment report imports as five clear areas and six column-to-column beams on one combined canvas. Column-supported connections in the separate 76-element report are handled by the connection classification described below; the 5 mm allowance never extends those members through the roughly 300 mm column zone.
 
 In version 1.1.12 or later, perpendicular perimeter members ending on selected column/wall faces retain their actual clear spans as separately checked column-to-column members on the combined canvas. They are not forced into internal crossing-beam rules. Internal crossing members must still meet the actual neighbouring beams. The importer checks column footprints, elevations and both end faces before assigning a member to this mode. Missing end columns, genuine end gaps and interior obstructions remain blocked.
