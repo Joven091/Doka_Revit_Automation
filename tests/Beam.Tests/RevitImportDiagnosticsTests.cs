@@ -36,6 +36,10 @@ internal static class RevitImportDiagnosticsTests
         var empty=new RevitSelectionSnapshot {Problems=new[] {"Revit selection could not be read"},ReadException=new InvalidOperationException("Reader fixture error").ToString()};
         report=RevitImportDiagnostics.Build(empty,null,null,null,false,"",null,"");
         Check(report.Contains("Reader fixture error") && report.Contains("element ID: none"),"read failure/empty selection report available");
+        var readerFailure=RevitStructureImport.Build(empty);
+        Check(readerFailure.Problems.Length==1 && readerFailure.Problems[0]==empty.Problems[0],"no geometry preserves the reader's actual failure without a missing-beam instruction");
+        var readerReport=RevitImportDiagnostics.Build(empty,null,null,readerFailure,false,"",null,"");
+        Check(readerReport.Contains("Reader fixture error") && !readerReport.Contains("Select at least one straight"),"the copied blocked report excludes the misleading follow-on geometry error");
         var culture=CultureInfo.CurrentCulture;
         try {CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("fr-FR");Check(RevitImportDiagnostics.Number(1.2345)=="1.2345","report numbers are independent of Windows locale");}
         finally {CultureInfo.CurrentCulture=culture;}

@@ -191,7 +191,7 @@ internal static class RevitSelectionUiTests
         fault.RefreshPreview();Check(!fault.ImportButton.IsEnabled && fault.DiagnoseButton.IsEnabled,"unexpected preview failure retains Diagnose");
         Check(fault.BuildDiagnosticReport("").Contains("Unexpected preview fixture"),"unexpected exception is copyable without a preview result");fault.Close();
         var readFailure=new BeamFormworkWorkspace(model,null,null,null,readRevitSelection:()=>throw new InvalidOperationException("Revit reader fixture"));readFailure.Show();Pump();
-        readFailure.ShowRevitImportPreview=dialog=> {Check(dialog.DiagnoseButton.IsEnabled && dialog.BuildDiagnosticReport("").Contains("Revit reader fixture"),"reader exceptions still open a diagnosable import window");dialog.Close();return false;};
+        readFailure.ShowRevitImportPreview=dialog=> {Check(dialog.DiagnoseButton.IsEnabled && dialog.BuildDiagnosticReport("").Contains("Revit reader fixture"),"reader exceptions still open a diagnosable import window");Check(!dialog.BuildDiagnosticReport("").Contains("Select at least one straight"),"a reader failure cannot ask the user to reselect a beam that was never read");dialog.Close();return false;};
         Click(readFailure,"FromRevit");readFailure.Close();
         var missing=RevitStructureImportTests.Sample();missing.Beams[0].WidthMm=0;
         var edit=new RevitSelectionImportWindow(missing);Check(!edit.ImportButton.IsEnabled,"missing dimension blocks import");missing.Beams[0].WidthMm=800;edit.RefreshPreview();Check(edit.ImportButton.IsEnabled,"reviewed dimension enables import");edit.Close();

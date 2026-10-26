@@ -26,9 +26,8 @@ namespace EngineeringDashboard
             if(ui==null)return new RevitSelectionSnapshot {Problems=new[] {"Open a Revit project and select its beams, slabs, columns and walls first."}};
             var ids=ui.Selection.GetElementIds();
             var snapshot=new RevitSelectionSnapshot {DocumentTitle=ui.Document.Title,RevitVersion=app.Application.VersionName,RevitBuild=app.Application.VersionBuild,
-                ActiveView=ui.ActiveView?.Name??"",SelectedCount=ids.Count,SelectedIds=ids.OrderBy(i=>i.Value).Take(200).Select(i=>i.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToArray()};
+                ActiveView=ui.ActiveView?.Name??"",SelectedCount=ids.Count,SelectedIds=ids.OrderBy(i=>i.Value).Select(i=>i.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToArray()};
             if(ids.Count==0){snapshot.Problems=new[] {"Select beams, slabs, columns and walls in Revit before opening the calculator."};return snapshot;}
-            if(ids.Count>200){snapshot.Problems=new[] {"Select one beam/slab area at a time (maximum 200 elements)."};return snapshot;}
             var beams=new List<RevitSelectedBeam>();var slabs=new List<RevitSelectedSlab>();var boundaries=new List<RevitSelectedBoundary>();var problems=new List<string>();var notes=new List<string>();
             var elements=new List<RevitSelectionElement>();
             foreach(var id in ids.OrderBy(i=>i.Value))

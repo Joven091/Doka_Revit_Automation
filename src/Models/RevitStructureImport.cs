@@ -503,6 +503,9 @@ namespace EngineeringDashboard
         private static RevitStructureImportResult BuildSingle(RevitSelectionSnapshot snapshot,string directionId=null)
         {
             var result=new RevitStructureImportResult();var problems=new List<string>(snapshot.Problems);var notes=new List<string>(snapshot.Notes);
+            // Reader failures already explain why no geometry is available.
+            // Do not turn them into an unrelated missing-beam instruction.
+            if(snapshot.Beams.Length==0 && problems.Count>0){result.Problems=problems.Distinct().ToArray();return result;}
             var chosen=snapshot.Beams.FirstOrDefault(b=>b.SourceId==(directionId??DefaultDirection(snapshot)));
             if(chosen==null || !Finite(chosen.Start) || !Finite(chosen.End) || Length(chosen)<ToleranceMm)
             {problems.Add("Select at least one straight, horizontal beam in Revit.");result.Problems=problems.ToArray();return result;}

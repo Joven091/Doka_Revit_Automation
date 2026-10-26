@@ -44,6 +44,21 @@ existing per-network geometry validation. Existing file-size, dimension,
 boundary and engineering checks still apply. Tests include 221 source pieces
 forming one row, 50 slab panels forming one bay, and 46 separate drawing areas.
 
+Version 1.1.15 also removes the separate 200-element gate in the live Revit
+selection reader. It attempts every selected element and retains every selected
+ID, including skipped/failed elements, in Diagnose. Source API reads remain
+synchronous on the Revit command thread. When a reader failure leaves no beam
+geometry, the preview reports that actual failure without appending a misleading
+instruction to select a straight beam.
+
+The reader harness compiles the production adapter source against test-only API
+stand-ins and exercises selection sizes 199, 200, 201, 432 and 1001. It checks
+geometry extraction, mixed supported/skipped categories, all IDs in the copied
+report, per-element failures and calling-thread access. The shipping add-in is
+separately compiled against Autodesk's Revit 2024 API packages. This does not
+replace testing actual family geometry in Revit: the blocked 432-element report
+contains no geometry, so that full model cannot be replayed from that report.
+
 T-junction partitioning recognizes the actual face met by a member, including
 near-face and far-face joined Revit geometry. Compatible touching crossing pieces
 are joined before testing complete-bay coverage. Every resulting crossing
