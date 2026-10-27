@@ -70,7 +70,7 @@ internal static class IndependentDraftUiTests
         Check(view.Diagrams.SelectedTransferMember!=null && view.Diagrams.LoadedAnalysis==view.Diagrams.SelectedTransferMember.Analysis,"independent members open their own exact checked response");view.Diagrams.Close();
         var glyphs=Glyphs(VisualTreeHelper.GetDrawing(drawing),Matrix.Identity).ToArray();
         Check(glyphs.Any(g=>new string(g.Item1.GlyphRun.Characters.ToArray()).StartsWith("Beam length 2575") && Math.Abs(g.Item2.M12)>.9),"vertical beam-length text runs along its dimension line");
-        int horizontal=drawing.AnnotationLabels.FindIndex(t=>t.StartsWith("Beam length 6750"));
+        int horizontal=drawing.AnnotationLabels.FindIndex(t=>t.StartsWith("B1 beam length 6750"));
         double lineY=drawing.Pan.Y+drawing.SceneBounds.Bottom*drawing.Zoom+42;Check(horizontal>=0 && drawing.AnnotationBounds[horizontal].Bottom<lineY,"horizontal beam-length text is above its dimension line");
         Click(view,"Geometry");drawing.Select(FormworkObject.Independent,0);view.RemoveSelected();Render(view.Surface);Check(model.IndependentBeams.Count==0 && model.NetworkBeams.Count==2,"independent deletion preserves connected geometry");Click(view,"Undo");Check(model.IndependentBeams.Count==1,"independent deletion has one undo entry");
         host.RestoreCalculation(original);drawing.Select(FormworkObject.Beam,0);Render(view.Surface);
