@@ -12,7 +12,7 @@ function Run([string]$Target,[string]$Name){
     if(!$p.WaitForExit(30000)){throw "Timed out $Name, PID $($p.Id)"};$p.Refresh();return $p.ExitCode
 }
 $newer=Join-Path $root 'newer';New-Item -ItemType Directory -Path $newer | Out-Null
-'using System.Reflection; [assembly:AssemblyVersion("1.1.17.0")] [assembly:AssemblyFileVersion("1.1.17.0")] public sealed class NewerFixture {}' | Set-Content -LiteralPath (Join-Path $root 'Newer.cs')
+'using System.Reflection; [assembly:AssemblyVersion("1.1.18.0")] [assembly:AssemblyFileVersion("1.1.18.0")] public sealed class NewerFixture {}' | Set-Content -LiteralPath (Join-Path $root 'Newer.cs')
 & $compiler /nologo /target:library "/out:$newer\MyRevitAddin.dll" (Join-Path $root 'Newer.cs')
 if($LASTEXITCODE -ne 0){throw 'Newer fixture compilation failed'}
 Copy-Item -LiteralPath (Join-Path $repo 'MyRevitAddin.addin') -Destination $newer

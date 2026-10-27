@@ -1,6 +1,6 @@
-Doka Engineering Dashboard 1.1.16 — Top50 review release
+Doka Engineering Dashboard 1.1.17 — Top50 review release
 
-Includes the existing PR168 calculator and reader fixes plus native integrated Top50.
+Includes the existing PR168 calculator and reader fixes plus native integrated Top50 Planner, its diagnosis report, and a separate Planners dashboard section.
 Requires Autodesk Revit2024 x64. Save your models and close every Revit window first.
 Installs per Windows user; do not run as a different administrator account.
 The installer registers the add-in automatically. No XML editing or manual DLL copying is required.

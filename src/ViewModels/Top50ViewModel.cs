@@ -9,7 +9,7 @@ using EngineeringDashboard.Top50;
 
 namespace EngineeringDashboard
 {
-    public sealed class Top50ViewModel : INotifyPropertyChanged
+    public sealed partial class Top50ViewModel : INotifyPropertyChanged
     {
         public Top50ViewModel(){Top50Runtime.Initialize();}
         private ImportSnapshot input;
@@ -32,9 +32,12 @@ namespace EngineeringDashboard
         public event PropertyChangedEventHandler PropertyChanged;
         public void Import(string path,DxfImportOptions options=null)
         {
+            TrackOperation("Import DXF",path,()=>
+            {
             if(IsBusy)throw new InvalidOperationException("Cancel the current optimization first.");
             input=new Top50DxfImporter().Import(path,options??new DxfImportOptions());Proposals=Array.Empty<Proposal>();selected=null;IsStale=false;Dirty=true;revision++;
             Status="Imported "+input.Walls.Count+" dimension rows; review flagged measurements individually.";Refresh();
+            });
         }
         public void Changed(bool affectsCalculation=true)
         {if(affectsCalculation){revision++;IsStale=Proposals.Count>0;}Dirty=true;Status=IsStale?"Inputs changed. Existing proposals are stale; optimize again before exporting.":"Inputs updated.";foreach(var n in new[]{nameof(Dirty),nameof(IsStale),nameof(Status)})Notify(n);}
@@ -47,21 +50,31 @@ namespace EngineeringDashboard
         }
         public async Task OptimizeAsync()
         {
-            if(IsBusy)return;if(input==null)throw new InvalidOperationException("Import measured walls first.");
+            if(IsBusy)return;
+            var attempt=BeginOperation("Optimize","");
+            var search=BeginSearchDiagnostic();
+            try
+            {
+            if(input==null)throw new InvalidOperationException("Import measured walls first.");
             var walls=input.Walls.Select(w=>w.Snapshot()).ToArray();var catalog=Settings.CatalogMm.ToArray();var limits=Limits;
             var preset=(PlanningPreset)Settings.Preset;var displayLimit=Settings.CandidateDisplayLimit;var percentage=Settings.OfferingMode==1?(decimal?)Settings.Percentage:null;var band=Settings.BandPoints;var expand=Settings.AllowExpansion;var identical=Settings.RequireIdenticalKits;
             int started=revision;cancellation=new CancellationTokenSource();var token=cancellation.Token;IsBusy=true;Status="Searching retained inventory models…";Refresh();
-            var progress=new Progress<string>(text=>{if(!IsBusy||token.IsCancellationRequested)return;Status=text;Notify(nameof(Status));});
+            var progress=new Progress<string>(text=>{if(!IsBusy||token.IsCancellationRequested)return;search.Progress.Add(DateTime.UtcNow.ToString("O",System.Globalization.CultureInfo.InvariantCulture)+" | "+text);Status=text;Notify(nameof(Status));});
             try
             {
                 var result=await Task.Run(()=>new Top50Search().Run(walls,catalog,limits,preset,displayLimit,token,progress,percentage,band,expand,identical));
-                if(started!=revision||token.IsCancellationRequested)return;
+                search.Attempted=result.Attempted;search.Unsearched=result.Unsearched;search.BudgetExpired=result.BudgetExpired;search.Log=result.Log.ToArray();
+                if(started!=revision||token.IsCancellationRequested){search.Outcome=token.IsCancellationRequested?"Cancelled; returned proposals not accepted.":"Inputs changed; returned proposals not accepted.";return;}
                 SearchLog=result.Log;
-                if(result.Proposals.Count==0){Status="No complete proposal found within the selected search band and budget. This is not a proof of infeasibility.";return;}
+                if(result.Proposals.Count==0){search.Outcome="No complete proposal found within the selected search band and budget; infeasibility not established.";Status="No complete proposal found within the selected search band and budget. This is not a proof of infeasibility.";return;}
                 AcceptValidatedRun(result);
+                search.Outcome="Accepted "+result.Proposals.Count+" independently validated proposal(s).";
             }
-            catch(OperationCanceledException){Status="Search cancelled; previous proposals retained.";}
+            catch(OperationCanceledException){search.Outcome="Cancelled; previous proposals retained.";Status="Search cancelled; previous proposals retained.";}
             finally{IsBusy=false;cancellation.Dispose();cancellation=null;Refresh();}
+            }
+            catch(Exception error){search.Outcome="Failed";FailOperation(attempt,error);throw;}
+            finally{search.Clock.Stop();EndOperation(attempt,search.Outcome);}
         }
         public void Cancel(){cancellation?.Cancel();Status="Cancelling at the next solver checkpoint…";Notify(nameof(Status));}
         internal void AcceptValidatedRun(SearchRun run)
@@ -71,25 +84,34 @@ namespace EngineeringDashboard
         }
         public void Save(string path)
         {
+            TrackOperation("Save project",path,()=>
+            {
             if(input==null)throw new InvalidOperationException("There is no source project to save.");
             var document=NativeProjectStore.Capture(input,IsStale?Array.Empty<Proposal>():Proposals,selected?.Id);
             document.LongestCount=Settings.LongestCount;document.CatalogMm=Settings.CatalogMm.ToArray();document.Preset=Settings.Preset;document.MaxComponents=Settings.MaxComponents;document.MaxFillers=Settings.MaxFillers;document.MaxFillerMm=Settings.MaxFillerMm;document.MaxGroups=Settings.MaxGroups;document.CandidateDisplayLimit=Settings.CandidateDisplayLimit;document.Seconds=Settings.Seconds;document.Seed=Settings.Seed;document.OfferingMode=Settings.OfferingMode;document.Percentage=Settings.Percentage;document.BandPoints=Settings.BandPoints;document.AllowExpansion=Settings.AllowExpansion;document.RequireIdenticalKits=Settings.RequireIdenticalKits;document.SearchLog=SearchLog.ToArray();
             document.ConnectionLevels=Settings.ConnectionLevels;document.ConnectionFaces=Settings.ConnectionFaces;document.ConnectionReviewed=Settings.ConnectionReviewed;document.AdjustableOnDirect=Settings.AdjustableOnDirect;
             NativeProjectStore.Save(document,path);ProjectPath=path;Dirty=false;Status=IsStale?"Saved inputs. Recalculate stale proposals before export.":"Project saved.";Refresh();
+            });
         }
         public void Open(string path,string cache)
         {
+            TrackOperation("Open project",path,()=>
+            {
             if(IsBusy)throw new InvalidOperationException("Cancel optimization before opening another project.");
             var document=NativeProjectStore.Load(path);var restored=NativeProjectStore.RestoreInput(document,cache);
             var restoredLimits=new SearchLimits(document.MaxComponents,document.MaxFillers,document.MaxFillerMm,document.MaxGroups,document.OfferingMode==1?1:document.LongestCount,document.Seconds,document.Seed);
             var proposals=document.Proposals.Select(NativeProjectStore.FromDto).ToArray();
             foreach(var p in proposals)if(Top50Validation.Validate(restored.Walls,p,restoredLimits).Count>0)throw new InvalidOperationException("Saved proposal validation failed; original project remains unchanged.");
             input=restored;Settings=document;Proposals=Array.AsReadOnly(proposals);selected=proposals.FirstOrDefault(p=>p.Id==document.SelectedId)??proposals.FirstOrDefault();SearchLog=document.SearchLog??Array.Empty<string>();ProjectPath=path;IsStale=false;Dirty=false;revision++;Status="Project opened and cached proposals independently revalidated.";Refresh();
+            });
         }
         public void Export(string path)
         {
+            TrackOperation("Export workbook",path,()=>
+            {
             if(IsBusy||IsStale||selected==null)throw new InvalidOperationException("Select a current validated proposal before exporting.");
             Top50Workbook.Export(input,selected,Proposals,Limits,path,Settings);Status="Exported selected "+selected.Id+" to nine-sheet workbook.";Notify(nameof(Status));
+            });
         }
         private void Refresh(){foreach(var name in new[]{nameof(Input),nameof(Proposals),nameof(Selected),nameof(IsBusy),nameof(IsStale),nameof(Dirty),nameof(Status),nameof(Settings)})Notify(name);}
         private void Notify([CallerMemberName]string name=null)=>PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(name));

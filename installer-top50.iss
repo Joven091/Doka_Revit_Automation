@@ -27,7 +27,7 @@ CreateUninstallRegKey=not IsIsolatedTest
 UninstallDisplayName=Doka Engineering Dashboard {#MyVersion} - Top50 review
 UninstallFilesDir={app}
 OutputDir=artifacts\top50-installer
-OutputBaseFilename=DokaEngineeringDashboard_Top50_Setup_1.1.16
+OutputBaseFilename=DokaEngineeringDashboard_Top50_Setup_{#MyVersion}
 Compression=lzma2
 SolidCompression=yes
 InfoBeforeFile={#RepoRoot}packaging\top50-review.txt
@@ -154,7 +154,7 @@ begin
     Result := 'The existing Dashboard points to a custom assembly location. A reviewed migration is required; its registration was not changed.'; Exit;
   end;
   if GetVersionNumbers(AddBackslash(Root)+'MyRevitAddin.dll',Major,Minor) then
-    if (Major > (1 shl 16)+1) or ((Major=(1 shl 16)+1) and (Minor>(16 shl 16))) then
+    if (Major > (1 shl 16)+1) or ((Major=(1 shl 16)+1) and (Minor>(17 shl 16))) then
       Result := 'A newer Dashboard is already installed. Downgrade refused.';
 end;
 
@@ -183,7 +183,7 @@ begin
     if FileExists(ExpandConstant('{app}\MyRevitAddin.dll')) or FileExists(ExpandConstant('{app}\MyRevitAddin.addin')) then begin
       if IsIsolatedTest then BackupDirectory := ExpandConstant('{app}')+'-backups\'
       else BackupDirectory := ExpandConstant('{localappdata}\DokaRevitAutomation\Backups\');
-      BackupDirectory := BackupDirectory+'1.1.16-'+GetDateTimeString('yyyymmdd-hhnnss',#0,#0);
+      BackupDirectory := BackupDirectory+'1.1.17-'+GetDateTimeString('yyyymmdd-hhnnss',#0,#0);
       BaseBackup := BackupDirectory; Index := 0;
       while DirExists(BackupDirectory) do begin Index := Index+1; BackupDirectory := BaseBackup+'-'+IntToStr(Index); end;
       if not ForceDirectories(BackupDirectory) then RaiseException('Unable to create upgrade backup.');

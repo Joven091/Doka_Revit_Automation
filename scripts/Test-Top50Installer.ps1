@@ -31,10 +31,10 @@ function RunInstaller([string]$Target,[string]$Label,[bool]$Success=$true){
     $process.Refresh();if($Success){Check ($process.ExitCode -eq 0) "$Label installer exit zero"}else{Check ($process.ExitCode -ne 0) "$Label rejected before installation"}
 }
 $before=ProductionFingerprint
-Check (([Diagnostics.FileVersionInfo]::GetVersionInfo($Installer).FileVersion.Trim()) -eq '1.1.16.0') 'installer version 1.1.16.0'
+Check (([Diagnostics.FileVersionInfo]::GetVersionInfo($Installer).FileVersion.Trim()) -eq '1.1.17.0') 'installer version 1.1.17.0'
 $fresh=Join-Path $root 'fresh'
 RunInstaller $fresh 'fresh'
-Check (([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $fresh 'MyRevitAddin.dll')).FileVersion.Trim()) -eq '1.1.16.0') 'fresh installed assembly version'
+Check (([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $fresh 'MyRevitAddin.dll')).FileVersion.Trim()) -eq '1.1.17.0') 'fresh installed assembly version'
 $build=Join-Path (Split-Path $PSScriptRoot -Parent) 'src\bin\Release\net48'
 foreach($file in Get-ChildItem -LiteralPath $build -Filter '*.dll' -File){Check ((Get-FileHash -LiteralPath $file.FullName).Hash -eq (Get-FileHash -LiteralPath (Join-Path $fresh $file.Name)).Hash) "installed hash $($file.Name)"}
 [xml]$manifest=Get-Content -LiteralPath (Join-Path $fresh 'MyRevitAddin.addin') -Raw
@@ -58,7 +58,7 @@ Check (([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $upgrade 'MyRev
 'unrelated add-in sentinel' | Set-Content -LiteralPath (Join-Path $upgrade 'Unrelated.dll')
 $settings=@{};foreach($name in @('update-settings.json','access-settings.json','saved-project.xml','Unrelated.dll')){$settings[$name]=(Get-FileHash -LiteralPath (Join-Path $upgrade $name)).Hash}
 RunInstaller $upgrade 'upgrade'
-Check (([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $upgrade 'MyRevitAddin.dll')).FileVersion.Trim()) -eq '1.1.16.0') 'upgrade replaces old assembly with 1.1.16'
+Check (([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $upgrade 'MyRevitAddin.dll')).FileVersion.Trim()) -eq '1.1.17.0') 'upgrade replaces old assembly with 1.1.17'
 foreach($name in $settings.Keys){Check ((Get-FileHash -LiteralPath (Join-Path $upgrade $name)).Hash -eq $settings[$name]) "upgrade preserves $name"}
 $backup=@(Get-ChildItem -LiteralPath ($upgrade+'-backups') -Directory | Sort-Object Name)[-1].FullName
 Check ((Get-FileHash -LiteralPath (Join-Path $backup 'MyRevitAddin.dll')).Hash -eq $oldDllHash) 'backup retains previous assembly bytes'

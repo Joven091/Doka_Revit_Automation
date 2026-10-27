@@ -18,7 +18,7 @@ Copy-Item -LiteralPath (Join-Path $repo 'MyRevitAddin.addin') -Destination $payl
 @'
 REVIEW BUILD ONLY — Engineering Dashboard with integrated native Top50
 Target: Revit2024 x64 / .NET Framework4.8. No installation or publication performed.
-Base: PR168 bb37debee36f9d6a9dbce79bc41f3d47bdb35b6b plus uncommitted Top50 overlay.
+Base: PR168 bb37debee36f9d6a9dbce79bc41f3d47bdb35b6b plus the preserved uploaded Top50 overlay and planner diagnosis changes.
 The newer beam ReadRevitSelection callback is retained. This does not merge or change PR168.
 Original V1 visual/workflow reconstruction; exact original solver equivalence remains unresolved.
 No golden reference fixture is compiled into this shipping assembly.

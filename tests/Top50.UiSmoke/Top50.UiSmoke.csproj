@@ -6,8 +6,9 @@
     <PackageReference Include="IxMilia.Dxf" Version="0.8.4" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
     <Compile Include="../../src/Top50/*.cs" Link="Core/%(Filename)%(Extension)" />
-    <Compile Include="../../src/ViewModels/Top50ViewModel.cs" Link="Top50ViewModel.cs" />
+    <Compile Include="../../src/ViewModels/Top50ViewModel*.cs" Link="%(Filename)%(Extension)" />
     <Compile Include="../../src/Views/Top50Window.cs" Link="Top50Window.cs" />
+    <Compile Include="../../src/Views/Top50DiagnosticWindow.cs" Link="Top50DiagnosticWindow.cs" />
     <Compile Include="../Shared/Top50RecordedFixture.cs" Link="Top50RecordedFixture.cs" />
     <Reference Include="System.Runtime.Serialization" />
   </ItemGroup>
