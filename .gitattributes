@@ -1,0 +1,3 @@
+# Keep the embedded offline page and its reproducible source identical on Windows/Linux.
+/tools/SteelShape/** text eol=lf
+/src/SteelShape/SteelShape.html text eol=lf

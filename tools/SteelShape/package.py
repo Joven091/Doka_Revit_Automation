@@ -18,15 +18,15 @@ page = html.decode('utf-8')
 assert not re.search(r'<(?:script|link)\b[^>]*(?:src|href)\s*=', page, re.I), 'External dependency found.'
 assert not re.search(r'/\* (?:CATALOGUES|RHS_CORE|ENGINE|SCHEMATICS) \*/', page), 'Unbuilt template.'
 for token, filename in [('CATALOGUES', 'catalogues.js'), ('RHS_CORE', 'rhs-core.js'), ('ENGINE', 'engine.js'), ('SCHEMATICS', 'schematics.js')]:
-    assert (ROOT / filename).read_text() in page, filename + ' does not match built HTML.'
-engine_checks = json.loads((ROOT / 'engine-test-results.json').read_text())
-ui_checks = json.loads((ROOT / 'ui-test-results.json').read_text())
-weld_checks = json.loads((ROOT / 'weld-test-results.json').read_text())
-selection_checks = json.loads((ROOT / 'selection-test-results.json').read_text())
-browser_checks = json.loads((ROOT / 'browser-test-results.json').read_text())
+    assert (ROOT / filename).read_text(encoding='utf-8') in page, filename + ' does not match built HTML.'
+engine_checks = json.loads((ROOT / 'engine-test-results.json').read_text(encoding='utf-8'))
+ui_checks = json.loads((ROOT / 'ui-test-results.json').read_text(encoding='utf-8'))
+weld_checks = json.loads((ROOT / 'weld-test-results.json').read_text(encoding='utf-8'))
+selection_checks = json.loads((ROOT / 'selection-test-results.json').read_text(encoding='utf-8'))
+browser_checks = json.loads((ROOT / 'browser-test-results.json').read_text(encoding='utf-8'))
 assert all(check['status'] == 'passed' for check in [engine_checks, ui_checks, weld_checks, selection_checks, browser_checks])
 assert browser_checks['artifactSha256'] == hashlib.sha256(html).hexdigest(), 'Browser evidence is for a different HTML build.'
-catalogues = json.loads((ROOT / 'catalogues.json').read_text())
+catalogues = json.loads((ROOT / 'catalogues.json').read_text(encoding='utf-8'))
 counts = {family: len(table['rows']) for family, table in catalogues.items()}
 assert sum(counts.values()) == 332
 rhs_hash = hashlib.sha256((ROOT / 'rhs-core.js').read_bytes()).hexdigest()
@@ -52,7 +52,7 @@ report_bytes = (json.dumps(report, ensure_ascii=False, indent=2) + '\n').encode(
 report_path = args.output_dir / 'Steel-weight-calculators-validation.json'
 report_path.write_bytes(report_bytes)
 files = [
-    'README.md', 'SOURCE-AUDIT.md', 'build.py', 'package.py', 'import_catalogues.py',
+    'README.md', 'SOURCE-AUDIT.md', 'build.py', 'package.py', 'package.json', 'package-lock.json', 'import_catalogues.py',
     'page.template.html', 'engine.js', 'rhs-core.js', 'schematics.js',
     'catalogues.js', 'catalogues.json', 'formula-vectors.json', 'rhs-vectors.json', 'rhs-reference-cases.json',
     'test-engine.cjs', 'test-ui.cjs', 'test-dependencies.cjs', 'render-gallery.cjs',
