@@ -1,0 +1,33 @@
+name: Cancel superseded Steel Shape checks
+on:
+  push:
+    branches: [codex/ci-cleanup-steel-shape]
+permissions:
+  actions: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const obsolete = new Set([
+              '82edef04724f4a3aeb5a0b0cabffb09c51243129',
+              'cfd7d6899b26726324d849563e9b1feb8c186246',
+              '9a06839c58ab46fb4c5f763f801fb0e0480faf0b'
+            ]);
+            const {owner, repo} = context.repo;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner, repo, branch: 'codex/steel-shape-installer', per_page: 100
+            });
+            for (const run of runs) {
+              if (!obsolete.has(run.head_sha) || run.status === 'completed') continue;
+              core.info('Cancel superseded PR171 run ' + run.id + ' at ' + run.head_sha);
+              try {
+                await github.rest.actions.cancelWorkflowRun({owner, repo, run_id: run.id});
+              } catch (error) {
+                if (error.status !== 409) throw error;
+                core.info('Run already finished or cancelling: ' + run.id);
+              }
+            }
