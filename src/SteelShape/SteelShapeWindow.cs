@@ -19,6 +19,7 @@ namespace EngineeringDashboard.SteelShape
         private readonly StackPanel fallback;
         private readonly TextBlock status;
         private bool closed;
+        private bool browserDisposed;
 
         public SteelShapeWindow(Func<Task<CoreWebView2Environment>> environmentFactory = null)
         {
@@ -43,7 +44,7 @@ namespace EngineeringDashboard.SteelShape
             };
             fallback.Children.Add(open); grid.Children.Add(fallback);
             Loaded += async (sender, e) => await InitializeBrowser();
-            Closed += (sender, e) => { closed = true; initialized.TrySetResult(false); view.Dispose(); };
+            Closed += (sender, e) => { closed = true; initialized.TrySetResult(false); DisposeBrowser(); };
         }
 
         public Task<bool> Initialization => initialized.Task;
@@ -66,7 +67,8 @@ namespace EngineeringDashboard.SteelShape
                 if (closed) return;
                 view.CoreWebView2.Settings.IsWebMessageEnabled = false;
                 view.CoreWebView2.Settings.IsStatusBarEnabled = false;
-                view.CoreWebView2.NavigationStarting += (sender, e) => { if (!string.Equals(e.Uri, "about:blank", StringComparison.OrdinalIgnoreCase)) e.Cancel = true; };
+                bool pageReady = false;
+                view.CoreWebView2.NavigationStarting += (sender, e) => { if (pageReady) e.Cancel = true; };
                 view.CoreWebView2.NewWindowRequested += (sender, e) => e.Handled = true;
                 view.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
                 view.CoreWebView2.WebResourceRequested += (sender, e) =>
@@ -75,9 +77,28 @@ namespace EngineeringDashboard.SteelShape
                         e.Response = environment.CreateWebResourceResponse(Stream.Null, 403, "Offline", "Content-Type: text/plain");
                 };
                 var loaded = new TaskCompletionSource<bool>();
-                view.CoreWebView2.NavigationCompleted += (sender, e) => loaded.TrySetResult(e.IsSuccess);
+                view.CoreWebView2.NavigationCompleted += async (sender, e) =>
+                {
+                    // WebView2 may finish/cancel its initial empty document after
+                    // NavigateToString starts. Only the actual embedded page is ready.
+                    if (closed || loaded.Task.IsCompleted) return;
+                    if (!e.IsSuccess)
+                    {
+                        if (e.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled)
+                            loaded.TrySetException(new InvalidOperationException("Steel Shape navigation failed: " + e.WebErrorStatus));
+                        return;
+                    }
+                    try
+                    {
+                        var ready = await view.CoreWebView2.ExecuteScriptAsync("Boolean(document.getElementById('calculator-menu') && window.SteelWeight)");
+                        if (ready == "true") { pageReady = true; loaded.TrySetResult(true); }
+                    }
+                    catch (Exception error) { loaded.TrySetException(error); }
+                };
                 view.CoreWebView2.NavigateToString(SteelShapeContent.Read());
-                if (!await loaded.Task) throw new InvalidOperationException("The Steel Shape page could not be opened.");
+                if (await Task.WhenAny(loaded.Task, Task.Delay(30000)) != loaded.Task)
+                    throw new TimeoutException("Steel Shape did not finish opening.");
+                await loaded.Task;
                 if (closed) return;
                 fallback.Visibility = Visibility.Collapsed;
                 initialized.TrySetResult(true);
@@ -90,9 +111,17 @@ namespace EngineeringDashboard.SteelShape
                     view.Visibility = Visibility.Collapsed;
                     status.Text = "Steel Shape could not open in this window. You can continue in your browser.";
                     fallback.Visibility = Visibility.Visible;
+                    DisposeBrowser();
                 }
                 initialized.TrySetResult(false);
             }
+        }
+
+        private void DisposeBrowser()
+        {
+            if (browserDisposed) return;
+            browserDisposed = true;
+            view.Dispose();
         }
     }
 }

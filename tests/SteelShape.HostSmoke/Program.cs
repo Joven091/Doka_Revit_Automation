@@ -77,7 +77,7 @@ internal static class Program
             Console.WriteLine(checks + " Steel Shape WPF/WebView2 checks passed."); return 0;
         }
         catch (Exception error) { File.WriteAllText(Path.Combine(output, "failure.txt"), error.ToString()); Console.Error.WriteLine(error); return 1; }
-        finally { app.Shutdown(); }
+        finally { foreach (Window window in app.Windows.Cast<Window>().ToArray()) window.Close(); app.Shutdown(); }
     }
 
     private static void Run(SteelShapeWindow window, string script) { Wait(window.Browser.ExecuteScriptAsync("(()=>{" + script + "})()")); }

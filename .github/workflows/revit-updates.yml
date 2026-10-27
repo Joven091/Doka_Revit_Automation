@@ -5,6 +5,7 @@ on:
       - 'Directory.Build.props'
       - 'MyRevitAddin.addin'
       - 'installer.iss'
+      - 'installer-top50.iss'
       - 'src/**'
       - 'tools/RevitUpdater/**'
       - 'tests/Updates.*/**'
@@ -55,10 +56,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Candidate installer failed' }
           ./scripts/Publish-RevitUpdate.ps1 -Installer artifacts/candidate/Install_DokaRevitAutomation.exe -Version 1.1.1 -ReleaseNotes 'Revit add-in shared-folder update test.' -Destination artifacts/test-feed
           ./scripts/Publish-RevitUpdate.ps1 -Installer artifacts/candidate/Install_DokaRevitAutomation.exe -Version 1.1.1 -ReleaseNotes 'Revit add-in shared-folder update test.' -Destination artifacts/test-feed
+      - name: Provide Revit discovery fixture on the disposable CI runner
+        shell: pwsh
+        run: |
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows'){throw 'This discovery fixture is restricted to the disposable Windows CI runner'}
+          $key='HKLM:\SOFTWARE\Autodesk\Revit\2024'
+          if(!(Test-Path $key)){
+            New-Item $key -Force | Out-Null
+            'DOKA_TEST_REVIT_DISCOVERY=1' | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+          Write-Output 'Test-only discovery fixture; no actual Revit host acceptance is performed.'
       - name: Exercise deferred installation with actual installers
         shell: pwsh
         run: |
           ./scripts/Test-RevitUpdate.ps1 -Bootstrap (Resolve-Path artifacts/bootstrap/Install_DokaRevitAutomation.exe) -Feed (Resolve-Path artifacts/test-feed) -Helper (Resolve-Path src/bin/Release/net48/Doka.RevitUpdater.exe) -Tests (Resolve-Path tests/Updates.Net48/bin/Release/net48/Updates.Net48.exe)
+      - name: Remove test-only Revit discovery fixture
+        if: always() && env.DOKA_TEST_REVIT_DISCOVERY == '1'
+        shell: pwsh
+        run: Remove-Item 'HKLM:\SOFTWARE\Autodesk\Revit\2024' -Recurse -Force
       - name: Package reviewed test files
         shell: pwsh
         run: |
