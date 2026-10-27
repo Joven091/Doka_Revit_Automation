@@ -39,6 +39,12 @@
     <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
    </Grid></Button>
 
+   <Button x:Name="BtnSteelShape" Style="{StaticResource Choice}" AutomationProperties.Name="Steel Shape" Click="BtnSteelShape_Click"><Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
+    <Border Background="#FFF2BF" Width="48" Height="48"><Canvas Width="40" Height="40"><Path Data="M8,6 H32 V12 H24 V28 H32 V34 H8 V28 H16 V12 H8 Z" Fill="#567D97"/></Canvas></Border>
+    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><TextBlock Text="Steel Shape" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="Section weights and optional weld allowance." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
+    <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
+   </Grid></Button>
    <Border BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Margin="0,24,0,12" Padding="0,12,0,0"><TextBlock Text="Coming soon" Style="{StaticResource Hint}"/></Border>
    <Button x:Name="BtnDomeCalculator" IsEnabled="False" Style="{StaticResource Choice}" AutomationProperties.Name="Dome calculator — Coming soon" Click="BtnDomeCalculator_Click"><Grid>
     <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "C1",
+    "input": {
+      "A": "100",
+      "B": "50",
+      "t": "3",
+      "L": "6"
+    },
+    "reference": {
+      "kgPerM": "6.66",
+      "totalKg": "39.97"
+    },
+    "referenceProvenance": "Website output supplied by the user in chat on 2026-10-27; not independently retrieved by the agent."
+  },
+  {
+    "id": "C2",
+    "input": {
+      "A": "200",
+      "B": "100",
+      "t": "8",
+      "L": "6.35"
+    },
+    "reference": {
+      "kgPerM": "34.81",
+      "totalKg": "221.03"
+    },
+    "referenceProvenance": "Website output supplied by the user in chat on 2026-10-27; not independently retrieved by the agent."
+  },
+  {
+    "id": "C3",
+    "input": {
+      "A": "60",
+      "B": "40",
+      "t": "2",
+      "L": "1.5"
+    },
+    "reference": {
+      "kgPerM": "2.96",
+      "totalKg": "4.44"
+    },
+    "referenceProvenance": "Website output supplied by the user in chat on 2026-10-27; not independently retrieved by the agent."
+  }
+]

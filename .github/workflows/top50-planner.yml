@@ -37,7 +37,7 @@ jobs:
           ./scripts/Test-Top50PlannerInstaller.ps1 -Installer $installer -OldPayload artifacts/beam-baseline/src/bin/Release/net48 -EvidenceDirectory artifacts/top50-installer-checks
           ./scripts/Test-Top50InstallerGuards.ps1 -Installer $installer -EvidenceDirectory artifacts/top50-installer-guards
           @{
-            version='1.1.17'; sourceCommit=$env:GITHUB_SHA
+            version=([version][Diagnostics.FileVersionInfo]::GetVersionInfo($installer).FileVersion).ToString(3); sourceCommit=$env:GITHUB_SHA
             installerSha256=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
             originalTop50Source='Uploaded Top50-1.1.16-Source.zip, preserved on the PR168 beam baseline'
             note='Test release. No company-folder publication. Revit2024 host acceptance and original solver parity remain unverified.'

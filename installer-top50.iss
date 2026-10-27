@@ -8,11 +8,19 @@
 AppId={code:InstallerAppId}
 AppName=Doka Revit Automation
 AppVersion={#MyVersion}
+#ifdef DashboardTeamRelease
+AppVerName=Doka Revit Automation {#MyVersion}
+#else
 AppVerName=Doka Engineering Dashboard {#MyVersion} - Top50 review
+#endif
 AppPublisher=Joven091
 VersionInfoVersion={#MyVersion}
 VersionInfoProductVersion={#MyVersion}
+#ifdef DashboardTeamRelease
+VersionInfoDescription=Revit 2024 dashboard with Steel Shape and Top50 Planner
+#else
 VersionInfoDescription=Engineering Dashboard with integrated Top50 - review release
+#endif
 DefaultDirName={code:InstallDirectory}
 UsePreviousAppDir=no
 UsePreviousLanguage=no
@@ -24,13 +32,26 @@ ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=no
 RestartApplications=no
 CreateUninstallRegKey=not IsIsolatedTest
+#ifdef DashboardTeamRelease
+UninstallDisplayName=Doka Revit Automation {#MyVersion}
+#else
 UninstallDisplayName=Doka Engineering Dashboard {#MyVersion} - Top50 review
+#endif
 UninstallFilesDir={app}
+#ifdef DashboardTeamRelease
+OutputDir=artifacts\installer
+OutputBaseFilename=Install_DokaRevitAutomation
+#else
 OutputDir=artifacts\top50-installer
 OutputBaseFilename=DokaEngineeringDashboard_Top50_Setup_{#MyVersion}
+#endif
 Compression=lzma2
 SolidCompression=yes
+#ifdef DashboardTeamRelease
+InfoBeforeFile={#RepoRoot}packaging\dashboard-release.txt
+#else
 InfoBeforeFile={#RepoRoot}packaging\top50-review.txt
+#endif
 SetupLogging=yes
 
 [Files]
@@ -40,6 +61,9 @@ Source: "{#BuildOutput}\access-settings.json"; DestDir: "{app}"; Flags: onlyifdo
 Source: "{#BuildOutput}\update-settings.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#RepoRoot}MyRevitAddin.addin"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}packaging\top50-review.txt"; DestDir: "{app}"; DestName: "Doka-Top50-Review.txt"; Flags: ignoreversion
+#ifdef DashboardTeamRelease
+Source: "{#RepoRoot}packaging\dashboard-release.txt"; DestDir: "{app}"; DestName: "Doka-Release.txt"; Flags: ignoreversion
+#endif
 
 [Code]
 var BackupDirectory: String;
@@ -127,7 +151,7 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var Conflict, Root: String; Major, Minor: Cardinal;
+var Conflict, Root: String; Major, Minor, InstallerMajor, InstallerMinor: Cardinal;
 begin
   Result := '';
   Root := ExpandFileName(InstallDirectory(''));
@@ -153,8 +177,11 @@ begin
   if FileExists(AddBackslash(Root)+'MyRevitAddin.addin') and not ExistingManifestIsLocal(AddBackslash(Root)+'MyRevitAddin.addin',Root) then begin
     Result := 'The existing Dashboard points to a custom assembly location. A reviewed migration is required; its registration was not changed.'; Exit;
   end;
+  if not GetVersionNumbers(ExpandConstant('{srcexe}'),InstallerMajor,InstallerMinor) then begin
+    Result := 'Unable to read the installer version. Installation was not started.'; Exit;
+  end;
   if GetVersionNumbers(AddBackslash(Root)+'MyRevitAddin.dll',Major,Minor) then
-    if (Major > (1 shl 16)+1) or ((Major=(1 shl 16)+1) and (Minor>(17 shl 16))) then
+    if (Major > InstallerMajor) or ((Major=InstallerMajor) and (Minor>InstallerMinor)) then
       Result := 'A newer Dashboard is already installed. Downgrade refused.';
 end;
 
@@ -183,7 +210,7 @@ begin
     if FileExists(ExpandConstant('{app}\MyRevitAddin.dll')) or FileExists(ExpandConstant('{app}\MyRevitAddin.addin')) then begin
       if IsIsolatedTest then BackupDirectory := ExpandConstant('{app}')+'-backups\'
       else BackupDirectory := ExpandConstant('{localappdata}\DokaRevitAutomation\Backups\');
-      BackupDirectory := BackupDirectory+'1.1.17-'+GetDateTimeString('yyyymmdd-hhnnss',#0,#0);
+      BackupDirectory := BackupDirectory+'{#MyVersion}-'+GetDateTimeString('yyyymmdd-hhnnss',#0,#0);
       BaseBackup := BackupDirectory; Index := 0;
       while DirExists(BackupDirectory) do begin Index := Index+1; BackupDirectory := BaseBackup+'-'+IntToStr(Index); end;
       if not ForceDirectories(BackupDirectory) then RaiseException('Unable to create upgrade backup.');

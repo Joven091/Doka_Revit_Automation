@@ -1,0 +1,11 @@
+node_modules/
+.test-deps/
+.npm-cache/
+generated-*.js
+*-test-results.json
+*-checks.log
+previews/
+Steel-weight-calculators.html
+SteelShape.html
+*.zip
+Steel-weight-calculators-validation.json

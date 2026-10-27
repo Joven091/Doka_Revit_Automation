@@ -1,10 +1,10 @@
 name: Revit 2024 team installer
 on:
   pull_request:
-    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
+    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
   push:
     branches: [main]
-    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
+    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
   workflow_dispatch:
 concurrency:
   group: revit-release-${{ github.ref }}
@@ -26,6 +26,16 @@ jobs:
       - run: dotnet run --project tests/Beam.UiSmoke -c Release --no-build -- --primary-bearing-ui
       - run: dotnet run --project tests/D3Slab.UiSmoke -c Release -- --release-availability
       - run: dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
+      - run: dotnet build tests/SteelShape.HostSmoke -c Release --warnaserror
+      - run: dotnet build tests/Top50.PlannerSmoke -c Release --warnaserror
+      - name: Prepare installed browser host test
+        run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
+      - uses: actions/checkout@v4
+        with:
+          ref: bb37debee36f9d6a9dbce79bc41f3d47bdb35b6b
+          path: artifacts/beam-baseline
+      - name: Build original beam upgrade fixture
+        run: dotnet build artifacts/beam-baseline/src/MyRevitAddin.csproj -c Release --warnaserror
       - name: Build and verify team installer
         shell: pwsh
         run: |
@@ -34,26 +44,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
           $installer=(Resolve-Path artifacts/installer/Install_DokaRevitAutomation.exe).Path
           $version=([version][Diagnostics.FileVersionInfo]::GetVersionInfo($installer).FileVersion).ToString(3)
-          $installed=Start-Process -FilePath $installer -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCLOSEAPPLICATIONS /NORESTARTAPPLICATIONS' -Wait -PassThru
-          if ($installed.ExitCode -ne 0) { throw 'Installer launch failed' }
-          $addin=Join-Path $env:APPDATA 'Autodesk\Revit\Addins\2024'
-          $actual=([version][Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $addin 'MyRevitAddin.dll')).FileVersion).ToString(3)
-          if ($actual -ne $version) { throw 'Installed add-in version differs from the release' }
-          foreach ($name in @('MyRevitAddin.addin','Doka.RevitUpdater.exe','update-settings.json','access-settings.json')) {
-            if (-not (Test-Path (Join-Path $addin $name))) { throw "Installed file missing: $name" }
-          }
+          ./scripts/Test-Top50PlannerInstaller.ps1 -Installer $installer -OldPayload artifacts/beam-baseline/src/bin/Release/net48 -EvidenceDirectory artifacts/team-installer-checks
+          ./scripts/Test-Top50InstallerGuards.ps1 -Installer $installer -EvidenceDirectory artifacts/team-installer-guards
           $release='artifacts/revit2024-team-release'
           New-Item -ItemType Directory -Force $release | Out-Null
           Copy-Item $installer "$release/Install_DokaRevitAutomation.exe"
           Copy-Item scripts/Publish-RevitUpdate.ps1 "$release/Publish-RevitUpdate.ps1"
-          ./scripts/Publish-RevitUpdate.ps1 -Installer $installer -Version $version -ReleaseNotes "Revit 2024 release ${version}: latest beam calculations and company-folder updates." -Destination $release
+          ./scripts/Publish-RevitUpdate.ps1 -Installer $installer -Version $version -ReleaseNotes "Revit 2024 release ${version}: Steel Shape, Top50 Planner with diagnosis, latest beam import and company-folder updates." -Destination $release
           @{
             version=$version; sourceCommit=$env:GITHUB_SHA; revitVersion=2024
             installerSha256=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+            steelShapeHtmlSha256=(Get-FileHash src/SteelShape/SteelShape.html -Algorithm SHA256).Hash.ToLowerInvariant()
+            validation='415 standalone checks plus Windows WPF/WebView2 and isolated installed-payload checks; see Actions evidence'
+            limits='Actual Revit2024 host acceptance and exact original Top50 solver parity remain unverified. Company share not published.'
           } | ConvertTo-Json | Set-Content "$release/release-info.json"
           @"
           @echo off
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Publish-RevitUpdate.ps1" -Installer "%~dp0Install_DokaRevitAutomation.exe" -Version $version -ReleaseNotes "Revit 2024 release ${version}: latest beam calculations and company-folder updates."
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Publish-RevitUpdate.ps1" -Installer "%~dp0Install_DokaRevitAutomation.exe" -Version $version -ReleaseNotes "Revit 2024 release ${version}: Steel Shape, Top50 Planner with diagnosis, latest beam import and company-folder updates."
           if errorlevel 1 goto failed
           echo Published. Team installer: S:\MEA\ENG\Joven\BeamCalculator\Updates\DokaRevitAutomation-$version.exe
           pause
@@ -73,10 +80,18 @@ jobs:
 
           Future updates: Publish a higher-version release. Team members use Check for updates in the dashboard or the beam File menu, then save and close Revit when ready. The updater waits for Revit to close before installation.
 
-          This installer includes the current calculations and the updater. D3 slab and Dome remain grey Coming soon choices. Box-out design remains outside the beam calculator scope. Actual Revit operation and access to the company share must be checked on a company computer.
+          This installer adds Steel Shape to the dashboard and retains the latest beam importer, Top50 planner/diagnosis, and updater. Steel Shape runs offline and uses Microsoft Edge WebView2; if unavailable, Open in browser uses the same page. D3 slab and Dome remain grey Coming soon choices. Box-out design remains outside the beam calculator scope. Actual Revit operation and access to the company share must be checked on a company computer.
           "@ | Set-Content "$release/README.txt" -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
           name: revit2024-team-release
           path: artifacts/revit2024-team-release/
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: team-installer-test-evidence
+          path: |
+            artifacts/team-installer-checks/
+            artifacts/team-installer-guards/
+          if-no-files-found: warn

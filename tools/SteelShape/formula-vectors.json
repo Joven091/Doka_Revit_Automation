@@ -1,0 +1,417 @@
+[
+  {
+    "id": "plate-0",
+    "shape": "plate",
+    "input": {
+      "W": "500",
+      "t": "2",
+      "L": "1000",
+      "n": "1"
+    },
+    "unitMassKg": "7.85",
+    "totalKg": "7.85",
+    "metric": "piece"
+  },
+  {
+    "id": "plate-1",
+    "shape": "plate",
+    "input": {
+      "W": "1000",
+      "t": "4",
+      "L": "6000",
+      "n": "2"
+    },
+    "unitMassKg": "188.4",
+    "totalKg": "376.8",
+    "metric": "piece"
+  },
+  {
+    "id": "plate-2",
+    "shape": "plate",
+    "input": {
+      "W": "1255.0",
+      "t": "3.2",
+      "L": "6350.00",
+      "n": "3"
+    },
+    "unitMassKg": "200.18756",
+    "totalKg": "600.56268",
+    "metric": "piece"
+  },
+  {
+    "id": "plate-3",
+    "shape": "plate",
+    "input": {
+      "W": "2000",
+      "t": "0.125",
+      "L": "125.000",
+      "n": "4"
+    },
+    "unitMassKg": "0.2453125",
+    "totalKg": "0.98125",
+    "metric": "piece"
+  },
+  {
+    "id": "plate-4",
+    "shape": "plate",
+    "input": {
+      "W": "3007.50",
+      "t": "8.25",
+      "L": "13275.000",
+      "n": "5"
+    },
+    "unitMassKg": "2585.61447890625",
+    "totalKg": "12928.07239453125",
+    "metric": "piece"
+  },
+  {
+    "id": "seamless-0",
+    "shape": "seamless",
+    "input": {
+      "D": "50",
+      "t": "2",
+      "L": "1"
+    },
+    "unitMassKg": "2.3675042237452680048",
+    "totalKg": "2.3675042237452680048",
+    "metric": "metre"
+  },
+  {
+    "id": "seamless-1",
+    "shape": "seamless",
+    "input": {
+      "D": "100",
+      "t": "4",
+      "L": "6"
+    },
+    "unitMassKg": "9.4700168949810720192",
+    "totalKg": "56.8201013698864321152",
+    "metric": "metre"
+  },
+  {
+    "id": "seamless-2",
+    "shape": "seamless",
+    "input": {
+      "D": "125.5",
+      "t": "3.2",
+      "L": "6.35"
+    },
+    "unitMassKg": "9.651525552134875899568",
+    "totalKg": "61.2871872560564619622568",
+    "metric": "metre"
+  },
+  {
+    "id": "seamless-3",
+    "shape": "seamless",
+    "input": {
+      "D": "200",
+      "t": "0.125",
+      "L": "0.125"
+    },
+    "unitMassKg": "0.61615222229308000320234375",
+    "totalKg": "0.07701902778663500040029296875",
+    "metric": "metre"
+  },
+  {
+    "id": "seamless-4",
+    "shape": "seamless",
+    "input": {
+      "D": "300.75",
+      "t": "8.25",
+      "L": "13.275"
+    },
+    "unitMassKg": "59.51128781172187348003125",
+    "totalKg": "790.01234570060787044741484375",
+    "metric": "metre"
+  },
+  {
+    "id": "chs-0",
+    "shape": "chs",
+    "input": {
+      "D": "50",
+      "t": "2",
+      "L": "1"
+    },
+    "unitMassKg": "2.3675042237452680048",
+    "totalKg": "2.3675042237452680048",
+    "metric": "metre"
+  },
+  {
+    "id": "chs-1",
+    "shape": "chs",
+    "input": {
+      "D": "100",
+      "t": "4",
+      "L": "6"
+    },
+    "unitMassKg": "9.4700168949810720192",
+    "totalKg": "56.8201013698864321152",
+    "metric": "metre"
+  },
+  {
+    "id": "chs-2",
+    "shape": "chs",
+    "input": {
+      "D": "125.5",
+      "t": "3.2",
+      "L": "6.35"
+    },
+    "unitMassKg": "9.651525552134875899568",
+    "totalKg": "61.2871872560564619622568",
+    "metric": "metre"
+  },
+  {
+    "id": "chs-3",
+    "shape": "chs",
+    "input": {
+      "D": "200",
+      "t": "0.125",
+      "L": "0.125"
+    },
+    "unitMassKg": "0.61615222229308000320234375",
+    "totalKg": "0.07701902778663500040029296875",
+    "metric": "metre"
+  },
+  {
+    "id": "chs-4",
+    "shape": "chs",
+    "input": {
+      "D": "300.75",
+      "t": "8.25",
+      "L": "13.275"
+    },
+    "unitMassKg": "59.51128781172187348003125",
+    "totalKg": "790.01234570060787044741484375",
+    "metric": "metre"
+  },
+  {
+    "id": "shs-0",
+    "shape": "shs",
+    "input": {
+      "A": "50",
+      "t": "2",
+      "L": "1"
+    },
+    "unitMassKg": "2.9604920186454390004",
+    "totalKg": "2.9604920186454390004",
+    "metric": "metre"
+  },
+  {
+    "id": "shs-1",
+    "shape": "shs",
+    "input": {
+      "A": "100",
+      "t": "4",
+      "L": "6"
+    },
+    "unitMassKg": "11.8419680745817560016",
+    "totalKg": "71.0518084474905360096",
+    "metric": "metre"
+  },
+  {
+    "id": "shs-2",
+    "shape": "shs",
+    "input": {
+      "A": "125.5",
+      "t": "3.2",
+      "L": "6.35"
+    },
+    "unitMassKg": "12.150699567732323841024",
+    "totalKg": "77.1569422551002563905024",
+    "metric": "metre"
+  },
+  {
+    "id": "shs-3",
+    "shape": "shs",
+    "input": {
+      "A": "200",
+      "t": "0.125",
+      "L": "0.125"
+    },
+    "unitMassKg": "0.7842987969478337460953125",
+    "totalKg": "0.0980373496184792182619140625",
+    "metric": "metre"
+  },
+  {
+    "id": "shs-4",
+    "shape": "shs",
+    "input": {
+      "A": "300.75",
+      "t": "8.25",
+      "L": "13.275"
+    },
+    "unitMassKg": "74.85484700476379799118125",
+    "totalKg": "993.69809398823941833293109375",
+    "metric": "metre"
+  },
+  {
+    "id": "round_bar-0",
+    "shape": "round_bar",
+    "input": {
+      "D": "50",
+      "L": "1"
+    },
+    "unitMassKg": "15.41343895667492190625",
+    "totalKg": "15.41343895667492190625",
+    "metric": "metre"
+  },
+  {
+    "id": "round_bar-1",
+    "shape": "round_bar",
+    "input": {
+      "D": "100",
+      "L": "6"
+    },
+    "unitMassKg": "61.653755826699687625",
+    "totalKg": "369.92253496019812575",
+    "metric": "metre"
+  },
+  {
+    "id": "round_bar-2",
+    "shape": "round_bar",
+    "input": {
+      "D": "125.5",
+      "L": "6.35"
+    },
+    "unitMassKg": "97.106206770947675501565625",
+    "totalKg": "616.62441299551773943494171875",
+    "metric": "metre"
+  },
+  {
+    "id": "round_bar-3",
+    "shape": "round_bar",
+    "input": {
+      "D": "200",
+      "L": "0.125"
+    },
+    "unitMassKg": "246.6150233067987505",
+    "totalKg": "30.8268779133498438125",
+    "metric": "metre"
+  },
+  {
+    "id": "round_bar-4",
+    "shape": "round_bar",
+    "input": {
+      "D": "300.75",
+      "L": "13.275"
+    },
+    "unitMassKg": "557.66168947626392642555390625",
+    "totalKg": "7402.95892779740362329922810546875",
+    "metric": "metre"
+  },
+  {
+    "id": "square_bar-0",
+    "shape": "square_bar",
+    "input": {
+      "A": "50",
+      "L": "1"
+    },
+    "unitMassKg": "19.625",
+    "totalKg": "19.625",
+    "metric": "metre"
+  },
+  {
+    "id": "square_bar-1",
+    "shape": "square_bar",
+    "input": {
+      "A": "100",
+      "L": "6"
+    },
+    "unitMassKg": "78.5",
+    "totalKg": "471",
+    "metric": "metre"
+  },
+  {
+    "id": "square_bar-2",
+    "shape": "square_bar",
+    "input": {
+      "A": "125.5",
+      "L": "6.35"
+    },
+    "unitMassKg": "123.6394625",
+    "totalKg": "785.110586875",
+    "metric": "metre"
+  },
+  {
+    "id": "square_bar-3",
+    "shape": "square_bar",
+    "input": {
+      "A": "200",
+      "L": "0.125"
+    },
+    "unitMassKg": "314",
+    "totalKg": "39.25",
+    "metric": "metre"
+  },
+  {
+    "id": "square_bar-4",
+    "shape": "square_bar",
+    "input": {
+      "A": "300.75",
+      "L": "13.275"
+    },
+    "unitMassKg": "710.036915625",
+    "totalKg": "9425.740054921875",
+    "metric": "metre"
+  },
+  {
+    "id": "flat_bar-0",
+    "shape": "flat_bar",
+    "input": {
+      "W": "50",
+      "t": "2",
+      "L": "1"
+    },
+    "unitMassKg": "0.785",
+    "totalKg": "0.785",
+    "metric": "metre"
+  },
+  {
+    "id": "flat_bar-1",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "4",
+      "L": "6"
+    },
+    "unitMassKg": "3.14",
+    "totalKg": "18.84",
+    "metric": "metre"
+  },
+  {
+    "id": "flat_bar-2",
+    "shape": "flat_bar",
+    "input": {
+      "W": "125.5",
+      "t": "3.2",
+      "L": "6.35"
+    },
+    "unitMassKg": "3.15256",
+    "totalKg": "20.018756",
+    "metric": "metre"
+  },
+  {
+    "id": "flat_bar-3",
+    "shape": "flat_bar",
+    "input": {
+      "W": "200",
+      "t": "0.125",
+      "L": "0.125"
+    },
+    "unitMassKg": "0.19625",
+    "totalKg": "0.02453125",
+    "metric": "metre"
+  },
+  {
+    "id": "flat_bar-4",
+    "shape": "flat_bar",
+    "input": {
+      "W": "300.75",
+      "t": "8.25",
+      "L": "13.275"
+    },
+    "unitMassKg": "19.477321875",
+    "totalKg": "258.561447890625",
+    "metric": "metre"
+  }
+]

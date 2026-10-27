@@ -30,6 +30,13 @@ Copy-Item $smoke (Join-Path $root 'Top50.PlannerSmoke.exe')
 & (Join-Path $root 'Top50.PlannerSmoke.exe') (Join-Path $evidence 'installed-planner') *> (Join-Path $evidence 'installed-planner.log')
 Check ($LASTEXITCODE -eq 0) 'actual installed planner solves, diagnoses, exports and renders without binding redirects'
 
+$steelSmoke=Join-Path $repo 'tests/SteelShape.HostSmoke/bin/Release/net48/SteelShape.HostSmoke.exe'
+if(Test-Path $steelSmoke){
+    Copy-Item $steelSmoke (Join-Path $fresh 'SteelShape.HostSmoke.exe')
+    & (Join-Path $fresh 'SteelShape.HostSmoke.exe') (Join-Path $evidence 'installed-steel-shape') *> (Join-Path $evidence 'installed-steel-shape.log')
+    Check ($LASTEXITCODE -eq 0) 'actual installed Steel Shape opens, calculates, selects weld edges and recovers browser failure without binding redirects'
+}
+
 $upgrade=Join-Path $root 'upgrade';New-Item -ItemType Directory -Path $upgrade | Out-Null
 Get-ChildItem $OldPayload -File | Copy-Item -Destination $upgrade
 Copy-Item (Join-Path $repo 'MyRevitAddin.addin') (Join-Path $upgrade 'MyRevitAddin.addin')

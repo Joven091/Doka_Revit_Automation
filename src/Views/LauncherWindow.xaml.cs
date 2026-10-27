@@ -42,6 +42,14 @@ namespace EngineeringDashboard
             finally { Show(); }
         }
 
+        private void BtnSteelShape_Click(object sender, RoutedEventArgs e)
+        {
+            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
+            Hide();
+            try { new SteelShape.SteelShapeWindow { Owner = this }.ShowDialog(); }
+            finally { Show(); }
+        }
+
         private void BtnTop50_Click(object sender, RoutedEventArgs e)
         {
             if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;

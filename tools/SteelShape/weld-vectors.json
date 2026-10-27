@@ -1,0 +1,466 @@
+[
+  {
+    "id": "fillet-small",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "fillet",
+        "lengthMode": "manual",
+        "lengthUnit": "m",
+        "L1": "2.5",
+        "L2": "3.5",
+        "z": "4",
+        "lengthMm": "300",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.01884",
+    "totalKg": "47.11884",
+    "steelLength": "6",
+    "finishedLength": "6"
+  },
+  {
+    "id": "fillet-fractional",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "fillet",
+        "lengthMode": "manual",
+        "lengthUnit": "m",
+        "L1": "1.2",
+        "L2": "4.05",
+        "z": "3.5",
+        "lengthMm": "750.25",
+        "runs": "2",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "41.2125",
+    "weldTotalKg": "0.072145915625",
+    "totalKg": "41.284645915625",
+    "steelLength": "5.25",
+    "finishedLength": "5.25"
+  },
+  {
+    "id": "fillet-two-seams",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "fillet",
+        "lengthMode": "manual",
+        "lengthUnit": "m",
+        "L1": "2.5",
+        "L2": "3.5",
+        "z": "4",
+        "lengthMm": "300",
+        "runs": "2",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.03768",
+    "totalKg": "47.13768",
+    "steelLength": "6",
+    "finishedLength": "6"
+  },
+  {
+    "id": "fillet-very-small",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "fillet",
+        "lengthMode": "manual",
+        "lengthUnit": "m",
+        "L1": "2.5",
+        "L2": "3.5",
+        "z": ".1",
+        "lengthMm": "1",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.00000003925",
+    "totalKg": "47.10000003925",
+    "steelLength": "6",
+    "finishedLength": "6"
+  },
+  {
+    "id": "fillet-plate-three-assemblies",
+    "shape": "plate",
+    "input": {
+      "W": "1000",
+      "t": "10",
+      "n": "3",
+      "L": "999",
+      "weld": {
+        "type": "fillet",
+        "lengthMode": "manual",
+        "lengthUnit": "mm",
+        "L1": "1250",
+        "L2": "750",
+        "z": "6",
+        "lengthMm": "1000",
+        "runs": "2",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "471",
+    "weldTotalKg": "0.8478",
+    "totalKg": "471.8478",
+    "steelLength": "2000",
+    "finishedLength": "2000"
+  },
+  {
+    "id": "butt-gap-two-caps",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "butt",
+        "lengthMode": "manual",
+        "lengthUnit": "m",
+        "L1": "2.5",
+        "L2": "3.5",
+        "joinedThicknessMm": "10",
+        "gapMm": "2",
+        "capWidthMm": "12",
+        "capHeightMm": "1",
+        "faces": "2",
+        "lengthMm": "100",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.02512",
+    "totalKg": "47.12512",
+    "steelLength": "6",
+    "finishedLength": "6.002"
+  },
+  {
+    "id": "butt-flush-no-gap",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "butt",
+        "lengthMode": "manual",
+        "lengthUnit": "m",
+        "L1": "2.5",
+        "L2": "3.5",
+        "joinedThicknessMm": "10",
+        "gapMm": "0",
+        "capWidthMm": "12",
+        "capHeightMm": "0",
+        "faces": "2",
+        "lengthMm": "100",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0",
+    "totalKg": "47.1",
+    "steelLength": "6",
+    "finishedLength": "6"
+  },
+  {
+    "id": "butt-gap-only",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "butt",
+        "lengthMode": "manual",
+        "lengthUnit": "m",
+        "L1": "2.5",
+        "L2": "3.5",
+        "joinedThicknessMm": "10",
+        "gapMm": "2",
+        "capWidthMm": "12",
+        "capHeightMm": "0",
+        "faces": "2",
+        "lengthMm": "100",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.0157",
+    "totalKg": "47.1157",
+    "steelLength": "6",
+    "finishedLength": "6.002"
+  },
+  {
+    "id": "butt-one-cap-only",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "butt",
+        "lengthMode": "manual",
+        "lengthUnit": "m",
+        "L1": "2.5",
+        "L2": "3.5",
+        "joinedThicknessMm": "10",
+        "gapMm": "0",
+        "capWidthMm": "12",
+        "capHeightMm": "2",
+        "faces": "1",
+        "lengthMm": "100",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.00942",
+    "totalKg": "47.10942",
+    "steelLength": "6",
+    "finishedLength": "6"
+  },
+  {
+    "id": "butt-two-identical-segments",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "butt",
+        "lengthMode": "manual",
+        "lengthUnit": "m",
+        "L1": "2.5",
+        "L2": "3.5",
+        "joinedThicknessMm": "10",
+        "gapMm": "2",
+        "capWidthMm": "12",
+        "capHeightMm": "1",
+        "faces": "2",
+        "lengthMm": "50",
+        "runs": "2",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.02512",
+    "totalKg": "47.12512",
+    "steelLength": "6",
+    "finishedLength": "6.002"
+  },
+  {
+    "id": "butt-two-plate-assemblies",
+    "shape": "plate",
+    "input": {
+      "W": "1000",
+      "t": "10",
+      "n": "2",
+      "L": "999",
+      "weld": {
+        "type": "butt",
+        "lengthMode": "manual",
+        "lengthUnit": "mm",
+        "L1": "1000",
+        "L2": "1000",
+        "joinedThicknessMm": "10",
+        "gapMm": "2",
+        "capWidthMm": "16",
+        "capHeightMm": "2",
+        "faces": "2",
+        "lengthMm": "1000",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "314",
+    "weldTotalKg": "0.8164",
+    "totalKg": "314.8164",
+    "steelLength": "2000",
+    "finishedLength": "2002"
+  },
+  {
+    "id": "butt-fractional",
+    "shape": "flat_bar",
+    "input": {
+      "W": "125.5",
+      "t": "3.2",
+      "L": "999",
+      "weld": {
+        "type": "butt",
+        "lengthMode": "manual",
+        "lengthUnit": "m",
+        "L1": ".125",
+        "L2": ".375",
+        "joinedThicknessMm": "3.2",
+        "gapMm": ".5",
+        "capWidthMm": "6.4",
+        "capHeightMm": ".75",
+        "faces": "1",
+        "lengthMm": "125.5",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "1.57628",
+    "weldTotalKg": "0.0039407",
+    "totalKg": "1.5802207",
+    "steelLength": "0.5",
+    "finishedLength": "0.5005"
+  },
+  {
+    "id": "fillet-millimetres",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "fillet",
+        "lengthMode": "manual",
+        "lengthUnit": "mm",
+        "L1": "2500",
+        "L2": "3500",
+        "z": "4",
+        "lengthMm": "300",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.01884",
+    "totalKg": "47.11884",
+    "steelLength": "6",
+    "finishedLength": "6"
+  },
+  {
+    "id": "butt-millimetres",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "butt",
+        "lengthMode": "manual",
+        "lengthUnit": "mm",
+        "L1": "2500",
+        "L2": "3500",
+        "joinedThicknessMm": "10",
+        "gapMm": "2",
+        "capWidthMm": "12",
+        "capHeightMm": "1",
+        "faces": "2",
+        "lengthMm": "100",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.02512",
+    "totalKg": "47.12512",
+    "steelLength": "6",
+    "finishedLength": "6.002"
+  },
+  {
+    "id": "L-fillet-millimetres",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "fillet",
+        "lengthMode": "manual",
+        "lengthUnit": "mm",
+        "L1": "2500",
+        "L2": "3500",
+        "z": "4",
+        "lengthMm": "300",
+        "runs": "1",
+        "connection": "L",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.01884",
+    "totalKg": "47.11884",
+    "steelLength": "6",
+    "finishedLength": null
+  },
+  {
+    "id": "L-butt-millimetres",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "butt",
+        "lengthMode": "manual",
+        "lengthUnit": "mm",
+        "L1": "2500",
+        "L2": "3500",
+        "joinedThicknessMm": "10",
+        "gapMm": "2",
+        "capWidthMm": "12",
+        "capHeightMm": "1",
+        "faces": "2",
+        "lengthMm": "100",
+        "runs": "1",
+        "connection": "L",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.02512",
+    "totalKg": "47.12512",
+    "steelLength": "6",
+    "finishedLength": null
+  },
+  {
+    "id": "fillet-default-mm",
+    "shape": "flat_bar",
+    "input": {
+      "W": "100",
+      "t": "10",
+      "L": "999",
+      "weld": {
+        "type": "fillet",
+        "lengthMode": "manual",
+        "L1": "2500",
+        "L2": "3500",
+        "z": "4",
+        "lengthMm": "300",
+        "runs": "1",
+        "enabled": true
+      }
+    },
+    "steelTotalKg": "47.1",
+    "weldTotalKg": "0.01884",
+    "totalKg": "47.11884",
+    "steelLength": "6",
+    "finishedLength": "6"
+  }
+]

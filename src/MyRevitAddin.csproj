@@ -28,6 +28,7 @@
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="OxyPlot.Wpf" Version="2.1.2" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" GeneratePathProperty="true" />
     <PackageReference Include="Google.OrTools" Version="9.12.4544" />
     <PackageReference Include="IxMilia.Dxf" Version="0.8.4" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
@@ -36,6 +37,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="SteelShape/SteelShape.html" LogicalName="EngineeringDashboard.SteelShape.html" />
     <None Update="access-settings.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="update-settings.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../tools/RevitUpdater/Doka.RevitUpdater.csproj" ReferenceOutputAssembly="false" />
@@ -53,5 +55,8 @@
   </Target>
   <Target Name="CopyRevitUpdater" AfterTargets="Build">
     <Copy SourceFiles="../tools/RevitUpdater/bin/$(Configuration)/net48/Doka.RevitUpdater.exe" DestinationFolder="$(TargetDir)" />
+  </Target>
+  <Target Name="CopySteelShapeBrowserLoader" AfterTargets="Build">
+    <Copy SourceFiles="$(PkgMicrosoft_Web_WebView2)/runtimes/win-x64/native/WebView2Loader.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>
