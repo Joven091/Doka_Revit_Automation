@@ -103,6 +103,11 @@ internal static class Program
             Check(box.IsReadOnly&&box.Text.Contains("MANUAL-001"),"routed Diagnose click opens readable report for active planner");
             Check(Find<Button>(dialog).Any(b=>(string)b.Content=="Copy report")&&Find<Button>(dialog).Any(b=>(string)b.Content=="Save report…"),"report provides copy and save actions");
             Render((FrameworkElement)dialog.Content,1000,650,1,Path.Combine(output,"top50-diagnosis.png"));
+            foreach(var button in Find<Button>(dialog))
+            {
+                var position=button.TransformToAncestor((FrameworkElement)dialog.Content).Transform(new Point(0,0));
+                Check(position.X>=0&&position.Y>=0&&position.X+button.ActualWidth<=1001&&position.Y+button.ActualHeight<=651,"diagnosis action visible: "+button.Content);
+            }
             var first=box.Text;Find<Button>(dialog).Single(b=>(string)b.Content=="Refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(box.Text.Contains("MANUAL-001")&&box.Text.Length>=first.Length-10,"refresh retains complete active planner evidence");
             dialog.Close();
         }));

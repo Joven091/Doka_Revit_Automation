@@ -15,7 +15,8 @@ namespace EngineeringDashboard
         {
             if(capture==null)throw new ArgumentNullException(nameof(capture));
             Title="Top50 Planner — diagnosis";Width=1080;Height=760;MinWidth=640;MinHeight=420;WindowStartupLocation=WindowStartupLocation.CenterOwner;
-            var root=new DockPanel{Margin=new Thickness(16)};
+            Background=Brushes.White;FontFamily=new FontFamily("Segoe UI");FontSize=13;
+            var root=new DockPanel{Margin=new Thickness(16),Background=Brushes.White};
             var title=new TextBlock{Text="Copy or save this report and send it with your comments.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,12)};
             DockPanel.SetDock(title,Dock.Top);root.Children.Add(title);
             var report=new TextBox{Text=capture(),IsReadOnly=true,AcceptsReturn=true,TextWrapping=TextWrapping.NoWrap,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,FontFamily=new FontFamily("Consolas"),FontSize=12};
