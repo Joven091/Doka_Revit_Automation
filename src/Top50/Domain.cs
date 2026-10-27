@@ -78,12 +78,19 @@ namespace EngineeringDashboard.Top50
         public int PatternsPerLength { get; }
         public int MaximumGroups { get; }
         public int LongestSimultaneous { get; }
-        public double Seconds { get; }
+        // Seconds is retained as a source-compatible alias for older callers.
+        // It now selects repeatable work, never a wall-clock deadline.
+        public double Seconds => SearchEffort;
+        public double SearchEffort { get; }
+        public double SolverDeterministicWork { get; }
+        public long PatternVisitLimit { get; }
         public int Seed { get; }
-        public SearchLimits(int maxComponents,int maxInternalFillers,int maxFillerMm,int maximumGroups,int longestSimultaneous,double seconds,int seed,int patternsPerLength=4)
+        public SearchLimits(int maxComponents,int maxInternalFillers,int maxFillerMm,int maximumGroups,int longestSimultaneous,double seconds,int seed,int patternsPerLength=4,double? solverDeterministicWork=null)
         {
-            if(maxComponents<1 || maxInternalFillers<0 || maxFillerMm<0 || maxFillerMm>350 || maximumGroups<1 || longestSimultaneous<1 || seconds<=0 || patternsPerLength<1 || patternsPerLength>4) throw new ArgumentOutOfRangeException(nameof(maxComponents));
-            MaxComponents=maxComponents;MaxInternalFillers=maxInternalFillers;MaxFillerMm=maxFillerMm;MaximumGroups=maximumGroups;LongestSimultaneous=longestSimultaneous;Seconds=seconds;Seed=seed;PatternsPerLength=patternsPerLength;
+            double work=solverDeterministicWork??seconds;
+            if(maxComponents<1 || maxInternalFillers<0 || maxFillerMm<0 || maxFillerMm>350 || maximumGroups<1 || longestSimultaneous<1 || seconds<=0 || double.IsNaN(seconds) || double.IsInfinity(seconds) || work<=0 || double.IsNaN(work) || double.IsInfinity(work) || patternsPerLength<1 || patternsPerLength>4) throw new ArgumentOutOfRangeException(nameof(maxComponents));
+            MaxComponents=maxComponents;MaxInternalFillers=maxInternalFillers;MaxFillerMm=maxFillerMm;MaximumGroups=maximumGroups;LongestSimultaneous=longestSimultaneous;SearchEffort=seconds;SolverDeterministicWork=work;Seed=seed;PatternsPerLength=patternsPerLength;
+            PatternVisitLimit=(long)Math.Max(1,Math.Ceiling(Math.Min(1000000000,seconds*50000)));
         }
     }
 
@@ -121,7 +128,7 @@ namespace EngineeringDashboard.Top50
         public int Rank { get; internal set; }
         public bool Pareto { get; internal set; }
         public Proposal(string id,IDictionary<int,int> stock,IEnumerable<CastingGroup> groups)
-        { Id=id;Stock=new System.Collections.ObjectModel.ReadOnlyDictionary<int,int>(new Dictionary<int,int>(stock));Groups=Array.AsReadOnly(groups.ToArray()); }
+        { Id=id;Stock=new System.Collections.ObjectModel.ReadOnlyDictionary<int,int>(stock.OrderBy(p=>p.Key).ToDictionary(p=>p.Key,p=>p.Value));Groups=Array.AsReadOnly(groups.ToArray()); }
         public long StockMicrometres => Stock.Sum(x=>(long)x.Key*x.Value*1000);
         public int PanelCount => Stock.Sum(x=>x.Value);
         public decimal MeanUtilization => Groups.Count==0||StockMicrometres==0?0:Groups.Sum(g=>(decimal)g.InstalledPanelMicrometres)/(Groups.Count*StockMicrometres);
@@ -137,4 +144,10 @@ namespace EngineeringDashboard.Top50
     // Candidate discovery is intentionally injected. Original catalog strategies are not established by one recording.
     public interface ITop50InventoryCandidateSource
     { IEnumerable<IDictionary<int,int>> Generate(IReadOnlyList<WallRow> walls,IReadOnlyList<int> allowedCatalogMm,SearchLimits limits,CancellationToken cancellation); }
+
+    public static class Top50Order
+    {
+        public static string Stock(IEnumerable<KeyValuePair<int,int>> stock)=>string.Join(";",stock.OrderBy(p=>p.Key).Select(p=>p.Key.ToString(System.Globalization.CultureInfo.InvariantCulture)+":"+p.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        public static string Group(CastingGroup group)=>string.Join(";",group.Walls.OrderBy(w=>w.WallId,StringComparer.Ordinal).Select(w=>w.WallId+":"+string.Join(",",w.Pattern.PanelsMm)+"/"+string.Join(",",w.Pattern.InternalGapsMicrometres)));
+    }
 }

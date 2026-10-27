@@ -1,11 +1,11 @@
-Doka Engineering Dashboard 1.1.17 — Top50 review release
+Doka Engineering Dashboard 1.1.19 — Top50 quantity-first review release
 
-Includes the existing PR168 calculator and reader fixes plus native integrated Top50 Planner, its diagnosis report, and a separate Planners dashboard section.
+Includes the merged 1.1.18 dashboard, Steel Shape, beam/import fixes and Top50 diagnosis. Top50 now prioritizes the fewest validated panels and uses repeatable work limits instead of elapsed-time cutoffs.
 Requires Autodesk Revit2024 x64. Save your models and close every Revit window first.
 Installs per Windows user; do not run as a different administrator account.
 The installer registers the add-in automatically. No XML editing or manual DLL copying is required.
 
-Top50 recreates the recorded original V1 workflow. Exact original search/result equivalence remains unverified. Revit2024 host acceptance and native dependency coexistence remain unrun. This is a review release, not an approved engineering design or company-wide release.
+Top50 uses an updated selection policy. Only the lowest validated panel-count tier is offered; presets compare equal-count inventories. Search effort controls fixed work, so elapsed calculation time can vary. Exact original search/result equivalence remains unverified. Revit2024 host acceptance and native dependency coexistence remain unrun. This is a review release, not an approved engineering design or company-wide release.
 
 Existing access/update settings and saved projects are preserved. Before replacing an existing Dashboard, the installer copies its current DLLs, manifest, updater and settings to %LOCALAPPDATA%\DokaRevitAutomation\Backups. The installation log records the backup location. Backups remain after uninstall.
 

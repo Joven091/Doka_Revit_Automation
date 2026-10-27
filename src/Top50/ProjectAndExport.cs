@@ -26,7 +26,7 @@ namespace EngineeringDashboard.Top50
     public sealed class NativeTop50Project
     {
         public string Kind {get;set;}="Doka.Top50.Native";
-        public int Version {get;set;}=1;
+        public int Version {get;set;}=2;
         public string Name {get;set;}="Top50 project";
         public string SourceName {get;set;}
         public string SourceBase64 {get;set;}
@@ -44,6 +44,11 @@ namespace EngineeringDashboard.Top50
         public int MaxGroups {get;set;}=64;
         public int CandidateDisplayLimit {get;set;}=4;
         public double Seconds {get;set;}=20;
+        // Preserve the old JSON member for reading V1 projects. V2 readers treat
+        // this value as effort; V1 applications reject V2 instead of misreading it.
+        [System.Runtime.Serialization.IgnoreDataMember]
+        public double SearchEffort {get=>Seconds;set=>Seconds=value;}
+        public int SearchPolicyVersion {get;set;}
         public int Seed {get;set;}=50;
         public int OfferingMode {get;set;}
         public decimal Percentage {get;set;}=45;
@@ -79,7 +84,7 @@ namespace EngineeringDashboard.Top50
         public static NativeTop50Project Load(string path)
         {
             NativeTop50Project project;using(var stream=File.OpenRead(path))project=(NativeTop50Project)new DataContractJsonSerializer(typeof(NativeTop50Project)).ReadObject(stream);
-            if(project==null||project.Kind!="Doka.Top50.Native"||project.Version!=1||project.Walls==null)throw new InvalidDataException("Unsupported Top50 project kind or version.");
+            if(project==null||project.Kind!="Doka.Top50.Native"||(project.Version!=1&&project.Version!=2)||project.Walls==null)throw new InvalidDataException("Unsupported Top50 project kind or version.");
             if(Hash(Convert.FromBase64String(project.SourceBase64))!=project.SourceSha256)throw new InvalidDataException("Embedded DXF checksum mismatch.");
             return project;
         }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 
@@ -13,11 +12,11 @@ namespace EngineeringDashboard.Top50
             if(length<=0)throw new ArgumentOutOfRangeException(nameof(length));
             var sizes=catalog.Distinct().OrderByDescending(x=>x).ToArray();
             if(sizes.Length==0 || sizes.Any(x=>x<=0))throw new ArgumentException("A positive nominal panel catalog is required.");
-            var result=new List<PanelPattern>();var panels=new List<int>();var clock=Stopwatch.StartNew();long visits=0;
-            void Check(){cancellation.ThrowIfCancellationRequested();if(clock.Elapsed.TotalSeconds>limits.Seconds)throw new TimeoutException("Retained pattern enumeration exceeded its explicit test/search budget; no infeasibility conclusion follows.");}
+            var result=new List<PanelPattern>();var panels=new List<int>();long visits=0;
+            void Check(){cancellation.ThrowIfCancellationRequested();if(visits>limits.PatternVisitLimit)throw new TimeoutException("Retained pattern enumeration reached its repeatable node limit; no infeasibility conclusion follows.");}
             void Find(int remaining,int start,long installed,int count)
             {
-                if((++visits&1023)==0)Check();
+                if(++visits>limits.PatternVisitLimit || (visits&1023)==0)Check();
                 if(result.Count>=limits.PatternsPerLength)return;
                 int maximumFillers=Math.Min(limits.MaxInternalFillers,count-1);
                 long minimum=length-(long)maximumFillers*limits.MaxFillerMm*1000;
@@ -48,6 +47,7 @@ namespace EngineeringDashboard.Top50
         {
             var errors=new List<string>();var included=walls.Where(w=>w.Included).ToDictionary(w=>w.Id);
             if(proposal.Stock.Count==0 || proposal.Stock.Any(x=>x.Key<=0 || x.Value<=0))errors.Add("Reusable stock must have positive nominal sizes and counts.");
+            if(proposal.Groups.Count>limits.MaximumGroups)errors.Add("Casting group limit exceeded.");
             var seen=new HashSet<string>();
             foreach(var group in proposal.Groups)
             {

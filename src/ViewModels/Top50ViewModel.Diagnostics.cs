@@ -62,6 +62,7 @@ namespace EngineeringDashboard
             foreach(var property in typeof(NativeTop50Project).GetProperties().OrderBy(p=>p.Name,StringComparer.Ordinal))
             {
                 if(property.Name==nameof(NativeTop50Project.SourceBase64))continue;
+                if(property.Name==nameof(NativeTop50Project.Seconds))continue;
                 if(property.Name==nameof(NativeTop50Project.CatalogMm))text.AppendLine("CatalogMm: "+(settings.CatalogMm==null?"none":string.Join(", ",settings.CatalogMm)));
                 else if(property.PropertyType==typeof(string)||property.PropertyType.IsValueType)text.AppendLine(property.Name+": "+Value(property.GetValue(settings)));
             }
@@ -81,6 +82,8 @@ namespace EngineeringDashboard
             text.AppendLine("Page: "+CurrentPage+"; selected casting group index: "+SelectedGroupIndex);
             text.AppendLine("--- Current settings ---");text.Append(DescribeSettings(Settings));
             text.AppendLine("OfferingMode: 0 = fixed longest-wall sets; 1 = percentage reference. Preset: "+(PlanningPreset)Settings.Preset);
+            text.AppendLine("Ranking: fewest validated panel quantity first; higher-count offers excluded. Presets compare equal-count offers using fixed project scales.");
+            text.AppendLine("Search effort uses repeatable pattern-node and single-worker deterministic solver work. No wall-clock deadline; elapsed seconds are observations only.");
             text.AppendLine("--- Current input geometry (millimetres) ---");
             if(input==null)text.AppendLine("No input imported or added. Inspect operation errors below.");
             else
@@ -103,7 +106,7 @@ namespace EngineeringDashboard
             {
                 text.AppendLine("Search UTC: "+search.StartedUtc.ToString("O",CultureInfo.InvariantCulture)+"; input revision: "+search.Revision);
                 text.AppendLine("Outcome: "+search.Outcome+"; elapsed seconds: "+search.Clock.Elapsed.TotalSeconds.ToString("F3",CultureInfo.InvariantCulture));
-                text.AppendLine("Attempted inventories: "+Value(search.Attempted)+"; unsearched inventories: "+Value(search.Unsearched)+"; budget expired: "+Value(search.BudgetExpired));
+                text.AppendLine("Attempted inventories: "+Value(search.Attempted)+"; unsearched inventories: "+Value(search.Unsearched)+"; elapsed-time budget expired: "+Value(search.BudgetExpired));
                 text.AppendLine("Unknown counters mean the solver has not returned a complete SearchRun; they do not mean zero candidates.");
                 text.AppendLine("Settings at search start:");text.Append(search.Settings);text.AppendLine("Walls at search start:");AppendWalls(text,search.Walls);
                 text.AppendLine("Returned search log:");foreach(var line in search.Log)text.AppendLine(Value(line));

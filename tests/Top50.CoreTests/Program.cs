@@ -54,9 +54,9 @@ internal static class Program
         Check(g03Group.InstalledPanelMicrometres==79750000&&g03.Sum(a=>a.Pattern.FillerLocations)==10&&g03.Sum(a=>a.Pattern.DirectLocations)==0,"G03 79.750m / ten fillers / zero direct joints");
         var partial=new Proposal("partial",goldenStock,new[]{g03Group});
         Check(Top50Validation.Validate(source.Walls,partial,limits).Any(e=>e.StartsWith("Included wall not assigned")),"partial reference arrangement is never accepted as a complete result");
-        var ranked=ProposalRanking.Rank(new[]{new RankingMetrics("S3",96.250m,5,11,.7412m,63,.3558m),new RankingMetrics("S4",99m,8,12,.6606m,63,.4672m),new RankingMetrics("S5",100.250m,5,11,.7137m,63,.3142m),new RankingMetrics("S1",99.250m,6,11,.7188m,63,.1184m)},PlanningPreset.BalancedOptimization,4);
-        Check(string.Join(",",ranked.Select(c=>c.Id))=="S3,S4,S5,S1","observed Balanced ranking from visible metrics, not hardcoded search output");
-        Check(ranked[0].Pareto&&ranked[1].Pareto&&!ranked[2].Pareto&&!ranked[3].Pareto,"observed seven-criterion Pareto classification");
+        var ranked=ProposalRanking.Rank(new[]{new RankingMetrics("S3",27,96.250m,5,11,.7412m,63,.3558m),new RankingMetrics("S4",24,99m,8,12,.6606m,63,.4672m),new RankingMetrics("S5",23,100.250m,5,11,.7137m,63,.3142m),new RankingMetrics("S1",23,99.250m,6,11,.7188m,63,.1184m)},PlanningPreset.BalancedOptimization,4,new RankingScales(valid.Sum(w=>w.LengthMm)/1000,18,15,63));
+        Check(ranked.Count==2&&ranked.All(c=>c.PanelCount==23),"quantity-first ranking excludes the higher-count historical offers");
+        Check(ranked.All(c=>c.Pareto),"Pareto tradeoffs compare the eligible 23-panel alternatives");
         var generated=new CatalogCutoffCandidates().Generate(source.Walls,Precision.CatalogMm,limits,CancellationToken.None).ToArray();
         Check(generated.Any(stock=>stock.Count==goldenStock.Count&&goldenStock.All(p=>stock.TryGetValue(p.Key,out var count)&&count==p.Value)),"general catalog-cutoff discovery includes observed inventory without a case-specific stock constant");
         var cancel=new CancellationToken(true);

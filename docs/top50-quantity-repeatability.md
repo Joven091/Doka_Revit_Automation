@@ -1,0 +1,15 @@
+# Quantity-first, repeatable Top50 proposals
+
+Every proposal must pass the geometry, stock, simultaneous-wall and casting-group requirements. Of the validated inventories found, only the lowest panel-count tier is offered. Thus 23 panels at 100.25 m outranks 27 panels at 96.25 m even at the same group count, and a 60-panel proposal cannot remain on the shortlist beside a passing 27-panel offer. All presets apply this admission rule. Their existing priorities compare equal-count offers.
+
+Balanced scores use seven equal secondary contributions scaled by fixed project values: total included wall length, permitted catalogue size, maximum groups, the maximum internal filler locations, utilization fractions, and the percentage target length where applicable. Pareto comparisons operate within the eligible quantity tier. An extra candidate no longer changes another candidate's normalized score. Canonical inventory signatures and IDs resolve final ties.
+
+Candidate generation, catalogue ordering, model variables, constraints, wall assignment and equivalent group ordering are canonical. Search examines inventories in increasing quantity tiers and finishes the entire first passing tier. Higher quantities cannot improve the approved primary objective and are skipped. In percentage mode, the requested band is considered before optional expansion.
+
+The previous seconds value is now **Search effort**. A value of 20 is not a promise of twenty elapsed seconds. Each pattern enumeration has a repeatable visit limit (50,000 nodes per effort unit, capped at 1,000,000,000 visits), and each eligible inventory receives `effort / eligible inventory count` CP-SAT deterministic work units. The retained allocation model uses one worker and a fixed seed, without an elapsed-time cutoff. Actual duration can vary; it does not select a different candidate pool. Cancellation remains available and keeps the last accepted result.
+
+These are bounded searches. A work-limited lower-quantity inventory is not proven impossible, and the lowest validated tier is not a globally proven optimum across omitted patterns and inventories. Effort, catalogue, requirements, planner/solver version or explicit cancellation can affect results. The repeatability checks compare complete allocations across fresh processes, reordered inputs, a different culture and concurrent CPU use within the same release.
+
+V2 projects preserve effort using the historical JSON member `Seconds`, with the new semantics protected by the file version. V1 files can be opened and revalidated; their shortlist is updated to quantity-first and the original file remains intact until Save. Saving writes V2 so older applications reject it instead of silently applying the old clock budget. Cached older allocations are labelled separately from a fresh repeatable solve.
+
+The implementation retains the existing beam calculations, Steel Shape and dashboard work. No company-folder publication is performed by the review workflow. Actual Revit2024 acceptance remains a user-host test.

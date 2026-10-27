@@ -1,0 +1,62 @@
+name: Top50 quantity and repeatability
+on:
+  push:
+    branches: [codex/top50-fewest-panels-repeatable]
+  pull_request:
+    paths: ['src/Top50/**', 'src/ViewModels/Top50*', 'src/Views/Top50*', 'tests/Top50*/**', '.github/workflows/top50-repeatability.yml']
+  workflow_dispatch:
+concurrency:
+  group: top50-repeatability-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  repeatable:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build production-source repeatability checks
+        run: dotnet build tests/Top50.RepeatabilityTests -c Release --warnaserror
+      - name: Quantity priority, delayed execution, constraints and project migration
+        run: tests/Top50.RepeatabilityTests/bin/Release/net48/Top50.RepeatabilityTests.exe artifacts/top50-repeatability/unit
+      - name: Compare five fresh native solver processes
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path tests/Top50.RepeatabilityTests/bin/Release/net48/Top50.RepeatabilityTests.exe).Path
+          & $exe artifacts/top50-repeatability/run-1 --signature
+          if($LASTEXITCODE -ne 0){throw 'Native reference search failed'}
+          & $exe artifacts/top50-repeatability/run-2 --signature --reverse
+          if($LASTEXITCODE -ne 0){throw 'Native reordered search failed'}
+          $processes=@()
+          foreach($n in 3..5){
+            $folder="artifacts/top50-repeatability/run-$n"
+            New-Item -ItemType Directory -Force $folder | Out-Null
+            $reverse=if($n%2 -eq 1){' --reverse'}else{''}
+            $processes+=Start-Process -FilePath $exe -ArgumentList "$folder --signature$reverse" -RedirectStandardOutput "$folder/process.log" -RedirectStandardError "$folder/errors.log" -PassThru
+          }
+          foreach($process in $processes){if(!$process.WaitForExit(300000)){throw 'Native repeatability process exceeded five minutes'};$process.Refresh();if($process.ExitCode -ne 0){throw 'Native repeatability process failed'}}
+          $hashes=@(1..5|ForEach-Object {(Get-Content "artifacts/top50-repeatability/run-$_/signature.sha256" -Raw).Trim()})
+          if(@($hashes|Select-Object -Unique).Count -ne 1){throw 'Proposal or complete casting allocation changed between fresh processes'}
+          "PASS five fresh-process allocations match: $($hashes[0])" | Set-Content artifacts/top50-repeatability/fresh-process-checks.txt
+          Get-Content artifacts/top50-repeatability/run-1/summary.txt
+      - name: Build actual production planner host checks
+        run: dotnet build tests/Top50.PlannerSmoke -c Release --warnaserror
+      - name: Existing planner diagnosis, cancellation, persistence and WPF rendering
+        run: tests/Top50.PlannerSmoke/bin/Release/net48/Top50.PlannerSmoke.exe artifacts/top50-repeatability/planner
+      - name: Build Revit review installer
+        shell: pwsh
+        run: ./scripts/Build-Top50Installer.ps1 -Compiler "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" -OutputDirectory artifacts/top50-repeatable-installer -NoRestore
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: top50-quantity-repeatable-test-installer
+          path: artifacts/top50-repeatable-installer/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: top50-quantity-repeatability-evidence
+          path: artifacts/top50-repeatability/
+          if-no-files-found: warn
