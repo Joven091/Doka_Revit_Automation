@@ -72,6 +72,10 @@ internal static class Program
             var loaded=new Top50ViewModel();loaded.Open(project,Path.Combine(output,"cache"));
             Check(Signature(loaded)==signature&&loaded.Settings.Version==2&&!loaded.Dirty,"version-2 project roundtrip preserves proposals and selected stock");
             var labels=new Top50WallLabels(loaded.Input.Walls);var reorderedLabels=new Top50WallLabels(Enumerable.Reverse(loaded.Input.Walls));
+            var idleOffer=new Proposal("more-idle-stock",new Dictionary<int,int>{{5000,1},{5500,1}},loaded.Input.Walls.Select(w=>new CastingGroup(new[]{new WallArrangement(w.Id,new PanelPattern(new[]{5000},Array.Empty<long>()))})));
+            var explanation=new Top50OfferPresentation(loaded.Input,new NativeTop50Project{LongestCount=1},new[]{loaded.Selected,idleOffer});
+            Check(explanation.Reason(loaded.Selected).Contains("100%")&&explanation.Reason(loaded.Selected).Contains("2nd:"),"first-rank explanation identifies its measured advantage over the next offer");
+            Check(explanation.Reason(idleOffer).Contains("Outperformed by 1st")&&explanation.Reason(idleOffer).Contains("47.62%"),"lower-rank explanation identifies a dominating rank and its actual panel-use tradeoff");
             Check(labels[loaded.Input.Walls[0].Id]=="W-01 (Length = 5.00 m)"&&labels[loaded.Input.Walls[1].Id]=="W-02 (Length = 5.00 m)","equal-length walls have separate readable names");
             Check(loaded.Input.Walls.All(w=>labels[w.Id]==reorderedLabels[w.Id]&&labels[w.Id]==new Top50WallLabels(model.Input.Walls)[w.Id]),"wall names survive row reordering and project reopen");
             var precise=new Top50ViewModel();precise.AddManual(19204.608m,"Presentation precision check");
@@ -103,7 +107,7 @@ internal static class Program
                     var comparison=Find<DataGrid>(root).Single(t=>t.Columns.Any(c=>Equals(c.Header,"Rank")));
                     Check(comparison.Columns.Select(c=>c.Header as string).SequenceEqual(new[]{"Rank","Types","Panels","Stock m","Casting Groups","Why this rank"}),"comparison retains only requested client-facing columns");
                     Check(comparison.Items.Cast<object>().Select(row=>(string)row.GetType().GetProperty("Rank").GetValue(row)).First()=="1st"&&comparison.Items.Cast<object>().All(row=>!string.IsNullOrWhiteSpace((string)row.GetType().GetProperty("Reason").GetValue(row))),"results show ordinal ranks and individual explanations");
-                    Check(Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>Equals(c.Header,"Connector type")))&&!Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>Equals(c.Header,"Panels in each identical set"))),"connector results are visible and unused identical-set columns are hidden");
+                    Check(Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>Equals(c.Header,"Connector type")))&&!Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>(c.Header as string)?.StartsWith("Panels per set",StringComparison.Ordinal)==true)),"connector results are visible and unused identical-set columns are hidden");
                     Check(!Find<TextBox>(root).Any(t=>t.IsReadOnly&&t.Text.Contains("Retained model objective:"))&&!Find<TextBlock>(root).Any(t=>t.Text.Contains("Average installed-panel")||t.Text.Contains("Peak joint LOCATIONS")),"results omit the utilization notice and solver log box");
                 }
                 if(page==3)
@@ -128,6 +132,9 @@ internal static class Program
             Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(opened&&ReferenceEquals(before,loaded.Selected)&&!loaded.Dirty,"opening and closing diagnosis preserves project state");
             Check(Signature(loaded)==signature&&loaded.Input.Walls.All(w=>w.Id.StartsWith("DXF-",StringComparison.Ordinal)),"presentation changes preserve source identity, stock and complete casting allocations");
+            loaded.Settings.RequireIdenticalKits=true;loaded.Changed();Wait(loaded.OptimizeAsync());window.ShowPage(2);Render(root,1280,800,Path.Combine(output,"identical-sets.png"));
+            Check(loaded.Selected.IdenticalKitCount==2&&Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>Equals(c.Header,"Panels per set (2 identical sets)"))),"identical-set inventory names the actual set count when applicable");
+            loaded.Save(Path.Combine(output,"identical.top50"));
             window.Close();app.Shutdown();
             Check(!AppDomain.CurrentDomain.GetAssemblies().Any(a=>a.GetName().Name.StartsWith("Revit",StringComparison.OrdinalIgnoreCase)),"complete portable import/solve/export/UI flow loads no Revit assembly");
             File.WriteAllText(Path.Combine(output,"checks.txt"),checks+" standalone package checks passed.");
