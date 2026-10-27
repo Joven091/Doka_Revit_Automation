@@ -1,0 +1,16 @@
+Doka Engineering Dashboard 1.1.16 — Top50 review release
+
+Includes the existing PR168 calculator and reader fixes plus native integrated Top50.
+Requires Autodesk Revit2024 x64. Save your models and close every Revit window first.
+Installs per Windows user; do not run as a different administrator account.
+The installer registers the add-in automatically. No XML editing or manual DLL copying is required.
+
+Top50 recreates the recorded original V1 workflow. Exact original search/result equivalence remains unverified. Revit2024 host acceptance and native dependency coexistence remain unrun. This is a review release, not an approved engineering design or company-wide release.
+
+Existing access/update settings and saved projects are preserved. Before replacing an existing Dashboard, the installer copies its current DLLs, manifest, updater and settings to %LOCALAPPDATA%\DokaRevitAutomation\Backups. The installation log records the backup location. Backups remain after uninstall.
+
+To roll back: close Revit, uninstall this version, then reinstall your previously trusted calculator installer. If that installer is unavailable, retain the backup and ask for a reviewed restoration; do not mix DLLs from different versions. Saved projects and settings are not removed by uninstall. Backup creation is not an automatic rollback service.
+
+Only the standard per-user Revit2024 installation is supported. Another active Dashboard registration in the all-users folder or under another filename is blocked to prevent duplicate IDs. Machine-wide/custom installations require a reviewed migration.
+
+No company feed publication, GitHub merge, or automatic update is performed by this installer. The existing updater remains user initiated. Never publish this review release to the company feed before Revit2024 acceptance.

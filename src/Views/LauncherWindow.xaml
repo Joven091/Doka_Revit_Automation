@@ -38,6 +38,12 @@
     <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><TextBlock Text="Backpropping" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="Support spacing and load transfer between floors." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
     <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
    </Grid></Button>
+   <Button x:Name="BtnTop50" Style="{StaticResource Choice}" AutomationProperties.Name="Top 50 panel optimizer" Click="BtnTop50_Click"><Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
+    <Border Background="#FFF2BF" Width="48" Height="48"><Canvas Width="40" Height="40"><Rectangle Canvas.Left="4" Canvas.Top="6" Width="9" Height="28" Fill="#567D97"/><Rectangle Canvas.Left="15" Canvas.Top="6" Width="9" Height="28" Fill="#567D97"/><Rectangle Canvas.Left="26" Canvas.Top="6" Width="9" Height="28" Fill="#D58B29"/></Canvas></Border>
+    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><TextBlock Text="Top 50" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="Reusable panel equipment and casting groups." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
+    <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
+   </Grid></Button>
    <Border BorderBrush="#D8DDE1" BorderThickness="0,1,0,0" Margin="0,24,0,12" Padding="0,12,0,0"><TextBlock Text="Coming soon" Style="{StaticResource Hint}"/></Border>
    <Button x:Name="BtnDomeCalculator" IsEnabled="False" Style="{StaticResource Choice}" AutomationProperties.Name="Dome calculator — Coming soon" Click="BtnDomeCalculator_Click"><Grid>
     <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>

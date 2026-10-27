@@ -11,6 +11,7 @@ namespace EngineeringDashboard
         private static BeamCalculatorViewModel _beamViewModel;
         private static D3SlabCalculatorViewModel _d3SlabViewModel;
         private static Dome.MainViewModel _domeViewModel;
+        private static Top50ViewModel _top50ViewModel;
 
         public LauncherWindow()
         {
@@ -38,6 +39,18 @@ namespace EngineeringDashboard
             if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
             Hide();
             try { new BackproppingWindow { Owner = this }.ShowDialog(); }
+            finally { Show(); }
+        }
+
+        private void BtnTop50_Click(object sender, RoutedEventArgs e)
+        {
+            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
+            Hide();
+            try
+            {
+                if (_top50ViewModel == null) _top50ViewModel = new Top50ViewModel();
+                new Top50Window(_top50ViewModel) { Owner = this }.ShowDialog();
+            }
             finally { Show(); }
         }
 
