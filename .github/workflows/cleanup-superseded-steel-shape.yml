@@ -15,7 +15,8 @@ jobs:
             const obsolete = new Set([
               '82edef04724f4a3aeb5a0b0cabffb09c51243129',
               'cfd7d6899b26726324d849563e9b1feb8c186246',
-              '9a06839c58ab46fb4c5f763f801fb0e0480faf0b'
+              '9a06839c58ab46fb4c5f763f801fb0e0480faf0b',
+              '93e389d017b8141a71ee0b9140fb9a925d808669'
             ]);
             const {owner, repo} = context.repo;
             const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
