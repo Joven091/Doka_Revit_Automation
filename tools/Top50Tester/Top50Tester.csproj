@@ -24,6 +24,7 @@
     <Compile Include="../../src/ViewModels/Top50ViewModel*.cs" Link="ViewModels/%(Filename)%(Extension)" />
     <Compile Include="../../src/Views/Top50Window.cs" Link="Views/Top50Window.cs" />
     <Compile Include="../../src/Views/Top50DiagnosticWindow.cs" Link="Views/Top50DiagnosticWindow.cs" />
+    <Page Include="../../src/Views/CalculatorStyles.xaml" Link="Views/CalculatorStyles.xaml" />
   </ItemGroup>
   <Target Name="ValidatePortableNativePayload" AfterTargets="Build">
     <Error Condition="!Exists('$(TargetDir)google-ortools-native.dll') Or !Exists('$(TargetDir)ortools.dll')" Text="The standalone Top50 tester requires the win-x64 native OR-Tools payload beside Top50Planner.exe." />

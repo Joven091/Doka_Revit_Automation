@@ -13,7 +13,7 @@ namespace EngineeringDashboard.Top50
         public decimal AdjustableStock {get;private set;}
         public decimal[] DirectUnits {get;private set;}=Array.Empty<decimal>();
         public decimal[] FillerUnits {get;private set;}=Array.Empty<decimal>();
-        public string Description=>Determined?StandardStock+" direct-only / "+AdjustableStock+" universal connectors, reused between casting groups. "+(AssumedSingleLevel?"Basis: one connector per joint, per wall face.":"Basis: "+Levels+" connectors per joint × "+Faces+" wall faces."):"No proposal selected.";
+        public string Description=>Determined?StandardStock+" "+ConnectorEquipment.DirectName+" ("+ConnectorEquipment.DirectArticle+"), "+AdjustableStock+" "+ConnectorEquipment.FillerName+" ("+ConnectorEquipment.FillerArticle+"), reused between casting groups. "+(AssumedSingleLevel?"Basis: one connector per joint, per wall face.":"Basis: "+Levels+" connectors per joint × "+Faces+" wall faces."):"No proposal selected.";
         public static ConnectorAllocation Calculate(Proposal proposal,NativeTop50Project settings)
         {
             var result=new ConnectorAllocation();

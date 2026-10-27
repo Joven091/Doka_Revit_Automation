@@ -91,9 +91,15 @@ internal static class Program
             var before=loaded.Selected;var cancel=loaded.OptimizeAsync();loaded.Cancel();Wait(cancel);
             Check(!loaded.IsBusy&&ReferenceEquals(before,loaded.Selected),"cancelled search retains the accepted proposal");
             var window=new Top50Window(loaded);var root=(FrameworkElement)window.Content;
+            Check(window.Resources.MergedDictionaries.Any(d=>d.Source.OriginalString.Contains("CalculatorStyles.xaml")),"portable planner loads the dashboard's actual shared resource dictionary");
+            var optimizeButton=Find<Button>(root).Single(b=>Equals(b.Content,"Optimize"));
+            Check(ReferenceEquals(optimizeButton.Style,window.FindResource("PrimaryAction")),"Optimize uses the shared yellow primary-action style");
+            Render(root,1280,800,Path.Combine(output,"dashboard-style.png"));
+            var tabs=Find<Button>(root).Where(b=>AutomationProperties.GetAutomationId(b).StartsWith("Top50Page",StringComparison.Ordinal)).ToArray();
+            Check(tabs.Length==5&&tabs.Select(b=>Math.Round(b.TransformToAncestor(root).Transform(new Point(0,0)).Y)).Distinct().Count()==1,"all five workflow tabs share one horizontal row");
             for(int page=0;page<5;page++)
             {
-                window.ShowPage(page);Render(root,1280,800,Path.Combine(output,"page-"+page+".png"));
+                Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Page"+page).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(window.CurrentPage==page,"horizontal tab routes to planner page "+page);Render(root,1280,800,Path.Combine(output,"page-"+page+".png"));
                 Check(Find<Button>(root).Any(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose"&&b.IsEnabled),"Diagnose is available on planner page "+page);
                 Check(!Find<TextBlock>(root).Any(t=>t.Text.Contains("LOCAL DESKTOP / V1")||t.Text.Contains("No AutoCAD installation required")||t.Text.Contains("Offline by design")||t.Text.Contains("Native review build:")),"removed sidebar, subtitle and footer notes stay absent on page "+page);
                 if(page==0)
@@ -107,7 +113,11 @@ internal static class Program
                     var comparison=Find<DataGrid>(root).Single(t=>t.Columns.Any(c=>Equals(c.Header,"Rank")));
                     Check(comparison.Columns.Select(c=>c.Header as string).SequenceEqual(new[]{"Rank","Types","Panels","Stock m","Casting Groups","Why this rank"}),"comparison retains only requested client-facing columns");
                     Check(comparison.Items.Cast<object>().Select(row=>(string)row.GetType().GetProperty("Rank").GetValue(row)).First()=="1st"&&comparison.Items.Cast<object>().All(row=>!string.IsNullOrWhiteSpace((string)row.GetType().GetProperty("Reason").GetValue(row))),"results show ordinal ranks and individual explanations");
-                    Check(Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>Equals(c.Header,"Connector type")))&&!Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>(c.Header as string)?.StartsWith("Panels per set",StringComparison.Ordinal)==true)),"connector results are visible and unused identical-set columns are hidden");
+                    Check(Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>Equals(c.Header,"Equipment")))&&!Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>(c.Header as string)?.StartsWith("Panels per set",StringComparison.Ordinal)==true)),"connector results are visible and unused identical-set columns are hidden");
+                    var connectorTable=Find<DataGrid>(root).Single(t=>t.Columns.Any(c=>Equals(c.Header,"Equipment")));
+                    Check(connectorTable.Items.Cast<object>().Select(row=>(string)row.GetType().GetProperty("Type").GetValue(row)).SequenceEqual(new[]{ConnectorEquipment.DirectName,ConnectorEquipment.FillerName})&&connectorTable.Items.Cast<object>().Select(row=>(string)row.GetType().GetProperty("Article").GetValue(row)).SequenceEqual(new[]{"587533000","587532000"}),"connector results use verified Doka equipment names and article numbers");
+                    var inventory=Find<DataGrid>(root).Single(t=>t.Columns.Any(c=>Equals(c.Header,"Nominal length m")));
+                    Check(Math.Abs(inventory.TransformToAncestor(root).Transform(new Point(0,0)).Y-connectorTable.TransformToAncestor(root).Transform(new Point(0,0)).Y)<2,"panel inventory and reusable connectors appear side by side");
                     Check(!Find<TextBox>(root).Any(t=>t.IsReadOnly&&t.Text.Contains("Retained model objective:"))&&!Find<TextBlock>(root).Any(t=>t.Text.Contains("Average installed-panel")||t.Text.Contains("Peak joint LOCATIONS")),"results omit the utilization notice and solver log box");
                 }
                 if(page==3)

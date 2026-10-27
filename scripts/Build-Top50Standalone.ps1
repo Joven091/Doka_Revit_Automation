@@ -16,7 +16,7 @@ Get-ChildItem -LiteralPath $build -File | Where-Object {$_.Extension -eq '.dll' 
 $version=([version][Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $output 'Top50Planner.exe')).FileVersion).ToString(3)
 $commit=(& git -C $repo rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0){throw 'Source commit could not be recorded.'}
-$sources=@(Get-ChildItem (Join-Path $repo 'src/Top50/*.cs');Get-ChildItem (Join-Path $repo 'src/ViewModels/Top50ViewModel*.cs');Get-Item (Join-Path $repo 'src/Views/Top50Window.cs');Get-Item (Join-Path $repo 'src/Views/Top50DiagnosticWindow.cs'))
+$sources=@(Get-ChildItem (Join-Path $repo 'src/Top50/*.cs');Get-ChildItem (Join-Path $repo 'src/ViewModels/Top50ViewModel*.cs');Get-Item (Join-Path $repo 'src/Views/Top50Window.cs');Get-Item (Join-Path $repo 'src/Views/Top50DiagnosticWindow.cs');Get-Item (Join-Path $repo 'src/Views/CalculatorStyles.xaml'))
 $hashes=@($sources | Sort-Object FullName | ForEach-Object {@{path=$_.FullName.Substring($repo.Length+1).Replace('\','/');sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
 @{version=$version;sourceCommit=$commit;plannerBaseline='835e6de78f9170d4777ca14d982661ae7530c0dd';mode='Portable Windows x64 tester';plannerSources=$hashes} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output 'release-info.json') -Encoding UTF8
 @"
@@ -24,7 +24,7 @@ TOP50 PLANNER — STANDALONE TESTER $version
 
 1. Extract the complete ZIP into a local folder.
 2. Open Top50Planner.exe. Keep all supplied DLLs and the .config file beside it.
-3. Choose Open project for an existing .top50 file. Or use Import > Import DXF
+3. Choose Open for an existing .top50 file. Or use Import > Import DXF
    to read Wall_Length dimensions, or Add manual wall for reviewed dimensions.
 4. Review Settings, then choose Optimize. Fewer panels take priority.
 5. Use Reports to export Excel. Use Diagnose to copy/save a report for review.

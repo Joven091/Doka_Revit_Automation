@@ -19,7 +19,7 @@ jobs:
         run: dotnet build tests/Top50.PlannerSmoke -c Release --warnaserror
       - name: Diagnose, optimize, cancel, retry, persist and render
         run: tests/Top50.PlannerSmoke/bin/Release/net48/Top50.PlannerSmoke.exe artifacts/top50-planner-checks
-      - name: Existing locked calculator availability
+      - name: Dashboard Dome Beta entry and retained D3 slab lock
         run: dotnet run --project tests/D3Slab.UiSmoke -c Release -- --release-availability
       - name: Build review installer
         shell: pwsh

@@ -75,8 +75,9 @@ internal static class Program
         var panel=(Panel)((FrameworkElement)launcher.FindName("BtnTop50")).Parent;
         int planners=panel.Children.IndexOf((UIElement)launcher.FindName("PlannersSection"));int planner=panel.Children.IndexOf((UIElement)launcher.FindName("BtnTop50"));
         Check(planners>=0&&planner==planners+1,"Top50 belongs to its own Planners section");
-        foreach(var name in new[]{"BtnFlexCalculator","BtnBeamCalculator","BtnBackpropping","BtnDomeCalculator"})Check(panel.Children.IndexOf((UIElement)launcher.FindName(name))<planners,"planner appears below "+name);
-        Check(!((Button)launcher.FindName("BtnDomeCalculator")).IsEnabled,"Dome remains locked Coming soon");
+        foreach(var name in new[]{"BtnFlexCalculator","BtnBeamCalculator","BtnBackpropping","BtnSteelShape"})Check(panel.Children.IndexOf((UIElement)launcher.FindName(name))<planners,"planner appears below "+name);
+        Check(((Button)launcher.FindName("BtnDomeCalculator")).IsEnabled&&AutomationProperties.GetName((Button)launcher.FindName("BtnDomeCalculator")).Contains("Beta"),"Dome Beta is available");
+        Check(panel.Children.IndexOf((UIElement)launcher.FindName("BetaSection"))>planner&&panel.Children.IndexOf((UIElement)launcher.FindName("BtnDomeCalculator"))>panel.Children.IndexOf((UIElement)launcher.FindName("BetaSection")),"Dome Beta appears below Top50 Planner");
         Check(launcher.Title=="Engineering Dashboard"&&AutomationProperties.GetName((Button)launcher.FindName("BtnTop50"))=="Top50 Planner","dashboard and accessible entry call Top50 a planner");
         Render(launchRoot,620,840,1,Path.Combine(output,"dashboard-planners.png"));
         var window=new Top50Window(restored);var root=(FrameworkElement)window.Content;
@@ -90,7 +91,7 @@ internal static class Program
             {
                 double width=scale==1?1000:1600/scale,height=scale==1?680:1000/scale;
                 Render(root,width,height,scale,Path.Combine(output,"planner-page-"+page+"-"+scale.ToString(CultureInfo.InvariantCulture)+".png"));
-                foreach(var action in Find<Button>(root).Where(b=>new[]{"Open project","Save project","Optimize","Cancel","Diagnose"}.Contains(b.Content as string)))
+                foreach(var action in Find<Button>(root).Where(b=>new[]{"Open","Save","Optimize","Cancel","Diagnose"}.Contains(b.Content as string)&&b.Visibility==Visibility.Visible))
                 {var position=action.TransformToAncestor(root).Transform(new Point(0,0));Check(position.X>=0&&position.X+action.ActualWidth<=width+1,"header "+action.Content+" visible at "+scale+" on page "+page);}
             }
         }

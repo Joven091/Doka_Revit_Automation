@@ -139,7 +139,7 @@ namespace EngineeringDashboard.Top50
             tables["Panel Arrangements"].Add(new object[]{"Casting Group","Wall","Panel lengths mm","Internal gaps mm","Closure mm"});
             tables["Casting Schedule"].Add(new object[]{"Casting Group","Walls","Installed m","Use fraction","Direct locations","Filler locations","Wall names"});
             tables["Material Utilization"].Add(new object[]{"Casting Group","Nominal mm","Used","Idle"});
-            tables["Connector Schedule"].Add(new object[]{"Casting Group","Direct locations","Filler locations","Direct units","Filler units","Reusable direct-only connectors","Reusable universal connectors","Quantity basis"});
+            tables["Connector Schedule"].Add(new object[]{"Casting Group","Direct locations","Filler locations","Direct units","Filler units",ConnectorEquipment.DirectName+" ("+ConnectorEquipment.DirectArticle+")",ConnectorEquipment.FillerName+" ("+ConnectorEquipment.FillerArticle+")","Quantity basis"});
             for(int i=0;i<selected.Groups.Count;i++)
             {
                 var g=selected.Groups[i];string id=Top50OfferPresentation.CastingGroup(i);

@@ -1,4 +1,4 @@
-Doka Engineering Dashboard 1.1.21 — Top50 quantity-first review release
+Doka Engineering Dashboard 1.1.22 — Top50 dashboard-style review release
 
 Includes the merged 1.1.18 dashboard, Steel Shape, beam/import fixes and Top50 diagnosis. Top50 now prioritizes the fewest validated panels and uses repeatable work limits instead of elapsed-time cutoffs.
 Requires Autodesk Revit2024 x64. Save your models and close every Revit window first.
