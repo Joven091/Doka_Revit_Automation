@@ -1,0 +1,63 @@
+name: Top50 planner and diagnosis
+on:
+  pull_request:
+    paths: ['src/**', 'tests/Top50*/**', 'Directory.Build.props', 'installer-top50.iss', 'packaging/top50-review.txt', 'scripts/*Top50*.ps1', '.github/workflows/top50-planner.yml']
+  workflow_dispatch:
+concurrency:
+  group: top50-planner-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  planner:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile production planner and tests
+        run: dotnet build tests/Top50.PlannerSmoke -c Release --warnaserror
+      - name: Diagnose, optimize, cancel, retry, persist and render
+        run: tests/Top50.PlannerSmoke/bin/Release/net48/Top50.PlannerSmoke.exe artifacts/top50-planner-checks
+      - name: Existing locked calculator availability
+        run: dotnet run --project tests/D3Slab.UiSmoke -c Release -- --release-availability
+      - name: Build review installer
+        shell: pwsh
+        run: ./scripts/Build-Top50Installer.ps1 -Compiler "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" -OutputDirectory artifacts/top50-planner-release -NoRestore
+      - uses: actions/checkout@v4
+        with:
+          ref: bb37debee36f9d6a9dbce79bc41f3d47bdb35b6b
+          path: artifacts/beam-baseline
+      - name: Build original beam upgrade fixture
+        run: dotnet build artifacts/beam-baseline/src/MyRevitAddin.csproj -c Release --warnaserror
+      - name: Test isolated fresh installation and backed-up upgrade
+        shell: pwsh
+        run: |
+          $installer=(Get-ChildItem artifacts/top50-planner-release/DokaEngineeringDashboard_Top50_Setup_*.exe).FullName
+          ./scripts/Test-Top50PlannerInstaller.ps1 -Installer $installer -OldPayload artifacts/beam-baseline/src/bin/Release/net48 -EvidenceDirectory artifacts/top50-installer-checks
+          ./scripts/Test-Top50InstallerGuards.ps1 -Installer $installer -EvidenceDirectory artifacts/top50-installer-guards
+          @{
+            version='1.1.17'; sourceCommit=$env:GITHUB_SHA
+            installerSha256=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+            originalTop50Source='Uploaded Top50-1.1.16-Source.zip, preserved on the PR168 beam baseline'
+            note='Test release. No company-folder publication. Revit2024 host acceptance and original solver parity remain unverified.'
+          } | ConvertTo-Json | Set-Content artifacts/top50-planner-release/release-info.json
+          Copy-Item docs/top50-planner-diagnostics.md artifacts/top50-planner-release/README.md
+      - name: Emit review previews
+        if: success()
+        run: ./scripts/emit-ui-previews.ps1 -Directory artifacts/top50-planner-checks -Names dashboard-planners.png,top50-diagnosis.png,planner-page-0-1.png
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: top50-planner-test-installer
+          path: artifacts/top50-planner-release/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: top50-planner-evidence
+          path: |
+            artifacts/top50-planner-checks/
+            artifacts/top50-installer-checks/
+            artifacts/top50-installer-guards/
+          if-no-files-found: warn
