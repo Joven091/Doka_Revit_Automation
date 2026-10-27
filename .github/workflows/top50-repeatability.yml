@@ -2,8 +2,6 @@ name: Top50 quantity and repeatability
 on:
   push:
     branches: [codex/top50-fewest-panels-repeatable]
-  pull_request:
-    paths: ['src/Top50/**', 'src/ViewModels/Top50*', 'src/Views/Top50*', 'tests/Top50*/**', '.github/workflows/top50-repeatability.yml']
   workflow_dispatch:
 concurrency:
   group: top50-repeatability-${{ github.ref }}
@@ -48,6 +46,25 @@ jobs:
       - name: Build Revit review installer
         shell: pwsh
         run: ./scripts/Build-Top50Installer.ps1 -Compiler "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" -OutputDirectory artifacts/top50-repeatable-installer -NoRestore
+      - uses: actions/checkout@v4
+        with:
+          ref: bb37debee36f9d6a9dbce79bc41f3d47bdb35b6b
+          path: artifacts/beam-baseline
+      - name: Build retained beam upgrade fixture
+        run: dotnet build artifacts/beam-baseline/src/MyRevitAddin.csproj -c Release --warnaserror
+      - name: Verify installed planner, upgrade backups and installer guards
+        shell: pwsh
+        run: |
+          $installer=(Get-ChildItem artifacts/top50-repeatable-installer/DokaEngineeringDashboard_Top50_Setup_*.exe).FullName
+          ./scripts/Test-Top50PlannerInstaller.ps1 -Installer $installer -OldPayload artifacts/beam-baseline/src/bin/Release/net48 -EvidenceDirectory artifacts/top50-repeatability/installed
+          ./scripts/Test-Top50InstallerGuards.ps1 -Installer $installer -EvidenceDirectory artifacts/top50-repeatability/guards
+          @{
+            version=([version][Diagnostics.FileVersionInfo]::GetVersionInfo($installer).FileVersion).ToString(3)
+            sourceCommit=$env:GITHUB_SHA
+            installerSha256=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+            status='Review installer; no company-folder publication or actual Revit host acceptance'
+          }|ConvertTo-Json|Set-Content artifacts/top50-repeatable-installer/release-info.json
+          Copy-Item docs/top50-quantity-repeatability.md artifacts/top50-repeatable-installer/README.md
       - uses: actions/upload-artifact@v4
         if: success()
         with:

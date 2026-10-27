@@ -83,7 +83,7 @@ internal static class Program
         var stocks=new[]{new Dictionary<int,int>{{2500,2}},new Dictionary<int,int>{{4500,1},{500,1}},new Dictionary<int,int>{{3000,1},{2000,1}}};
         var fast=new Solver();var fastRun=new Top50Search(new Candidates(stocks),fast).Run(walls,new[]{500,2000,2500,3000,4500},limits,PlanningPreset.BalancedOptimization,4,CancellationToken.None);
         var slow=new Solver{DelayMs=450};var clock=Stopwatch.StartNew();
-        var slowRun=new Top50Search(new Candidates(stocks.Reverse().ToArray()),slow).Run(walls,new[]{4500,3000,2500,2000,500},limits,PlanningPreset.BalancedOptimization,4,CancellationToken.None);clock.Stop();
+        var slowRun=new Top50Search(new Candidates(Enumerable.Reverse(stocks).ToArray()),slow).Run(walls,new[]{4500,3000,2500,2000,500},limits,PlanningPreset.BalancedOptimization,4,CancellationToken.None);clock.Stop();
         Check(clock.Elapsed.TotalSeconds>limits.SearchEffort,"delayed solver exceeds the legacy second value");
         Check(fast.Quotas.Count==3&&slow.Quotas.Count==3&&fast.Quotas.SequenceEqual(slow.Quotas),"all inventories receive the same fixed work despite delay and input order");
         Check(Signature(fastRun)==Signature(slowRun)&&!slowRun.BudgetExpired,"delays cannot change allocations, shortlist, ranks or stop the search");
@@ -121,7 +121,7 @@ internal static class Program
         Check(reopened.Status.Contains("current repeatable search"),"legacy allocations are distinguished from a fresh repeatable solve");
         var migrated=Path.Combine(output,"migrated.top50");reopened.Save(migrated);
         Check(NativeProjectStore.Load(migrated).Version==2,"saving migration writes V2 so old readers reject its changed effort semantics");
-        var invalid=new Proposal("too-many-castings",low.Stock,low.Groups);
+        var invalid=new Proposal("too-many-castings",low.Stock.ToDictionary(p=>p.Key,p=>p.Value),low.Groups);
         Check(Top50Validation.Validate(vm.Input.Walls,invalid,new SearchLimits(12,1,350,1,2,2,50)).Contains("Casting group limit exceeded."),"a lower panel count cannot bypass the casting-group limit");
     }
     private static void Distribution(string output,bool reverse)

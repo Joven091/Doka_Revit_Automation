@@ -148,6 +148,6 @@ namespace EngineeringDashboard.Top50
     public static class Top50Order
     {
         public static string Stock(IEnumerable<KeyValuePair<int,int>> stock)=>string.Join(";",stock.OrderBy(p=>p.Key).Select(p=>p.Key.ToString(System.Globalization.CultureInfo.InvariantCulture)+":"+p.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        public static string Group(CastingGroup group)=>string.Join(";",group.Walls.OrderBy(w=>w.WallId,StringComparer.Ordinal).Select(w=>w.WallId+":"+string.Join(",",w.Pattern.PanelsMm)+"/"+string.Join(",",w.Pattern.InternalGapsMicrometres)));
+        public static string Group(CastingGroup group)=>string.Join(";",group.Walls.OrderBy(w=>w.WallId,StringComparer.Ordinal).Select(w=>w.WallId+":"+string.Join(",",w.Pattern.PanelsMm.Select(p=>p.ToString(System.Globalization.CultureInfo.InvariantCulture)))+"/"+string.Join(",",w.Pattern.InternalGapsMicrometres.Select(g=>g.ToString(System.Globalization.CultureInfo.InvariantCulture)))));
     }
 }
