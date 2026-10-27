@@ -39,7 +39,7 @@ internal static class Program
         Check(Top50Validation.Validate(source.Walls,recorded,limits).Count==0,"all 63 recorded group members independently validate with reconstructed compatible patterns");
         Check(decimal.Round(recorded.MeanUtilization*100,2)==74.12m&&decimal.Round(recorded.MinimumUtilization*100,2)==35.58m&&recorded.PanelChanges==93,"recorded S3 utilization and panel changes follow from complete fixture, not display constants");
         Check(recorded.Groups.Select(g=>g.InstalledPanelMicrometres/1000000m).SequenceEqual(new[]{96.250m,34.250m,79.750m,65.250m,65.250m,78.750m,34.250m,96.250m,92.250m,96.250m,46.250m}),"every recorded group installed total matches");
-        Check(!ConnectorAllocation.Calculate(recorded,new NativeTop50Project()).Determined,"connector units remain unresolved without reviewed inputs");
+        Check(ConnectorAllocation.Calculate(recorded,new NativeTop50Project()).AssumedSingleLevel,"default connector quantities use the agreed one-level, per-face assumption");
         var connectionSettings=new NativeTop50Project{ConnectionLevels=2,ConnectionFaces=2,ConnectionReviewed=true,AdjustableOnDirect=true};var connector=ConnectorAllocation.Calculate(recorded,connectionSettings);
         Check(connector.Determined&&connector.AdjustableStock==40&&connector.StandardStock==44,"reviewed connector stock uses peak simultaneous total and permits spare adjustable on direct joints");
         connectionSettings.AdjustableOnDirect=false;Check(ConnectorAllocation.Calculate(recorded,connectionSettings).StandardStock==60,"direct substitution assumption affects only compatible reviewed connector units");

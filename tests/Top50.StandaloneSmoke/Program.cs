@@ -42,6 +42,23 @@ internal static class Program
             }
             var empty=new Top50ViewModel();
             Check(empty.Input==null&&empty.Proposals.Count==0&&empty.BuildDiagnosticReport().Contains("No input imported or added"),"tester starts empty, with diagnosis and no injected solution");
+            Check(Top50OfferPresentation.Ordinal(1)=="1st"&&Top50OfferPresentation.Ordinal(11)=="11th"&&Top50OfferPresentation.Ordinal(22)=="22nd","rank suffixes work beyond the first ten alternatives");
+            var connectorCase=new Proposal("connector-check",new Dictionary<int,int>{{500,9}},new[]{new CastingGroup(new[]{new WallArrangement("direct",new PanelPattern(Enumerable.Repeat(500,9),Enumerable.Repeat(0L,8)))}),new CastingGroup(new[]{new WallArrangement("fillers",new PanelPattern(Enumerable.Repeat(500,6),Enumerable.Repeat(100000L,5)))})});
+            var reusable=ConnectorAllocation.Calculate(connectorCase,new NativeTop50Project());
+            Check(reusable.Determined&&reusable.AssumedSingleLevel&&reusable.AdjustableStock==5&&reusable.StandardStock==3,"different casting peaks reuse five universal plus three direct connectors, rather than summing peaks");
+            Check(Enumerable.Range(0,reusable.DirectUnits.Length).All(i=>reusable.FillerUnits[i]<=reusable.AdjustableStock&&reusable.DirectUnits[i]<=reusable.StandardStock+reusable.AdjustableStock-reusable.FillerUnits[i]),"reusable connector stock covers every casting simultaneously");
+            var reviewed=ConnectorAllocation.Calculate(connectorCase,new NativeTop50Project{ConnectionReviewed=true,ConnectionLevels=2,ConnectionFaces=2});
+            Check(!reviewed.AssumedSingleLevel&&reviewed.StandardStock==12&&reviewed.AdjustableStock==20,"saved reviewed connector multipliers remain supported");
+            var settingsModel=new Top50ViewModel();var settingsWindow=new Top50Window(settingsModel);settingsWindow.ShowPage(1);
+            var settingsRoot=(FrameworkElement)settingsWindow.Content;Render(settingsRoot,1280,800,Path.Combine(output,"method-fixed.png"));
+            var method=Find<ComboBox>(settingsRoot).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50OfferingMethod");
+            var fixedInputs=Find<StackPanel>(settingsRoot).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50FixedMethodInputs");
+            var percentageInputs=Find<StackPanel>(settingsRoot).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50PercentageMethodInputs");
+            Check(fixedInputs.Visibility==Visibility.Visible&&percentageInputs.Visibility==Visibility.Collapsed,"fixed method hides percentage-only inputs");
+            method.SelectedIndex=1;Render(settingsRoot,1280,800,Path.Combine(output,"method-percentage.png"));
+            Check(fixedInputs.Visibility==Visibility.Collapsed&&percentageInputs.Visibility==Visibility.Visible,"switching to percentage hides fixed-set inputs immediately");
+            method.SelectedIndex=0;Check(settingsModel.Settings.LongestCount==5&&settingsModel.Settings.Percentage==45,"changing method preserves hidden input values");
+            settingsModel.AddManual(1000,"Settings visibility check");settingsModel.Save(Path.Combine(output,"settings.top50"));settingsWindow.Close();
             string dxf=Path.Combine(output,"controlled-walls.dxf");File.WriteAllText(dxf,SyntheticDxf());
             var model=new Top50ViewModel();model.Import(dxf);
             Check(model.Input.Walls.Count==4&&model.Input.Walls.All(w=>w.Included&&w.LengthMicrometres==5000000),"portable DXF reader imports four measured 5000 mm walls");
@@ -79,17 +96,21 @@ internal static class Program
                 {
                     var imported=Find<DataGrid>(root).Single();
                     Check(imported.Items.Cast<object>().All(row=>((string)row.GetType().GetProperty("Id").GetValue(row)).StartsWith("W-",StringComparison.Ordinal)),"import rows show readable wall names");
+                    Check(!Find<TextBlock>(root).Any(t=>t.Text.Contains("valid walls")||t.Text.Contains("Edit length (mm) to record")||t.Text.StartsWith("Source:",StringComparison.Ordinal)),"import page omits the marked summary, instruction and source-audit text");
                 }
                 if(page==2)
                 {
-                    var comparison=Find<DataGrid>(root).Single(t=>t.Columns.Any(c=>Equals(c.Header,"Scenario")));
-                    Check(comparison.Columns.Select(c=>c.Header as string).SequenceEqual(new[]{"Scenario","Types","Panels","Stock m","Casting Groups","Status"}),"comparison retains only requested client-facing columns");
+                    var comparison=Find<DataGrid>(root).Single(t=>t.Columns.Any(c=>Equals(c.Header,"Rank")));
+                    Check(comparison.Columns.Select(c=>c.Header as string).SequenceEqual(new[]{"Rank","Types","Panels","Stock m","Casting Groups","Why this rank"}),"comparison retains only requested client-facing columns");
+                    Check(comparison.Items.Cast<object>().Select(row=>(string)row.GetType().GetProperty("Rank").GetValue(row)).First()=="1st"&&comparison.Items.Cast<object>().All(row=>!string.IsNullOrWhiteSpace((string)row.GetType().GetProperty("Reason").GetValue(row))),"results show ordinal ranks and individual explanations");
+                    Check(Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>Equals(c.Header,"Connector type")))&&!Find<DataGrid>(root).Any(t=>t.Columns.Any(c=>Equals(c.Header,"Panels in each identical set"))),"connector results are visible and unused identical-set columns are hidden");
                     Check(!Find<TextBox>(root).Any(t=>t.IsReadOnly&&t.Text.Contains("Retained model objective:"))&&!Find<TextBlock>(root).Any(t=>t.Text.Contains("Average installed-panel")||t.Text.Contains("Peak joint LOCATIONS")),"results omit the utilization notice and solver log box");
                 }
                 if(page==3)
                 {
                     var table=Find<DataGrid>(root).Single();var diagram=Find<Top50Diagram>(root).Single();
                     Check(Equals(table.Columns[0].Header,"Casting Group")&&table.Items.Cast<object>().All(row=>((string)row.GetType().GetProperty("Ids").GetValue(row)).Contains("(Length = 5.00 m)")),"casting table uses readable wall names and Casting Group header");
+                    Check(table.Items.Cast<object>().Select((row,index)=>(string)row.GetType().GetProperty("Id").GetValue(row)==Top50OfferPresentation.CastingGroup(index)).All(equal=>equal),"casting group names use the C-01 series");
                     Check(AutomationProperties.GetName(diagram).Contains("W-")&&!AutomationProperties.GetName(diagram).Contains("DXF-"),"casting diagram uses the same readable wall names");
                     Check(!Find<TextBlock>(root).Any(t=>t.Text.Contains("Equipment allocation groups")||t.Text.Contains("Used / idle by type")),"casting page omits the marked allocation and connector notes");
                 }

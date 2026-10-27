@@ -124,7 +124,7 @@ namespace EngineeringDashboard
                 text.AppendLine("Stock (size mm x quantity): "+string.Join(", ",proposal.Stock.OrderBy(p=>p.Key).Select(p=>p.Key+" x "+p.Value)));
                 for(int index=0;index<proposal.Groups.Count;index++)
                 {
-                    text.AppendLine("Casting Group "+(index+1)+"; installed panel length mm: "+Value(proposal.Groups[index].InstalledPanelMicrometres/1000m));
+                    text.AppendLine("Casting Group "+Top50OfferPresentation.CastingGroup(index)+"; installed panel length mm: "+Value(proposal.Groups[index].InstalledPanelMicrometres/1000m));
                     foreach(var wall in proposal.Groups[index].Walls)text.AppendLine("  "+wall.WallId+" | panels mm: "+string.Join(", ",wall.Pattern.PanelsMm)+" | internal gaps mm: "+string.Join(", ",wall.Pattern.InternalGapsMicrometres.Select(g=>Value(g/1000m)))+" | total mm: "+Value(wall.Pattern.LengthMicrometres/1000m));
                 }
                 try
