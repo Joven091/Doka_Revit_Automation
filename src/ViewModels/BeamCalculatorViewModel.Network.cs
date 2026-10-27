@@ -125,8 +125,9 @@ namespace EngineeringDashboard
         internal double DrawingLengthMm=>IsNetworkMode ? NetworkBeams.Max(b=>b.SpanEnd(BeamLengthMm)) : BeamSpanEnd(0);
         internal void SetBeamSpan(int index,double start,double length)
         {
-            var beam=IsNetworkMode ? NetworkBeams[index] : NetworkBeams.FirstOrDefault();
             ValidateBeamSpan(index,start,length);
+            var beam=IsNetworkMode ? NetworkBeams[index] : NetworkBeams.FirstOrDefault();
+            if(beam==null){beam=StandaloneDefinition();NetworkBeams.Add(beam);}
             beam.SpanStartMm=start;beam.SpanLengthMm=length;
             if(IsNetworkMode)foreach(int bay in new[] {index-1,index}.Where(b=>b>=0 && b<NetworkBays.Count))NetworkBays[bay].Outline=null;
             Changed(nameof(NetworkConfigurationXml));
@@ -134,7 +135,7 @@ namespace EngineeringDashboard
         internal void ValidateBeamSpan(int index,double start,double length)
         {
             var beam=IsNetworkMode ? NetworkBeams.ElementAtOrDefault(index) : NetworkBeams.FirstOrDefault();
-            if(beam==null || !TowerBeamAnalysis.Finite(start) || !TowerBeamAnalysis.Finite(length) || start<0 || length<300 || start+length>50000)throw new ArgumentException("Use a positive beam length and endpoints within 0–50,000 mm.");
+            if((IsNetworkMode ? beam==null : index!=0) || !TowerBeamAnalysis.Finite(start) || !TowerBeamAnalysis.Finite(length) || start<0 || length<300 || start+length>50000)throw new ArgumentException("Use a positive beam length and endpoints within 0–50,000 mm.");
             if(IsNetworkMode && CrossingBeams.Any(c=>(c.BayNumber==index || c.BayNumber==index+1) && (c.PositionMm-c.WidthMm/2<start || c.PositionMm+c.WidthMm/2>start+length)))throw new ArgumentException("Keep connected cross beams within this beam's actual endpoints.");
 
         }

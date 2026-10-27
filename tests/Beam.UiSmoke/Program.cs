@@ -51,6 +51,7 @@ internal static class Program
    if(args.Contains("--preview"))return StandalonePreview.Run();
    if(args.Contains("--updater-ui")){UpdateEntryUiTests.Run();return 0;}
    if(args.Contains("--primary-bearing-ui")){PrimaryBearingUiTests.Run();return 0;}
+   if(args.Contains("--search-budget-ui")){SearchBudgetUiTests.Run();return 0;}
    WorkspacePresentationTests.Run();
    LoadingPlotTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));
    if(args.Contains("--actual-loading-ui")){MemberLoadingUiTests.Run();CrossSupportUiTests.PrimaryZones(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--positioned-ui")){PositionedTransferUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--equivalent-loading-ui")){EquivalentLoadingUiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}if(args.Contains("--ws10-ui")){WS10UiTests.Run(args.FirstOrDefault(a=>a.EndsWith(".png")));return 0;}

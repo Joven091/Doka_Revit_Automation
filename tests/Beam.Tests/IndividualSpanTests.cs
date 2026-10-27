@@ -27,6 +27,16 @@ internal static class IndividualSpanTests
     }
     internal static void Run()
     {
+        var standalone=new BeamCalculatorViewModel {UseTowers=true,Depth=200,Width=300,BeamLengthMm=2500};
+        Check(standalone.NetworkBeams.Count==0,"fresh beam-only session has no stored network row");
+        standalone.ValidateBeamSpan(0,0,2500);
+        Check(standalone.NetworkBeams.Count==0,"validating the fresh standalone dimension does not change geometry");
+        standalone.SetBeamSpan(0,100,2300);
+        Check(standalone.NetworkBeams.Count==1 && standalone.BeamSpanStart(0)==100 && standalone.BeamSpanLength(0)==2300,"first standalone dimension edit stores its actual endpoints");
+        var standaloneInput=standalone.CreateTowerInput(false);
+        Near(standaloneInput.LengthMm,2300,"standalone calculation uses the edited length");Near(standaloneInput.LongitudinalStartMm,100,"standalone calculation uses the edited start");
+        bool badStandalone=false;try{standalone.ValidateBeamSpan(1,0,2500);}catch(ArgumentException){badStandalone=true;}
+        Check(badStandalone && standalone.NetworkBeams.Count==1,"a nonexistent standalone beam index is rejected without another row");
         var imported=RevitStructureImport.Build(ReportedGeometry(),"beam1");Check(imported.CanImport,string.Join(";",imported.Problems));
         Check(imported.Configuration.SupportFormatVersion==3,"old releases must reject new geometry rather than silently discard it");
         Near(4203.392266845705,imported.LengthMm,"overall drawing extent");Near(3901.8316040039062,imported.Configuration.Beams[0].SpanLength(0),"short outer beam is not extended");Near(149.8652709960952,imported.Configuration.Beams[4].SpanStartMm,"actual start preserved");

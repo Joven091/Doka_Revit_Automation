@@ -24,6 +24,7 @@ jobs:
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --primary-bearings
       - run: dotnet run --project tests/Beam.UiSmoke -c Release -- --updater-ui
       - run: dotnet run --project tests/Beam.UiSmoke -c Release --no-build -- --primary-bearing-ui
+      - run: dotnet run --project tests/Beam.UiSmoke -c Release --no-build -- --search-budget-ui
       - run: dotnet run --project tests/D3Slab.UiSmoke -c Release -- --release-availability
       - run: dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
       - run: dotnet build tests/SteelShape.HostSmoke -c Release --warnaserror
