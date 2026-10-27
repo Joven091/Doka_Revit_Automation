@@ -24,10 +24,10 @@ TOP50 PLANNER — STANDALONE TESTER $version
 
 1. Extract the complete ZIP into a local folder.
 2. Open Top50Planner.exe. Keep all supplied DLLs and the .config file beside it.
-3. Choose Open for an existing .top50 file. Or use Import > Import DXF
+3. Choose File > Open project for an existing .top50 file. Or use Import > Import DXF
    to read Wall_Length dimensions, or Add manual wall for reviewed dimensions.
 4. Review Settings, then choose Optimize. Fewer panels take priority.
-5. Use Reports to export Excel. Use Diagnose to copy/save a report for review.
+5. Use Reports to export Excel. Use Tools > Diagnose to copy/save a report for review.
 
 No installer, Revit or AutoCAD is needed. This tester does not register an add-in
 or update the installed dashboard. It uses the same planner source as PR #172.

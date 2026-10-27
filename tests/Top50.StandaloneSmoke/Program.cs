@@ -95,12 +95,17 @@ internal static class Program
             var optimizeButton=Find<Button>(root).Single(b=>Equals(b.Content,"Optimize"));
             Check(ReferenceEquals(optimizeButton.Style,window.FindResource("PrimaryAction")),"Optimize uses the shared yellow primary-action style");
             Render(root,1280,800,Path.Combine(output,"dashboard-style.png"));
+            var fileMenu=Find<MenuItem>(root).Single(item=>AutomationProperties.GetAutomationId(item)=="Top50File");
+            var toolsMenu=Find<MenuItem>(root).Single(item=>AutomationProperties.GetAutomationId(item)=="Top50Tools");
+            Check(fileMenu.Items.Cast<MenuItem>().Select(item=>item.Header as string).SequenceEqual(new[]{"Open project…","Save project…"})&&toolsMenu.Items.Cast<MenuItem>().Single()==Command(root,"Top50Diagnose"),"File contains Open/Save and Tools contains Diagnose, as in D3 beam formwork");
+            Check(!Find<Button>(root).Any(b=>new[]{"Open","Save","Diagnose"}.Contains(b.Content as string))&&fileMenu.TransformToAncestor(root).Transform(new Point(0,0)).X<toolsMenu.TransformToAncestor(root).Transform(new Point(0,0)).X&&toolsMenu.TransformToAncestor(root).Transform(new Point(0,0)).X<optimizeButton.TransformToAncestor(root).Transform(new Point(0,0)).X,"compact File/Tools commands are left of the right-aligned Optimize action");
+            Check(Find<TextBlock>(root).Any(t=>t.Text=="Top50 Planner"&&t.FontSize==18),"planner title uses the D3 toolbar's compact title size");
             var tabs=Find<Button>(root).Where(b=>AutomationProperties.GetAutomationId(b).StartsWith("Top50Page",StringComparison.Ordinal)).ToArray();
             Check(tabs.Length==5&&tabs.Select(b=>Math.Round(b.TransformToAncestor(root).Transform(new Point(0,0)).Y)).Distinct().Count()==1,"all five workflow tabs share one horizontal row");
             for(int page=0;page<5;page++)
             {
                 Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Page"+page).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(window.CurrentPage==page,"horizontal tab routes to planner page "+page);Render(root,1280,800,Path.Combine(output,"page-"+page+".png"));
-                Check(Find<Button>(root).Any(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose"&&b.IsEnabled),"Diagnose is available on planner page "+page);
+                Check(Command(root,"Top50Diagnose").IsEnabled,"Diagnose is available on planner page "+page);
                 Check(!Find<TextBlock>(root).Any(t=>t.Text.Contains("LOCAL DESKTOP / V1")||t.Text.Contains("No AutoCAD installation required")||t.Text.Contains("Offline by design")||t.Text.Contains("Native review build:")),"removed sidebar, subtitle and footer notes stay absent on page "+page);
                 if(page==0)
                 {
@@ -130,6 +135,9 @@ internal static class Program
                 }
             }
             window.Show();Pump();bool opened=false;
+            foreach(var menu in new[]{fileMenu,toolsMenu}){menu.IsSubmenuOpen=true;Pump();Check(menu.IsSubmenuOpen&&menu.Items.Cast<MenuItem>().All(item=>item.IsVisible),"menu commands open visibly: "+menu.Header);menu.IsSubmenuOpen=false;Pump();}
+            var busy=loaded.OptimizeAsync();Check(!Command(root,"Top50Open").IsEnabled&&!Command(root,"Top50Save").IsEnabled&&Command(root,"Top50Diagnose").IsEnabled&&Find<Button>(root).Single(b=>Equals(b.Content,"Cancel")).Visibility==Visibility.Visible,"busy toolbar locks project changes, retains diagnosis and shows Cancel");loaded.Cancel();Wait(busy);
+            Check(Command(root,"Top50Open").IsEnabled&&Command(root,"Top50Save").IsEnabled&&Find<Button>(root).Single(b=>Equals(b.Content,"Cancel")).Visibility==Visibility.Collapsed,"idle toolbar restores File commands and hides Cancel");
             window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>
             {
                 var dialog=app.Windows.OfType<Top50DiagnosticWindow>().Single();opened=true;
@@ -139,7 +147,7 @@ internal static class Program
                 File.WriteAllText(Path.Combine(output,"diagnosis.txt"),report.Text);
                 Render((FrameworkElement)dialog.Content,1000,650,Path.Combine(output,"diagnosis.png"));dialog.Close();
             }));
-            Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Command(root,"Top50Diagnose").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             Check(opened&&ReferenceEquals(before,loaded.Selected)&&!loaded.Dirty,"opening and closing diagnosis preserves project state");
             Check(Signature(loaded)==signature&&loaded.Input.Walls.All(w=>w.Id.StartsWith("DXF-",StringComparison.Ordinal)),"presentation changes preserve source identity, stock and complete casting allocations");
             loaded.Settings.RequireIdenticalKits=true;loaded.Changed();Wait(loaded.OptimizeAsync());window.ShowPage(2);Render(root,1280,800,Path.Combine(output,"identical-sets.png"));
@@ -163,6 +171,7 @@ internal static class Program
     private static void Pump(){var frame=new DispatcherFrame();Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=>frame.Continue=false));Dispatcher.PushFrame(frame);}
     private static void Render(FrameworkElement root,int width,int height,string path)
     {root.Width=width;root.Height=height;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();var image=new RenderTargetBitmap(width,height,96,96,PixelFormats.Pbgra32);image.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));using(var stream=File.Create(path))encoder.Save(stream);}
+    private static MenuItem Command(DependencyObject root,string id)=>Find<Menu>(root).SelectMany(menu=>menu.Items.OfType<MenuItem>()).SelectMany(menu=>menu.Items.OfType<MenuItem>()).Single(item=>AutomationProperties.GetAutomationId(item)==id);
     private static IEnumerable<T> Find<T>(DependencyObject root)where T:DependencyObject
     {if(root is T item)yield return item;for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)foreach(var child in Find<T>(VisualTreeHelper.GetChild(root,i)))yield return child;}
 }

@@ -1,6 +1,6 @@
 # Top50 dashboard layout and Doka equipment names
 
-Top50 uses the existing CalculatorStyles resource dictionary in both the Revit add-in and standalone tester. It has a compact header, horizontal workflow tabs, yellow primary action, neutral tables, pale-yellow section headings, and panel inventory beside reusable connector stock. The launcher orders Calculators, Planners / Top50, then Beta / Dome. The existing Dome Beta opens through the dashboard's access gate; D3 slab remains Coming soon.
+Top50 uses the existing CalculatorStyles resource dictionary in both the Revit add-in and standalone tester. Its compact toolbar follows D3 beam formwork: Top50 Planner title, File (Open project / Save project) and Tools (Diagnose) on the left, with Optimize on the right and Cancel shown only during a search. The 8 px toolbar margin, 18 pt title, menu padding and action-button spacing match the D3 toolbar. It has horizontal workflow tabs, yellow primary action, neutral tables, pale-yellow section headings, and panel inventory beside reusable connector stock. The launcher orders Calculators, Planners / Top50, then Beta / Dome. The existing Dome Beta opens through the dashboard's access gate; D3 slab remains Coming soon.
 
 Equipment names are shared by the screen, diagnostic description and workbook:
 

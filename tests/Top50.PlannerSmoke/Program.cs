@@ -85,13 +85,15 @@ internal static class Program
         Check(!app.Windows.OfType<Top50DiagnosticWindow>().Any(),"diagnosis does not open automatically");
         for(int page=0;page<5;page++)
         {
-            window.ShowPage(page);var diagnose=Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose");
+            window.ShowPage(page);var diagnose=Command(root,"Top50Diagnose");
             Check(diagnose.IsEnabled,"diagnose available on page "+page);
             foreach(double scale in new[]{1d,1.25,1.5})
             {
                 double width=scale==1?1000:1600/scale,height=scale==1?680:1000/scale;
                 Render(root,width,height,scale,Path.Combine(output,"planner-page-"+page+"-"+scale.ToString(CultureInfo.InvariantCulture)+".png"));
-                foreach(var action in Find<Button>(root).Where(b=>new[]{"Open","Save","Optimize","Cancel","Diagnose"}.Contains(b.Content as string)&&b.Visibility==Visibility.Visible))
+                foreach(var menu in Find<Menu>(root).SelectMany(m=>m.Items.OfType<MenuItem>()))
+                {var position=menu.TransformToAncestor(root).Transform(new Point(0,0));Check(position.X>=0&&position.X+menu.ActualWidth<=width+1,"D3-style menu "+menu.Header+" visible at "+scale+" on page "+page);}
+                foreach(var action in Find<Button>(root).Where(b=>new[]{"Optimize","Cancel"}.Contains(b.Content as string)&&b.Visibility==Visibility.Visible))
                 {var position=action.TransformToAncestor(root).Transform(new Point(0,0));Check(position.X>=0&&position.X+action.ActualWidth<=width+1,"header "+action.Content+" visible at "+scale+" on page "+page);}
             }
         }
@@ -112,9 +114,9 @@ internal static class Program
             var first=box.Text;Find<Button>(dialog).Single(b=>(string)b.Content=="Refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(box.Text.Contains("MANUAL-001")&&box.Text.Length>=first.Length-10,"refresh retains complete active planner evidence");
             dialog.Close();
         }));
-        Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Command(root,"Top50Diagnose").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Check(sawDialog&&ReferenceEquals(captureBefore,restored.Selected)&&!restored.Dirty,"opening, refreshing and closing diagnosis preserve the project");
-        var busy=restored.OptimizeAsync();Check(Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose").IsEnabled,"diagnosis stays enabled while optimize runs");restored.Cancel();Wait(busy);
+        var busy=restored.OptimizeAsync();Check(Command(root,"Top50Diagnose").IsEnabled,"diagnosis stays enabled while optimize runs");restored.Cancel();Wait(busy);
         restored.Save(project);window.Close();launcher.Close();
         File.WriteAllText(Path.Combine(output,"planner-checks.txt"),checks+" checks passed. Controlled inputs; actual Revit2024 host acceptance and original Top50 solver parity are not established.");
         Console.WriteLine(checks+" Top50 planner/diagnostic/production-dashboard checks passed.");return 0;
@@ -130,6 +132,7 @@ internal static class Program
     private static void Pump(){var frame=new DispatcherFrame();Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=>frame.Continue=false));Dispatcher.PushFrame(frame);}
     private static void Render(FrameworkElement root,double width,double height,double scale,string path)
     {root.Width=width;root.Height=height;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();var image=new RenderTargetBitmap((int)(width*scale),(int)(height*scale),96*scale,96*scale,PixelFormats.Pbgra32);image.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));using(var stream=File.Create(path))encoder.Save(stream);}
+    private static MenuItem Command(DependencyObject root,string id)=>Find<Menu>(root).SelectMany(menu=>menu.Items.OfType<MenuItem>()).SelectMany(menu=>menu.Items.OfType<MenuItem>()).Single(item=>AutomationProperties.GetAutomationId(item)==id);
     private static IEnumerable<T> Find<T>(DependencyObject root)where T:DependencyObject
     {if(root is T item)yield return item;for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)foreach(var child in Find<T>(VisualTreeHelper.GetChild(root,i)))yield return child;}
 }

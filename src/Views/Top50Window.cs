@@ -23,7 +23,8 @@ namespace EngineeringDashboard
         private readonly ContentControl content=new ContentControl{HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Stretch};
         private readonly TextBlock progress=new TextBlock();
         private readonly List<Button> navigation=new List<Button>();
-        private readonly Button optimize,cancel,open,save,diagnose;
+        private readonly Button optimize,cancel;
+        private readonly MenuItem open,save,diagnose;
         private bool renderQueued,rendering;
         private int page,castingIndex,unitsChoice;
         public Top50ViewModel Model=>model;
@@ -32,17 +33,25 @@ namespace EngineeringDashboard
         {
             this.model=model??new Top50ViewModel();Title="Top50 Planner";Width=1500;Height=960;MinWidth=1000;MinHeight=680;Background=MainBackground;FontFamily=new FontFamily("Segoe UI");FontSize=13;Foreground=Navy;
             SetLocalStyles();
-            var root=new Grid{Background=MainBackground};root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            var header=new Grid{Margin=new Thickness(0,0,0,16)};header.ColumnDefinitions.Add(new ColumnDefinition());header.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
-            header.Children.Add(Label("Top50 Planner",22,Navy,FontWeights.SemiBold,new Thickness(0,4,12,0)));
-            open=Action("Open",OpenProject);save=Action("Save",SaveProject);optimize=Action("Optimize",async()=>{try{await this.model.OptimizeAsync();if(this.model.Selected!=null)ShowPage(2);}catch(Exception e){Error(e);}},true);cancel=Action("Cancel",()=>this.model.Cancel());diagnose=Action("Diagnose",()=>new Top50DiagnosticWindow(this.model.BuildDiagnosticReport){Owner=this}.ShowDialog());
-            System.Windows.Automation.AutomationProperties.SetAutomationId(diagnose,"Top50Diagnose");
-            var actions=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Top};Grid.SetColumn(actions,1);
-            foreach(var button in new[]{open,save,diagnose,optimize,cancel}){button.Margin=new Thickness(8,0,0,0);button.MinWidth=80;actions.Children.Add(button);}header.Children.Add(actions);root.Children.Add(header);
+            var root=new Grid{Background=MainBackground};root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());
+            var toolbar=new DockPanel{Margin=new Thickness(8),LastChildFill=true};
+            System.Windows.Automation.AutomationProperties.SetAutomationId(toolbar,"Top50Toolbar");
+            optimize=Action("Optimize",async()=>{try{await this.model.OptimizeAsync();if(this.model.Selected!=null)ShowPage(2);}catch(Exception e){Error(e);}},true);cancel=Action("Cancel",()=>this.model.Cancel());
+            var actions=new WrapPanel{HorizontalAlignment=HorizontalAlignment.Right};
+            foreach(var button in new[]{cancel,optimize}){button.Padding=new Thickness(10,5,10,5);button.Margin=new Thickness(3);button.MinHeight=30;actions.Children.Add(button);}
+            DockPanel.SetDock(actions,Dock.Right);toolbar.Children.Add(actions);
+            var commands=new StackPanel{Orientation=Orientation.Horizontal};
+            var title=Label("Top50 Planner",18,Navy,FontWeights.SemiBold,new Thickness(3,0,10,0));title.VerticalAlignment=VerticalAlignment.Center;commands.Children.Add(title);
+            var menus=new Menu{Background=Brushes.Transparent,VerticalAlignment=VerticalAlignment.Center};
+            var file=new MenuItem{Header="_File",Padding=new Thickness(10,6,10,6)};System.Windows.Automation.AutomationProperties.SetAutomationId(file,"Top50File");
+            open=MenuCommand("Open project…",OpenProject,"Top50Open");save=MenuCommand("Save project…",SaveProject,"Top50Save");file.Items.Add(open);file.Items.Add(save);menus.Items.Add(file);
+            var tools=new MenuItem{Header="_Tools",Padding=new Thickness(10,6,10,6)};System.Windows.Automation.AutomationProperties.SetAutomationId(tools,"Top50Tools");
+            diagnose=MenuCommand("Diagnose…",()=>new Top50DiagnosticWindow(this.model.BuildDiagnosticReport){Owner=this}.ShowDialog(),"Top50Diagnose");tools.Items.Add(diagnose);menus.Items.Add(tools);commands.Children.Add(menus);toolbar.Children.Add(commands);root.Children.Add(toolbar);
+            var body=new Grid{Margin=new Thickness(20,8,20,20)};body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});body.RowDefinitions.Add(new RowDefinition());body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});Grid.SetRow(body,1);root.Children.Add(body);
             var tabs=new UniformGridProxy(5){Margin=new Thickness(0,0,0,14)};string[] labels={"Import","Settings","Results","Casting groups","Reports"};
-            for(int i=0;i<labels.Length;i++){int index=i;var button=new Button{Content=labels[i],MinHeight=40,BorderThickness=new Thickness(0,0,0,1)};button.SetResourceReference(StyleProperty,"ViewTab");System.Windows.Automation.AutomationProperties.SetAutomationId(button,"Top50Page"+i);button.Click+=(sender,args)=>ShowPage(index);navigation.Add(button);tabs.Children.Add(button);}Grid.SetRow(tabs,1);root.Children.Add(tabs);
-            Grid.SetRow(content,2);root.Children.Add(content);progress.FontSize=12;progress.Foreground=Muted;progress.Visibility=Visibility.Collapsed;progress.Margin=new Thickness(0,10,0,0);Grid.SetRow(progress,3);root.Children.Add(progress);
-            Content=new Border{Background=MainBackground,Padding=new Thickness(20),Child=root};
+            for(int i=0;i<labels.Length;i++){int index=i;var button=new Button{Content=labels[i],MinHeight=40,BorderThickness=new Thickness(0,0,0,1)};button.SetResourceReference(StyleProperty,"ViewTab");System.Windows.Automation.AutomationProperties.SetAutomationId(button,"Top50Page"+i);button.Click+=(sender,args)=>ShowPage(index);navigation.Add(button);tabs.Children.Add(button);}body.Children.Add(tabs);
+            Grid.SetRow(content,1);body.Children.Add(content);progress.FontSize=12;progress.Foreground=Muted;progress.Visibility=Visibility.Collapsed;progress.Margin=new Thickness(0,10,0,0);Grid.SetRow(progress,2);body.Children.Add(progress);
+            Content=root;
             this.model.PropertyChanged+=ModelChanged;Closing+=OnClosing;castingIndex=this.model.SelectedGroupIndex;ShowPage(this.model.CurrentPage);
         }
         private void SetLocalStyles()
@@ -61,6 +70,8 @@ namespace EngineeringDashboard
         {
             var grid=new Grid();grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});grid.RowDefinitions.Add(new RowDefinition());var heading=new Border{Child=Label(name,13,null,FontWeights.SemiBold),Margin=new Thickness(0)};heading.SetResourceReference(StyleProperty,"Step");grid.Children.Add(heading);var body=Card(child);body.Margin=new Thickness(0);Grid.SetRow(body,1);grid.Children.Add(body);return new Border{Child=grid,Margin=new Thickness(0,0,0,12)};
         }
+        private static MenuItem MenuCommand(string text,Action handler,string automationId)
+        {var item=new MenuItem{Header=text};System.Windows.Automation.AutomationProperties.SetAutomationId(item,automationId);item.Click+=(sender,args)=>handler();return item;}
         private Button Action(string text,Action handler,bool primary=false){var button=new Button{Content=text};if(primary)button.SetResourceReference(StyleProperty,"PrimaryAction");button.Click+=(sender,args)=>handler();return button;}
         private static ScrollViewer Scroll(UIElement child)=>new ScrollViewer{Content=child,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
         private static DataGrid Table(object items,params string[] columns)
