@@ -1,0 +1,85 @@
+# Create a beam drawing from Revit
+
+1. In Revit 2024, select the structural beams and floors for the required beam/slab area or a group of clear areas separated by columns. Include the columns and walls at the beam ends.
+2. Open Engineering Dashboard → Beam calculator → D3 shoring.
+3. Click **From Revit…**. Review the main beam direction, dimensions and drawing preview. Elevations in the table use Revit's internal model datum; the canvas uses the common concrete top as zero.
+4. Click **Use this drawing**. Review floor height and the existing project settings, then **Calculate** (or **Calculate all** for a combined drawing).
+
+Columns and walls appear as muted, labelled references. Where their rectangular faces cover a beam end, the imported clear span ends at that face. Undo restores the previous drawing; Redo restores the import. Saved inputs retain the reference outlines and element labels. The import is a read-only geometry snapshot; it does not modify Revit or maintain a live link. Project stock permissions, custom cut scope, loads and design limits are retained.
+
+Import supports straight horizontal rectangular beams, flat slabs without openings, a common concrete top elevation, and parallel beam rows with an overlapping support region. Each parallel beam retains its own clear start, end and length. A crossing can pass through multiple complete bays; it becomes one crossing segment per bay. A standalone beam can be imported without a slab. Floor height remains a project input because the selection does not establish the supporting floor below.
+
+The preview blocks import and identifies elements requiring manual modelling when the selection contains sloped/curved/diagonal framing, slab openings, interior notches or large/unsupported irregular outlines, incomplete clear bays, incompatible elevations, or unexplained missing geometry. A beam element extending through an interior column still requires separate clear-span elements; the importer never invents an unselected slab or fills missing geometry. The live selection button is available only in the Revit add-in; the standalone can reopen previously saved imported drawings.
+
+Beam depth comes from a length-valued section-height parameter (Revit section height first, then conventional family depth/height fields). Joined geometry remains in Diagnose for reference. Multiple underside levels caused by a join no longer reject an otherwise rectangular beam with a readable section depth. If no depth parameter exists, a genuinely rectangular physical section remains the fallback. Family/type names are never parsed for dimensions.
+
+Small slab corner cutbacks are retained as the actual outline, rather than replaced with their convex hull. Slab H20 stock and feet must clear those cutbacks. The established nominal rectangular-bay loads remain conservative; corner cuts do not reduce the UDL. Openings, interior notches, disconnected top faces and cuts beyond the plywood allowance remain unsupported. Original boundary loops and depth-parameter sources appear in Diagnose.
+
+In the original canvas, select a parallel beam to edit its start position or **Beam length** dimension. That edit affects only the selected beam. **Shared settings → Set all beam lengths** applies a common length and resets the starts to zero. Moving/copying/adding crossings respects both adjacent beams' actual endpoints. Editing a beam's span makes its adjacent slab bays rectangular within the overlapping beam ends. Undo/Redo and saved files retain individual endpoints and imported corner outlines; older drawings without these values still use their existing common length. Drawings containing individual spans or slab outlines use format 3 and require version 1.1.8 or later; older releases reject them rather than silently discarding this geometry.
+
+Column and wall footprints use the actual planar-face edge loop. Mesh hulls remain diagnostic references, since triangulated coordinates can differ slightly at large project coordinates. Boundary validation retains its 1 mm linear edge precision, together with projected area and envelope checks. Curved, open, disconnected or genuinely irregular footprints remain unsupported.
+
+Redundant points along a straight column face are removed for rectangular-face recognition. Original face loops remain in Diagnose and in the references. Connected collinear beam elements with matching section and soffit form one canvas row; every original element ID maps to that row. Real gaps at columns remain separate spans. Compatible slab panels can form one bay when their actual outlines, together with the selected crossing-beam strips, cover it. Polygon union preserves corner cuts and rejects openings and disconnected coverage. Crossing concrete remains a crossing load and is counted once.
+
+In version 1.1.13 or later, collinear pieces can also form one logical row when
+a selected perpendicular beam occupies the full interruption and covers the
+row width. Its depth and soffit must match the joined pieces within the existing
+1 mm section precision; its faces meet their ends within the fixed 5 mm plan
+allowance. This recognizes selected junction concrete, rather than increasing
+the gap tolerance or extending raw Revit elements. A column/wall overlapping
+the junction still separates the clear spans. Missing or incomplete crossings,
+real gaps and incompatible sections remain blocked. Original endpoints, source
+IDs and junction notes remain in Diagnose. The row includes the junction core;
+crossing loads cover the adjacent clear bays, so that core is counted once.
+The 75-element report imports as five areas and six column-to-column members,
+retaining all 39 beam IDs, 24 slab IDs and 12 column references on one canvas.
+Both main-direction choices can be previewed and applied. Large connected areas
+use a compact stable drawing identity while retaining their full source mappings.
+
+Version 1.1.14 removes the raw 45-beam selection gate without replacing it with
+another beam-count limit. Raw slab-panel counts, source-mapping counts and the
+combined drawing-part count no longer reject otherwise valid connected geometry.
+The importer groups source pieces and partitions areas before applying the
+existing per-network geometry validation. Existing file-size, dimension,
+boundary and engineering checks still apply. Tests include 221 source pieces
+forming one row, 50 slab panels forming one bay, and 46 separate drawing areas.
+
+Version 1.1.15 also removes the separate 200-element gate in the live Revit
+selection reader. It attempts every selected element and retains every selected
+ID, including skipped/failed elements, in Diagnose. Source API reads remain
+synchronous on the Revit command thread. When a reader failure leaves no beam
+geometry, the preview reports that actual failure without appending a misleading
+instruction to select a straight beam.
+
+The reader harness compiles the production adapter source against test-only API
+stand-ins and exercises selection sizes 199, 200, 201, 432 and 1001. It checks
+geometry extraction, mixed supported/skipped categories, all IDs in the copied
+report, per-element failures and calling-thread access. The shipping add-in is
+separately compiled against Autodesk's Revit 2024 API packages. This does not
+replace testing actual family geometry in Revit: the blocked 432-element report
+contains no geometry, so that full model cannot be replayed from that report.
+
+T-junction partitioning recognizes the actual face met by a member, including
+near-face and far-face joined Revit geometry. Compatible touching crossing pieces
+are joined before testing complete-bay coverage. Every resulting crossing
+segment maps only to source pieces that overlap its actual clear bay; the
+original captured geometry remains unchanged. The 90-element diagnostic imports
+all 49 beam IDs, 29 slab IDs and 12 columns as two calculation strips plus ten
+column-supported members on the combined canvas. Original beam intervals and slab
+patches are retained without duplication, within the fixed plan-alignment allowance.
+
+Import alignment has a fixed 5 mm allowance, with no extra import setting. This applies to plan connections, recognition of beam lines and small corner deviations when joining compatible slab panels. Candidate neighbouring beams must overlap in their longitudinal spans; a beam elsewhere in the drawing cannot block their pairing. Section compatibility, concrete levels, column/wall footprint checks and actual obstruction checks retain their existing 1 mm precision. Imported widths, depths, slab thicknesses and calculation formulas are unchanged. Diagnose reports both tolerances and retains the original reviewed geometry. The 48-element alignment report imports as five clear areas and six column-to-column beams on one combined canvas. Column-supported connections in the separate 76-element report are handled by the connection classification described below; the 5 mm allowance never extends those members through the roughly 300 mm column zone.
+
+In version 1.1.12 or later, perpendicular perimeter members ending on selected column/wall faces retain their actual clear spans as separately checked column-to-column members on the combined canvas. They are not forced into internal crossing-beam rules. Internal crossing members must still meet the actual neighbouring beams. The importer checks column footprints, elevations and both end faces before assigning a member to this mode. Missing end columns, genuine end gaps and interior obstructions remain blocked.
+
+Where a shorter parallel beam ends at a T junction, compatible strips on each side use the existing calculation model with that beam only on its actual side. Continuous slab beyond its end remains in the adjacent strip. Original beam/floor IDs can therefore map to multiple disjoint calculation pieces; each piece is drawn in place, and Diagnose prints the detached geometry of every part. Widths, depths, thicknesses and load formulas are unchanged. Alignment adjustments remain bounded to 5 mm. The exact 76-element report imports as two calculation strips plus ten column-to-column members, retaining all 41 beam IDs, 23 floor IDs and 12 column references. Changing the initially selected beam direction also preserves these connections. No support continuity is assumed across a formwork calculation break, and final modeled inter-part clash checks still apply.
+
+For a multi-span selection, all clear areas and column-to-column beams appear together at their original Revit positions. Labels use a drawing-part prefix (D1, D2, etc.). Clicking any member activates its properties and existing diagrams; the part selector also changes the active section/inspector without hiding the rest of the canvas. Geometry edits apply to the active part. Window selection operates within that part. Shared project settings apply to all parts. **Calculate all** runs the existing engineering solver for every part, then checks modeled formwork, tower envelopes and concrete clashes between parts. Any failed component or inter-part clash prevents a complete valid result. Cancel stops the combined calculation. Diagnose and exported schedules include every component and source mapping.
+
+Combined drawings use geometry format 4 in version 1.1.10 or later. Save/load and Undo/Redo retain all components, their world placements and the active part; older releases reject format 4 rather than silently dropping areas. Existing single-area drawings retain formats 2/3. Inputs are saved; reopening requires calculation again.
+
+Column/slab obstruction checks intersect the actual slab outline with the column footprint. Corner cutbacks and boundary contact within 1 mm are accepted. Columns extending into the remaining slab interior beyond that tolerance still block import. Column faces continue to establish beam limits; this geometry correction does not change the load formulas or design checks.
+
+Revit database reads run synchronously on the external-command thread, before the solver runs. The numerical solver receives the same beam/slab dimensions as manual drawing. Reference columns/walls are drawing context and span boundaries, not additional designed formwork members.
+
+If the selection cannot be imported, click **Diagnose** beside **Update preview**, add optional remarks and choose **Copy report**. Paste the report into the chat for review. Diagnose remains available for empty/unsupported selections, invalid table text and unexpected read/preview errors. It includes the add-in version/build identity, Revit version, document/view names, selected element IDs, categories/family types, skipped/rejected elements, geometry checks, original and reviewed dimensions, chosen direction, import problems and exception details. It reads the captured selection without changing Revit or replacing the canvas. Report refresh and copying are explicit actions.

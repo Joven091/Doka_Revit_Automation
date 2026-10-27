@@ -58,7 +58,10 @@ internal static class WorkspacePresentationTests
         Check(!Controls<TextBlock>(workspace.SharedProperties).Any(t=>t.Text.Contains("spacing limit") || t.Text=="Parallel beam length (mm)"),"geometry and calculated spacing limits are outside shared settings");
         var loads=Controls<ComboBox>(workspace.SharedProperties).Single(c=>c.Name=="LoadAllowanceSelector");loads.SelectedItem="Custom";
         Check(model.UseCustomLoads && workspace.Fields["CustomLiveLoad"].IsEnabled,"custom load mode exposes active fields");
-        Check(workspace.TryEditDimension("BeamLengthMm","7000",out var error) && model.BeamLengthMm==7000,"canvas length edits the shared parallel length");
+        workspace.Drawing.Select(FormworkObject.Beam,0);
+        double otherLength=model.BeamSpanLength(1);
+        Check(workspace.TryEditDimension("BeamLengthMm","7000",out var error) && model.BeamSpanLength(0)==7000 && model.BeamSpanLength(1)==otherLength,"canvas length edits only the selected parallel beam");
+        Check(workspace.TryEditDimension("AllBeamLengthMm","7200",out error) && model.BeamSpanLength(0)==7200 && model.BeamSpanLength(1)==7200,"explicit set-all control updates both parallel beams");
         workspace.Drawing.Select(FormworkObject.Slab,0);
         Check(workspace.TryEditDimension("WidthMm","2250",out error) && model.NetworkBays[0].WidthMm==2250,"canvas slab dimension changes the bay width");
         model.AddCrossingBeam();workspace.Drawing.Select(FormworkObject.Crossing,0);

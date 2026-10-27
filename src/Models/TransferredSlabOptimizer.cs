@@ -38,6 +38,9 @@ namespace EngineeringDashboard
         internal BeamDistributedLoad[] LeftCrossingBands=new BeamDistributedLoad[0], RightCrossingBands=new BeamDistributedLoad[0];
         // The network solver fixes shared timber coverage and row phase, not concrete extent.
         public double? FixedCoveredLengthMm, FixedRowPhaseMm;
+        internal double? FixedRowStartMm;
+        internal double? LeftSlabStartMm,LeftSlabEndMm,RightSlabStartMm,RightSlabEndMm;
+        internal double RowStart(TowerInput input,double coverage)=>FixedRowStartMm??input.CoverStart(coverage);
         internal double[][] StockCovers;
         internal TransferredSlabOptimizer.GeometryCache SharedGeometryCache;
         internal TransferredSlabOptimizer.SearchWorkCache SharedSearchWork;
@@ -214,7 +217,74 @@ namespace EngineeringDashboard
     /// <summary>Transverse force transfer with continuous distributed primary design loads.</summary>
     public static class TransferredSlabOptimizer
     {
-        internal sealed class Geometry { public TowerStockPiece[] Stock; public double[] Positions; public bool[] Joined; public double[][] MemberSupports; }
+        internal sealed class Geometry
+        {
+            public TowerStockPiece[] Stock; public double[] Positions; public bool[] Joined; public double[][] MemberSupports;
+            internal SpanGeometryShape SpanShape;
+        }
+        // One immutable entry per already retained geometry. Unlike a short-lived
+        // dictionary, this survives traversal of the other stock/support families.
+        // Loads, material and capacities are deliberately evaluated on every use.
+        internal sealed class SpanGeometryContext
+        {
+            internal readonly double Edge;internal readonly double[] Boundaries;
+            internal SpanGeometryContext(double edge,BeamDistributedLoad[] bands)
+            {Edge=edge;Boundaries=bands.SelectMany(b=>new[] {b.StartMm,b.EndMm}).ToArray();}
+            internal bool Same(SpanGeometryContext other)
+            {
+                if(ReferenceEquals(this,other))return true;
+                if(other==null || Edge!=other.Edge || Boundaries.Length!=other.Boundaries.Length)return false;
+                for(int i=0;i<Boundaries.Length;i++)if(Boundaries[i]!=other.Boundaries[i])return false;
+                return true;
+            }
+        }
+        internal sealed class SpanGeometryShape
+        {
+            internal SpanGeometryContext Context;
+            internal double[] Tails,ClearSpans;
+        }
+        internal static SpanGeometryShape PrepareSpanShape(Geometry geometry,SpanGeometryContext context,BeamSearchTrace trace=null)
+        {
+            var found=Volatile.Read(ref geometry.SpanShape);
+            if(found!=null && context.Same(found.Context))
+            {if(trace?.EnableHotProfiling==true)trace.Increment(BeamSearchCounter.SpanGeometryHits);return found;}
+            if(trace?.EnableHotProfiling==true)trace.Increment(BeamSearchCounter.SpanGeometryBuilds);
+            var shape=new SpanGeometryShape {Context=context,Tails=new double[geometry.Stock.Length],ClearSpans=new double[geometry.Stock.Length]};
+            var bands=context.Boundaries;
+            for(int run=0;run<geometry.Stock.Length;run++)
+            {
+                var stock=geometry.Stock[run];var supports=geometry.MemberSupports[run];double origin=stock.StartMm+context.Edge;
+                for(int tail=0;tail<2;tail++)
+                {
+                    double a=tail==0 ? 0 : supports[supports.Length-1],b=tail==0 ? supports[0] : stock.StockLengthMm;
+                    bool unknown=false;for(int i=0;i<bands.Length;i+=2)if(bands[i+1]>origin+a && bands[i]<origin+b){unknown=true;break;}
+                    if(!unknown)shape.Tails[run]=Math.Max(shape.Tails[run],(b-a)/1000);
+                }
+                for(int span=0;span<=supports.Length;span++)
+                {
+                    double a=origin+(span==0 ? 0 : supports[span-1]),b=origin+(span==supports.Length ? stock.StockLengthMm : supports[span]);
+                    for(int i=0;i<bands.Length;i+=2)
+                    {
+                        if(bands[i+1]<=a)continue;if(bands[i]>=b)break;
+                        shape.ClearSpans[run]=Math.Max(shape.ClearSpans[run],(Math.Min(b,bands[i])-a)/1000);
+                        a=Math.Max(a,bands[i+1]);if(a>=b)break;
+                    }
+                    shape.ClearSpans[run]=Math.Max(shape.ClearSpans[run],(b-a)/1000);
+                }
+            }
+            Volatile.Write(ref geometry.SpanShape,shape);return shape;
+        }
+        internal static bool PreparedSpanShapeFits(TowerInput input,Geometry geometry,SpanGeometryContext context,double largest)
+        {
+            var shape=PrepareSpanShape(geometry,context,input.Trace);
+            for(int run=0;run<geometry.Stock.Length;run++)
+            {
+                double q=largest+input.Primary.SelfWeightKnM(geometry.Stock[run].StockLengthMm),tail=shape.Tails[run],span=shape.ClearSpans[run];
+                if(q*tail>input.Primary.ShearLimitKn+1e-7 || q*tail*tail/2>input.Primary.MomentLimitKnM+1e-7
+                    || q*span>2*input.Primary.ShearLimitKn+1e-7 || q*span*span>16*input.Primary.MomentLimitKnM+1e-7)return false;
+            }
+            return true;
+        }
         // Exact geometry identity; avoids formatting every support coordinate
         // into a temporary string while retaining first-occurrence ordering.
         internal sealed class GeometryKey : IEquatable<GeometryKey>
@@ -262,6 +332,7 @@ namespace EngineeringDashboard
             internal bool SpanPrepared;
             internal double[] MinimumLineLoads;
             internal BeamDistributedLoad[] UnknownSpans;
+            internal SpanGeometryContext SpanContext;
             public int[] DesignCases;
             public TransferMember[][] LowerByCase;
             public bool[] LowerCaseComputed;
@@ -279,6 +350,12 @@ namespace EngineeringDashboard
             internal double[] SharedSlabRowsMm,LeftSourceScales,RightSourceScales;
             internal bool Adjusted;
             public string Key;
+            // Moving physical rows around a stock joint retains the exact checked
+            // design rows, tributaries and source loads under the bearer assumption.
+            // Physical clearances still use Key/SettingOutRows for each geometry.
+            internal string SourceAnalysisKey;
+            internal string AnalysisKey=>SourceAnalysisKey??Key;
+            internal string CheckKey(TowerInput input)=>input.ReuseTransversePreparations ? AnalysisKey : Key;
             internal readonly Dictionary<Tuple<double,double>,RowSlice> Slices=new Dictionary<Tuple<double,double>,RowSlice>();
             internal RowSlice Slice(TowerStockPiece stock)
             {
@@ -297,7 +374,7 @@ namespace EngineeringDashboard
             var t=input.TransferredSlab;
             if(t.HasIndividualSpacings)return BuildIndividualRowGrid(input,covered,rowCoverage,edge);
             var shared=t.PlywoodSheetLengthMm>0
-                ? PlywoodSpacing.SheetSupportRows((input.LengthMm-rowCoverage)/2,(input.LengthMm+rowCoverage)/2,t.UpperSpacingMm,t.PlywoodSheetLengthMm).Select(x=>x-edge).ToArray()
+                ? PlywoodSpacing.SheetSupportRows(t.RowStart(input,rowCoverage),t.RowStart(input,rowCoverage)+rowCoverage,t.UpperSpacingMm,t.PlywoodSheetLengthMm).Select(x=>x-edge).ToArray()
                 : Enumerable.Range(0,count).Select(i=>first+phase+i*t.RowGapMm).ToArray();
             count=shared.Length;
             var slabWidths=Enumerable.Range(0,count).Select(i=>(i==count-1 ? covered : (shared[i]+shared[i+1])/2)-(i==0 ? 0 : (shared[i-1]+shared[i])/2)).ToArray();
@@ -308,7 +385,7 @@ namespace EngineeringDashboard
                 // Lower rows can be added without changing any slab stock, foot or tributary.
                 // 40 mm keeps the full secondary flange on the primary stock; 80 mm avoids row overlap.
                 var initial=Enumerable.Range(0,count).Select(i=>(i==count-1 ? covered : (shared[i]+shared[i+1])/2)-(i==0 ? 0 : (shared[i-1]+shared[i])/2)).ToArray();
-                var end=ConcreteEndStripTributaries(covered,shared,edge);
+                var end=ConcreteEndStripTributaries(covered,shared,edge-input.LongitudinalStartMm);
                 if(initial[0]+end[0]>t.UpperSpacingMm+1e-7 && shared[0]>=120)rows.Add(40);
                 if(initial[count-1]+end[count-1]>t.UpperSpacingMm+1e-7 && covered-shared.Last()>=120)rows.Add(covered-40);
             }
@@ -316,7 +393,7 @@ namespace EngineeringDashboard
             var indices=shared.Select(x=>Array.IndexOf(stations,x)).ToArray();
             var widths=Enumerable.Range(0,stations.Length).Select(i=>(i==stations.Length-1 ? covered : (stations[i]+stations[i+1])/2)-(i==0 ? 0 : (stations[i-1]+stations[i])/2)).ToArray();
             if(t.IncludeConcreteEndStrips || t.IncludeMainBeamEndLoads)
-            {var end=ConcreteEndStripTributaries(covered,stations,edge);for(int i=0;i<widths.Length;i++)widths[i]+=end[i];}
+            {var end=ConcreteEndStripTributaries(covered,stations,edge-input.LongitudinalStartMm);for(int i=0;i<widths.Length;i++)widths[i]+=end[i];}
             var left=t.LeftEffectiveWidthsMm??slabWidths;var right=t.RightEffectiveWidthsMm??slabWidths;
             var grid=new RowGrid {Rows=stations,Tributaries=widths,SlabRowIndices=indices,
                 LeftPhysicalScales=new double[stations.Length],RightPhysicalScales=new double[stations.Length],LeftScales=new double[stations.Length],RightScales=new double[stations.Length]};
@@ -327,7 +404,7 @@ namespace EngineeringDashboard
         }
         private static RowGrid BuildIndividualRowGrid(TowerInput input,double covered,double rowCoverage,double edge)
         {
-            var t=input.TransferredSlab;double slabStart=(input.LengthMm-rowCoverage)/2,slabEnd=slabStart+rowCoverage;
+            var t=input.TransferredSlab;double slabStart=t.RowStart(input,rowCoverage),slabEnd=slabStart+rowCoverage;
             double[] shared,left,right,leftBase,rightBase;
             if(t.SharedRowsMm!=null)
             {
@@ -375,7 +452,7 @@ namespace EngineeringDashboard
             var indices=shared.Select((x,i)=>sourceSet.Contains(i) ? Array.IndexOf(absolute,mapped[i]) : -1).ToArray();
             var widthsBeam=PlywoodSpacing.RowTributaries(0,covered,rows);
             if(t.IncludeConcreteEndStrips || t.IncludeMainBeamEndLoads)
-            {var end=ConcreteEndStripTributaries(covered,rows,edge);for(int i=0;i<rows.Length;i++)widthsBeam[i]+=end[i];}
+            {var end=ConcreteEndStripTributaries(covered,rows,edge-input.LongitudinalStartMm);for(int i=0;i<rows.Length;i++)widthsBeam[i]+=end[i];}
             var grid=new RowGrid {Rows=rows,Tributaries=widthsBeam,SlabRowIndices=t.LocalReceivingRows ? indices.Where(i=>i>=0).Distinct().OrderBy(i=>i).ToArray() : indices,
                 SharedSlabRowsMm=t.LocalReceivingRows ? shared : null,SlabSourceRowIndices=t.LocalReceivingRows ? indices : null,Adjusted=adjusted,
                 LeftPhysicalScales=new double[rows.Length],RightPhysicalScales=new double[rows.Length],LeftScales=new double[rows.Length],RightScales=new double[rows.Length]};
@@ -649,14 +726,14 @@ namespace EngineeringDashboard
                 {
                     input.Trace?.Increment(BeamSearchCounter.CoverageVariants);
                     if(cover.Length*4>input.NetworkLegCeiling)continue;
-                    double covered = cover.Sum(), edge = (input.LengthMm-covered)/2;
+                    double covered = cover.Sum(), edge = input.CoverStart(covered);
                     double rowCoverage=t.FixedCoveredLengthMm??covered;
                     bool independent=t.IsNetwork && t.AllowLongerPrimaryCoverage && t.FixedCoveredLengthMm.HasValue;
                     if(t.FixedCoveredLengthMm.HasValue && (independent ? covered<rowCoverage-1e-7 : Math.Abs(covered-rowCoverage)>1e-7)) continue;
                     int count = (int)Math.Ceiling(rowCoverage/t.RowGapMm);
                     // Slab rows stay aligned in absolute coordinates across the network. Primary
                     // stock may extend farther toward the concrete ends on an individual beam.
-                    double first = (rowCoverage-(count-1)*t.RowGapMm)/2+(input.LengthMm-rowCoverage)/2-edge;
+                    double first = (rowCoverage-(count-1)*t.RowGapMm)/2+t.RowStart(input,rowCoverage)-edge;
                     foreach (bool rotated in new[] { false, true }) foreach (double width in rotated ? TowerOptimizer.BaysMm : new[] { 1524.0 })
                     {
                         if (t.FixedTowerWidthMm.HasValue && Math.Abs(width-t.FixedTowerWidthMm.Value)>1e-7) continue;
@@ -788,7 +865,7 @@ namespace EngineeringDashboard
                 var adjusted=new RowGrid {Rows=source.Rows,Tributaries=source.Tributaries,LeftScales=source.LeftScales,RightScales=source.RightScales,
                     LeftPhysicalScales=source.LeftPhysicalScales,RightPhysicalScales=source.RightPhysicalScales,SlabRowIndices=source.SlabRowIndices,
                     SlabSourceRowIndices=source.SlabSourceRowIndices,SharedSlabRowsMm=source.SharedSlabRowsMm,LeftSourceScales=source.LeftSourceScales,RightSourceScales=source.RightSourceScales,
-                    Adjusted=true,SettingOutRows=placed.RowsMm,SettingOutDesignRows=mapping,Key=source.Key+"|joints:"+key};
+                    Adjusted=true,SettingOutRows=placed.RowsMm,SettingOutDesignRows=mapping,SourceAnalysisKey=source.AnalysisKey,Key=source.Key+"|joints:"+key};
                 source.JointLayouts[key]=adjusted;return adjusted;
             }
             catch(ArgumentException){return null;}
@@ -819,14 +896,14 @@ namespace EngineeringDashboard
                 {
                     input.Trace?.Increment(BeamSearchCounter.CoverageVariants);
                     if(cover.Length*4>input.NetworkLegCeiling)continue;
-                    double covered = cover.Sum(), edge = (input.LengthMm-covered)/2;
+                    double covered = cover.Sum(), edge = input.CoverStart(covered);
                     double rowCoverage=t.FixedCoveredLengthMm??covered;
                     bool independent=t.IsNetwork && t.AllowLongerPrimaryCoverage && t.FixedCoveredLengthMm.HasValue;
                     if(t.FixedCoveredLengthMm.HasValue && (independent ? covered<rowCoverage-1e-7 : Math.Abs(covered-rowCoverage)>1e-7)) continue;
                     int count = (int)Math.Ceiling(rowCoverage/t.RowGapMm);
                     // Slab rows stay aligned in absolute coordinates across the network. Primary
                     // stock may extend farther toward the concrete ends on an individual beam.
-                    double first = (rowCoverage-(count-1)*t.RowGapMm)/2+(input.LengthMm-rowCoverage)/2-edge;
+                    double first = (rowCoverage-(count-1)*t.RowGapMm)/2+t.RowStart(input,rowCoverage)-edge;
                     foreach (bool rotated in new[] { false, true }) foreach (double width in rotated ? TowerOptimizer.BaysMm : new[] { 1524.0 })
                     {
                         if (t.FixedTowerWidthMm.HasValue && Math.Abs(width-t.FixedTowerWidthMm.Value)>1e-7) continue;
@@ -900,7 +977,7 @@ namespace EngineeringDashboard
                                     JoinedBays=geometry.Joined.Count(j=>j),Brace=EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,width,rotated),
                                     Narrow=TowerOptimizer.Standalone600Count(geometry.Positions,geometry.Joined,width,rotated),
                                     Cantilever=geometry.Stock.Sum(p=>Math.Abs((geometry.Positions[p.FirstSupport]-p.StartMm)-(p.EndMm-geometry.Positions[p.LastSupport]))),
-                                    Symmetry=input.EngineerSearch ? TowerOptimizer.SymmetryError(geometry.Positions,geometry.Stock.Select(p=>p.StockLengthMm).ToArray(),input.LengthMm/2-edge) : 0});
+                                    Symmetry=input.EngineerSearch ? TowerOptimizer.SymmetryError(geometry.Positions,geometry.Stock.Select(p=>p.StockLengthMm).ToArray(),input.LongitudinalStartMm+input.LengthMm/2-edge) : 0});
                             }
                         }
                     }
@@ -996,7 +1073,7 @@ namespace EngineeringDashboard
         internal static TowerLayout TryFixedLayout(TowerInput input,TowerLayout previous)
         {
             var t=input.TransferredSlab;t.Validate(input);
-            if(previous==null || previous.PrimaryMaterial!=input.PrimaryMaterial || previous.LengthMm!=input.LengthMm
+            if(previous==null || previous.PrimaryMaterial!=input.PrimaryMaterial || previous.LengthMm!=input.LengthMm || previous.LongitudinalStartMm!=input.LongitudinalStartMm
                 || previous.LegCount>input.NetworkLegCeiling || previous.PositionsMm.Length<input.EngineerMinimumStations)return null;
             int previousCount=t.EngineerReceiverCount;
             try
@@ -1004,14 +1081,14 @@ namespace EngineeringDashboard
             t.EngineerReceiverCount=previous.Transfer.EngineerReceiverCount;
             var lengths=previous.StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray();
             if(!Covers(input).Any(c=>c.SequenceEqual(lengths)))return null;
-            double covered=lengths.Sum(),edge=(input.LengthMm-covered)/2,rowCoverage=t.FixedCoveredLengthMm??covered;
+            double covered=lengths.Sum(),edge=input.CoverStart(covered),rowCoverage=t.FixedCoveredLengthMm??covered;
             if(t.FixedCoveredLengthMm.HasValue && (t.AllowLongerPrimaryCoverage ? covered<rowCoverage-1e-7 : Math.Abs(covered-rowCoverage)>1e-7))return null;
             var positions=previous.PositionsMm.Select(x=>x-edge).ToArray();
             var stocks=previous.StockPlan.Pieces.Select(p=>new TowerStockPiece {StartMm=p.StartMm-edge,StockLengthMm=p.StockLengthMm,FirstSupport=p.FirstSupport,LastSupport=p.LastSupport}).ToArray();
             var geometry=new Geometry {Positions=positions,Joined=previous.Joined,Stock=stocks,
                 MemberSupports=stocks.Select(p=>positions.Skip(p.FirstSupport).Take(p.LastSupport-p.FirstSupport+1).Select(x=>x-p.StartMm).ToArray()).ToArray()};
             int count=(int)Math.Ceiling(rowCoverage/t.RowGapMm);
-            double first=(rowCoverage-(count-1)*t.RowGapMm)/2+(input.LengthMm-rowCoverage)/2-edge;
+            double first=(rowCoverage-(count-1)*t.RowGapMm)/2+t.RowStart(input,rowCoverage)-edge;
             var grid=BuildRowGrid(input,covered,rowCoverage,first,count,t.FixedRowPhaseMm??0,edge);
             grid=GridForStocks(input,geometry,grid,edge);
             if(grid==null)return null;
@@ -1303,9 +1380,9 @@ namespace EngineeringDashboard
         private static TransferMember[] LowerCase(TowerInput input,CrossOption cross,double width,RowGrid grid,double edge,int c)
         {
             input.Trace?.CheckCancellation();
-            if(cross.RowKey!=grid.Key)
+            if(cross.RowKey!=grid.CheckKey(input))
             {
-                cross.RowKey=grid.Key;
+                cross.RowKey=grid.CheckKey(input);
                 cross.LowerByCase=new TransferMember[cross.Cases.Length][];
                 cross.LowerCaseComputed=new bool[cross.Cases.Length];
             }
@@ -1464,12 +1541,12 @@ namespace EngineeringDashboard
             // Dedicated crossing primaries use the same continuous UDL design as main beams.
             // Include the full concrete span on its centred stock coverage: this preserves
             // total force and its longitudinal resultant without secondary-row point loads.
-            if(input.TransferredSlab.IncludeConcreteEndStrips && edge>1e-7)
-                beam*=input.LengthMm/(input.LengthMm-2*edge);
+            if(input.TransferredSlab.IncludeConcreteEndStrips && edge-input.LongitudinalStartMm>1e-7)
+                beam*=input.LengthMm/(input.LengthMm-2*(edge-input.LongitudinalStartMm));
             int left=Array.IndexOf(cross.Names,"Beam + left slab"),right=Array.IndexOf(cross.Names,"Beam + right slab");
             bool hasLeft=cross.Names[c].Contains("left") || cross.Names[c].Contains("both"),hasRight=cross.Names[c].Contains("right") || cross.Names[c].Contains("both");
             double l=hasLeft && left>=0 ? cross.Cases[left].Reactions[line]-baseBeam : 0,r=hasRight && right>=0 ? cross.Cases[right].Reactions[line]-baseBeam : 0;
-            double slabCoverage=input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge),slabEdge=(input.LengthMm-slabCoverage)/2;
+            double slabCoverage=input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*(edge-input.LongitudinalStartMm)),slabEdge=input.TransferredSlab.RowStart(input,slabCoverage);
             // Main-primary intensities are independent of coverage. Uncovered longitudinal
             // strips belong to external column-side supports. Slab coverage can
             // differ from primary coverage; each excluded load is assigned once.
@@ -1479,7 +1556,7 @@ namespace EngineeringDashboard
         }
         private static ColumnEndStripLoad[][] SelectColumnCases(TowerInput input,CrossOption cross,double edge)
             => input.EngineerPlan?.UseDesignZones==true
-                ? cross.DesignCases.Select(c=>(cross.PositionedPlan??input.EngineerPlan).Columns(edge,input.LengthMm-edge,cross.Names[c])).ToArray()
+                ? cross.DesignCases.Select(c=>(cross.PositionedPlan??input.EngineerPlan).Columns(edge,input.LongitudinalEndMm-(edge-input.LongitudinalStartMm),cross.Names[c])).ToArray()
                 : SelectLegacyColumnCases(input,cross,edge);
         private static ColumnEndStripLoad[][] SelectLegacyColumnCases(TowerInput input,CrossOption cross,double edge)
         {
@@ -1490,8 +1567,8 @@ namespace EngineeringDashboard
         {
             if(input.TransferredSlab.IncludeConcreteEndStrips)return new ColumnEndStripLoad[0][];
             var t=input.TransferredSlab;
-            double slabCoverage=t.FixedCoveredLengthMm??(input.LengthMm-2*edge),slabEdge=(input.LengthMm-slabCoverage)/2;
-            if(edge<=1e-7 && slabEdge<=1e-7)return new ColumnEndStripLoad[0][];
+            double slabCoverage=t.FixedCoveredLengthMm??(input.LengthMm-2*(edge-input.LongitudinalStartMm)),slabEdge=input.TransferredSlab.RowStart(input,slabCoverage);
+            if(edge<=input.LongitudinalStartMm+1e-7 && slabEdge<=input.LongitudinalStartMm+1e-7)return new ColumnEndStripLoad[0][];
             var result=new ColumnEndStripLoad[cross.Names.Length][];
             for(int c=0;c<result.Length;c++)
             {
@@ -1507,15 +1584,15 @@ namespace EngineeringDashboard
                     double l=hasLeft && left>=0 ? cross.Cases[left].Reactions[line]-beam : 0,r=hasRight && right>=0 ? cross.Cases[right].Reactions[line]-beam : 0;
                     // Complement of the actual primary/slab-supported regions,
                     // rather than a second assignment added to the old strips.
-                    var full=PrimaryUniformLoads(0,input.LengthMm,beam,l,r,t.LeftCrossingBands,t.RightCrossingBands,true);
-                    var carried=PrimaryUniformLoads(edge,input.LengthMm-2*edge,beam,l,r,t.LeftCrossingBands,t.RightCrossingBands,true,slabEdge,slabEdge+slabCoverage);
-                    var cuts=full.SelectMany(q=>new[] {q.StartMm,q.EndMm}).Concat(carried.SelectMany(q=>new[] {edge+q.StartMm,edge+q.EndMm})).Concat(new[] {0.0,input.LengthMm}).Distinct().OrderBy(x=>x).ToArray();
+                    var full=PrimaryUniformLoads(input.LongitudinalStartMm,input.LengthMm,beam,l,r,t.LeftCrossingBands,t.RightCrossingBands,true);
+                    var carried=PrimaryUniformLoads(edge,input.LengthMm-2*(edge-input.LongitudinalStartMm),beam,l,r,t.LeftCrossingBands,t.RightCrossingBands,true,slabEdge,slabEdge+slabCoverage);
+                    var cuts=full.SelectMany(q=>new[] {input.LongitudinalStartMm+q.StartMm,input.LongitudinalStartMm+q.EndMm}).Concat(carried.SelectMany(q=>new[] {edge+q.StartMm,edge+q.EndMm})).Concat(new[] {input.LongitudinalStartMm,input.LongitudinalEndMm}).Distinct().OrderBy(x=>x).ToArray();
                     for(int i=1;i<cuts.Length;i++)
                     {
                         double middle=(cuts[i-1]+cuts[i])/2;
-                        double q=full.Where(b=>b.StartMm<middle && b.EndMm>middle).Sum(b=>b.KnPerM)-carried.Where(b=>edge+b.StartMm<middle && edge+b.EndMm>middle).Sum(b=>b.KnPerM);
+                        double q=full.Where(b=>input.LongitudinalStartMm+b.StartMm<middle && input.LongitudinalStartMm+b.EndMm>middle).Sum(b=>b.KnPerM)-carried.Where(b=>edge+b.StartMm<middle && edge+b.EndMm>middle).Sum(b=>b.KnPerM);
                         if(Math.Abs(q)<=1e-10)continue;
-                        int end=middle<input.LengthMm/2 ? 0 : 1;
+                        int end=middle<input.LongitudinalStartMm+input.LengthMm/2 ? 0 : 1;
                         double force=q*(cuts[i]-cuts[i-1])/1000;
                         forces[end,line]+=force;moments[end,line]+=force*middle/1000;
                         starts[end]=Math.Min(starts[end],cuts[i-1]);ends[end]=Math.Max(ends[end],cuts[i]);
@@ -1530,7 +1607,9 @@ namespace EngineeringDashboard
         private static double PhysicalSlabReferenceLengthMm(TowerInput input,bool left)
         {
             var bands=left ? input.TransferredSlab.LeftCrossingBands : input.TransferredSlab.RightCrossingBands;
-            return input.LengthMm+(bands??new BeamDistributedLoad[0]).Sum(b=>b.KnPerM*Math.Max(0,Math.Min(input.LengthMm,b.EndMm)-Math.Max(0,b.StartMm)));
+            double start=(left ? input.TransferredSlab.LeftSlabStartMm : input.TransferredSlab.RightSlabStartMm)??input.LongitudinalStartMm;
+            double end=(left ? input.TransferredSlab.LeftSlabEndMm : input.TransferredSlab.RightSlabEndMm)??input.LongitudinalEndMm;
+            return end-start+(bands??new BeamDistributedLoad[0]).Sum(b=>b.KnPerM*Math.Max(0,Math.Min(end,b.EndMm)-Math.Max(start,b.StartMm)));
         }
         private static double PhysicalSlabLoadKn(TowerInput input,CrossOption cross)
             =>(cross.Left==null ? 0 : (cross.Left.Analysis.Reactions[0]+cross.Left.Load*cross.Left.Edge/1000)*PhysicalSlabReferenceLengthMm(input,true)/1000)
@@ -1554,15 +1633,16 @@ namespace EngineeringDashboard
         }
         private static bool AcceptTransverseCases(TowerInput input,CrossOption cross,double width,RowGrid grid,double edge)
         {
-            if(input.ReuseSearchWork && cross.TransverseKey==grid.Key)return cross.TransversePassed;
-            cross.TransverseKey=grid.Key;cross.TransversePassed=false;cross.PreparedReceiver=null;
+            string key=grid.CheckKey(input);
+            if(input.ReuseSearchWork && cross.TransverseKey==key)return cross.TransversePassed;
+            cross.TransverseKey=key;cross.TransversePassed=false;cross.PreparedReceiver=null;
             var ls=grid.LeftScales;var rs=grid.RightScales;
             if(cross.Left!=null && !Pass(input,cross.Left.Analysis,Math.Max(ls.Max(),input.TransferredSlab.SlabSpacing(true)/1000),1,input.Diagnostics,input.DiagnosticScope+"Left slab H20",1,()=> $"governing row T{Array.IndexOf(ls,ls.Max())+1} · stock {cross.Left.Stock:0} mm")
                 || cross.Right!=null && !Pass(input,cross.Right.Analysis,Math.Max(rs.Max(),input.TransferredSlab.SlabSpacing(false)/1000),1,input.Diagnostics,input.DiagnosticScope+"Right slab H20",1,()=> $"governing row T{Array.IndexOf(rs,rs.Max())+1} · stock {cross.Right.Stock:0} mm"))return false;
             if(input.TransferLowerAcceptance==null)return cross.TransversePassed=true;
             var lower=cross.DesignCases.Select(c=>LowerCase(input,cross,width,grid,edge,c)).ToArray();
             if(lower.Any(c=>c==null))return false;
-            var probe=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,PositionsMm=new double[0],Joined=new bool[0],WidthMm=width,LengthMm=input.LengthMm,
+            var probe=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,PositionsMm=new double[0],Joined=new bool[0],WidthMm=width,LengthMm=input.LengthMm,LongitudinalStartMm=input.LongitudinalStartMm,
                 StockPlan=new TowerStockPlan {Pieces=new TowerStockPiece[0]},
                 Transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerReceiverCount,RowsMm=grid.Rows.Select(x=>x+edge).ToArray(),LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,CaseNames=cross.DesignCases.Select(c=>cross.Names[c]).ToArray(),LowerCases=lower}};
             probe=OffsetReceiver(input,probe);
@@ -1584,6 +1664,11 @@ namespace EngineeringDashboard
                 cross.SpanPrepared=true;
             }
             double largest=Math.Max(0,Math.Max(cross.MinimumLineLoads[0],cross.MinimumLineLoads[1]));
+            if(input.PrepareSpanGeometry && input.ReuseSearchWork)
+            {
+                if(cross.SpanContext==null || cross.SpanContext.Edge!=edge)cross.SpanContext=new SpanGeometryContext(edge,cross.UnknownSpans);
+                return PreparedSpanShapeFits(input,geometry,cross.SpanContext,largest);
+            }
             for(int run=0;run<geometry.Stock.Length;run++)
             {
                 var stock=geometry.Stock[run];var supports=geometry.MemberSupports[run];double origin=stock.StartMm+edge;
@@ -1758,7 +1843,7 @@ namespace EngineeringDashboard
             }
             if(input.EngineerSearch && input.TransferLayoutAcceptance!=null && cross.PreparedReceiver==null)
             {
-                var provisional=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,IgnoreUplift=input.IgnoreUplift,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=g.Joined,WidthMm=width,Rotated=rotated,LengthMm=input.LengthMm,DeflectionDenominator=input.DeflectionDenominator,DeflectionLimitMm=input.DeflectionLimitMm,LegCapacityKn=input.LegCapacityKn,
+                var provisional=new TowerLayout {EngineerSearch=true,PrimaryMaterial=input.PrimaryMaterial,IgnoreUplift=input.IgnoreUplift,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=g.Joined,WidthMm=width,Rotated=rotated,LengthMm=input.LengthMm,LongitudinalStartMm=input.LongitudinalStartMm,DeflectionDenominator=input.DeflectionDenominator,DeflectionLimitMm=input.DeflectionLimitMm,LegCapacityKn=input.LegCapacityKn,
                     StockPlan=new TowerStockPlan {PrimaryMaterial=input.PrimaryMaterial,Pieces=g.Stock.Select(p=>new TowerStockPiece {StartMm=p.StartMm+edge,StockLengthMm=p.StockLengthMm,FirstSupport=p.FirstSupport,LastSupport=p.LastSupport}).ToArray()},
                     Transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerReceiverCount,FullLoadingOnly=input.FullLoadingOnly,RowsMm=rows.Select(x=>x+edge).ToArray(),LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,CaseNames=cross.DesignCases.Select(i=>cross.Names[i]).ToArray(),LowerCases=lowerCases.ToArray(),PrimaryCases=primaryCases.ToArray(),UpperMembers=new TransferMember[0],ColumnSupportLoads=new ColumnEndStripLoad[0][]}};
                 if(!AcceptLayout(input,OffsetReceiver(input,provisional)))
@@ -1780,11 +1865,11 @@ namespace EngineeringDashboard
                 pieces[i].GoverningDeflectionLimitMm=governing.GoverningLengthMm/input.DeflectionDenominator;
                 pieces[i].GoverningDeflectionMm=governing.DeflectionUtilization*pieces[i].GoverningDeflectionLimitMm;
             }
-            var transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerNetwork==null ? 0 : input.TransferredSlab.EngineerReceiverCount,UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=SelectColumnCases(input,cross,edge),LegacyColumnSupportLoads=input.EngineerPlan?.UseDesignZones==true ? SelectLegacyColumnCases(input,cross,edge) : null,CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,SharedSlabRowsMm=grid.SharedSlabRowsMm,SlabSourceRowIndices=grid.SlabSourceRowIndices,LeftSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.LeftSourceScales,RightSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.RightSourceScales,HasCustomPlywoodJoints=grid.Adjusted,SettingOutRowsMm=grid.SettingOutRows?.Select(x=>x+edge).ToArray(),SettingOutDesignRows=grid.SettingOutDesignRows,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
+            var transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerNetwork==null ? 0 : input.TransferredSlab.EngineerReceiverCount,UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=input.TransferredSlab.RowStart(input,input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*(edge-input.LongitudinalStartMm))),SlabSupportEndMm=input.TransferredSlab.RowStart(input,input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*(edge-input.LongitudinalStartMm)))+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*(edge-input.LongitudinalStartMm))),ColumnSupportLoads=SelectColumnCases(input,cross,edge),LegacyColumnSupportLoads=input.EngineerPlan?.UseDesignZones==true ? SelectLegacyColumnCases(input,cross,edge) : null,CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,SharedSlabRowsMm=grid.SharedSlabRowsMm,SlabSourceRowIndices=grid.SlabSourceRowIndices,LeftSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.LeftSourceScales,RightSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.RightSourceScales,HasCustomPlywoodJoints=grid.Adjusted,SettingOutRowsMm=grid.SettingOutRows?.Select(x=>x+edge).ToArray(),SettingOutDesignRows=grid.SettingOutDesignRows,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
                 LeftUpperStockMm=cross.Left?.Stock??0,RightUpperStockMm=cross.Right?.Stock??0,LeftUpperCustom=cross.Left?.Custom??false,RightUpperCustom=cross.Right?.Custom??false,LeftUpperEdgeMm=cross.Left?.Edge??0,RightUpperEdgeMm=cross.Right?.Edge??0,
                 LeftFootReactionKn=(cross.Left?.Analysis.Reactions[0]??0)*ls.Max(),RightFootReactionKn=(cross.Right?.Analysis.Reactions[0]??0)*rs.Max(),
                 BeamLoadKn=input.TransferredSlab.TotalBeamLineLoadKnM*input.LengthMm/1000,
-                CoveredSlabAreaM2=(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge))*((cross.Left?.Stock??0)+(cross.Right?.Stock??0))/1e6,
+                CoveredSlabAreaM2=(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*(edge-input.LongitudinalStartMm)))*((cross.Left?.Stock??0)+(cross.Right?.Stock??0))/1e6,
                 ShutterLoadKn=PhysicalShutterLoadKn(input,cross),
                 SlabLoadKn=PhysicalSlabLoadKn(input,cross),PrimaryCases=primaryCases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=upper.ToArray(),CaseNames=cross.DesignCases.Select(i=>cross.Names[i]).ToArray(),FullLoadingOnly=input.FullLoadingOnly};
             // Two-support lower and upper bearers are statically determinate: support movement adds an affine displacement without altering reactions.
@@ -1801,7 +1886,7 @@ namespace EngineeringDashboard
             }
             var all=primaryCases.SelectMany(c=>c).Concat(lowerCases.SelectMany(c=>c)).Concat(upper).ToArray();
             double peak=Math.Max(left.Max(),right.Max()),util=Math.Max(peak/input.LegCapacityKn,all.Max(m=>m.Utilization));
-            return new TowerLayout {EngineerSearch=input.EngineerSearch,PrimaryMaterial=input.PrimaryMaterial,IgnoreUplift=input.IgnoreUplift,Transfer=transfer,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=g.Joined,WidthMm=width,Rotated=rotated,LengthMm=input.LengthMm,ConcreteEndOverhangMm=edge,LeftReactions=left,RightReactions=right,MinimumLeftReactions=minLeft,MinimumRightReactions=minRight,
+            return new TowerLayout {EngineerSearch=input.EngineerSearch,PrimaryMaterial=input.PrimaryMaterial,IgnoreUplift=input.IgnoreUplift,Transfer=transfer,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=g.Joined,WidthMm=width,Rotated=rotated,LengthMm=input.LengthMm,LongitudinalStartMm=input.LongitudinalStartMm,ConcreteEndOverhangMm=edge-input.LongitudinalStartMm,LeftReactions=left,RightReactions=right,MinimumLeftReactions=minLeft,MinimumRightReactions=minRight,
                 LeftLineLoad=lowerCases.Last().Sum(m=>m.Analysis.Reactions[0])/(trib.Sum()/1000),RightLineLoad=lowerCases.Last().Sum(m=>m.Analysis.Reactions[1])/(trib.Sum()/1000),LegCapacityKn=input.LegCapacityKn,MaxLegKn=peak,
                 StockPlan=new TowerStockPlan {PrimaryMaterial=input.PrimaryMaterial,Pieces=pieces,Reactions=left.Zip(right,Math.Max).ToArray()},DeflectionDenominator=input.DeflectionDenominator,DeflectionLimitMm=input.DeflectionLimitMm,MomentKnM=all.Max(m=>m.Analysis.MomentKnM),ShearKn=all.Max(m=>m.Analysis.ShearKn),DeflectionMm=all.Max(m=>m.Analysis.DeflectionMm),Utilization=util,Governing=peak/input.LegCapacityKn>=all.Max(m=>m.Utilization) ? "Leg capacity" : all.OrderByDescending(m=>m.Utilization).First().Name};
         }
@@ -1866,11 +1951,11 @@ namespace EngineeringDashboard
             }
             var upper=new List<TransferMember>();
             foreach(var u in new[] {cross.Left,cross.Right}.Where(x=>x!=null)) upper.Add(new TransferMember {H20Count=1,Name=u==cross.Left ? "Upper left" : "Upper right",LoadCase="Slab · governing row",StartMm=u.Edge,LengthMm=u.Stock,SupportsMm=new[] {u.Foot-u.Edge,u.Bay-u.OtherFoot-u.Edge},Points=Array.Empty<BeamPointLoad>(),Uniform=new[] {new BeamDistributedLoad {StartMm=0,EndMm=u.Stock,KnPerM=u.Load*Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000)}},Analysis=u.Analysis.Scale(Math.Max((u==cross.Left ? ls : rs).Max(),input.TransferredSlab.SlabSpacing(u==cross.Left)/1000))});
-            var transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerNetwork==null ? 0 : input.TransferredSlab.EngineerReceiverCount,UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=(input.LengthMm-(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,SlabSupportEndMm=(input.LengthMm+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge)))/2,ColumnSupportLoads=SelectColumnCases(input,cross,edge),LegacyColumnSupportLoads=input.EngineerPlan?.UseDesignZones==true ? SelectLegacyColumnCases(input,cross,edge) : null,CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,SharedSlabRowsMm=grid.SharedSlabRowsMm,SlabSourceRowIndices=grid.SlabSourceRowIndices,LeftSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.LeftSourceScales,RightSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.RightSourceScales,HasCustomPlywoodJoints=grid.Adjusted,SettingOutRowsMm=grid.SettingOutRows?.Select(x=>x+edge).ToArray(),SettingOutDesignRows=grid.SettingOutDesignRows,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
+            var transfer=new TransferredSlabResult {PrimaryPlan=input.EngineerPlan?.UseDesignZones==true ? cross.PositionedPlan??input.EngineerPlan : null,EngineerReceiverCount=input.TransferredSlab.EngineerNetwork==null ? 0 : input.TransferredSlab.EngineerReceiverCount,UnitLowerCases=UnitLowerCases(input,cross,width),UnitPointLabels=cross.UnitPointLabels,SlabSupportStartMm=input.TransferredSlab.RowStart(input,input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*(edge-input.LongitudinalStartMm))),SlabSupportEndMm=input.TransferredSlab.RowStart(input,input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*(edge-input.LongitudinalStartMm)))+(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*(edge-input.LongitudinalStartMm))),ColumnSupportLoads=SelectColumnCases(input,cross,edge),LegacyColumnSupportLoads=input.EngineerPlan?.UseDesignZones==true ? SelectLegacyColumnCases(input,cross,edge) : null,CrossFormwork=input.TransferredSlab.CrossFormwork,LowerCustom=!input.StockLengthsMm.Contains(cross.Stock),LeftUpperScales=ls,RightUpperScales=rs,EnteredUpperSpacingMm=input.TransferredSlab.UpperSpacingMm,LeftSlabSpacingMm=input.TransferredSlab.LeftSlabSpacingMm,RightSlabSpacingMm=input.TransferredSlab.RightSlabSpacingMm,HasIndividualSpacings=input.TransferredSlab.HasIndividualSpacings,RowsMm=rows.Select(x=>x+edge).ToArray(),SlabRowIndices=grid.SlabRowIndices,SharedSlabRowsMm=grid.SharedSlabRowsMm,SlabSourceRowIndices=grid.SlabSourceRowIndices,LeftSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.LeftSourceScales,RightSlabSourceScales=grid.SharedSlabRowsMm==null ? null : grid.RightSourceScales,HasCustomPlywoodJoints=grid.Adjusted,SettingOutRowsMm=grid.SettingOutRows?.Select(x=>x+edge).ToArray(),SettingOutDesignRows=grid.SettingOutDesignRows,TributaryWidthsMm=trib,LowerStockStartMm=cross.Start,LowerStockLengthMm=cross.Stock,LeftFootMm=cross.Left?.Foot??0,RightFootMm=cross.Right?.Foot??0,
                 LeftUpperStockMm=cross.Left?.Stock??0,RightUpperStockMm=cross.Right?.Stock??0,LeftUpperCustom=cross.Left?.Custom??false,RightUpperCustom=cross.Right?.Custom??false,LeftUpperEdgeMm=cross.Left?.Edge??0,RightUpperEdgeMm=cross.Right?.Edge??0,
                 LeftFootReactionKn=(cross.Left?.Analysis.Reactions[0]??0)*ls.Max(),RightFootReactionKn=(cross.Right?.Analysis.Reactions[0]??0)*rs.Max(),
                 BeamLoadKn=input.TransferredSlab.TotalBeamLineLoadKnM*input.LengthMm/1000,
-                CoveredSlabAreaM2=(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*edge))*((cross.Left?.Stock??0)+(cross.Right?.Stock??0))/1e6,
+                CoveredSlabAreaM2=(input.TransferredSlab.FixedCoveredLengthMm??(input.LengthMm-2*(edge-input.LongitudinalStartMm)))*((cross.Left?.Stock??0)+(cross.Right?.Stock??0))/1e6,
                 ShutterLoadKn=PhysicalShutterLoadKn(input,cross),
                 SlabLoadKn=PhysicalSlabLoadKn(input,cross),PrimaryCases=primaryCases.ToArray(),LowerCases=lowerCases.ToArray(),UpperMembers=upper.ToArray(),CaseNames=cross.DesignCases.Select(i=>cross.Names[i]).ToArray(),FullLoadingOnly=input.FullLoadingOnly};
             // Two-support lower and upper bearers are statically determinate: support movement adds an affine displacement without altering reactions.
@@ -1887,7 +1972,7 @@ namespace EngineeringDashboard
             }
             var all=primaryCases.SelectMany(c=>c).Concat(lowerCases.SelectMany(c=>c)).Concat(upper).ToArray();
             double peak=Math.Max(left.Max(),right.Max()),util=Math.Max(peak/input.LegCapacityKn,all.Max(m=>m.Utilization));
-            return new TowerLayout {EngineerSearch=input.EngineerSearch,PrimaryMaterial=input.PrimaryMaterial,IgnoreUplift=input.IgnoreUplift,Transfer=transfer,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=g.Joined,WidthMm=width,Rotated=rotated,LengthMm=input.LengthMm,ConcreteEndOverhangMm=edge,LeftReactions=left,RightReactions=right,MinimumLeftReactions=minLeft,MinimumRightReactions=minRight,
+            return new TowerLayout {EngineerSearch=input.EngineerSearch,PrimaryMaterial=input.PrimaryMaterial,IgnoreUplift=input.IgnoreUplift,Transfer=transfer,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=g.Joined,WidthMm=width,Rotated=rotated,LengthMm=input.LengthMm,LongitudinalStartMm=input.LongitudinalStartMm,ConcreteEndOverhangMm=edge-input.LongitudinalStartMm,LeftReactions=left,RightReactions=right,MinimumLeftReactions=minLeft,MinimumRightReactions=minRight,
                 LeftLineLoad=lowerCases.Last().Sum(m=>m.Analysis.Reactions[0])/(trib.Sum()/1000),RightLineLoad=lowerCases.Last().Sum(m=>m.Analysis.Reactions[1])/(trib.Sum()/1000),LegCapacityKn=input.LegCapacityKn,MaxLegKn=peak,
                 StockPlan=new TowerStockPlan {PrimaryMaterial=input.PrimaryMaterial,Pieces=pieces,Reactions=left.Zip(right,Math.Max).ToArray()},DeflectionDenominator=input.DeflectionDenominator,DeflectionLimitMm=input.DeflectionLimitMm,MomentKnM=all.Max(m=>m.Analysis.MomentKnM),ShearKn=all.Max(m=>m.Analysis.ShearKn),DeflectionMm=all.Max(m=>m.Analysis.DeflectionMm),Utilization=util,Governing=peak/input.LegCapacityKn>=all.Max(m=>m.Utilization) ? "Leg capacity" : all.OrderByDescending(m=>m.Utilization).First().Name};
         }

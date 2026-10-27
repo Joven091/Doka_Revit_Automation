@@ -1,0 +1,11 @@
+{
+  "name": "steel-shape",
+  "version": "1.1.18",
+  "private": true,
+  "description": "Offline Steel Shape UI and weld calculation regression checks",
+  "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "linkedom": "0.18.12",
+    "playwright": "1.62.1"
+  }
+}

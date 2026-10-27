@@ -14,13 +14,13 @@ namespace EngineeringDashboard
         internal TextBox ReportBox {get;}=new TextBox {Name="DiagnosticReport",IsReadOnly=true,AcceptsReturn=true,AcceptsTab=true,TextWrapping=TextWrapping.NoWrap,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,FontFamily=new FontFamily("Consolas"),FontSize=12};
         internal Button CopyButton {get;}=new Button {Name="CopyDiagnosticReport",Content="Copy report",Padding=new Thickness(14,7,14,7),Margin=new Thickness(0,0,8,0)};
         private readonly TextBlock status=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,8,0,0)};
-        internal BeamDiagnosticWindow(Func<string,string> buildReport,Action<string> copyText=null)
+        internal BeamDiagnosticWindow(Func<string,string> buildReport,Action<string> copyText=null,string title="Beam formwork diagnosis",string instructions=null)
         {
-            this.buildReport=buildReport;this.copyText=copyText??new Action<string>(Clipboard.SetText);Title="Beam formwork diagnosis";Width=900;Height=720;MinWidth=600;MinHeight=420;WindowStartupLocation=WindowStartupLocation.CenterOwner;
+            this.buildReport=buildReport;this.copyText=copyText??new Action<string>(Clipboard.SetText);Title=title;Width=900;Height=720;MinWidth=600;MinHeight=420;WindowStartupLocation=WindowStartupLocation.CenterOwner;
             FontFamily=new FontFamily("Segoe UI");FontSize=13;Background=Brushes.WhiteSmoke;
             var root=new Grid {Margin=new Thickness(16)};
             root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});
-            root.Children.Add(new TextBlock {Text="Add what happened, then copy the report for review. You can refresh it while the search is running.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,10)});
+            root.Children.Add(new TextBlock {Text=instructions??"Add what happened, then copy the report for review. You can refresh it while the search is running.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,10)});
             var label=new TextBlock {Text="Remarks (optional)",Margin=new Thickness(0,0,0,5)};Grid.SetRow(label,1);root.Children.Add(label);
             Grid.SetRow(RemarksBox,2);root.Children.Add(RemarksBox);ReportBox.Margin=new Thickness(0,12,0,12);Grid.SetRow(ReportBox,3);root.Children.Add(ReportBox);
             var footer=new StackPanel();var buttons=new StackPanel {Orientation=Orientation.Horizontal};

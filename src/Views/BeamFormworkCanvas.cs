@@ -10,13 +10,14 @@ namespace EngineeringDashboard
 {
     internal enum FormworkObject { Beam, Slab, Crossing, Independent }
     /// <summary>Plan geometry uses one mm coordinate system for drawing, picking and edits.</summary>
-    internal sealed class BeamFormworkCanvas : FrameworkElement
+    internal sealed partial class BeamFormworkCanvas : FrameworkElement
     {
         internal readonly BeamCalculatorViewModel Model;
         internal FormworkObject SelectedKind=FormworkObject.Beam;
         internal int SelectedIndex;
         internal bool Formwork, AllDimensions, AddCrossing, ShowSecondaryH20s;
         internal bool HideDimensions;
+        internal bool ImportPreviewMode;
         internal double SectionPositionMm=double.NaN;
         internal event Action<double> SectionPositionChanged;
         private bool draggingSection;
@@ -68,8 +69,8 @@ namespace EngineeringDashboard
             var ys=Centres();var beams=Beams();var candidates=new List<Tuple<Point,string>>();
             for(int i=0;i<ys.Length;i++)
             {
-                foreach(double x in new[] {0.0,Model.BeamLengthMm/2,Model.BeamLengthMm})candidates.Add(Tuple.Create(new Point(x,ys[i]),x==Model.BeamLengthMm/2 ? "Midpoint" : "Endpoint"));
-                foreach(double x in new[] {0.0,Model.BeamLengthMm})foreach(double y in new[] {ys[i]-beams[i].WidthMm/2,ys[i]+beams[i].WidthMm/2})candidates.Add(Tuple.Create(new Point(x,y),"Corner"));
+                foreach(double x in new[] {Model.BeamSpanStart(i),(Model.BeamSpanStart(i)+Model.BeamSpanEnd(i))/2,Model.BeamSpanEnd(i)})candidates.Add(Tuple.Create(new Point(x,ys[i]),x==(Model.BeamSpanStart(i)+Model.BeamSpanEnd(i))/2 ? "Midpoint" : "Endpoint"));
+                foreach(double x in new[] {Model.BeamSpanStart(i),Model.BeamSpanEnd(i)})foreach(double y in new[] {ys[i]-beams[i].WidthMm/2,ys[i]+beams[i].WidthMm/2})candidates.Add(Tuple.Create(new Point(x,y),"Corner"));
             }
             if(Model.IsNetworkMode)foreach(var c in Model.CrossingBeams)
             {
@@ -99,6 +100,7 @@ namespace EngineeringDashboard
         internal int DrawnLegCount {get;private set;}
         internal int DrawnCrossH20Count {get;private set;}
         internal int DrawnSecondaryH20Count {get;private set;}
+        internal int DrawnReferenceCount {get;private set;}
         internal int DrawnBracedBayCount {get;private set;}
         internal readonly List<Tuple<int,string,double>> CrossingSettingOut=new List<Tuple<int,string,double>>();
         internal BeamFormworkCanvas(BeamCalculatorViewModel model)
@@ -111,6 +113,7 @@ namespace EngineeringDashboard
             && (!Model.IsNetworkMode || Model.NetworkBays.All(b=>TowerBeamAnalysis.Finite(b.WidthMm) && b.WidthMm>0 && b.WidthMm<=20000));
         private Rect Bounds()
         {
+            if(Model.HasCombinedRevitDrawing && !singleRevitPart)return CombinedBounds();
             var beams=Beams();var ys=Centres();double min=double.MaxValue,max=double.MinValue;
             for(int i=0;i<beams.Length;i++)
             {
@@ -118,7 +121,7 @@ namespace EngineeringDashboard
                 min=Math.Min(min,ys[i]-half);max=Math.Max(max,ys[i]+half);
                 if(result?.Transfer!=null) {min=Math.Min(min,ys[i]+result.Transfer.LowerStockStartMm);max=Math.Max(max,ys[i]+result.Transfer.LowerStockStartMm+result.Transfer.LowerStockLengthMm);}
             }
-            double minX=0,maxX=Model.BeamLengthMm;
+            double minX=0,maxX=Model.DrawingLengthMm;
             if(Model.IsCalculationValid && Model.NetworkResult!=null)foreach(var solid in Model.NetworkResult.CrossSupports.SelectMany(c=>c.Solids))
             {minX=Math.Min(minX,solid.X0);maxX=Math.Max(maxX,solid.X1);min=Math.Min(min,solid.Y0+Model.PlanOriginYmm);max=Math.Max(max,solid.Y1+Model.PlanOriginYmm);}
             for(int i=0;i<Model.IndependentBeams.Count;i++)
@@ -128,14 +131,18 @@ namespace EngineeringDashboard
                 var bounds=beam.IsVertical ? new Rect(beam.StartXmm-half,beam.StartYmm,half*2,beam.LengthMm) : new Rect(beam.StartXmm,beam.StartYmm-half,beam.LengthMm,half*2);
                 minX=Math.Min(minX,bounds.Left);maxX=Math.Max(maxX,bounds.Right);min=Math.Min(min,bounds.Top);max=Math.Max(max,bounds.Bottom);
             }
+            // A long building wall must not shrink the selected beam area to a speck.
+            double contextLeft=minX-600,contextRight=maxX+600,contextTop=min-600,contextBottom=max+600;
+            foreach(var r in Model.RevitContext?.References??new RevitReferenceShape[0])foreach(var p in r.Outline)
+            {minX=Math.Min(minX,Math.Max(contextLeft,p.X));maxX=Math.Max(maxX,Math.Min(contextRight,p.X));min=Math.Min(min,Math.Max(contextTop,p.Y));max=Math.Max(max,Math.Min(contextBottom,p.Y));}
             return new Rect(minX,min,maxX-minX,max-min);
         }
         private TowerLayout Layout(int beam)=>!Model.IsCalculationValid ? null : Model.IsNetworkMode ? Model.NetworkResult?.Beams[beam] : Model.TowerResult;
         internal void Fit()
         {
             if(!ValidGeometry() || ActualWidth<100 || ActualHeight<100)return;
-            SceneBounds=Bounds();Zoom=Math.Max(.001,Math.Min((ActualWidth-140)/SceneBounds.Width,(ActualHeight-160)/Math.Max(500,SceneBounds.Height)));
-            Pan=new Point((ActualWidth-SceneBounds.Width*Zoom)/2-SceneBounds.Left*Zoom,70-SceneBounds.Top*Zoom);fitted=true;InvalidateVisual();
+            SceneBounds=Bounds();Zoom=Math.Max(.001,Math.Min((ActualWidth-(ImportPreviewMode ? 100 : 140))/SceneBounds.Width,(ActualHeight-(ImportPreviewMode ? 80 : 160))/Math.Max(500,SceneBounds.Height)));
+            Pan=new Point((ActualWidth-SceneBounds.Width*Zoom)/2-SceneBounds.Left*Zoom,(ImportPreviewMode ? 20 : 70)-SceneBounds.Top*Zoom);fitted=true;InvalidateVisual();
         }
         internal void RefitIfNeeded(){if(fitted)Fit();}
         internal void PreserveView()=>fitted=false;
@@ -144,8 +151,8 @@ namespace EngineeringDashboard
             double next=Math.Max(.001,Math.Min(1,Zoom*factor)),ratio=next/Zoom;
             Pan=new Point(anchor.X-(anchor.X-Pan.X)*ratio,anchor.Y-(anchor.Y-Pan.Y)*ratio);Zoom=next;fitted=false;InvalidateVisual();
         }
-        internal Point Screen(double x,double y)=>new Point(Pan.X+x*Zoom,Pan.Y+y*Zoom);
-        internal Point World(Point screen)=>new Point((screen.X-Pan.X)/Zoom,(screen.Y-Pan.Y)/Zoom);
+        internal Point Screen(double x,double y)=>CombinedScreen(ProjectToCombined(new Point(x,y)));
+        internal Point World(Point screen)=>ProjectFromCombined(new Point((screen.X-Pan.X)/Zoom,(screen.Y-Pan.Y)/Zoom));
         internal void PanBy(Vector delta) {Pan+=delta;fitted=false;InvalidateVisual();}
         internal void MoveSelection(double deltaMm)
         {
@@ -173,6 +180,7 @@ namespace EngineeringDashboard
         internal void SelectWindow(Point start,Point end,bool add=false)
         {
             if(Formwork || AddCrossing || CanInteract!=null && !CanInteract())return;
+            if(Model.HasCombinedRevitDrawing && !singleRevitPart){var activePart=Model.RevitSceneModels().Single(p=>p.Item1.Key==Model.ActiveRevitDrawingKey);PartCanvas(activePart).SelectWindow(start,end,add);return;}
             var window=new Rect(start,end);bool crossing=end.X<start.X;
             var hits=ObjectTargets.Where(h=>crossing ? window.IntersectsWith(h.Item1) : window.Contains(h.Item1)).Select(h=>Tuple.Create(h.Item2,h.Item3)).Distinct().OrderBy(h=>h.Item1).ThenBy(h=>h.Item2).ToArray();
             if(!add)selection.Clear();foreach(var hit in hits)selection.Add(hit);
@@ -182,6 +190,7 @@ namespace EngineeringDashboard
         }
         internal void HighlightAt(Point point)
         {
+            if(Model.HasCombinedRevitDrawing && !singleRevitPart){foreach(var part in Model.RevitSceneModels())PartCanvas(part).HighlightAt(point);InvalidateVisual();return;}
             var hit=Formwork || AddCrossing || Model.IsOptimizing ? null : ObjectTargets.FirstOrDefault(h=>h.Item1.Contains(point));
             var next=hit==null ? null : Tuple.Create(hit.Item2,hit.Item3);
             if(Equals(next,HoveredObject))return;HoveredObject=next;InvalidateVisual();
@@ -204,12 +213,14 @@ namespace EngineeringDashboard
         internal void SelectMember(int beam,int run,int line) {memberBeam=beam;memberRun=run;memberLine=line;InvalidateVisual();}
         private bool Label(DrawingContext dc,string text,Point at,Brush colour=null,bool centre=false,bool rotate=false)
         {
+            if(revitPartPrefix!=null && text.Length>1 && (text[0]=='B' || text[0]=='S' || text[0]=='X') && char.IsDigit(text[1]))text=revitPartPrefix+" · "+text;
             var f=new FormattedText(text,CultureInfo.CurrentCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,colour??Brushes.DarkSlateGray,VisualTreeHelper.GetDpi(this).PixelsPerDip);
             Rect box;
             if(rotate) {box=new Rect(at.X-f.Height/2-2,at.Y-f.Width/2-1,f.Height+4,f.Width+2);at=new Point(at.X-f.Height/2,at.Y+f.Width/2);}
             else {if(centre)at.X-=f.Width/2;box=new Rect(at.X-2,at.Y-1,f.Width+4,f.Height+2);}
-            if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>ActualHeight || AnnotationBounds.Any(r=>r.IntersectsWith(box)))return false;
+            if(box.Left<0 || box.Right>ActualWidth || box.Top<0 || box.Bottom>ActualHeight || AnnotationBounds.Any(r=>r.IntersectsWith(box)) || sharedRevitAnnotations?.Any(r=>r.IntersectsWith(box))==true)return false;
             AnnotationBounds.Add(box);AnnotationLabels.Add(text);
+            sharedRevitAnnotations?.Add(box);
             // Draw masks last so later structure and dimension lines cannot cross the text.
             var drawing=new DrawingGroup();using(var overlay=drawing.Open()){overlay.DrawRectangle(Brushes.White,null,box);if(rotate)overlay.PushTransform(new RotateTransform(-90,at.X,at.Y));overlay.DrawText(f,at);if(rotate)overlay.Pop();}annotations.Add(drawing);return true;
         }
@@ -252,16 +263,35 @@ namespace EngineeringDashboard
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc);crossingLabels.Clear();dimensionLines.Clear();sectionTarget=Rect.Empty;ObjectTargets.Clear();MemberTargets.Clear();LegTargets.Clear();SpacingTargets.Clear();dimensions.Clear();AnnotationLabels.Clear();AnnotationBounds.Clear();HorizontalDimensionLabels.Clear();annotations.Clear();AcrossDimensions.Clear();DrawnSpacingDimensionCount=DrawnH20ProfileCount=0;CrossingSettingOut.Clear();DrawnLegCount=DrawnCrossH20Count=DrawnBracedBayCount=0;
-            DrawnSecondaryH20Count=0;
-            dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
+            DrawnSecondaryH20Count=DrawnReferenceCount=0;
+            if(!singleRevitPart)dc.DrawRectangle(Brushes.White,null,new Rect(0,0,ActualWidth,ActualHeight));
+            if(Model.HasCombinedRevitDrawing && !singleRevitPart){DrawCombinedRevit(dc);return;}
             if(!ValidGeometry()) {Label(dc,"Correct geometry to draw the plan.",new Point(30,30));foreach(var annotation in annotations)dc.DrawDrawing(annotation);return;}
             var beams=Beams();var ys=Centres();SceneBounds=Bounds();
+            foreach(var reference in singleRevitPart ? new RevitReferenceShape[0] : Model.RevitContext?.References??new RevitReferenceShape[0])
+            {
+                var outline=new StreamGeometry();using(var shape=outline.Open())
+                {shape.BeginFigure(Screen(reference.Outline[0].X,reference.Outline[0].Y),true,true);shape.PolyLineTo(reference.Outline.Skip(1).Select(p=>Screen(p.X,p.Y)).ToArray(),true,false);}
+                dc.DrawGeometry(new SolidColorBrush(Color.FromRgb(235,238,240)),new Pen(Brushes.SlateGray,1.2),outline);DrawnReferenceCount++;
+                double x=(Math.Max(SceneBounds.Left,reference.Outline.Min(p=>p.X))+Math.Min(SceneBounds.Right,reference.Outline.Max(p=>p.X)))/2;
+                double y=(Math.Max(SceneBounds.Top,reference.Outline.Min(p=>p.Y))+Math.Min(SceneBounds.Bottom,reference.Outline.Max(p=>p.Y)))/2;
+                Label(dc,reference.Label,Screen(x,y),Brushes.SlateGray,centre:true);
+            }
             for(int i=0;i<beams.Length-1;i++)
             {
                 double top=ys[i]+beams[i].WidthMm/2,bottom=ys[i+1]-beams[i+1].WidthMm/2;
-                var rect=new Rect(Screen(0,top),Screen(Model.BeamLengthMm,bottom));
+                double bayStart=Math.Max(Model.BeamSpanStart(i),Model.BeamSpanStart(i+1)),bayEnd=Math.Min(Model.BeamSpanEnd(i),Model.BeamSpanEnd(i+1));
+                var footprint=Model.NetworkBays[i].Outline;
+                if(footprint!=null){bayStart=footprint.Min(p=>p.X);bayEnd=footprint.Max(p=>p.X);}
+                if(bayEnd<=bayStart)continue;
+                var rect=new Rect(Screen(bayStart,top),Screen(bayEnd,bottom));
                 bool separate=Model.IsCalculationValid && Model.NetworkResult?.Bays[i]==null;
-                dc.DrawRectangle(separate ? Brushes.Moccasin : Brushes.AliceBlue,ObjectPen(FormworkObject.Slab,i,rect,Brushes.LightSteelBlue),rect);
+                if(footprint==null)dc.DrawRectangle(separate ? Brushes.Moccasin : Brushes.AliceBlue,ObjectPen(FormworkObject.Slab,i,rect,Brushes.LightSteelBlue),rect);
+                else
+                {
+                    var polygon=new StreamGeometry();using(var g=polygon.Open()){g.BeginFigure(Screen(footprint[0].X,top+footprint[0].Y),true,true);g.PolyLineTo(footprint.Skip(1).Select(p=>Screen(p.X,top+p.Y)).ToArray(),true,false);}
+                    dc.DrawGeometry(separate ? Brushes.Moccasin : Brushes.AliceBlue,ObjectPen(FormworkObject.Slab,i,rect,Brushes.LightSteelBlue),polygon);
+                }
                 ObjectTargets.Add(Tuple.Create(rect,FormworkObject.Slab,i));
                 if(separate)
                 {
@@ -270,7 +300,11 @@ namespace EngineeringDashboard
                     Label(dc,$"t {Model.NetworkBays[i].ThicknessMm:0} · separate",new Point(x,centre-8),centre:true);
                     Label(dc,"formwork required",new Point(x,centre+10),centre:true);
                 }
-                else Label(dc,$"S{i+1} · {Model.NetworkBays[i].WidthMm:0} · t {Model.NetworkBays[i].ThicknessMm:0}",new Point(rect.Left+18,rect.Top+rect.Height/2-8));
+                else
+                {
+                    string label=$"S{i+1} · {Model.NetworkBays[i].WidthMm:0} · t {Model.NetworkBays[i].ThicknessMm:0}";
+                    if(!Label(dc,label,new Point(rect.Left+18,rect.Top+rect.Height/2-8)))Label(dc,label,new Point(rect.Left+24,rect.Top+rect.Height/2+18));
+                }
                 if(AllDimensions || selection.Count>0 && SelectedKind==FormworkObject.Slab && SelectedIndex==i)
                     Dimension(dc,new Point(rect.Right+24,rect.Top),new Point(rect.Right+24,rect.Bottom),Model.NetworkBays[i].WidthMm.ToString("0.###"),FormworkObject.Slab,i,"WidthMm");
             }
@@ -286,7 +320,7 @@ namespace EngineeringDashboard
             }
             for(int i=0;i<beams.Length;i++)
             {
-                var b=beams[i];var rect=new Rect(Screen(0,ys[i]-b.WidthMm/2),Screen(Model.BeamLengthMm,ys[i]+b.WidthMm/2));
+                var b=beams[i];var rect=new Rect(Screen(Model.BeamSpanStart(i),ys[i]-b.WidthMm/2),Screen(Model.BeamSpanEnd(i),ys[i]+b.WidthMm/2));
                 dc.DrawRectangle(Brushes.LightGray,ObjectPen(FormworkObject.Beam,i,rect,Brushes.SlateGray),rect);
                 ObjectTargets.Insert(0,Tuple.Create(rect,FormworkObject.Beam,i));
                 Label(dc,$"B{i+1} · {b.WidthMm:0}×{b.DepthMm:0}",new Point(rect.Left+8,rect.Top+5));
@@ -297,7 +331,10 @@ namespace EngineeringDashboard
             if(Formwork)for(int i=0;i<beams.Length;i++)if(Layout(i)!=null)DrawSupports(dc,Layout(i),i,ys[i],selection.Contains(Tuple.Create(FormworkObject.Beam,i)) || AllDimensions || Zoom>=.08);
             if(Formwork && Model.NetworkResult!=null)DrawCrossSupports(dc);
             double bottomY=Pan.Y+SceneBounds.Bottom*Zoom+42;
-            Dimension(dc,new Point(Screen(0,0).X,bottomY),new Point(Screen(Model.BeamLengthMm,0).X,bottomY),$"Beam length {Model.BeamLengthMm:0.###} mm",FormworkObject.Beam,0,"BeamLengthMm");
+            int dimensionBeam=SelectedKind==FormworkObject.Beam ? Math.Max(0,Math.Min(beams.Length-1,SelectedIndex)) : 0;
+            double spanStart=Model.BeamSpanStart(dimensionBeam),spanEnd=Model.BeamSpanEnd(dimensionBeam);
+            if(singleRevitPart)Dimension(dc,Screen(spanStart,ys[dimensionBeam]+beams[dimensionBeam].WidthMm/2+350),Screen(spanEnd,ys[dimensionBeam]+beams[dimensionBeam].WidthMm/2+350),$"B{dimensionBeam+1} beam length {spanEnd-spanStart:0.###} mm",FormworkObject.Beam,dimensionBeam,"BeamLengthMm");
+            else Dimension(dc,new Point(Screen(spanStart,0).X,bottomY),new Point(Screen(spanEnd,0).X,bottomY),$"B{dimensionBeam+1} beam length {spanEnd-spanStart:0.###} mm",FormworkObject.Beam,dimensionBeam,"BeamLengthMm");
             if(IsDrafting)
             {
                 if(DraftPreview.HasValue)
@@ -320,7 +357,7 @@ namespace EngineeringDashboard
                 var colour=windowEnd.X<mouseStart.X ? Colors.SeaGreen : Colors.DodgerBlue;
                 dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(25,colour.R,colour.G,colour.B)),new Pen(new SolidColorBrush(colour),1){DashStyle=windowEnd.X<mouseStart.X ? DashStyles.Dash : DashStyles.Solid},new Rect(mouseStart,windowEnd));
             }
-            Label(dc,AddCrossing ? "Click a slab bay to place a crossing beam." : Formwork ? "Wheel: zoom · middle drag: pan · double-click: fit · click beam/H20: diagrams · Esc: clear" : "Click: select · Shift-click: toggle · drag blank space: window/crossing selection · Delete: remove · Esc: clear",new Point(16,ActualHeight-25),Brushes.SlateGray);
+            if(!ImportPreviewMode)Label(dc,AddCrossing ? "Click a slab bay to place a crossing beam." : Formwork ? "Wheel: zoom · middle drag: pan · double-click: fit · click beam/H20: diagrams · Esc: clear" : "Click: select · Shift-click: toggle · drag blank space: window/crossing selection · Delete: remove · Esc: clear",new Point(16,ActualHeight-25),Brushes.SlateGray);
             foreach(var callout in crossingLabels)CrossingCallout(dc,callout.Item1,callout.Item2);
             if(Model.IsCalculationValid && TowerBeamAnalysis.Finite(SectionPositionMm))
             {
@@ -568,6 +605,7 @@ namespace EngineeringDashboard
         {
             if(CanInteract!=null && !CanInteract())return false;
             if(IsDrafting){DraftPointRequested?.Invoke(SnapAt(point));InvalidateVisual();return true;}
+            if(Model.HasCombinedRevitDrawing && !singleRevitPart)return SelectCombinedAt(point,toggle);
             if(AddCrossing)
             {
                 var slab=ObjectTargets.FirstOrDefault(h=>h.Item2==FormworkObject.Slab && h.Item1.Contains(point));
@@ -595,6 +633,8 @@ namespace EngineeringDashboard
         protected override void OnMouseWheel(MouseWheelEventArgs e) {ZoomAt(e.Delta>0 ? 1.2 : 1/1.2,e.GetPosition(this));e.Handled=true;}
         internal bool OpenBeamOptionsAt(Point point)
         {
+            if(Model.HasCombinedRevitDrawing && !singleRevitPart)
+            {foreach(var part in Model.RevitSceneModels()){var child=PartCanvas(part);if(!child.ObjectTargets.Any(h=>h.Item1.Contains(point)) && !child.MemberTargets.Any(h=>h.Item1.Contains(point)))continue;ActivatePart(part.Item1.Key);return child.OpenBeamOptionsAt(point);}return false;}
             if(!Formwork || !Model.IsCalculationValid || Model.NetworkResult==null || Model.IsOptimizing || CanInteract!=null && !CanInteract())return false;
             var member=MemberTargets.FirstOrDefault(h=>h.Item2>=0 && h.Item1.Contains(point));
             var beam=ObjectTargets.FirstOrDefault(h=>h.Item2==FormworkObject.Beam && h.Item1.Contains(point));
@@ -604,6 +644,7 @@ namespace EngineeringDashboard
         internal bool OpenGeometryContextAt(Point point)
         {
             if(Formwork || Model.IsOptimizing || CanInteract!=null && !CanInteract())return false;
+            if(Model.HasCombinedRevitDrawing && !singleRevitPart)SelectCombinedAt(point,false);
             CancelDrafting();CancelSelectionGesture();AddCrossing=false;Cursor=Cursors.Arrow;
             var hit=ObjectTargets.FirstOrDefault(h=>h.Item1.Contains(point));
             if(hit!=null)Select(hit.Item2,hit.Item3);
@@ -611,12 +652,19 @@ namespace EngineeringDashboard
         }
         internal Tuple<int,double> BayAt(Point point)
         {
+            if(Model.HasCombinedRevitDrawing && !singleRevitPart)
+            {var part=Model.RevitSceneModels().Single(p=>p.Item1.Key==Model.ActiveRevitDrawingKey);return PartCanvas(part).BayAt(point);}
             var hit=ObjectTargets.FirstOrDefault(h=>h.Item2==FormworkObject.Slab && h.Item1.Contains(point));
             return hit==null ? null : Tuple.Create(hit.Item3,Math.Round(World(point).X/25)*25);
         }
         internal bool BeginDimensionPress(Point point)
         {
             if(Formwork || Model.IsOptimizing || CanInteract!=null && !CanInteract())return false;
+            if(Model.HasCombinedRevitDrawing && !singleRevitPart)
+            {
+                foreach(var part in Model.RevitSceneModels()){var child=PartCanvas(part);var hit=child.dimensions.FirstOrDefault(h=>h.Item1.Contains(point));if(hit==null)continue;pressedRevitPart=part.Item1.Key;pressedDimension=hit;CaptureMouse();return true;}
+                return false;
+            }
             pressedDimension=dimensions.FirstOrDefault(h=>h.Item1.Contains(point));
             if(pressedDimension==null)return false;
             CaptureMouse();return true;
@@ -625,6 +673,7 @@ namespace EngineeringDashboard
         {
             if(pressedDimension==null)return false;
             var hit=pressedDimension;pressedDimension=null;ReleaseMouseCapture();
+            if(pressedRevitPart!=null){ActivatePart(pressedRevitPart);pressedRevitPart=null;}
             if(hit.Item1.Contains(point))
             {
                 LastDimensionBounds=hit.Item1;Select(hit.Item2,hit.Item3);
@@ -658,10 +707,10 @@ namespace EngineeringDashboard
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);var p=e.GetPosition(this);
-            if(draggingSection){SectionPositionMm=Math.Max(0,Math.Min(Model.BeamLengthMm,World(p).X));SectionPositionChanged?.Invoke(SectionPositionMm);InvalidateVisual();return;}
+            if(draggingSection){SectionPositionMm=Math.Max(0,Math.Min(Model.DrawingLengthMm,World(p).X));SectionPositionChanged?.Invoke(SectionPositionMm);InvalidateVisual();return;}
             if(panning) {Pan=panStart+(p-mouseStart);fitted=false;if(IsDrafting)UpdateDraftPointer(p);else InvalidateVisual();return;}
             if(IsDrafting){UpdateDraftPointer(p);return;}
-            if(dragging) {dragDelta=SelectedKind==FormworkObject.Crossing ? p.X-mouseStart.X : p.Y-mouseStart.Y;InvalidateVisual();}
+            if(dragging) {dragDelta=(SelectedKind==FormworkObject.Crossing ? World(p).X-World(mouseStart).X : World(p).Y-World(mouseStart).Y)*Zoom;InvalidateVisual();}
             if(selecting) {windowEnd=p;InvalidateVisual();}
             if(!panning && !dragging && !selecting)
             {

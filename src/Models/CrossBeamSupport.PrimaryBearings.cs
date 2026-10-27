@@ -4,6 +4,45 @@ using System.Linq;
 
 namespace EngineeringDashboard
 {
+    internal sealed class PrimaryBearingSearch
+    {
+        internal CrossBeamSupportResult Result;internal string Failure;internal TowerSearchDiagnostics Diagnostics;
+    }
+    // Exact local inputs plus every possible row contact. Remote solids that
+    // cannot touch this crossing still contribute their X contact offsets, so
+    // reuse preserves the original placement alternatives and ordering.
+    internal sealed class PrimaryBearingKey : IEquatable<PrimaryBearingKey>
+    {
+        private readonly double[] values;private readonly int hash;
+        internal PrimaryBearingKey(TowerInput common,TransferNetworkResult r,int index,FormworkSolid[] obstacles)
+        {
+            var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;
+            double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2,span=r.Input.Bays[bay].WidthMm;
+            var v=new List<double> {index,c.BayNumber,c.PositionMm,c.WidthMm,c.DepthMm,c.BottomElevationMm,(double)c.SupportMode,
+                r.Input.AreaLoad(c.DepthMm),r.Input.CrossSpacing(index),face,span,common.StockEndSetbackMm,common.DeflectionDenominator,common.DeflectionLimitMm,
+                common.AllowCustomH20Lengths?1:0,(double)common.CustomH20Scope,common.AllowCustomBeamLengths?1:0,common.IgnoreUplift?1:0};
+            v.Add(common.StockLengthsMm.Length);v.AddRange(common.StockLengthsMm);
+            for(int beam=bay;beam<=bay+1;beam++)
+            {
+                var l=r.Beams[beam];var t=l.Transfer;var b=r.Input.Beams[beam];
+                v.AddRange(new[] {r.BeamCentresMm[beam],b.WidthMm,b.BottomElevationMm,l.WidthMm,l.TransverseOffsetMm,t.LowerStockStartMm,t.LowerStockLengthMm,(double)t.RowsMm.Length});
+                v.AddRange(t.RowsMm);v.Add(l.StockPlan.Pieces.Length);
+                foreach(var p in l.StockPlan.Pieces)v.AddRange(new[] {p.StartMm,p.EndMm});
+            }
+            var loads=CrossBeamSupportOptimizer.SlabEdgeLoads(r,index);v.Add(loads.Length);
+            foreach(var p in loads)v.AddRange(new[] {p.PositionMm,p.Kn});
+            var swept=new FormworkSolid {X0=c.PositionMm-c.WidthMm/2-1e-6,X1=c.PositionMm+c.WidthMm/2+1e-6,Y0=face-1e-6,Y1=face+span+1e-6,Z0=c.BottomElevationMm-200,Z1=c.BottomElevationMm};
+            var nearby=obstacles.Where(s=>swept.Conflicts(s)).ToArray();v.Add(nearby.Length);
+            foreach(var s in nearby)v.AddRange(new[] {s.X0,s.X1,s.Y0,s.Y1,s.Z0,s.Z1});
+            var contacts=obstacles.SelectMany(s=>new[] {Math.Abs(s.X0-40-c.PositionMm),Math.Abs(s.X1+40-c.PositionMm)})
+                .Where(d=>d<=c.WidthMm/2-40+1e-7).Distinct().OrderBy(d=>d).ToArray();
+            v.Add(contacts.Length);v.AddRange(contacts);values=v.ToArray();
+            unchecked{int h=17;foreach(double x in values)h=h*31+x.GetHashCode();hash=h;}
+        }
+        public override int GetHashCode()=>hash;
+        public override bool Equals(object other)=>Equals(other as PrimaryBearingKey);
+        public bool Equals(PrimaryBearingKey other)=>other!=null && hash==other.hash && values.SequenceEqual(other.values);
+    }
     public static partial class CrossBeamSupportOptimizer
     {
         // Optimistic eligibility only. Actual primary axes, stock ends, loads and
@@ -44,7 +83,24 @@ namespace EngineeringDashboard
             return PrepareRecheck(common,network,beam,probe,supports.ToArray());
         }
 
-        internal static CrossBeamSupportResult PrimaryBearing(TowerInput common,TransferNetworkResult r,int index,out string failure)
+        internal static CrossBeamSupportResult PrimaryBearing(TowerInput common,TransferNetworkResult r,int index,out string failure,FormworkSolid[] fixedObstacles=null)
+        {
+            var cache=common.ReuseSearchWork && common.OptimizeCrossingSearch && common.ReuseCrossingLocalWork ? common.CrossingGeometryWork : null;
+            if(cache==null || !PrimaryBearingPossible(common,r.Input,r.Input.CrossingBeams[index]))return PrimaryBearingUncached(common,r,index,out failure,fixedObstacles);
+            var obstacles=fixedObstacles??(r.Beams.All(l=>l.StockPlan.Pieces.Length==0) ? Concrete(r).ToArray()
+                : NetworkSolids(r).Where(s=>!s.Name.StartsWith("B") || !s.Name.Contains("/T")).Concat(Concrete(r)).ToArray());
+            var key=new PrimaryBearingKey(common,r,index,obstacles);
+            if(cache.PrimaryResults.TryGetValue(key,out var saved))
+            {
+                common.Diagnostics?.Merge(saved.Diagnostics);common.Trace?.Increment(BeamSearchCounter.PrimaryBearingCacheHits);
+                failure=saved.Failure;return saved.Result?.Copy();
+            }
+            var worker=common.CopyForSearch();worker.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};
+            var result=PrimaryBearingUncached(worker,r,index,out failure,obstacles);
+            common.Diagnostics?.Merge(worker.Diagnostics);
+            cache.PrimaryResults.Store(key,new PrimaryBearingSearch {Result=result?.Copy(),Failure=failure,Diagnostics=worker.Diagnostics});return result;
+        }
+        private static CrossBeamSupportResult PrimaryBearingUncached(TowerInput common,TransferNetworkResult r,int index,out string failure,FormworkSolid[] fixedObstacles)
         {
             failure=null;var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;
             if(!PrimaryBearingPossible(common,r.Input,c)){failure="Primary bearings are above the crossing H20 underside or no secondary stock can cover its span.";return null;}
@@ -59,8 +115,8 @@ namespace EngineeringDashboard
             // Prepared receiver probes contain transverse data but no assembled
             // primaries/slab scales. Reserve concrete there; the complete network
             // checks every actual timber solid before accepting this option.
-            var existing=r.Beams.All(l=>l.StockPlan.Pieces.Length==0) ? Concrete(r).ToArray()
-                : NetworkSolids(r).Where(s=>!s.Name.StartsWith("B") || !s.Name.Contains("/T")).Concat(Concrete(r)).ToArray();
+            var existing=fixedObstacles??(r.Beams.All(l=>l.StockPlan.Pieces.Length==0) ? Concrete(r).ToArray()
+                : NetworkSolids(r).Where(s=>!s.Name.StartsWith("B") || !s.Name.Contains("/T")).Concat(Concrete(r)).ToArray());
             foreach(double stock in stocks.Distinct().OrderBy(s=>s))
             {
                 double earliest=Math.Max(0,far+end-stock-face),latest=Math.Min(span-stock,near-end-face);
@@ -139,9 +195,23 @@ namespace EngineeringDashboard
         static double[] PrimaryBearingRows(TransferNetworkResult r,int index,int count,double start,double stock,FormworkSolid[] obstacles)
         {
             var c=r.Input.CrossingBeams[index];double max=c.WidthMm/2-40;
-            Func<double,bool> clear=x=>new[] {c.BayNumber-1,c.BayNumber}.All(b=>r.Beams[b].StockPlan.Pieces.Length==0
-                    || r.Beams[b].StockPlan.Pieces.Any(p=>x>=p.StartMm+40-1e-7 && x<=p.EndMm-40+1e-7))
-                && !obstacles.Any(s=>Timber("Cross secondary",x,start,stock,false,c.BottomElevationMm).Conflicts(s));
+            // The swept box contains every possible row solid. Keep the full
+            // obstacle list below for exactly the same contact-offset choices,
+            // but test conflicts only against solids that can meet this stock.
+            var swept=Timber("Cross secondary",c.PositionMm,start,stock,false,c.BottomElevationMm);
+            swept.X0=c.PositionMm-c.WidthMm/2-1e-6;swept.X1=c.PositionMm+c.WidthMm/2+1e-6;
+            var nearby=obstacles.Where(s=>swept.Conflicts(s)).ToArray();
+            Func<double,bool> clear=x=>
+            {
+                for(int beam=c.BayNumber-1;beam<=c.BayNumber;beam++)
+                {
+                    var pieces=r.Beams[beam].StockPlan.Pieces;
+                    if(pieces.Length>0 && !pieces.Any(p=>x>=p.StartMm+40-1e-7 && x<=p.EndMm-40+1e-7))return false;
+                }
+                var solid=Timber("Cross secondary",x,start,stock,false,c.BottomElevationMm);
+                foreach(var obstacle in nearby)if(solid.Conflicts(obstacle))return false;
+                return true;
+            };
             var rows=new List<double>();if(count%2==1){if(!clear(c.PositionMm))return null;rows.Add(c.PositionMm);}
             var offsets=Enumerable.Range(0,1+(int)Math.Ceiling(max/25)).Select(k=>Math.Min(max,k*25.0)).Concat(new[] {max})
                 .Concat(obstacles.SelectMany(s=>new[] {Math.Abs(s.X0-40-c.PositionMm),Math.Abs(s.X1+40-c.PositionMm)})).Where(d=>d<=max+1e-7).Distinct().ToArray();

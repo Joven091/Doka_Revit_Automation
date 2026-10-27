@@ -25,7 +25,7 @@ internal static class SearchBudgetUiTests
         {
             Wait(workspace.CalculateAsync());
             if(!vm.IsCalculationValid || vm.CanSearchLonger || workspace.Buttons.ContainsKey("SearchLonger") || !vm.BuildDiagnosticReport().Contains("Search budget seconds: Unlimited"))
-                throw new Exception("Normal workspace calculation must ignore the test deadline and finish a complete checked layout");
+                throw new Exception("Normal workspace calculation must ignore the test deadline and finish a complete checked layout\n"+vm.BuildDiagnosticReport());
         }
         finally {workspace.Close();}
         Console.WriteLine("Passed normal workspace calculation without an elapsed-time limit.");

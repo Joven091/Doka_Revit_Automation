@@ -18,7 +18,7 @@ namespace EngineeringDashboard
         public bool ShowAllDimensions {get;set;}
         public bool HideDimensions {get;set;}
         public double SectionPositionMm {get;set;}=double.NaN;
-        internal double ActualSectionPositionMm=>TowerBeamAnalysis.Finite(SectionPositionMm) ? Math.Max(0,Math.Min(result.Beams[0].LengthMm,SectionPositionMm)) : result.Beams[0].LengthMm/2;
+        internal double ActualSectionPositionMm=>TowerBeamAnalysis.Finite(SectionPositionMm) ? Math.Max(0,Math.Min(result.Input.Extent(result.Beams.Max(b=>b.LongitudinalEndMm)),SectionPositionMm)) : result.Input.Extent(result.Beams.Max(b=>b.LongitudinalEndMm))/2;
         internal readonly List<Tuple<int,int,double>> SectionRows=new List<Tuple<int,int,double>>();
         internal int DrawnSectionSupportCount {get;private set;}
         internal double SectionHorizontalScale {get;private set;}
@@ -106,14 +106,14 @@ namespace EngineeringDashboard
             Label(dc,$"mm · primary = {result.Beams[0].Primary.Description}/line · secondaries = single H20"+(result.Input.HasIndividualSpacings ? " · spacings by element" : $" @ {result.Input.UpperSpacingMm:0}"),30,8);
             Label(dc,"Primary H20: orange · secondary H20: purple · cyan: frames · yellow: crosses",30,27);
             var ys=Centres();var crossSolids=result.CrossSupports.SelectMany(c=>c.Solids).ToArray();
-            double minX=Math.Min(0,crossSolids.Select(s=>s.X0).DefaultIfEmpty(0).Min()),maxX=Math.Max(result.Beams[0].LengthMm,crossSolids.Select(s=>s.X1).DefaultIfEmpty(0).Max());
+            double minX=Math.Min(0,crossSolids.Select(s=>s.X0).DefaultIfEmpty(0).Min()),maxX=Math.Max(result.Input.Extent(result.Beams.Max(b=>b.LongitudinalEndMm)),crossSolids.Select(s=>s.X1).DefaultIfEmpty(0).Max());
             double scale=(ActualWidth-80)/(maxX-minX);Func<double,double> xx=x=>40+(x-minX)*scale;
             for(int bay=0;bay<result.Bays.Length;bay++)
             {
                 double a=ys[bay]+result.Input.Beams[bay].WidthMm*.055/2,b=ys[bay+1]-result.Input.Beams[bay+1].WidthMm*.055/2;
                 bool separate=result.Bays[bay]==null;
-                dc.DrawRectangle(separate ? Brushes.Moccasin : Brushes.AliceBlue,null,new Rect(xx(0),a,result.Beams[0].LengthMm*scale,b-a));
-                if(separate)SeparateBayTargets.Add(Tuple.Create(new Rect(xx(0),a,result.Beams[0].LengthMm*scale,b-a),bay));
+                dc.DrawRectangle(separate ? Brushes.Moccasin : Brushes.AliceBlue,null,new Rect(xx(0),a,result.Input.Extent(result.Beams.Max(b=>b.LongitudinalEndMm))*scale,b-a));
+                if(separate)SeparateBayTargets.Add(Tuple.Create(new Rect(xx(0),a,result.Input.Extent(result.Beams.Max(b=>b.LongitudinalEndMm))*scale,b-a),bay));
                 bool crossed=result.Input.CrossingBeams.Any(c=>c.BayNumber==bay+1);
                 Label(dc,$"S{bay+1} · bay {result.Input.Bays[bay].WidthMm:0} · t {result.Input.Bays[bay].ThicknessMm:0}{(separate ? " · separate formwork (not calculated)" : "")}",crossed ? 45 : ActualWidth/2,(a+b)/2,!crossed);
             }
@@ -131,7 +131,7 @@ namespace EngineeringDashboard
             {
                 var b=result.Beams[beam];double cy=ys[beam],top=cy+(b.TransverseOffsetMm-b.WidthMm/2)*.055,bottom=cy+(b.TransverseOffsetMm+b.WidthMm/2)*.055;
                 Label(dc,$"B{beam+1} · {result.Input.Beams[beam].WidthMm:0}×{result.Input.Beams[beam].DepthMm:0} · {b.LegCount} legs · {(b.Rotated ? "Cross" : "Frame")} {b.WidthMm:0} across",40,top-65);
-                dc.DrawRectangle(Concrete,null,new Rect(xx(0),cy-result.Input.Beams[beam].WidthMm*.055/2,b.LengthMm*scale,result.Input.Beams[beam].WidthMm*.055));
+                dc.DrawRectangle(Concrete,null,new Rect(xx(b.LongitudinalStartMm),cy-result.Input.Beams[beam].WidthMm*.055/2,b.LengthMm*scale,result.Input.Beams[beam].WidthMm*.055));
                 for(int i=0;i<b.StockPlan.Pieces.Length;i++)
                 {
                     var stock=b.StockPlan.Pieces[i];
@@ -156,7 +156,7 @@ namespace EngineeringDashboard
                     if(leg<b.Joined.Length && b.Joined[leg])
                         TowerPlanDrawing.BracedBay(dc,a,c,new Point(xx(b.PositionsMm[leg+1]),top),new Point(xx(b.PositionsMm[leg+1]),bottom),b.Rotated);
                 }
-                double acrossX=xx(b.PositionsMm.OrderBy(x=>Math.Abs(x-b.LengthMm/2)).First())-18;
+                double acrossX=xx(b.PositionsMm.OrderBy(x=>Math.Abs(x-b.LongitudinalStartMm-b.LengthMm/2)).First())-18;
                 VerticalDim(dc,acrossX,top,bottom,b.WidthMm.ToString("0.###"),Brushes.Firebrick,true);
                 AcrossDimensions.Add(Tuple.Create(beam,b.WidthMm));
                 for(int leg=0;leg<b.Joined.Length;)
@@ -171,7 +171,7 @@ namespace EngineeringDashboard
 
             }
             DrawCrossPlan(dc,ys,xx);
-            var last=result.Beams.Last();double endY=ys.Last()+last.WidthMm*.055/2+121;Dim(dc,xx(0),xx(last.LengthMm),endY,$"Beam length {last.LengthMm:0} · concrete beyond H20 {last.ConcreteEndOverhangMm:0.###} / end");
+            var last=result.Beams.Last();double endY=ys.Last()+last.WidthMm*.055/2+121;Dim(dc,xx(last.LongitudinalStartMm),xx(last.LongitudinalEndMm),endY,$"Beam length {last.LengthMm:0} · concrete beyond H20 {last.ConcreteEndOverhangMm:0.###} / end");
             Section(dc,endY+60);DrawSectionAnnotations(dc);foreach(var annotation in annotations)dc.DrawDrawing(annotation);
         }
         private void DrawCrossPlan(DrawingContext dc,double[] ys,Func<double,double> xx)
@@ -330,7 +330,7 @@ namespace EngineeringDashboard
             double scale=(ActualWidth-80)/Math.Max(1,max-min),depthScale=scale;SectionHorizontalScale=scale;Func<double,double> xx=x=>40+(x-min)*scale;double top=y0+SectionTopPadding(ActualWidth);sectionTop=top;sectionBottom=top+(highest-lowest+750)*scale;
             for(int beam=0;beam<result.Beams.Length;beam++)
             {
-                var b=result.Beams[beam];var input=result.Input.Beams[beam];var t=b.Transfer;double centre=result.BeamCentresMm[beam],bottom=top+(highest-input.BottomElevationMm)*depthScale,beamTop=top+(highest-input.BottomElevationMm-input.DepthMm)*depthScale;
+                var b=result.Beams[beam];if(cut<b.LongitudinalStartMm-1e-7 || cut>b.LongitudinalEndMm+1e-7)continue;var input=result.Input.Beams[beam];var t=b.Transfer;double centre=result.BeamCentresMm[beam],bottom=top+(highest-input.BottomElevationMm)*depthScale,beamTop=top+(highest-input.BottomElevationMm-input.DepthMm)*depthScale;
                 var concreteRect=new Rect(xx(centre-input.WidthMm/2),beamTop,input.WidthMm*scale,bottom-beamTop);
                 dc.DrawRectangle(Concrete,new Pen(Steel,1),concreteRect);SectionGeometryBounds.Add(concreteRect);
                 int physical=IntersectingRow(Enumerable.Range(0,t.PhysicalRowCount).Select(t.PhysicalRowPosition).ToArray(),cut);

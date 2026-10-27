@@ -176,8 +176,8 @@ internal static class CrossingSearchTests
         r.Input.CrossingBeams[0].BottomElevationMm-=1;Check(!original.Equals(key()),"crossing elevation is included");r.Input.CrossingBeams[0].BottomElevationMm=-1150;
         Check(!original.Equals(new CrossGeometryKey(r,0,CrossShutterAllowance.Candidates[3],new[] {obstacle,slab})),"shutter detail is included");
         obstacle.Z0=-1000;var highPrimary=key();obstacle.Y0+=25;Check(!highPrimary.Equals(key()),"higher primary still contributes exact setting-out boundaries");
-        var cache=new CrossGeometryCache();for(int i=0;i<150;i++){obstacle.Y0=i;cache.Results.Store(key(),new DedicatedCrossSearch {Failure="fixture"});}
-        Check(cache.Results.Count==128,"geometry reuse has a fixed memory bound");
+        var cache=new CrossGeometryCache();for(int i=0;i<600;i++){obstacle.Y0=i;cache.Results.Store(key(),new DedicatedCrossSearch {Failure="fixture"});}
+        Check(cache.Results.Count==512,"geometry reuse has a fixed memory bound");
     }
     static void StockStarts()
     {

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Steel Shape</title>
+<style>
+:root{font-family:Segoe UI,Arial,sans-serif;font-size:15px;color:#203047;background:#f3f5f8}*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #28658e;outline-offset:2px}.app{max-width:1480px;margin:28px auto;padding:0 24px;display:grid;grid-template-columns:265px minmax(0,1fr);gap:28px;align-items:start}.navigation{position:sticky;top:24px;background:#fff;border:1px solid #d9e2eb;border-radius:10px;max-height:calc(100vh - 48px);overflow:auto;padding:16px 10px}.navigation h2{margin:0 10px 13px;font-size:15px}.navigation button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:1px solid transparent;border-left:4px solid transparent;padding:11px 9px;margin:3px 0;border-radius:5px;color:#465b70;font-size:13px;line-height:1.35}.navigation button:hover{background:#f2f6fa}.navigation button[aria-pressed=true]{background:#fff6d5;border-color:#eadc9d;border-left-color:#c7a913;color:#263851;font-weight:600}.navigation svg{flex:0 0 23px;width:23px;height:23px}.eyebrow{font-size:12px;font-weight:650;letter-spacing:.9px;text-transform:uppercase;color:#65778d}h1{font-size:27px;line-height:1.25;margin:7px 0 22px}h2{font-size:18px;margin:0 0 19px}.card{background:white;border:1px solid #d9e2eb;border-radius:10px;padding:24px;margin-bottom:24px}.entry-layout{display:grid;grid-template-columns:minmax(240px,1fr) minmax(365px,1fr);gap:24px;align-items:start}.fields{display:grid;grid-template-columns:1fr 1fr;gap:17px 15px}label{display:block;font-size:13px;font-weight:600;line-height:1.4}input,select{color:#203047;width:100%;margin-top:7px;padding:10px;border:1px solid #aab8c7;border-radius:5px;background:white;min-width:0}input[readonly]{background:#f2f5f8;border-color:#d5dfe8;color:#4d6178}.span-2{grid-column:span 2}.error{min-height:22px;color:#a12727;font-size:13px;line-height:1.5;margin-top:12px}.outputs{display:grid;grid-template-columns:1fr 1fr;gap:22px;border-top:1px solid #e0e6ee;padding-top:22px;margin-top:24px}.result-label{color:#5d6f85;font-size:14px}.number{display:block;font-size:32px;font-variant-numeric:tabular-nums;margin:5px 0 4px;overflow-wrap:anywhere}.unit{font-size:13px;color:#60738b}.schematic-panel{border:1px solid #dce5ed;border-radius:8px;background:#f8fafc;padding:14px 10px 10px;min-width:0}.schematic-heading{display:flex;align-items:center;justify-content:flex-end;gap:10px;font-size:13px;margin:0 5px 10px}.schematic-heading span{font-size:11px;color:#728297}.schematics{display:grid;grid-template-columns:1fr 1fr;gap:4px}.schematics figure{margin:0;min-width:0}.schematics figcaption{text-align:center;color:#526a82;font-size:12px;margin:0 0 4px}.schematics svg{width:100%;height:auto;display:block}.schematic-note{font-size:11px;color:#6b7e94;line-height:1.5;margin:7px 5px 0}.dimension{color:#526b83}.dimension line,.dimension path{fill:none;stroke:currentColor;stroke-width:1.4}.dimension .extension{stroke:#a9bac9;stroke-width:1}.dimension text{fill:currentColor;stroke:none;font-family:Segoe UI,Arial,sans-serif;font-size:15px;font-weight:600}.dimension .label-back{fill:#f8fafc;stroke:none}.dimension.active{color:#a57500}.dimension.active line,.dimension.active path{stroke-width:2}.placeholder{fill:#64788c;font:14px Segoe UI,Arial,sans-serif}.mobile-picker{display:none;margin-bottom:20px}.body{min-width:0}.profile-fields-title{grid-column:span 2;margin:3px 0 -4px;font-size:12px;font-weight:600;color:#60768c}@media(max-width:1180px){.app{grid-template-columns:240px minmax(0,1fr);gap:22px}.entry-layout{grid-template-columns:1fr}.schematic-panel{max-width:650px;width:100%}.schematics{max-width:580px;margin:auto}.fields{grid-template-columns:1fr 1fr}}@media(max-width:760px){.app{display:block;margin:20px auto;padding:0 15px}.navigation{display:none}.mobile-picker{display:block}h1{font-size:25px}.card{padding:20px}.schematic-panel{max-width:none}.outputs{gap:14px}.number{font-size:27px}}@media(max-width:420px){.schematics{grid-template-columns:1fr}.schematics figure{max-width:280px;margin:auto;width:100%}.schematics figure+figure{margin-top:10px}.fields{gap:13px 10px}.schematic-heading{flex-wrap:wrap}}
+[hidden]{display:none!important}.weld-panel{margin:20px 0 0;padding:17px;border:1px solid #dce5ed;border-radius:8px;min-width:0}.weld-panel legend{padding:0 7px;font-weight:600;font-size:14px}.weld-toggle{display:flex;gap:9px;align-items:center}.weld-toggle input{width:17px;height:17px;flex:0 0 17px;margin:0;accent-color:#b69a18}.weld-layout{display:grid;grid-template-columns:minmax(230px,1fr) minmax(300px,1fr);gap:22px;margin-top:18px;align-items:start}.weld-help{font-size:12px;line-height:1.6;color:#60738b;margin:10px 0 0}.weld-picture{background:#f8fafc;border:1px solid #dce5ed;border-radius:7px;padding:10px}.weld-picture svg{width:100%;height:auto;display:block}.weld-picture p{font-size:11px;line-height:1.6;color:#60738b;margin:6px}@media(max-width:1180px){.weld-layout{grid-template-columns:1fr}.weld-picture{max-width:620px}}@media(max-width:760px){.weld-panel{padding:13px}.weld-layout{gap:15px}}
+.weld-selector{margin-top:18px;padding:13px;border:1px solid #dce5ed;border-radius:7px;background:#f8fafc}.selector-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}.selector-heading button{background:white;border:1px solid #b8c5d1;border-radius:4px;color:#334e66;padding:5px 12px}.weld-selector svg{display:block;width:100%;height:auto;margin:7px 0}.weld-edge{cursor:pointer}.weld-edge:focus{outline:none}.weld-edge:focus .weld-edge-base{stroke:#25689b;stroke-width:6}.edge-editor{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:end}.edge-editor>label:first-child{grid-column:span 2}.full-edge-toggle{display:flex;align-items:center;gap:8px;align-self:center}.full-edge-toggle input{width:16px;height:16px;margin:0;accent-color:#ba951b}.edge-available{font-size:11px;color:#60738b;align-self:center}.edge-editor>label:nth-child(3){grid-column:span 2}.field-help{display:block;margin-top:5px;font-size:11px;line-height:1.5;font-weight:400;color:#60738b}</style></head><body>
+<main class="app"><nav class="navigation" aria-label="Steel shapes"><h2>Steel Shape</h2><div id="calculator-menu"></div></nav>
+<div class="body"><h1 id="page-heading">Steel Shape</h1>
+<label class="mobile-picker">Steel shape<select id="calculator-picker" aria-label="Choose a steel shape"></select></label>
+<section class="card" aria-labelledby="inputs-heading"><h2 id="inputs-heading">Enter dimensions</h2>
+<form id="calculator-form" novalidate><div class="entry-layout"><div><div id="input-fields" class="fields"></div></div>
+<section class="schematic-panel" aria-label="Dimensions schematic"><div class="schematic-heading"><span>Schematic · not to scale</span></div><div class="schematics"><figure><figcaption>Cross-section</figcaption><div id="section-drawing"></div></figure><figure><figcaption id="length-caption">Member length</figcaption><div id="length-drawing"></div></figure></div><p id="schematic-note" class="schematic-note"></p></section></div>
+<fieldset class="weld-panel"><legend>Optional weld</legend><label class="weld-toggle"><input id="weld-enabled" type="checkbox" aria-controls="weld-content">Include a weld joining two components</label><div id="weld-content" hidden><div class="weld-layout"><div><div id="weld-fields" class="fields"></div><div id="weld-selector-controls"></div><p id="weld-method-note" class="weld-help"></p><p id="weld-quantity-note" class="weld-help"></p></div><div class="weld-picture"><div id="weld-drawing"></div><p id="weld-dimension-note"></p></div></div></div></fieldset>
+<div id="input-error" class="error" role="alert"></div></form>
+<div class="outputs" aria-live="polite"><div><span id="unit-mass-label" class="result-label">Calculated mass per metre</span><strong id="mass" class="number">—</strong><span id="mass-unit" class="unit">kg/m</span></div><div><span id="total-mass-label" class="result-label">Calculated total mass</span><strong id="total" class="number">—</strong><span class="unit">kg</span></div></div>
+</section></div></main>
+<script>/* CATALOGUES */</script>
+<script>/* RHS_CORE */</script>
+<script>/* ENGINE */</script>
+<script>/* SCHEMATICS */</script>
+<script>
+'use strict';
+const engine = window.SteelWeight, sketches = window.SteelSketch;
+const $ = id => document.getElementById(id), states = new Map();
+let current = 'rhs';
+function icon(kind) {
+  const shape = kind === 'beam' ? '<path d="M5 4H21V8H15V18H21V22H5V18H11V8H5Z"/>' : kind === 'channel' ? '<path d="M6 4H21V8H10V18H21V22H6Z"/>' : kind === 'angle' ? '<path d="M6 4H10V18H21V22H6Z"/>' : kind === 'tube' ? '<circle cx="13" cy="13" r="9"/><circle cx="13" cy="13" r="5" fill="white"/>' : kind === 'round' ? '<circle cx="13" cy="13" r="8"/>' : kind === 'hollow' ? '<rect x="5" y="4" width="16" height="18" rx="2"/><rect x="8" y="7" width="10" height="12" rx="1" fill="white"/>' : '<path d="M4 8L21 5L23 18L6 22Z"/>';
+  return '<svg viewBox="0 0 26 26" aria-hidden="true" fill="#8da9bc" stroke="#526f86" stroke-width="1">' + shape + '</svg>';
+}
+for (const definition of engine.shapes) {
+  const button = document.createElement('button'); button.type = 'button'; button.dataset.shape = definition.id; button.setAttribute('aria-pressed', 'false'); button.innerHTML = icon(definition.kind);
+  const text = document.createElement('span'); text.textContent = definition.title; button.append(text); button.addEventListener('click', () => selectCalculator(definition.id)); $('calculator-menu').append(button);
+  const option = document.createElement('option'); option.value = definition.id; option.textContent = definition.title; $('calculator-picker').append(option);
+}
+function readInputs() {
+  const value = Object.fromEntries(Array.from($('input-fields').querySelectorAll('[data-input]')).filter(input => !input.readOnly || input.dataset.input === 'L').map(input => [input.dataset.input, input.value]));
+  value.weld = { ...((states.get(current) || {}).weld || {}), enabled: $('weld-enabled').checked, lengthUnit: 'mm', lengthMode: 'section-outline' };
+  for (const input of $('weld-fields').querySelectorAll('[data-weld-input]')) value.weld[input.dataset.weldInput] = input.value;
+  return value;
+}
+function control(key, label, unit, value, options = null, readonly = false, wide = false) {
+  const wrapper = document.createElement('label'); wrapper.htmlFor = 'field-' + key; if (wide) wrapper.className = 'span-2'; wrapper.textContent = label + (unit ? ' (' + unit + ')' : '');
+  const input = document.createElement(options ? 'select' : 'input'); input.id = 'field-' + key; input.dataset.input = key; input.autocomplete = 'off';
+  if (options) {
+    for (const choice of options) { const option = document.createElement('option'); option.value = choice.value; option.textContent = choice.label; if (choice.value === String(value)) option.selected = true; input.append(option); }
+  } else { input.type = 'text'; input.inputMode = 'decimal'; input.value = value; input.readOnly = readonly; if (readonly) input.setAttribute('aria-readonly', 'true'); }
+  input.addEventListener('input', () => { if (!options && !readonly) calculate(); });
+  input.addEventListener('change', () => { if (options) selectionChanged(key); });
+  input.addEventListener('focus', () => highlight(key)); input.addEventListener('blur', () => highlight(null));
+  wrapper.append(input); $('input-fields').append(wrapper); return input;
+}
+function highlight(key) { for (const group of document.querySelectorAll('[data-dimension]')) group.classList.toggle('active', group.dataset.dimension === key || (key === 'pair' && ['A', 'B'].includes(group.dataset.dimension))); }
+function highlightFocused() { const active = document.activeElement; if (active && active.dataset) highlight(active.dataset.weldInput ? 'weld-' + active.dataset.weldInput : active.dataset.input); }
+function paintSteelSchematics(definition, result) { $('section-drawing').innerHTML = sketches.section(definition, result); $('length-drawing').innerHTML = sketches.member(definition, result); }
+function changeWeldEdge(id, amount) {
+  const value = readInputs(); value.weld.edges = { ...(value.weld.edges || {}), [id]: amount }; value.weld.activeEdge = id; states.set(current, value); calculate();
+}
+function renderWeldSelectorControls() {
+  $('weld-selector-controls').innerHTML = '<section class="weld-selector" aria-labelledby="weld-selector-heading"><div class="selector-heading"><strong id="weld-selector-heading">Select welded edges</strong><button id="weld-clear" type="button">Clear</button></div><div id="weld-coverage"></div><div id="weld-edge-editor" class="edge-editor" hidden><label>Edge to edit<select id="weld-edge-picker"></select></label><label class="full-edge-toggle"><input id="weld-edge-full" type="checkbox">Entire edge</label><label>Welded length on this edge (mm)<input id="weld-edge-length" type="text" inputmode="decimal" autocomplete="off"></label><span id="weld-edge-available" class="edge-available"></span></div></section>';
+  $('weld-edge-picker').addEventListener('change', () => { const value = readInputs(); value.weld.activeEdge = $('weld-edge-picker').value; states.set(current, value); calculate(); });
+  $('weld-edge-full').addEventListener('change', () => { changeWeldEdge($('weld-edge-picker').value, $('weld-edge-full').checked ? 'full' : '0'); if (!$('weld-edge-full').checked) { $('weld-edge-length').focus(); if (typeof $('weld-edge-length').select === 'function') $('weld-edge-length').select(); } });
+  $('weld-edge-length').addEventListener('input', () => changeWeldEdge($('weld-edge-picker').value, $('weld-edge-length').value));
+  $('weld-clear').addEventListener('click', () => { if($('weld-clear').disabled)return; const value = readInputs(); const model = engine.automaticWeldPath(current,value); value.weld.edges = Object.fromEntries(model.segments.map(edge=>[edge.id,'0'])); states.set(current,value); calculate(); });
+  function toggle(event, keyboard) {
+    const edge = event.target.closest('[data-weld-edge]'); if (!edge || edge.getAttribute('aria-disabled') === 'true') return;
+    let id = edge.dataset.weldEdge;
+    if(!keyboard && event.isTrusted && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+      const svg=$('weld-coverage').querySelector('svg'),point=new DOMPoint(event.clientX,event.clientY).matrixTransform(svg.getScreenCTM().inverse());let nearest=Infinity;
+      for(const hit of svg.querySelectorAll('path[pointer-events="stroke"]')) {
+        const total=hit.getTotalLength(),steps=hit.getAttribute('d').includes('A')?32:1;let a=hit.getPointAtLength(0);
+        for(let i=1;i<=steps;i++) { const b=hit.getPointAtLength(total*i/steps),dx=b.x-a.x,dy=b.y-a.y,square=dx*dx+dy*dy,f=square?Math.max(0,Math.min(1,((point.x-a.x)*dx+(point.y-a.y)*dy)/square)):0,distance=(point.x-a.x-f*dx)**2+(point.y-a.y-f*dy)**2;if(distance<nearest){nearest=distance;id=hit.closest('[data-weld-edge]').dataset.weldEdge;}a=b; }
+      }
+    }
+    const value = readInputs(), raw = (value.weld.edges || {})[id];
+    changeWeldEdge(id, raw == null || raw === 'full' || Number(String(raw).replace(',','.')) > 0 ? '0' : 'full');
+    if (keyboard) { const next = $('weld-coverage').querySelector('[data-weld-edge="'+id+'"]'); if (next && typeof next.focus === 'function') next.focus(); }
+  }
+  $('weld-coverage').addEventListener('click', event => toggle(event,false));
+  $('weld-coverage').addEventListener('keydown', event => { if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(event,true); } });
+}
+function refreshWeldPath(input) {
+  try {
+    const model = engine.automaticWeldPath(current,input), choices = input.weld.edges || {};
+    $('weld-clear').disabled=false;
+    let selected = null; try { selected = engine.selectedWeldPath(model,choices); } catch (_) {}
+    $('weld-lengthMm').value = selected ? engine.format(selected.lengthMm) : ''; $('weld-lengthMm').title = model.basis;
+    const active = model.segments.some(edge=>edge.id === input.weld.activeEdge) ? input.weld.activeEdge : model.segments[0].id;
+    input.weld.activeEdge = active;
+    $('weld-coverage').innerHTML = sketches.weldSelector(engine.shape(current),model,choices,active);
+    const picker = $('weld-edge-picker'), signature = model.segments.map(edge=>edge.id+edge.name).join('|');
+    if(picker.dataset.signature !== signature) { picker.replaceChildren(); for(const edge of model.segments) { const option = document.createElement('option'); option.value=edge.id; option.textContent=edge.name; picker.append(option); } picker.dataset.signature=signature; }
+    picker.value = active; $('weld-edge-editor').hidden = false;
+    const edge = model.segments.find(edge=>edge.id===active), raw = Object.prototype.hasOwnProperty.call(choices,active)?choices[active]:'full', whole = raw==='full';
+    $('weld-edge-full').checked=whole; $('weld-edge-full').disabled=Number(edge.lengthMm)===0;
+    const editor = $('weld-edge-length'); editor.readOnly=whole; editor.setAttribute('aria-readonly',String(whole));
+    if(document.activeElement !== editor) editor.value=whole?engine.format(edge.lengthMm):raw;
+    $('weld-edge-available').textContent='Available: '+engine.format(edge.lengthMm)+' mm'; $('weld-edge-available').title=edge.lengthMm+' mm';
+    input.weld.lengthMm=selected?selected.lengthMm:''; input.weld.runs='1';
+  } catch (_) { $('weld-lengthMm').value=''; $('weld-lengthMm').title=''; $('weld-coverage').innerHTML=''; $('weld-edge-editor').hidden=true; $('weld-clear').disabled=true; }
+}
+function weldControl(key, label, unit, value, options = null, help = '') {
+  const wrapper = document.createElement('label'); wrapper.htmlFor = 'weld-' + key; wrapper.textContent = label + (unit ? ' (' + unit + ')' : '');
+  const input = document.createElement(options ? 'select' : 'input'); input.id = 'weld-' + key; input.dataset.weldInput = key;
+  if (options) for (const choice of options) { const option = document.createElement('option'); option.value = choice.value; option.textContent = choice.label; option.selected = choice.value === String(value); input.append(option); }
+  else { input.type = 'text'; input.inputMode = 'decimal'; input.autocomplete = 'off'; input.value = value == null ? '' : value; }
+  input.addEventListener(options ? 'change' : 'input', () => {
+    if (key === 'type' || key === 'connection') { const state = readInputs(); states.set(current, state); renderWeld(state); $('weld-' + key).focus(); }
+    calculate();
+  });
+  input.addEventListener('focus', () => highlight('weld-' + key)); input.addEventListener('blur', () => highlight(null));
+  wrapper.append(input); if (help) { const note = document.createElement('small'); note.className = 'field-help'; note.textContent = help; note.id = 'help-' + key; input.setAttribute('aria-describedby', note.id); wrapper.append(note); } $('weld-fields').append(wrapper);
+}
+function renderWeld(value) {
+  const weld = value.weld || {}, active = weld.enabled === true, unit = current === 'plate' ? 'mm' : 'm';
+  $('weld-enabled').checked = active; $('weld-content').hidden = !active; $('weld-fields').replaceChildren(); $('weld-selector-controls').replaceChildren();
+  const length = $('field-L'); length.readOnly = active; length.setAttribute('aria-readonly', String(active));
+  length.parentElement.firstChild.nodeValue = active ? 'Total material length (' + unit + ')' : 'Length L (' + unit + ')';
+  if (!active) return;
+  weldControl('L1', 'First piece length', 'mm', weld.L1); weldControl('L2', 'Second piece length', 'mm', weld.L2);
+  weldControl('connection', 'Connection shape', '', weld.connection || 'straight', [{ value: 'straight', label: 'Straight connection' }, { value: 'L', label: 'L connection — 90°' }]);
+  weldControl('type', 'Weld type', '', weld.type || 'fillet', [{ value: 'fillet', label: 'Fillet — equal legs' }, { value: 'butt', label: 'Butt — gap and reinforcement' }]);
+  weldControl('lengthMm', 'Automatic weld length', 'mm', '');
+  const weldLength = $('weld-lengthMm'); weldLength.readOnly = true; weldLength.setAttribute('aria-readonly', 'true');
+  renderWeldSelectorControls();
+  if (weld.type === 'butt') {
+    weldControl('gapMm', 'Gap between pieces', 'mm', weld.gapMm == null ? '0' : weld.gapMm);
+    weldControl('capWidthMm', 'Weld cap width', 'mm', weld.capWidthMm);
+    weldControl('capHeightMm', 'Weld cap height', 'mm', weld.capHeightMm == null ? '0' : weld.capHeightMm);
+    weldControl('faces', 'Weld reinforcement on', '', weld.faces || '1', [{ value: '1', label: 'One side' }, { value: '2', label: 'Both sides' }]);
+  } else weldControl('z', 'Fillet leg size', 'mm', weld.z);
+  $('weld-method-note').textContent = 'Click an edge to toggle its weld. Choose an edge above to enter a partial length.';
+  $('weld-quantity-note').textContent = 'All weld dimensions and both piece lengths are in millimetres. The pieces use the selected steel section. ' + (weld.connection === 'L' ? 'For the L connection, their sum is the total material used, not an overall width or height. ' : 'Their sum is the total material length. ') + (current === 'plate' ? 'One joint per assembled piece; the piece count multiplies both steel and added weld mass.' : 'One joint joins the two pieces.');
+  $('weld-dimension-note').textContent = 'Match the field names to the arrows. Orange marks the weld. The drawing remains visible while measurements are empty. Schematic, not to scale.';
+  $('weld-drawing').innerHTML = sketches.weldGuide({ ...value, weld: { ...weld, lengthUnit: 'mm' } });
+}
+function angleOptions(definition, value) {
+  const rows = engine.profiles(current);
+  if (current === 'equal_angle') control('A', 'Side A', 'mm', value.A, Array.from(new Set(rows.map(r => r.A))).map(a => ({ value: a, label: a })));
+  else control('pair', 'Outside sides A × B', 'mm', value.pair, Array.from(new Set(rows.map(r => r.A + 'x' + r.B))).map(pair => ({ value: pair, label: pair.replace('x', ' × ') })));
+  const available = rows.filter(r => current === 'equal_angle' ? r.A === value.A : r.A + 'x' + r.B === value.pair);
+  const thickness = available.some(r => r.t === value.t) ? value.t : available[0].t;
+  control('t', 'Thickness t', 'mm', thickness, available.map(r => ({ value: r.t, label: r.t })));
+  control('L', 'Length L', 'm', value.L);
+}
+function renderInputs(value) {
+  const definition = engine.shape(current); $('input-fields').replaceChildren();
+  if (!definition.family) for (const field of definition.fields) control(field.key, field.label, field.unit, value[field.key]);
+  else if (definition.kind === 'angle') angleOptions(definition, value);
+  else {
+    control('profile', 'Profile', '', value.profile, engine.profiles(current).map(p => ({ value: p.id, label: p.label })), false, true);
+    const selected = engine.profile(current, value);
+    const title = document.createElement('div'); title.className = 'profile-fields-title'; title.textContent = 'Profile dimensions'; $('input-fields').append(title);
+    control('h', 'Height h', 'mm', selected.h, null, true); control('b', 'Flange width b', 'mm', selected.b, null, true);
+    control('s', 'Web thickness s', 'mm', selected.s, null, true); control('t', 'Flange thickness t', 'mm', selected.t, null, true);
+    control('L', 'Length L', 'm', value.L);
+  }
+  renderWeld(value);
+}
+function selectionChanged(key) {
+  const value = readInputs(), definition = engine.shape(current);
+  if (definition.kind === 'angle' && key !== 't') {
+    const rows = engine.profiles(current).filter(r => current === 'equal_angle' ? r.A === value.A : r.A + 'x' + r.B === value.pair);
+    if (!rows.some(r => r.t === value.t)) value.t = rows[0].t;
+  }
+  states.set(current, value); renderInputs(value); const next = $('field-' + key); if (next && typeof next.focus === 'function') next.focus(); calculate();
+}
+function calculate() {
+  const definition = engine.shape(current), input = readInputs(); states.set(current, input);
+  $('unit-mass-label').textContent = current === 'plate' ? 'Calculated mass per piece' : 'Calculated mass per metre'; $('mass-unit').textContent = current === 'plate' ? 'kg/piece' : 'kg/m';
+  $('total-mass-label').textContent = input.weld.enabled ? 'Total including added weld' : 'Calculated total mass';
+  $('length-caption').textContent = current === 'plate' ? 'Plate length' : 'Member length';
+  if (input.weld.enabled) { refreshWeldPath(input); $('weld-drawing').innerHTML = sketches.weldGuide(input); }
+  try {
+    const result = engine.calculate(current, input); $('input-error').textContent = '';
+    if (result.weld) { $('field-L').value = result.input.L; states.set(current, { ...input, L: result.input.L }); }
+    $('mass').textContent = engine.format(result.unitMassKg); $('mass').title = 'Unrounded: ' + result.unitMassKg;
+    $('total').textContent = engine.format(result.totalKg); $('total').title = 'Unrounded: ' + result.totalKg;
+    $('unit-mass-label').textContent = result.metric === 'piece' ? 'Calculated mass per piece' : 'Calculated mass per metre'; $('mass-unit').textContent = result.metric === 'piece' ? 'kg/piece' : 'kg/m';
+    if (result.weld) $('unit-mass-label').textContent = result.metric === 'piece' ? 'Steel mass per assembled piece' : 'Steel mass per metre';
+    paintSteelSchematics(definition, result);
+    if (result.weld) $('weld-drawing').innerHTML = sketches.weld(result);
+    highlightFocused();
+    return result;
+  } catch (error) {
+    $('input-error').textContent = error.message; $('mass').textContent = $('total').textContent = '—'; $('mass').title = $('total').title = '';
+    if (input.weld.enabled) { try { $('field-L').value = engine.weldSteelLength(current, input.weld); } catch (_) { $('field-L').value = ''; } }
+    try { paintSteelSchematics(definition, engine.calculate(current, { ...input, L: $('field-L').value || input.L, weld: { enabled: false } })); }
+    catch (_) { $('section-drawing').innerHTML = sketches.placeholder('Enter valid section dimensions.'); $('length-drawing').innerHTML = sketches.placeholder('Enter a valid section and length.'); }
+    highlightFocused(); return null;
+  }
+}
+function selectCalculator(id) {
+  engine.shape(id); if ($('input-fields').children.length) states.set(current, readInputs()); current = id;
+  const definition = engine.shape(id); $('page-heading').textContent = definition.title; document.title = definition.title + ' — Steel Shape';
+  $('inputs-heading').textContent = definition.family ? 'Choose a profile' : 'Enter dimensions'; $('calculator-picker').value = id;
+  for (const button of $('calculator-menu').querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.shape === id));
+  $('length-caption').textContent = id === 'plate' ? 'Plate length' : 'Member length';
+  $('schematic-note').textContent = id === 'plate' ? 'Dimensions t, W and L are in millimetres. The piece count multiplies the total mass.' : definition.family && definition.kind !== 'angle' ? 'h is height, b is flange width, s is web thickness and t is flange thickness. L is in metres.' : definition.kind === 'tube' ? 'D is the outside diameter and t is the wall thickness, in millimetres. L is in metres.' : 'Cross-section dimensions are in millimetres. L is the member length in metres.';
+  renderInputs(states.get(id) || engine.defaults(id)); calculate();
+}
+$('calculator-form').addEventListener('submit', event => { event.preventDefault(); calculate(); });
+$('calculator-picker').addEventListener('change', () => selectCalculator($('calculator-picker').value));
+$('weld-enabled').addEventListener('change', () => {
+  const value = readInputs();
+  if (value.weld.enabled && value.weld.L1 == null) { let half = ''; try { half = engine.convertLength(engine.splitLength(value.L), current === 'plate' ? 'mm' : 'm', 'mm'); } catch (_) {} value.weld = { ...value.weld, L1: half, L2: half, lengthUnit: 'mm', connection: 'straight', type: 'fillet', lengthMode: 'section-outline', gapMm: '0', capHeightMm: '0', faces: '1' }; }
+  states.set(current, value); renderWeld(value); calculate();
+});
+selectCalculator('rhs');
+</script></body></html>

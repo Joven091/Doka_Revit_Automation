@@ -53,6 +53,7 @@ namespace EngineeringDashboard
         private readonly List<Action> syncControls=new List<Action>();
         private readonly Stack<State> undo=new Stack<State>(),redo=new Stack<State>();
         private readonly Action save,load,export,refreshInputs,checkForUpdates;
+        private readonly Func<RevitSelectionSnapshot> readRevitSelection;
         internal Func<bool> ConfirmNewSession {get;set;}
         private bool changing,refreshQueued,closed;
         private bool sectionMode;
@@ -84,8 +85,9 @@ namespace EngineeringDashboard
             internal int SelectedIndex;
         }
         private const string StateProperties="Depth,Width,PlanOriginYmm,BeamLengthMm,TowerLegCapacityKn,PrimaryMaterial,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,Exclude600Standalone,DeflectionLimit,PlywoodDeflectionLimit,SelectedPlywood,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
-        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null,Action checkForUpdates=null)
+        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null,Action checkForUpdates=null,Func<RevitSelectionSnapshot> readRevitSelection=null)
         {
+            this.readRevitSelection=readRevitSelection;
             this.checkForUpdates=checkForUpdates;
             Model=model;save=saveInputs;load=loadInputs;export=exportReport;refreshInputs=refreshCalculatorInputs;
             ConfirmNewSession=()=>MessageBox.Show(DialogOwner,"Start a new beam formwork session? Current inputs, results and undo history will be cleared. Saved files are unchanged.","New session",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes;
@@ -113,14 +115,15 @@ namespace EngineeringDashboard
             Drawing.CanInteract=()=>!Model.IsOptimizing && CommitFields();
             Drawing.SelectionChanged+=()=> {InspectorTabs.SelectedIndex=0;BuildProperties();Refresh();
                 if(Drawing.SelectedKind==FormworkObject.Slab && Drawing.SelectedObjects.Length==1)SeparateSlabNotice.ShowBay(Drawing.SelectedIndex);};
+            Drawing.ActiveRevitPartChanged+=()=> {ClearDiagrams();refreshInputs?.Invoke();BuildProperties();Refresh();};
             Drawing.DimensionSelected+=OpenDimensionEditor;
-            Drawing.BeamOptionsRequested+=async beam=>await NetworkBeamOptionsMenu.OpenAsync(Model,beam,Drawing,()=> {ClearDiagrams();Drawing.RefitIfNeeded();Refresh();});
+            Drawing.BeamOptionsRequested+=async beam=>await NetworkBeamOptionsMenu.OpenAsync(Model,beam,Drawing,()=> {Model.ValidateCombinedRevitResult();ClearDiagrams();Drawing.RefitIfNeeded();Refresh();});
             Drawing.GeometryContextRequested+=OpenGeometryMenu;
             Drawing.DraftPointRequested+=AcceptDraftPoint;Drawing.DraftPointerChanged+=PreviewDraftPoint;
             Drawing.SectionPositionChanged+=position=>SetSectionPosition(position);
             Drawing.MemberSelected+=ShowMember;Section.MemberSelected+=ShowMember;Section.SeparateSlabSelected+=bay=>SeparateSlabNotice.ShowBay(bay);
-            Drawing.CrossingRequested+=(bay,x)=> {if(!CommitFields())return;Mutate(()=> {Model.AddCrossingBeam();var c=Model.CrossingBeams.Last();c.BayNumber=bay+1;c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,x));Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});Drawing.Cursor=Cursors.Arrow;};
-            Drawing.MoveRequested+=(kind,index,delta)=> {if(!CommitFields())return;Mutate(()=> {if(kind==FormworkObject.Crossing) {var c=Model.CrossingBeams[index];c.PositionMm=Math.Max(c.WidthMm/2,Math.Min(Model.BeamLengthMm-c.WidthMm/2,c.PositionMm+delta));}else if(!Model.TryMoveParallelBeam(index,delta))status.Text="Move needs at least 500 mm of clear slab bay on each side.";});};
+            Drawing.CrossingRequested+=(bay,x)=> {if(!CommitFields())return;Mutate(()=> {Model.AddCrossingBeam();var c=Model.CrossingBeams.Last();c.BayNumber=bay+1;c.PositionMm=Model.ClampCrossingPosition(c.BayNumber,x,c.WidthMm);Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});Drawing.Cursor=Cursors.Arrow;};
+            Drawing.MoveRequested+=(kind,index,delta)=> {if(!CommitFields())return;Mutate(()=> {if(kind==FormworkObject.Crossing) {var c=Model.CrossingBeams[index];c.PositionMm=Model.ClampCrossingPosition(c.BayNumber,c.PositionMm+delta,c.WidthMm);}else if(!Model.TryMoveParallelBeam(index,delta))status.Text="Move needs at least 500 mm of clear slab bay on each side.";});};
             Model.PropertyChanged+=ModelChanged;
             InitializeDrawingEditors(root);root.Loaded+=(s,e)=>Drawing.Fit();Closed+=(s,e)=> {closed=true;Diagnostics?.Close();Model.PropertyChanged-=ModelChanged;Model.SetAdditionalTextInputErrors(this,false);ClearDiagrams();};
             root.PreviewKeyDown+=(s,e)=>
@@ -240,7 +243,7 @@ namespace EngineeringDashboard
                 Mutate(()=> {int index=InsertBay(before);var beam=Model.NetworkBeams[index];beam.WidthMm=copiedBeam.WidthMm;beam.DepthMm=copiedBeam.DepthMm;beam.BottomElevationMm=copiedBeam.BottomElevationMm;});return true;
             }
             if(copiedCrossing==null || !Model.IsNetworkMode || Model.CrossingBeams.Count>=30 || bay==null)return false;
-            Mutate(()=> {Model.AddCrossingBeam();var beam=Model.CrossingBeams.Last();beam.BayNumber=bay.Item1+1;beam.WidthMm=copiedCrossing.WidthMm;beam.DepthMm=copiedCrossing.DepthMm;beam.BottomElevationMm=copiedCrossing.BottomElevationMm;beam.SupportMode=copiedCrossing.SupportMode;beam.PositionMm=Math.Max(beam.WidthMm/2,Math.Min(Model.BeamLengthMm-beam.WidthMm/2,bay.Item2));Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});return true;
+            Mutate(()=> {Model.AddCrossingBeam();var beam=Model.CrossingBeams.Last();beam.BayNumber=bay.Item1+1;beam.WidthMm=copiedCrossing.WidthMm;beam.DepthMm=copiedCrossing.DepthMm;beam.BottomElevationMm=copiedCrossing.BottomElevationMm;beam.SupportMode=copiedCrossing.SupportMode;beam.PositionMm=Model.ClampCrossingPosition(beam.BayNumber,bay.Item2,beam.WidthMm);Drawing.Select(FormworkObject.Crossing,Model.CrossingBeams.Count-1,false);});return true;
         }
         private void OpenGeometryMenu(Point point)
         {
@@ -293,7 +296,7 @@ namespace EngineeringDashboard
                 draftVertical=false;
                 var b=Model.IsNetworkMode ? Model.NetworkBeams[draftIndex] : Model.StandaloneDefinition();
                 draftBeam=new TransferBeamRow {WidthMm=b.WidthMm,DepthMm=b.DepthMm,BottomElevationMm=b.BottomElevationMm};
-                draftSource=new Rect(0,ys[draftIndex]-b.WidthMm/2,Model.BeamLengthMm,b.WidthMm);
+                draftSource=new Rect(Model.BeamSpanStart(draftIndex),ys[draftIndex]-b.WidthMm/2,Model.BeamSpanLength(draftIndex),b.WidthMm);
             }
             else
             {
@@ -347,7 +350,7 @@ namespace EngineeringDashboard
             if(draftKind==FormworkObject.Independent)
             {var beam=draftIndependent.Copy();beam.StartXmm+=point.X-draftBase.Value.X;beam.StartYmm+=point.Y-draftBase.Value.Y;Drawing.DraftPreview=IndependentRect(beam);return;}
             var destination=DraftDestination(point);
-            if(draftKind==FormworkObject.Beam)Drawing.DraftPreview=new Rect(0,destination.Item3-draftSource.Height/2,Model.BeamLengthMm,draftSource.Height);
+            if(draftKind==FormworkObject.Beam)Drawing.DraftPreview=new Rect(draftSource.X,destination.Item3-draftSource.Height/2,draftSource.Width,draftSource.Height);
             else if(destination.Item1>=0)
             {
                 var ys=Drawing.Centres();int bay=destination.Item1;double top=ys[bay]+Model.NetworkBeams[bay].WidthMm/2,bottom=ys[bay+1]-Model.NetworkBeams[bay+1].WidthMm/2;
@@ -382,7 +385,7 @@ namespace EngineeringDashboard
                     else {applied=Model.TryInsertParallelBeam(draftBeam,destination.Item3,out int index);if(applied)Drawing.Select(FormworkObject.Beam,index,false);}
                 },false);
             }
-            else if(destination.Item1>=0 && destination.Item2>=draftCrossing.WidthMm/2 && destination.Item2<=Model.BeamLengthMm-draftCrossing.WidthMm/2 && (draftCommand=="MV" || Model.CrossingBeams.Count<30)
+            else if(destination.Item1>=0 && Model.CrossingFitsSpan(destination.Item1+1,destination.Item2,draftCrossing.WidthMm) && (draftCommand=="MV" || Model.CrossingBeams.Count<30)
                 && !Model.CrossingBeams.Where((c,i)=>draftCommand!="MV" || i!=draftIndex).Any(c=>c.BayNumber==destination.Item1+1 && Math.Abs(c.PositionMm-destination.Item2)<(c.WidthMm+draftCrossing.WidthMm)/2))
             {
                 Mutate(()=> {
@@ -490,7 +493,15 @@ namespace EngineeringDashboard
         private bool ValidateEditor(NumberEditor editor)
         {
             bool valid=double.TryParse(editor.Box.Text,NumberStyles.Float,CultureInfo.CurrentCulture,out var v) && TowerBeamAnalysis.Finite(v) && v>=editor.Minimum;
-            editor.Box.BorderBrush=valid ? Brushes.SlateGray : Brushes.Firebrick;editor.Error.Text=$"Enter a number of at least {editor.Minimum:0.###}.";editor.Error.Visibility=valid ? Visibility.Collapsed : Visibility.Visible;return valid;
+            // Display formatting must not shorten an unchanged imported span.
+            // Only a real edit replaces its full-precision geometric value.
+            if(valid && !editor.Dirty){v=editor.Get();valid=TowerBeamAnalysis.Finite(v) && v>=editor.Minimum;}
+            string reason=null;
+            if(valid && Drawing.SelectedKind==FormworkObject.Beam && (editor.Box.Name=="EditSpanStartMm" || editor.Box.Name=="EditBeamLengthMm"))
+                try {Model.ValidateBeamSpan(Drawing.SelectedIndex,editor.Box.Name=="EditSpanStartMm" ? v : Model.BeamSpanStart(Drawing.SelectedIndex),editor.Box.Name=="EditBeamLengthMm" ? v : Model.BeamSpanLength(Drawing.SelectedIndex));}
+                catch(ArgumentException ex){valid=false;reason=ex.Message;}
+            if(valid && editor.Box.Name=="EditAllBeamLengthMm" && (v<300 || v>30000 || Model.CrossingBeams.Any(c=>c.PositionMm+c.WidthMm/2>v))){valid=false;reason="Keep all beam lengths positive and connected crossings within their endpoints.";}
+            editor.Box.BorderBrush=valid ? Brushes.SlateGray : Brushes.Firebrick;editor.Error.Text=reason??$"Enter a number of at least {editor.Minimum:0.###}.";editor.Error.Visibility=valid ? Visibility.Collapsed : Visibility.Visible;return valid;
         }
         private bool ValidateStock(StringEditor editor)
         {
@@ -502,7 +513,7 @@ namespace EngineeringDashboard
             if(changing)return true;if(editors.Any(e=>e.Box.IsEnabled && !ValidateEditor(e)) || stringEditors.Any(e=>!ValidateStock(e))) {status.Text="Correct the red input before continuing.";return false;}
             var dirty=editors.Where(e=>e.Dirty && e.Box.IsEnabled).ToArray();var strings=stringEditors.Where(e=>e.Dirty).ToArray();if(dirty.Length==0 && strings.Length==0)return true;
             CancelDrafting();var old=Capture();changing=true;
-            try {Model.SetAdditionalTextInputErrors(this,false);foreach(var e in dirty){double v=double.Parse(e.Box.Text,CultureInfo.CurrentCulture);if(Math.Abs(v-e.Get())>1e-9)e.Set(v);e.Dirty=false;}foreach(var e in strings){e.Set(e.Box.Text);e.Dirty=false;}}
+            try {Model.SetAdditionalTextInputErrors(this,false);foreach(var e in dirty){double v=double.Parse(e.Box.Text,CultureInfo.CurrentCulture);if(Math.Abs(v-e.Get())>1e-9 || e.Box.Name=="EditAllBeamLengthMm")e.Set(v);e.Dirty=false;}foreach(var e in strings){e.Set(e.Box.Text);e.Dirty=false;}}
             finally {changing=false;}
             undo.Push(old);redo.Clear();Refresh();return true;
         }
@@ -530,17 +541,28 @@ namespace EngineeringDashboard
                     else {Number("WidthMm","Width (mm)",()=>Model.Width,v=>Model.Width=v);Number("DepthMm","Depth (mm)",()=>Model.Depth,v=>Model.Depth=v);}
                 }
                 else if(Drawing.SelectedKind==FormworkObject.Slab)
-                {var s=Model.NetworkBays[index];Text("S"+(index+1)+" · slab",true);Number("WidthMm","Clear span (mm)",()=>s.WidthMm,v=>s.WidthMm=v);Number("ThicknessMm","Thickness (mm)",()=>s.ThicknessMm,v=>s.ThicknessMm=v);}
+                {var s=Model.NetworkBays[index];Text("S"+(index+1)+" · slab",true);Number("WidthMm","Clear span (mm)",()=>s.WidthMm,v=>{s.Outline=null;s.WidthMm=v;});Number("ThicknessMm","Thickness (mm)",()=>s.ThicknessMm,v=>s.ThicknessMm=v);}
                 else
                 {var c=Model.CrossingBeams[index];Text("X"+(index+1)+" · crossing beam",true);Number("PositionMm","Position along beam (mm)",()=>c.PositionMm,v=>c.PositionMm=v,0);Number("WidthMm","Width (mm)",()=>c.WidthMm,v=>c.WidthMm=v);Number("DepthMm","Total depth (mm)",()=>c.DepthMm,c.SetDepthKeepingTopMm);Number("BottomElevationMm","Bottom / soffit elevation (mm)",()=>c.BottomElevationMm,v=>c.BottomElevationMm=v,-1000000);ConcreteTop(()=>c.BottomElevationMm,()=>c.DepthMm);Text("Cross-beam supports");var mode=new ComboBox {ItemsSource=c.SupportModes,DisplayMemberPath="Label",SelectedValuePath="Value",SelectedValue=c.SupportMode,Margin=new Thickness(0,0,0,12)};mode.SelectionChanged+=(sender,args)=> {if(changing || !(mode.SelectedValue is CrossBeamSupportMode value))return;if(CommitFields())Mutate(()=>c.SupportMode=value);else Refresh();};syncControls.Add(()=>mode.SelectedValue=c.SupportMode);properties.Children.Add(mode);Text("Slab bay");var bay=new ComboBox {ItemsSource=Model.NetworkBays.Select(s=>s.Label).ToArray(),SelectedIndex=c.BayNumber-1,Margin=new Thickness(0,0,0,12)};bay.SelectionChanged+=(s,e)=> {if(changing || bay.SelectedIndex<0)return;int choice=bay.SelectedIndex;if(CommitFields())Mutate(()=>c.BayNumber=choice+1);else Refresh();};syncControls.Add(()=>bay.SelectedIndex=c.BayNumber-1);properties.Children.Add(bay);}
                 if(Drawing.SelectedObjects.Length>1)Text(Drawing.SelectedObjects.Length+" objects selected. Shift-click toggles selection; Delete removes the selected areas.");
+                if(Drawing.SelectedObjects.Length==1 && Model.RevitContext!=null)
+                {
+                    object sourceRow=Drawing.SelectedKind==FormworkObject.Beam && !Model.IsNetworkMode ? Model.NetworkBeams.FirstOrDefault() : SelectedObject();
+                    string source=(sourceRow as TransferBeamRow)?.RevitSource??(sourceRow as TransferBayRow)?.RevitSource??(sourceRow as TransferCrossingBeamRow)?.RevitSource;
+                    if(!string.IsNullOrEmpty(source))Text("Revit: "+source+" · "+Model.RevitContext.DocumentTitle);
+                }
                 if(!Drawing.Formwork && !sectionMode)Text("Geometry commands: MV move · CO copy · CS create similar. Pick a beam, then type the two-letter command.");
                 if(Drawing.SelectedObjects.Length==1)CalculatedNumber(nameof(TransferBeamRow.MaximumSecondarySpacingMm),"Plywood spacing limit (mm)",SelectedObject());
-                if(Drawing.SelectedKind!=FormworkObject.Independent)Number("BeamLengthMm","Parallel beam length (mm)",()=>Model.BeamLengthMm,v=>Model.BeamLengthMm=v);
+                if(Drawing.SelectedKind==FormworkObject.Beam)
+                {
+                    Number("SpanStartMm","Start position (mm)",()=>Model.BeamSpanStart(index),v=>Model.SetBeamSpan(index,v,Model.BeamSpanLength(index)),0);
+                    Number("BeamLengthMm","Beam length (mm)",()=>Model.BeamSpanLength(index),v=>Model.SetBeamSpan(index,Model.BeamSpanStart(index),v));
+                }
                 CalculatedNumber("UpperSupportSpacingMm","Plywood spacing limit across beams (mm)");
                 Fields["UpperSupportSpacingMm"].Visibility=Visibility.Collapsed;
                 properties.Children.RemoveAt(properties.Children.Count-2);
                 int selectionControls=properties.Children.Count;var objectFields=new HashSet<string>(Fields.Keys);
+                Number("AllBeamLengthMm","Set all beam lengths (mm)",()=>Model.BeamLengthMm,Model.SetAllBeamLengths);
                 BuildSharedSettings();
                 foreach(var key in Fields.Keys.Where(k=>!objectFields.Contains(k)))sharedFields.Add(key);
                 while(properties.Children.Count>selectionControls){var child=properties.Children[selectionControls];properties.Children.RemoveAt(selectionControls);SharedProperties.Children.Add(child);}
@@ -559,11 +581,13 @@ namespace EngineeringDashboard
         private void ClearDiagrams(){Diagrams?.Close();Diagrams=null;diagramBeam=-1;Drawing.SelectMember(-1,-1,0);Section.SelectMember(-1,-1,0);}
         private void Refresh()
         {
+            RefreshCombinedRevitControls();
             properties.IsEnabled=SharedProperties.IsEnabled=!Model.IsOptimizing;
             Drawing.InvalidateVisual();changing=true;try {foreach(var e in editors)if(!e.Dirty && !e.Box.IsKeyboardFocused)e.Box.Text=e.Get().ToString("0.###",CultureInfo.CurrentCulture);foreach(var e in stringEditors)if(!e.Dirty && !e.Box.IsKeyboardFocused)e.Box.Text=e.Get();foreach(var sync in syncControls)sync();}finally {changing=false;}
             bool pending=editors.Any(e=>e.Dirty && e.Box.IsEnabled) || stringEditors.Any(e=>e.Dirty),valid=editors.Where(e=>e.Box.IsEnabled).All(ValidateEditor) && stringEditors.All(ValidateStock);
             Model.SetAdditionalTextInputErrors(this,pending);
             Buttons["NewSession"].IsEnabled=!Model.IsOptimizing;
+            if(Buttons.ContainsKey("FromRevit"))Buttons["FromRevit"].IsEnabled=!Model.IsOptimizing;
             Buttons["Calculate"].IsEnabled=valid && !Model.IsOptimizing;
             Buttons["Cancel"].IsEnabled=Model.CanCancelOptimization;
             Buttons["Formwork"].IsEnabled=Model.IsCalculationValid && !pending;
@@ -589,7 +613,7 @@ namespace EngineeringDashboard
             else Section.SetResult(Model.NetworkResult);
             RefreshSectionControls();
             Drawing.RefitIfNeeded();
-            status.Text=pending ? (valid ? "Finish editing, then calculate." : "Correct the red input before continuing.") : Model.IsOptimizing ? Model.SearchProgressText : Model.IsCalculationValid ? "Results ready · click a member to open diagrams." : Model.HasTowerFailure ? "No solution found · open calculation failure details." : "Needs recalculation · "+Model.WarningMessage;
+            status.Text=pending ? (valid ? "Finish editing, then calculate." : "Correct the red input before continuing.") : Model.IsOptimizing ? Model.SearchProgressText : Model.IsCalculationValid ? (Model.HasCombinedRevitDrawing ? Model.CombinedRevitSummary+" · click any member for diagrams." : "Results ready · click a member to open diagrams.") : Model.HasTowerFailure ? "No solution found · open calculation failure details." : "Needs recalculation · "+Model.WarningMessage;
             removalInfo.Text=RemovalPreview;removalInfo.Visibility=!sectionMode && !Drawing.Formwork && Drawing.SelectedObjects.Length>0 ? Visibility.Visible : Visibility.Collapsed;
             RefreshResults(pending);
             failureExpander.Visibility=Model.HasTowerFailure ? Visibility.Visible : Visibility.Collapsed;

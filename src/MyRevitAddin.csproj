@@ -2,6 +2,10 @@
 
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <Prefer32Bit>false</Prefer32Bit>
     <LangVersion>latest</LangVersion>
     <AssemblyName>MyRevitAddin</AssemblyName>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -24,9 +28,16 @@
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="OxyPlot.Wpf" Version="2.1.2" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" GeneratePathProperty="true" />
+    <PackageReference Include="Google.OrTools" Version="9.12.4544" />
+    <PackageReference Include="IxMilia.Dxf" Version="0.8.4" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
+    <!-- Keep transitive span extension methods out of the existing calculators' global compile namespace. -->
+    <PackageReference Include="System.Memory" Version="4.5.3" Aliases="Top50Memory" />
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="SteelShape/SteelShape.html" LogicalName="EngineeringDashboard.SteelShape.html" />
     <None Update="access-settings.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="update-settings.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../tools/RevitUpdater/Doka.RevitUpdater.csproj" ReferenceOutputAssembly="false" />
@@ -39,7 +50,13 @@
     <Reference Include="System.Xaml" />
   </ItemGroup>
 
+  <Target Name="ValidateTop50NativePayload" AfterTargets="Build">
+    <Error Condition="!Exists('$(TargetDir)google-ortools-native.dll') Or !Exists('$(TargetDir)ortools.dll')" Text="Top50 requires the win-x64 native OR-Tools payload beside MyRevitAddin.dll." />
+  </Target>
   <Target Name="CopyRevitUpdater" AfterTargets="Build">
     <Copy SourceFiles="../tools/RevitUpdater/bin/$(Configuration)/net48/Doka.RevitUpdater.exe" DestinationFolder="$(TargetDir)" />
+  </Target>
+  <Target Name="CopySteelShapeBrowserLoader" AfterTargets="Build">
+    <Copy SourceFiles="$(PkgMicrosoft_Web_WebView2)/runtimes/win-x64/native/WebView2Loader.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

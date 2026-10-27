@@ -1,0 +1,56 @@
+name: Steel Shape page and Revit host
+on:
+  pull_request:
+    paths: ['tools/SteelShape/**', 'src/**', 'tests/SteelShape*/**', 'Directory.Build.props', '.github/workflows/steel-shape.yml', 'scripts/Ensure-SteelShapeTestBrowser.ps1']
+  push:
+    branches: [main]
+    paths: ['tools/SteelShape/**', 'src/**', 'tests/SteelShape*/**', 'Directory.Build.props', '.github/workflows/steel-shape.yml', 'scripts/Ensure-SteelShapeTestBrowser.ps1']
+  workflow_dispatch:
+concurrency:
+  group: steel-shape-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  steel-shape:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: npm ci --prefix tools/SteelShape --ignore-scripts --no-audit --no-fund
+      - name: Prepare browser test hosts
+        run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
+      - name: Verify embedded page matches source
+        shell: pwsh
+        run: |
+          python tools/SteelShape/build.py artifacts/steel-shape-generated.html
+          if($LASTEXITCODE -ne 0){throw 'Page generation failed'}
+          if((Get-FileHash artifacts/steel-shape-generated.html).Hash -ne (Get-FileHash src/SteelShape/SteelShape.html).Hash){throw 'Embedded page differs from source'}
+      - run: node tools/SteelShape/test-engine.cjs
+      - run: node tools/SteelShape/test-weld.cjs
+      - run: node tools/SteelShape/test-selection.cjs
+      - run: node tools/SteelShape/test-ui.cjs src/SteelShape/SteelShape.html
+      - run: node tools/SteelShape/test-browser.cjs src/SteelShape/SteelShape.html
+      - name: Compile WPF/WebView2 host checks
+        run: dotnet build tests/SteelShape.HostSmoke -c Release --warnaserror
+      - name: Exercise actual embedded host and browser fallback
+        run: tests/SteelShape.HostSmoke/bin/Release/net48/SteelShape.HostSmoke.exe artifacts/steel-shape-host
+      - name: Package standalone source and test evidence
+        run: python tools/SteelShape/package.py src/SteelShape/SteelShape.html --output-dir artifacts/steel-shape-source
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: steel-shape-test-evidence
+          path: |
+            artifacts/steel-shape-host/
+            artifacts/steel-shape-source/
+            tools/SteelShape/*test-results.json
+            tools/SteelShape/previews/browser-*.png
+          if-no-files-found: warn

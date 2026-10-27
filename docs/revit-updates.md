@@ -19,7 +19,7 @@ The permanent source is:
 
 `\\DOKAAREDUBA\ApplDat\MEA\ENG\Joven\BeamCalculator\Updates`
 
-This is the same location as `S:\MEA\ENG\Joven\BeamCalculator\Updates`. The UNC path works without the S: mapping. Ask IT to give the team **read** access and release owners **write** access. Folder permissions control who can publish executable updates; the checksum detects incomplete or changed copies.
+This is the same location as `S:\MEA\ENG\Joven\BeamCalculator\Updates`. The UNC path works without the S: mapping. Ask IT to give the team **read** access and release owners **Modify** access, including replacement/rename/delete rights on existing feed files. Creating files alone is insufficient to replace the update index. Folder permissions control who can publish executable updates; the checksum detects incomplete or changed copies.
 
 Build a reviewed installer with a version higher than the team's current version. On a Windows release machine:
 
@@ -48,6 +48,8 @@ Cloud CI exercises the real installers on a disposable Windows profile, includin
 - Local staging and logs: `%LOCALAPPDATA%\DokaRevitAutomation\Updates\<version>-<id>`. `updater.log` records waiting/installing; `install.log` contains installer details. Old completed/cancelled staging folders can be removed once no updater is using them.
 - No company network/VPN: checking reports that the folder is unavailable. The installed tool continues to work. Once preparation completes, installation no longer depends on the share.
 - Wrong checksum, incompatible Revit version, or invalid metadata: the release is rejected before installation.
+- Publication fails at `Replace` with access denied: the verified installer may already be present, but the publisher could not replace the existing `latest.json`. The corrected publisher retries an atomic same-directory rename while preserving the manifest's access rules. It never deletes the live index or overwrites it in place. If this also fails, check the file's Read-only attribute and have the folder owner/IT grant Modify (including rename/delete) rights on the existing file and folder, or release a conflicting file lock. These are company-share permissions; running the script as a local administrator does not grant them.
+- To apply a publisher-only correction, replace `Publish-RevitUpdate.ps1` in the extracted release folder and rerun its existing `Publish-to-company.cmd`. Retain the original installer EXE so its version and checksum still match the versioned file already copied to the share. An identical verified installer can be retried.
 - Multiple Revit windows: the updater waits for all Revit processes in the user's session and checks add-in DLL file locks. Another update cannot run concurrently for this installation. Reopening Revit before installation starts causes a retry or a clear failure; it is never forcibly closed.
 - Other install locations (machine-wide or custom): automatic installation is refused; IT must update those installations.
 - An interrupted or failed installer is not reported as successful. Read the logs and rerun a reviewed installer with Revit closed. This first implementation does not provide an automatic rollback.

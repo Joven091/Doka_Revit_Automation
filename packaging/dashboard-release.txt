@@ -1,0 +1,9 @@
+Doka Revit Automation - Steel Shape
+
+This release adds Steel Shape to the existing Revit 2024 dashboard. It includes sixteen steel section weight tools, dimension schematics and an optional interactive fillet/butt weld weight allowance. Calculations run locally. If the embedded Microsoft Edge WebView2 runtime is unavailable, Open in browser uses the same offline page.
+
+The existing beam calculations, Revit drawing import, update controls and Top50 planner with diagnosis are retained. D3 slab and Dome remain locked Coming soon choices. Steel Shape has no Engineering Dashboard heading inside its page.
+
+Close all Revit windows before installation. Installation is per user and backs up a previous dashboard before replacement. User settings and saved projects are preserved.
+
+Automated checks use a Windows test host; actual Revit2024 acceptance must be checked on the team computer. Exact original Top50 solver parity remains unresolved. Steel Shape is a mass estimate, including theoretical weld allowance; it is not a connection strength design.
