@@ -128,25 +128,26 @@ namespace EngineeringDashboard.Top50
             using var runtimeScope=Top50Runtime.Enter();
             var connectors=ConnectorAllocation.Calculate(selected,connectorSettings??new NativeTop50Project());
             var issues=Top50Validation.Validate(input.Walls,selected,limits);if(issues.Count>0)throw new InvalidDataException("Only independently validated complete results may export: "+string.Join("; ",issues));
+            var labels=new Top50WallLabels(input.Walls);
             var tables=SheetNames.ToDictionary(n=>n,n=>new List<object[]>());
             tables["Summary"].Add(new object[]{"Metric","Value"});
             tables["Summary"].AddRange(new[]{new object[]{"Selected alternative",selected.Id},new object[]{"Panel types",selected.Stock.Count},new object[]{"Offered panels",selected.PanelCount},new object[]{"Offered length m",selected.StockMicrometres/1000000m},new object[]{"Casting groups",selected.Groups.Count},new object[]{"Mean utilization",selected.MeanUtilization},new object[]{"Minimum utilization",selected.MinimumUtilization},new object[]{"Connector units",connectors.Description},new object[]{"Source SHA-256",input.SourceSha256},new object[]{"Status","feasible / best found"}});
-            tables["Wall Schedule"].Add(new object[]{"Wall ID","Included","Length mm","Projected raw mm","Aligned endpoint mm","Stored measurement mm","Layer","Review","Reason"});
-            tables["Wall Schedule"].AddRange(input.Walls.Select(w=>new object[]{w.Id,w.Included,w.LengthMm,w.ProjectedRawMm,w.EndpointDistanceMm,w.StoredMeasurementMm,w.Layer,string.Join("; ",w.Diagnostics),w.ReviewReason}));
+            tables["Wall Schedule"].Add(new object[]{"Wall","Included","Length mm","Projected raw mm","Aligned endpoint mm","Stored measurement mm","Layer","Review","Reason"});
+            tables["Wall Schedule"].AddRange(input.Walls.Select(w=>new object[]{labels[w.Id],w.Included,w.LengthMm,w.ProjectedRawMm,w.EndpointDistanceMm,w.StoredMeasurementMm,w.Layer,string.Join("; ",w.Diagnostics),w.ReviewReason}));
             tables["Panel Inventory"].Add(new object[]{"Nominal length m","Stock quantity","Total m"});tables["Panel Inventory"].AddRange(selected.Stock.OrderBy(s=>s.Key).Select(s=>new object[]{s.Key/1000m,s.Value,s.Key*s.Value/1000m}));
-            tables["Panel Arrangements"].Add(new object[]{"Group","Wall ID","Panel lengths mm","Internal gaps mm","Closure mm"});
-            tables["Casting Schedule"].Add(new object[]{"Group","Walls","Installed m","Use fraction","Direct locations","Filler locations","Wall IDs"});
-            tables["Material Utilization"].Add(new object[]{"Group","Nominal mm","Used","Idle"});
-            tables["Connector Schedule"].Add(new object[]{"Group","Direct locations","Filler locations","Direct units","Filler units","Standard peak stock 587533000","Adjustable peak stock 587532000","Review status"});
+            tables["Panel Arrangements"].Add(new object[]{"Casting Group","Wall","Panel lengths mm","Internal gaps mm","Closure mm"});
+            tables["Casting Schedule"].Add(new object[]{"Casting Group","Walls","Installed m","Use fraction","Direct locations","Filler locations","Wall names"});
+            tables["Material Utilization"].Add(new object[]{"Casting Group","Nominal mm","Used","Idle"});
+            tables["Connector Schedule"].Add(new object[]{"Casting Group","Direct locations","Filler locations","Direct units","Filler units","Standard peak stock 587533000","Adjustable peak stock 587532000","Review status"});
             for(int i=0;i<selected.Groups.Count;i++)
             {
                 var g=selected.Groups[i];string id="G"+(i+1).ToString("00",CultureInfo.InvariantCulture);
-                tables["Casting Schedule"].Add(new object[]{id,g.Walls.Count,g.InstalledPanelMicrometres/1000000m,(decimal)g.InstalledPanelMicrometres/selected.StockMicrometres,g.Walls.Sum(a=>a.Pattern.DirectLocations),g.Walls.Sum(a=>a.Pattern.FillerLocations),string.Join(", ",g.Walls.Select(a=>a.WallId))});
-                foreach(var a in g.Walls)tables["Panel Arrangements"].Add(new object[]{id,a.WallId,string.Join(" + ",a.Pattern.PanelsMm),string.Join(", ",a.Pattern.InternalGapsMicrometres.Select(x=>(x/1000m).ToString(CultureInfo.InvariantCulture))),a.Pattern.LengthMicrometres/1000m});
+                tables["Casting Schedule"].Add(new object[]{id,g.Walls.Count,g.InstalledPanelMicrometres/1000000m,(decimal)g.InstalledPanelMicrometres/selected.StockMicrometres,g.Walls.Sum(a=>a.Pattern.DirectLocations),g.Walls.Sum(a=>a.Pattern.FillerLocations),string.Join(", ",g.Walls.Select(a=>labels[a.WallId]))});
+                foreach(var a in g.Walls)tables["Panel Arrangements"].Add(new object[]{id,labels[a.WallId],string.Join(" + ",a.Pattern.PanelsMm),string.Join(", ",a.Pattern.InternalGapsMicrometres.Select(x=>(x/1000m).ToString(CultureInfo.InvariantCulture))),a.Pattern.LengthMicrometres/1000m});
                 foreach(var size in selected.Stock){int used=g.Walls.Sum(a=>a.Pattern.PanelsMm.Count(n=>n==size.Key));tables["Material Utilization"].Add(new object[]{id,size.Key,used,size.Value-used});}
                 tables["Connector Schedule"].Add(new object[]{id,g.Walls.Sum(a=>a.Pattern.DirectLocations),g.Walls.Sum(a=>a.Pattern.FillerLocations),connectors.Determined?(object)connectors.DirectUnits[i]:"Not determined",connectors.Determined?(object)connectors.FillerUnits[i]:"Not determined",connectors.Determined?(object)connectors.StandardStock:"Not determined",connectors.Determined?(object)connectors.AdjustableStock:"Not determined",connectors.Description});
             }
-            tables["Solution Comparison"].Add(new object[]{"Scenario","Types","Panels","Stock m","Groups","Mean use","Minimum use","Filler locations"});
+            tables["Solution Comparison"].Add(new object[]{"Scenario","Types","Panels","Stock m","Casting Groups","Mean use","Minimum use","Filler locations"});
             tables["Solution Comparison"].AddRange(alternatives.Select(p=>new object[]{p.Id,p.Stock.Count,p.PanelCount,p.StockMicrometres/1000000m,p.Groups.Count,p.MeanUtilization,p.MinimumUtilization,p.FillerLocations}));
             tables["Engineering Checks"].Add(new object[]{"Check","Evidence"});
             tables["Engineering Checks"].AddRange(new[]{new object[]{"Measurement policy",input.MeasurementPolicy},new object[]{"Allocation validation","Passed"},new object[]{"Retained solver status",selected.RetainedModelStatus},new object[]{"Retained objective",selected.RetainedObjective},new object[]{"Retained bound",selected.RetainedBound},new object[]{"Global optimality","Not established; retained-pattern bounds only"},new object[]{"Engineering review","Planning proposal only. Doka assembly, walings, ties, pressure, height, corners, clearance, collisions and two-face design require engineering verification. Casting groups are mathematical equipment allocations, not site-approved pour sequences."}});

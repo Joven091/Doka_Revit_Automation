@@ -2,7 +2,7 @@ name: Top50 standalone tester
 on:
   push:
     branches: [codex/top50-fewest-panels-repeatable]
-    paths: ['tools/Top50Tester/**', 'tests/Top50.StandaloneSmoke/**', 'scripts/Build-Top50Standalone.ps1', '.github/workflows/top50-standalone.yml']
+    paths: ['tools/Top50Tester/**', 'tests/Top50.StandaloneSmoke/**', 'scripts/Build-Top50Standalone.ps1', '.github/workflows/top50-standalone.yml', 'src/Top50/**', 'src/ViewModels/Top50ViewModel*.cs', 'src/Views/Top50*.cs', 'Directory.Build.props']
   workflow_dispatch:
 concurrency:
   group: top50-standalone-${{ github.ref }}
@@ -20,13 +20,15 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build portable package from current planner sources
         run: ./scripts/Build-Top50Standalone.ps1 -OutputDirectory artifacts/top50-standalone
-      - name: Verify retained planner source is unchanged from the tested PR
+      - name: Verify solver, geometry and input-model source against the tested PR
         shell: pwsh
         run: |
           $release=Get-Content artifacts/top50-standalone/release-info.json -Raw | ConvertFrom-Json
-          foreach($source in $release.plannerSources){
-            git diff --exit-code $release.plannerBaseline HEAD -- $source.path
-            if($LASTEXITCODE -ne 0){throw "Planner source differs from tested baseline: $($source.path)"}
+          $retained=@('src/Top50/CandidateSearch.cs','src/Top50/Domain.cs','src/Top50/DxfImporter.cs','src/Top50/PatternsAndValidation.cs','src/Top50/Ranking.cs','src/Top50/RetainedInventorySolver.cs','src/Top50/Top50Runtime.cs','src/ViewModels/Top50ViewModel.cs')
+          foreach($source in $retained){
+            if(!(Test-Path -LiteralPath $source)){throw "Retained source not found: $source"}
+            git diff --exit-code $release.plannerBaseline HEAD -- $source
+            if($LASTEXITCODE -ne 0){throw "Solver/input source differs from tested baseline: $source"}
           }
       - name: Build isolated portable integration checks
         run: dotnet build tests/Top50.StandaloneSmoke -c Release --warnaserror

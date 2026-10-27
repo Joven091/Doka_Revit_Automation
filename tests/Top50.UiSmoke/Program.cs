@@ -42,7 +42,7 @@ internal static class Program
             for(int page=0;page<5;page++)
             {
                 window.ShowPage(page);root.Width=width/scale;root.Height=height/scale;root.Measure(new Size(width/scale,height/scale));root.Arrange(new Rect(0,0,width/scale,height/scale));root.UpdateLayout();
-                var footer=Find<TextBlock>(root).Single(t=>t.Text==Top50Window.Disclaimer);var footerOrigin=footer.TransformToAncestor(root).Transform(new Point(0,0));Check(footerOrigin.Y>=0&&footerOrigin.Y+footer.ActualHeight<=height/scale+1,"fixed review footer visible "+names[page]+" at "+(scale*100)+"%");
+                Check(!Find<TextBlock>(root).Any(t=>t.Text==Top50Window.Disclaimer),"no persistent review footer "+names[page]+" at "+(scale*100)+"%");
                 foreach(var action in Find<Button>(root).Where(b=>new[]{"Open project","Save project","Optimize","Cancel"}.Contains(b.Content as string))){var origin=action.TransformToAncestor(root).Transform(new Point(0,0));Check(origin.X>=0&&origin.X+action.ActualWidth<=width/scale+1,"header "+action.Content+" remains visible");}
                 var bitmap=new RenderTargetBitmap(width,height,96*scale,96*scale,PixelFormats.Pbgra32);bitmap.Render(root);
                 var corner=new byte[4];bitmap.CopyPixels(new Int32Rect(width-2,height-2,1,1),corner,4,0);Check(corner[3]==255&&corner[2]==242&&corner[1]==243&&corner[0]==246,"opaque original main background "+names[page]+" at "+(scale*100)+"%");

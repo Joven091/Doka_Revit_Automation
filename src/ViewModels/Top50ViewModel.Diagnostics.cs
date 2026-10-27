@@ -124,7 +124,7 @@ namespace EngineeringDashboard
                 text.AppendLine("Stock (size mm x quantity): "+string.Join(", ",proposal.Stock.OrderBy(p=>p.Key).Select(p=>p.Key+" x "+p.Value)));
                 for(int index=0;index<proposal.Groups.Count;index++)
                 {
-                    text.AppendLine("Group "+(index+1)+"; installed panel length mm: "+Value(proposal.Groups[index].InstalledPanelMicrometres/1000m));
+                    text.AppendLine("Casting Group "+(index+1)+"; installed panel length mm: "+Value(proposal.Groups[index].InstalledPanelMicrometres/1000m));
                     foreach(var wall in proposal.Groups[index].Walls)text.AppendLine("  "+wall.WallId+" | panels mm: "+string.Join(", ",wall.Pattern.PanelsMm)+" | internal gaps mm: "+string.Join(", ",wall.Pattern.InternalGapsMicrometres.Select(g=>Value(g/1000m)))+" | total mm: "+Value(wall.Pattern.LengthMicrometres/1000m));
                 }
                 try
@@ -143,9 +143,10 @@ namespace EngineeringDashboard
         private static void AppendWalls(StringBuilder text,IReadOnlyList<WallRow> walls)
         {
             text.AppendLine("Walls: "+walls.Count+"; included: "+walls.Count(w=>w.Included)+"; needing review: "+walls.Count(w=>w.Status==WallReviewStatus.NeedsReview)+"; included length mm: "+Value(walls.Where(w=>w.Included).Sum(w=>w.LengthMm)));
+            var labels=new Top50WallLabels(walls);
             foreach(var wall in walls)
             {
-                text.AppendLine("Wall "+wall.Id+" | handle: "+Value(wall.Handle)+" | layer: "+Value(wall.Layer)+" | length mm: "+Value(wall.LengthMm)+" | included: "+wall.Included+" | status: "+wall.Status+" | acknowledged: "+wall.Acknowledged);
+                text.AppendLine("Wall "+labels[wall.Id]+" | source ID: "+wall.Id+" | handle: "+Value(wall.Handle)+" | layer: "+Value(wall.Layer)+" | length mm: "+Value(wall.LengthMm)+" | included: "+wall.Included+" | status: "+wall.Status+" | acknowledged: "+wall.Acknowledged);
                 text.AppendLine("  dimension type: "+wall.DimensionType+"; source units: "+wall.SourceUnits+"; mm per unit: "+Value(wall.MmPerUnit)+"; projected raw mm: "+Value(wall.ProjectedRawMm)+"; endpoint distance mm: "+Value(wall.EndpointDistanceMm)+"; stored measurement mm: "+Value(wall.StoredMeasurementMm)+"; label scale: "+Value(wall.LabelScale)+"; text: "+Value(wall.Text));
                 text.AppendLine("  Review reason: "+Value(wall.ReviewReason));foreach(var note in wall.Diagnostics)text.AppendLine("  Diagnostic: "+Value(note));
                 text.AppendLine("  Raw DXF codes: "+string.Join(" | ",wall.RawCodes.Select(c=>c.Code+"="+Value(c.Value))));

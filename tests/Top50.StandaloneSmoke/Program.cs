@@ -54,11 +54,18 @@ internal static class Program
             string project=Path.Combine(output,"roundtrip.top50");model.Save(project);
             var loaded=new Top50ViewModel();loaded.Open(project,Path.Combine(output,"cache"));
             Check(Signature(loaded)==signature&&loaded.Settings.Version==2&&!loaded.Dirty,"version-2 project roundtrip preserves proposals and selected stock");
+            var labels=new Top50WallLabels(loaded.Input.Walls);var reorderedLabels=new Top50WallLabels(Enumerable.Reverse(loaded.Input.Walls));
+            Check(labels[loaded.Input.Walls[0].Id]=="W-01 (Length = 5.00 m)"&&labels[loaded.Input.Walls[1].Id]=="W-02 (Length = 5.00 m)","equal-length walls have separate readable names");
+            Check(loaded.Input.Walls.All(w=>labels[w.Id]==reorderedLabels[w.Id]&&labels[w.Id]==new Top50WallLabels(model.Input.Walls)[w.Id]),"wall names survive row reordering and project reopen");
+            var precise=new Top50ViewModel();precise.AddManual(19204.608m,"Presentation precision check");
+            Check(new Top50WallLabels(precise.Input.Walls)[precise.Input.Walls[0].Id]=="W-01 (Length = 19.20 m)"&&precise.Input.Walls[0].LengthMicrometres==19204608,"metre labels round to two decimals without changing exact geometry");
             string workbook=Path.Combine(output,"selected.xlsx");loaded.Export(workbook);
             using(var document=SpreadsheetDocument.Open(workbook,false))
             {
                 Check(document.WorkbookPart.Workbook.Descendants<DocumentFormat.OpenXml.Spreadsheet.Sheet>().Count()==9,"portable export contains all nine workbook sheets");
                 Check(!new OpenXmlValidator().Validate(document).Any(),"portable workbook passes Open XML schema validation");
+                var text=string.Join("\n",document.WorkbookPart.WorksheetParts.Select(p=>p.Worksheet.InnerText));
+                Check(text.Contains("W-01 (Length = 5.00 m)")&&text.Contains("Casting Group")&&!text.Contains("DXF-A1"),"workbook uses the same wall names and casting-group terminology as the planner");
             }
             var before=loaded.Selected;var cancel=loaded.OptimizeAsync();loaded.Cancel();Wait(cancel);
             Check(!loaded.IsBusy&&ReferenceEquals(before,loaded.Selected),"cancelled search retains the accepted proposal");
@@ -67,6 +74,25 @@ internal static class Program
             {
                 window.ShowPage(page);Render(root,1280,800,Path.Combine(output,"page-"+page+".png"));
                 Check(Find<Button>(root).Any(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose"&&b.IsEnabled),"Diagnose is available on planner page "+page);
+                Check(!Find<TextBlock>(root).Any(t=>t.Text.Contains("LOCAL DESKTOP / V1")||t.Text.Contains("No AutoCAD installation required")||t.Text.Contains("Offline by design")||t.Text.Contains("Native review build:")),"removed sidebar, subtitle and footer notes stay absent on page "+page);
+                if(page==0)
+                {
+                    var imported=Find<DataGrid>(root).Single();
+                    Check(imported.Items.Cast<object>().All(row=>((string)row.GetType().GetProperty("Id").GetValue(row)).StartsWith("W-",StringComparison.Ordinal)),"import rows show readable wall names");
+                }
+                if(page==2)
+                {
+                    var comparison=Find<DataGrid>(root).Single(t=>t.Columns.Any(c=>Equals(c.Header,"Scenario")));
+                    Check(comparison.Columns.Select(c=>c.Header as string).SequenceEqual(new[]{"Scenario","Types","Panels","Stock m","Casting Groups","Status"}),"comparison retains only requested client-facing columns");
+                    Check(!Find<TextBox>(root).Any(t=>t.IsReadOnly&&t.Text.Contains("Retained model objective:"))&&!Find<TextBlock>(root).Any(t=>t.Text.Contains("Average installed-panel")||t.Text.Contains("Peak joint LOCATIONS")),"results omit the utilization notice and solver log box");
+                }
+                if(page==3)
+                {
+                    var table=Find<DataGrid>(root).Single();var diagram=Find<Top50Diagram>(root).Single();
+                    Check(Equals(table.Columns[0].Header,"Casting Group")&&table.Items.Cast<object>().All(row=>((string)row.GetType().GetProperty("Ids").GetValue(row)).Contains("(Length = 5.00 m)")),"casting table uses readable wall names and Casting Group header");
+                    Check(AutomationProperties.GetName(diagram).Contains("W-")&&!AutomationProperties.GetName(diagram).Contains("DXF-"),"casting diagram uses the same readable wall names");
+                    Check(!Find<TextBlock>(root).Any(t=>t.Text.Contains("Equipment allocation groups")||t.Text.Contains("Used / idle by type")),"casting page omits the marked allocation and connector notes");
+                }
             }
             window.Show();Pump();bool opened=false;
             window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>
@@ -74,11 +100,13 @@ internal static class Program
                 var dialog=app.Windows.OfType<Top50DiagnosticWindow>().Single();opened=true;
                 var report=Find<TextBox>(dialog).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50DiagnosticReport");
                 Check(report.IsReadOnly&&report.Text.Contains("Search effort uses repeatable")&&report.Text.Contains("Validation against CURRENT inputs/settings: passed"),"Diagnose opens the shipping quantity-first search report");
+                Check(report.Text.Contains("W-01 (Length = 5.00 m) | source ID: DXF-A1"),"diagnosis maps each readable name back to its original source ID");
                 File.WriteAllText(Path.Combine(output,"diagnosis.txt"),report.Text);
                 Render((FrameworkElement)dialog.Content,1000,650,Path.Combine(output,"diagnosis.png"));dialog.Close();
             }));
             Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(opened&&ReferenceEquals(before,loaded.Selected)&&!loaded.Dirty,"opening and closing diagnosis preserves project state");
+            Check(Signature(loaded)==signature&&loaded.Input.Walls.All(w=>w.Id.StartsWith("DXF-",StringComparison.Ordinal)),"presentation changes preserve source identity, stock and complete casting allocations");
             window.Close();app.Shutdown();
             Check(!AppDomain.CurrentDomain.GetAssemblies().Any(a=>a.GetName().Name.StartsWith("Revit",StringComparison.OrdinalIgnoreCase)),"complete portable import/solve/export/UI flow loads no Revit assembly");
             File.WriteAllText(Path.Combine(output,"checks.txt"),checks+" standalone package checks passed.");
