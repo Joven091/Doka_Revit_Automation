@@ -1,0 +1,38 @@
+name: One-time Slab and Beam standalone testers
+on:
+  push:
+    branches: [codex/top50-fewest-panels-repeatable]
+  workflow_dispatch:
+concurrency:
+  group: calculator-oneoff-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  testers:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[calculator-testers]')
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build and launch the one-time standalone packages
+        run: ./scripts/Build-CalculatorStandalones.ps1 -OutputDirectory artifacts/calculator-standalones
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: slab-calculator-standalone-tester
+          path: artifacts/calculator-standalones/Slab/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: beam-calculator-standalone-tester
+          path: artifacts/calculator-standalones/Beam/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: calculator-standalone-failure-evidence
+          path: artifacts/calculator-standalones/
+          if-no-files-found: warn

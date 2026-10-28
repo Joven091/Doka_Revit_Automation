@@ -1,9 +1,11 @@
-Doka Revit Automation - Steel Shape
+Doka Revit Automation 1.1.25 — Engineering Dashboard
 
-This release adds Steel Shape to the existing Revit 2024 dashboard. It includes sixteen steel section weight tools, dimension schematics and an optional interactive fillet/butt weld weight allowance. Calculations run locally. If the embedded Microsoft Edge WebView2 runtime is unavailable, Open in browser uses the same offline page.
+Includes Beam Formwork, Steel Shape, Top50 Planner and the approved Dome Beta. D3 slab remains Coming soon. Steel Shape retains sixteen section weight tools, schematics and interactive weld allowance, with an offline browser fallback when WebView2 is unavailable.
 
-The existing beam calculations, Revit drawing import, update controls and Top50 planner with diagnosis are retained. D3 slab and Dome remain locked Coming soon choices. Steel Shape has no Engineering Dashboard heading inside its page.
+Top50 includes Undo, Redo, Delete and shortcuts, repeatable quantity-first search, compact equipment results, a casting-group selector and Diagnose. Panel quantities cover both matching wall faces. Offered length is LM per face. Connector quantities cover one level on both faces, with reuse enabled. The user determines the required connection levels.
 
-Close all Revit windows before installation. Installation is per user and backs up a previous dashboard before replacement. User settings and saved projects are preserved.
+New Top50 project saves use format V4. Older projects remain readable; save a separate test copy when retaining compatibility with an older version. Search is best-found and does not establish a global optimum.
 
-Automated checks use a Windows test host; actual Revit2024 acceptance must be checked on the team computer. Exact original Top50 solver parity remains unresolved. Steel Shape is a mass estimate, including theoretical weld allowance; it is not a connection strength design.
+Requires Autodesk Revit 2024 x64. Save your models and close every Revit window before installation. Installation is per Windows user; the installer registers the add-in and backs up an existing dashboard. Existing settings and saved projects are preserved. Administrator elevation is not required.
+
+Automated checks use isolated Windows test hosts. Actual Revit2024 acceptance must be verified on the team computer. Steel Shape is a mass estimate, not a connection strength design. This installer does not publish to the company update share.

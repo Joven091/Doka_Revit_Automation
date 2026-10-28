@@ -42,7 +42,7 @@ internal static class Program
             Check(buttons.Single(b => b.Name == "BtnSteelShape").IsEnabled, "Steel Shape dashboard card is enabled");
             Check(AutomationProperties.GetName(buttons.Single(b => b.Name == "BtnSteelShape")) == "Steel Shape", "dashboard card has an accessible Steel Shape label");
             Check(buttons.Single(b => b.Name == "BtnTop50").IsEnabled, "Top50 remains available as a planner");
-            Check(!buttons.Single(b => b.Name == "BtnDomeCalculator").IsEnabled, "Dome remains locked Coming soon");
+            Check(buttons.Single(b => b.Name == "BtnDomeCalculator").IsEnabled && AutomationProperties.GetName(buttons.Single(b => b.Name == "BtnDomeCalculator")).Contains("Beta"), "approved Dome Beta remains available");
 
             var window = new SteelShapeWindow { Owner = launcher }; window.Show();
             Wait(window.Initialization);

@@ -1,6 +1,6 @@
 # Top50 standalone review 1.1.25
 
-This review produces a portable tester. Installer compilation and installer-based CI jobs require an explicit workflow dispatch with `build_installer` enabled; normal pushes and pull requests do not create installers. No company feed publication or merge is included.
+This review produces a portable tester. Installer compilation and installer-based CI jobs require an explicit workflow dispatch with `build_installer` enabled, or an explicitly approved main-branch merge carrying `[build-installer]` in its commit message; ordinary pushes and pull requests do not create installers. No company feed publication or merge is included.
 
 The shared planner now has four tabs: Import, Settings, Results and Casting groups. Reports and the Excel export command are unavailable. Detailed source and solver evidence remains in Tools > Diagnose.
 

@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   installer:
-    if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
+    if: (github.event_name == 'workflow_dispatch' && inputs.build_installer == true) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[build-installer]'))
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -57,17 +57,17 @@ jobs:
           New-Item -ItemType Directory -Force $release | Out-Null
           Copy-Item $installer "$release/Install_DokaRevitAutomation.exe"
           Copy-Item scripts/Publish-RevitUpdate.ps1 "$release/Publish-RevitUpdate.ps1"
-          ./scripts/Publish-RevitUpdate.ps1 -Installer $installer -Version $version -ReleaseNotes "Revit 2024 release ${version}: Steel Shape, Top50 Planner with diagnosis, latest beam import and company-folder updates." -Destination $release
+          ./scripts/Publish-RevitUpdate.ps1 -Installer $installer -Version $version -ReleaseNotes "Revit 2024 release ${version}: Steel Shape, Top50 Planner with editing and both-face quantities, Dome Beta, retained beam import and company-folder updates." -Destination $release
           @{
             version=$version; sourceCommit=$env:GITHUB_SHA; revitVersion=2024
             installerSha256=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
             steelShapeHtmlSha256=(Get-FileHash src/SteelShape/SteelShape.html -Algorithm SHA256).Hash.ToLowerInvariant()
-            validation='415 standalone checks plus Windows WPF/WebView2 and isolated installed-payload checks; see Actions evidence'
+            validation='Windows WPF/WebView2, Top50 production planner and isolated installed-payload checks; see Actions evidence'
             limits='Actual Revit2024 host acceptance and exact original Top50 solver parity remain unverified. Company share not published.'
           } | ConvertTo-Json | Set-Content "$release/release-info.json"
           @"
           @echo off
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Publish-RevitUpdate.ps1" -Installer "%~dp0Install_DokaRevitAutomation.exe" -Version $version -ReleaseNotes "Revit 2024 release ${version}: Steel Shape, Top50 Planner with diagnosis, latest beam import and company-folder updates."
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Publish-RevitUpdate.ps1" -Installer "%~dp0Install_DokaRevitAutomation.exe" -Version $version -ReleaseNotes "Revit 2024 release ${version}: Steel Shape, Top50 Planner with editing and both-face quantities, Dome Beta, retained beam import and company-folder updates."
           if errorlevel 1 goto failed
           echo Published. Team installer: S:\MEA\ENG\Joven\BeamCalculator\Updates\DokaRevitAutomation-$version.exe
           pause
@@ -87,7 +87,7 @@ jobs:
 
           Future updates: Publish a higher-version release. Team members use Check for updates in the dashboard or the beam File menu, then save and close Revit when ready. The updater waits for Revit to close before installation.
 
-          This installer adds Steel Shape to the dashboard and retains the latest beam importer, Top50 planner/diagnosis, and updater. Steel Shape runs offline and uses Microsoft Edge WebView2; if unavailable, Open in browser uses the same page. D3 slab and Dome remain grey Coming soon choices. Box-out design remains outside the beam calculator scope. Actual Revit operation and access to the company share must be checked on a company computer.
+          This installer adds Steel Shape to the dashboard and retains the latest beam importer, Top50 planner/diagnosis, and updater. Steel Shape runs offline and uses Microsoft Edge WebView2; if unavailable, Open in browser uses the same page. D3 slab remains grey Coming soon. Dome is available in the Beta section below Top50 Planner. Box-out design remains outside the beam calculator scope. Actual Revit operation and access to the company share must be checked on a company computer.
           "@ | Set-Content "$release/README.txt" -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
