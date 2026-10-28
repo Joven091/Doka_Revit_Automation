@@ -37,9 +37,18 @@ internal static class Program
         var outcome=Find<TextBlock>(outcomeRoot).Single(t=>AutomationProperties.GetAutomationId(t)=="Top50Outcome");
         Check(restrictive.Proposals.Count==0&&!restrictive.IsBusy&&!restrictive.IsStale&&outcome.Visibility==Visibility.Visible&&outcome.Text.Contains("No complete proposal found"),"first restrictive no-result remains readable while idle with no stale result");
         Render(outcomeRoot,1000,680,1,Path.Combine(output,"first-no-result.png"));
-        var firstCancel=restrictive.OptimizeAsync();restrictive.Cancel();Wait(firstCancel);
-        Check(outcome.Visibility==Visibility.Visible&&outcome.Text.Contains("cancelled")&&restrictive.Selected==null,"cancellation before the first offer keeps an explicit visible outcome");
+        bool activeCancelObserved=false;
+        System.ComponentModel.PropertyChangedEventHandler cancelWhenBusy=null;
+        cancelWhenBusy=(sender,change)=>
+        {
+            if(change.PropertyName!=nameof(Top50ViewModel.IsBusy)||!restrictive.IsBusy)return;
+            restrictive.PropertyChanged-=cancelWhenBusy;activeCancelObserved=true;restrictive.Cancel();
+        };
+        restrictive.PropertyChanged+=cancelWhenBusy;Wait(restrictive.OptimizeAsync());
+        Check(activeCancelObserved&&outcome.Visibility==Visibility.Visible&&outcome.Text.Contains("cancelled")&&restrictive.Selected==null,"cancellation before the first offer keeps an explicit visible outcome; active="+activeCancelObserved+", visible="+outcome.Visibility+", status="+restrictive.Status);
         Render(outcomeRoot,1000,680,1,Path.Combine(output,"first-cancelled.png"));
+        string cancelledStatus=restrictive.Status;restrictive.Cancel();Check(restrictive.Status==cancelledStatus,"late Cancel cannot replace the completed cancellation outcome");
+        Wait(restrictive.OptimizeAsync());string completedStatus=restrictive.Status;restrictive.Cancel();Check(restrictive.Status==completedStatus&&outcome.Text==completedStatus,"late Cancel cannot replace a fast no-result outcome");
         restrictive.Save(Path.Combine(output,"restrictive.top50"));outcomeWindow.Close();
 
         // Controlled measurements only. These are not the original Top50 parity/reference drawing.

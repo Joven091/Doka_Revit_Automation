@@ -71,19 +71,31 @@ namespace EngineeringDashboard
             {
                 var result=await Task.Run(()=>new Top50Search().Run(walls,catalog,limits,preset,displayLimit,token,progress,percentage,band,expand,identical));
                 search.Attempted=result.Attempted;search.Unsearched=result.Unsearched;search.BudgetExpired=result.BudgetExpired;search.Log=result.Log.ToArray();
-                if(started!=revision||token.IsCancellationRequested){search.Outcome=token.IsCancellationRequested?"Cancelled; returned proposals not accepted.":"Inputs changed; returned proposals not accepted.";return;}
+                if(started!=revision||token.IsCancellationRequested)
+                {
+                    search.Outcome=token.IsCancellationRequested?"Cancelled; returned proposals not accepted.":"Inputs changed; returned proposals not accepted.";
+                    Status=token.IsCancellationRequested?CancelledStatus():"Inputs changed. Returned results were discarded. Optimize to update the equipment offer.";
+                    return;
+                }
                 SearchLog=result.Log;
                 if(result.Proposals.Count==0){search.Outcome="No complete proposal found within the selected search band and budget; infeasibility not established.";Status="No complete proposal found within the selected search band and budget. This is not a proof of infeasibility.";return;}
                 AcceptValidatedRun(result);
                 search.Outcome="Accepted "+result.Proposals.Count+" independently validated proposal(s).";
             }
-            catch(OperationCanceledException){search.Outcome=Proposals.Count>0?"Cancelled; previous proposals retained.":"Cancelled; no proposal created.";Status=Proposals.Count>0?"Search cancelled; previous proposals retained.":"Search cancelled. No equipment offer was created.";}
+            catch(OperationCanceledException){search.Outcome=Proposals.Count>0?"Cancelled; previous proposals retained.":"Cancelled; no proposal created.";Status=CancelledStatus();}
             finally{IsBusy=false;cancellation.Dispose();cancellation=null;Refresh();}
             }
             catch(Exception error){search.Outcome="Failed";Status="Optimization failed: "+error.Message;Notify(nameof(Status));FailOperation(attempt,error);throw;}
             finally{search.Clock.Stop();EndOperation(attempt,search.Outcome);}
         }
-        public void Cancel(){cancellation?.Cancel();Status="Cancelling at the next solver checkpoint…";Notify(nameof(Status));}
+        private string CancelledStatus()=>Proposals.Count>0?"Search cancelled; previous proposals retained.":"Search cancelled. No equipment offer was created.";
+        public void Cancel()
+        {
+            var active=cancellation;if(!IsBusy||active==null)return;
+            // Completion owns terminal status. A late request must not replace
+            // a finished outcome, including when disposal races this call.
+            try{active.Cancel();}catch(ObjectDisposedException){}
+        }
         internal void AcceptValidatedRun(SearchRun run)
         {
             Top50PlannerPolicy.ValidateSettings(Settings);
