@@ -15,4 +15,8 @@ Deno.serve(createHandler({
     .select("enabled, expires_at")
     .eq("user_id", userId)
     .maybeSingle(),
+  getEmailAccess: (email: string) => admin.from("tool_email_access")
+    .select("enabled, expires_at")
+    .eq("email", email)
+    .maybeSingle(),
 }));
