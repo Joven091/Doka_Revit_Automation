@@ -11,6 +11,7 @@ if($NoRestore){$arguments+='--no-restore'}
 & dotnet @arguments *> (Join-Path $output 'build.log')
 if($LASTEXITCODE -ne 0){throw "Build failed; see $output\build.log"}
 $build=Join-Path $repo 'src/bin/Release/net48'
+& (Join-Path $PSScriptRoot 'Build-BeamSolverWorker.ps1') -OutputDirectory (Join-Path $build 'BeamSolver')
 $version=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $build 'MyRevitAddin.dll'))
 $releaseVersion=([version]$version.FileVersion).ToString(4)
 foreach($name in @('abseil_dll.dll','google-ortools-native.dll','highs.dll','libprotobuf.dll','ortools.dll','re2.dll','utf8_validity.dll','zlib1.dll')){if(!(Test-Path -LiteralPath (Join-Path $build $name))){throw "Missing native dependency $name"}}

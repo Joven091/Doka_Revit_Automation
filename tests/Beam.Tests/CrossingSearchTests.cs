@@ -91,18 +91,23 @@ internal static class CrossingSearchTests
             BeamSpacingsMm=new[] {305.0,305,305},SlabSpacingsMm=new[] {488.0,488},CrossingSpacingsMm=new double[0],
             Beams=Enumerable.Range(0,3).Select(i=>new TransferBeamRow {WidthMm=800,DepthMm=800,BottomElevationMm=-800}).ToArray(),Bays=Enumerable.Range(0,2).Select(i=>new TransferBayRow {WidthMm=2125,ThicknessMm=200}).ToArray()};
         var method=typeof(TransferNetworkOptimizer).GetMethod("Solve",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
-        double setback=362.5;
+        double setback=362.5;int ceiling=int.MaxValue;
         Func<TowerLayout,TowerLayout> solve=previous=>
         {
             common.Diagnostics=new TowerSearchDiagnostics(270,trace:common.Trace,ignoreUplift:true);
             var plan=new UpperTransferPlan {StockLengthMm=1700,EdgeMm=212.5,NearFootMm=setback,FarFootMm=setback,IsCustomLength=true};
-            return (TowerLayout)method.Invoke(null,new object[] {common,network,0,null,plan,2450.0,0.0,new[] {new[] {2450.0}},new TransferredSlabOptimizer.GeometryCache(),int.MaxValue,
+            return (TowerLayout)method.Invoke(null,new object[] {common,network,0,null,plan,2450.0,0.0,new[] {new[] {2450.0}},new TransferredSlabOptimizer.GeometryCache(),ceiling,
                 previous==null ? (double?)null : previous.WidthMm,0.0,null,previous});
         };
         common.AllowCustomH20Lengths=true;common.CustomH20Scope=CustomH20LengthScope.Both;
         var original=solve(null);if(original==null)throw common.Diagnostics.Exception("Receiver reuse fixture failed");Check(true,"receiver fixture passes its complete local checks");
         long solves=common.Trace.Count(BeamSearchCounter.NetworkSolves);
         var cached=solve(null);Check(ReferenceEquals(original,cached) && common.Trace.Count(BeamSearchCounter.NetworkSolves)==solves,"value-identical independently rebuilt slab plans reuse a complete receiver search");
+        ceiling=original.LegCount;
+        Check(ReferenceEquals(original,solve(null)) && common.Trace.Count(BeamSearchCounter.NetworkSolves)==solves,"a checked receiver from a wider leg ceiling is reused when it fits the requested subset");
+        ceiling=original.LegCount-2;
+        var tooSmall=solve(null);Check(tooSmall==null || tooSmall.LegCount<=ceiling,"a cached receiver cannot bypass a reduced leg ceiling");
+        ceiling=int.MaxValue;solves=common.Trace.Count(BeamSearchCounter.NetworkSolves);
         setback+=1e-10;solve(null);Check(common.Trace.Count(BeamSearchCounter.NetworkSolves)>solves,"receiver cache does not round support coordinates");setback=362.5;
         network.BeamSpacingsMm[1]=350;
         Check(ReferenceEquals(original,solve(null)),"unrelated beam pitch retains the exact local receiver result");

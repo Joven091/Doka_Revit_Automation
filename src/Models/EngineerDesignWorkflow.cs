@@ -211,7 +211,9 @@ namespace EngineeringDashboard
         internal BeamDistributedLoad[] Loads(double start,double length,int line,IEnumerable<int> active=null,double selfWeight=0)
         {
             var zones=active==null ? Lines : Build(new HashSet<int>(active));
-            var loads=zones[line].Select(q=>new BeamDistributedLoad {StartMm=Math.Max(start,q.StartMm)-start,EndMm=Math.Min(start+length,q.EndMm)-start,KnPerM=q.KnPerM})
+            // Clip again in member coordinates: subtracting an absolute origin can
+            // round an exactly clipped endpoint a fraction above the member length.
+            var loads=zones[line].Select(q=>new BeamDistributedLoad {StartMm=Math.Max(0,Math.Max(start,q.StartMm)-start),EndMm=Math.Min(length,Math.Min(start+length,q.EndMm)-start),KnPerM=q.KnPerM})
                 .Where(q=>q.EndMm>q.StartMm+1e-7).ToList();
             if(selfWeight>0)loads.Add(new BeamDistributedLoad {StartMm=0,EndMm=length,KnPerM=selfWeight});
             return Merge(loads);

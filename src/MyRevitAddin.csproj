@@ -50,6 +50,8 @@
     <Reference Include="System.Xaml" />
   </ItemGroup>
 
+  <Import Project="BeamSolver/BeamSolver.Shared.props" />
+
   <Target Name="ValidateTop50NativePayload" AfterTargets="Build">
     <Error Condition="!Exists('$(TargetDir)google-ortools-native.dll') Or !Exists('$(TargetDir)ortools.dll')" Text="Top50 requires the win-x64 native OR-Tools payload beside MyRevitAddin.dll." />
   </Target>

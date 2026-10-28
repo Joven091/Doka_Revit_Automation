@@ -27,6 +27,12 @@ internal static class CrossingFootprintTests
                 IsLeg=i%4==0,IsTowerEnvelope=i%4==1,IsSideShutter=i%4==2,TowerOwner=i%3==0 ? owner : "Other"
             }).ToArray();
             foreach(var obstacle in obstacles) {obstacle.X1=obstacle.X0+random.Next(80,800);obstacle.Y1=obstacle.Y0+random.Next(80,800);obstacle.Z1=obstacle.Z0+random.Next(80,800);}
+            var split=new CrossBeamSupportOptimizer.ProjectedJunctionWork(obstacles);
+            var frame=CrossBeamSupportOptimizer.TowerEnvelopes(layout,owner,originX,originY,false,head).Single();
+            Check(ReferenceEquals(split.Frames.FirstConflict(frame),obstacles.FirstOrDefault(frame.Conflicts)),"Frame-only obstacle index changed the first physical clash");
+            foreach(var material in new[] {PrimaryBeamMaterial.DoubleH20,PrimaryBeamMaterial.WS10})
+            foreach(var primary in CrossBeamSupportOptimizer.PrimarySolids(owner+" primary",originX,originY,3300,false,head,PrimaryBeamProfile.For(material)))
+                Check(ReferenceEquals(split.Primary.FirstConflict(primary),obstacles.FirstOrDefault(primary.Conflicts)),"Primary-only obstacle index changed the first physical clash");
             var index=new FormworkObstacleIndex(obstacles);
             for(int leg=0;leg<4;leg++)
             {

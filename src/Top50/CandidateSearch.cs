@@ -9,7 +9,9 @@ namespace EngineeringDashboard.Top50
     /// <summary>A documented general candidate family, not a claim to recover the unknown original catalog strategies.</summary>
     public sealed class CatalogCutoffCandidates : ITop50InventoryCandidateSource
     {
-        private readonly ITop50PatternSource source=new FewestComponentPatterns();
+        private readonly ITop50PatternSource source;
+        public CatalogCutoffCandidates():this(null){}
+        public CatalogCutoffCandidates(ITop50PatternSource source){this.source=source??new FewestComponentPatterns();}
         public IEnumerable<IDictionary<int,int>> Generate(IReadOnlyList<WallRow> walls,IReadOnlyList<int> allowed,SearchLimits limits,CancellationToken cancellation)
         {
             var included=walls.Where(w=>w.Included).ToArray();
@@ -50,10 +52,15 @@ namespace EngineeringDashboard.Top50
     {
         private readonly ITop50InventoryCandidateSource candidates;
         private readonly ITop50InventorySolver solver;
-        public Top50Search(ITop50InventoryCandidateSource candidates=null,ITop50InventorySolver solver=null){this.candidates=candidates??new CatalogCutoffCandidates();this.solver=solver??new RetainedInventorySolver();}
+        public Top50Search(ITop50InventoryCandidateSource candidates=null,ITop50InventorySolver solver=null){this.candidates=candidates;this.solver=solver;}
         public SearchRun Run(IReadOnlyList<WallRow> walls,IReadOnlyList<int> catalog,SearchLimits limits,PlanningPreset preset,int displayLimit,CancellationToken cancellation,IProgress<string> progress=null,decimal? percentage=null,decimal bandPoints=10,bool allowExpansion=false,bool identicalKits=false)
         {
             using var runtimeScope=Top50Runtime.Enter();
+            // Pattern inputs do not depend on the longest-wall seed or stock
+            // quantity. One calculation owns this cache; other projects/runs do not.
+            var patterns=new CalculationPatternCache();
+            var candidateSource=candidates??new CatalogCutoffCandidates(patterns);
+            var inventorySolver=solver??new RetainedInventorySolver(patterns);
             if(percentage.HasValue&&(percentage<=0||percentage>100||bandPoints<0))throw new ArgumentOutOfRangeException(nameof(percentage));
             if(identicalKits&&percentage.HasValue)throw new ArgumentException("Identical fixed kits require Fixed longest-wall sets.");
             var log=new List<string>{"Native candidate strategy: descending catalog cutoffs and retained longest-wall multisets, plus solo-fit coverage. This is an explicit reconstructed strategy, not recovered original source.","Quantity-first policy: show only the fewest-panel validated tier. Presets compare equal-panel-count inventories.","Repeatable search: fixed pattern-node and single-worker deterministic solver-work limits; no elapsed-time cutoff. Cancellation remains available.","Feasible / best found. Work-limited or omitted lower-count arrangements are not proven infeasible; no global design-space proof."};
@@ -67,10 +74,10 @@ namespace EngineeringDashboard.Top50
                 {
                     cancellation.ThrowIfCancellationRequested();
                     var seedLimits=new SearchLimits(limits.MaxInternalFillers,limits.MaxFillerMm,limits.MaximumGroups,count,limits.SearchEffort,limits.Seed,limits.PatternsPerLength);
-                    allInventories.AddRange(candidates.Generate(walls,catalog,seedLimits,cancellation));
+                    allInventories.AddRange(candidateSource.Generate(walls,catalog,seedLimits,cancellation));
                 }
             }
-            else allInventories.AddRange(candidates.Generate(walls,catalog,limits,cancellation));
+            else allInventories.AddRange(candidateSource.Generate(walls,catalog,limits,cancellation));
             if(identicalKits)
                 allInventories=allInventories.Select(stock=>(IDictionary<int,int>)stock.ToDictionary(p=>p.Key,p=>(int)Math.Ceiling(p.Value/(decimal)limits.LongestSimultaneous)*limits.LongestSimultaneous)).ToList();
             var unique=allInventories.GroupBy(Top50Order.Stock).Select(g=>(IDictionary<int,int>)g.First().OrderBy(p=>p.Key).ToDictionary(p=>p.Key,p=>p.Value)).ToArray();
@@ -94,11 +101,11 @@ namespace EngineeringDashboard.Top50
                         string id="S"+(++attempts);progress?.Report("Checking "+tier.Key+"-panel inventory "+id+" of "+candidateCount);
                         try
                         {
-                            var result=solver.Solve(id,walls,inventory,perInventory,cancellation,new SearchProgress(message=>{log.Add(id+": "+message);progress?.Report(id+": "+message);}));
+                            var result=inventorySolver.Solve(id,walls,inventory,perInventory,cancellation,new SearchProgress(message=>{log.Add(id+": "+message);progress?.Report(id+": "+message);}));
                             if(result==null){log.Add(id+": no complete retained-model allocation within fixed work; no full-space infeasibility claim.");continue;}
                             if(identicalKits)
                             {
-                                bool fit=included.OrderByDescending(w=>w.LengthMicrometres).ThenBy(w=>w.Id,StringComparer.Ordinal).Take(limits.LongestSimultaneous).All(w=>new FewestComponentPatterns().Enumerate(w.LengthMicrometres,inventory.Keys,perInventory,cancellation).Any(p=>p.PanelsMm.GroupBy(n=>n).All(g=>g.Count()<=inventory[g.Key]/limits.LongestSimultaneous)));
+                                bool fit=included.OrderByDescending(w=>w.LengthMicrometres).ThenBy(w=>w.Id,StringComparer.Ordinal).Take(limits.LongestSimultaneous).All(w=>patterns.Enumerate(w.LengthMicrometres,inventory.Keys,perInventory,cancellation).Any(p=>p.PanelsMm.GroupBy(n=>n).All(g=>g.Count()<=inventory[g.Key]/limits.LongestSimultaneous)));
                                 if(!fit){log.Add(id+": rejected: repeated stock does not provide an independently fitting kit for every required longest wall.");continue;}
                                 result.IdenticalKitCount=limits.LongestSimultaneous;
                             }
@@ -118,6 +125,7 @@ namespace EngineeringDashboard.Top50
             for(int i=0;i<shown.Length;i++){shown[i].Rank=i+1;shown[i].Pareto=ranked[i].Pareto;}
             log.Add("All "+found.Count+" found candidates ranked before display limit "+displayLimit+"; "+Math.Max(0,found.Count-shown.Length)+" feasible alternatives omitted from display.");
             log.Add("Skipped "+skippedQuantity+" higher-panel-count candidates under the quantity-first policy. Elapsed time does not select the inventory pool.");
+            log.Add("Retained pattern preparations: "+patterns.Preparations+"; exact reuse hits: "+patterns.Hits+".");
             return new SearchRun{Proposals=Array.AsReadOnly(shown),Log=log.AsReadOnly(),Attempted=attempts,Unsearched=candidateCount-attempts,SkippedForPanelQuantity=skippedQuantity,BudgetExpired=false};
         }
         private sealed class SearchProgress:IProgress<string>

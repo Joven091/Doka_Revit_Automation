@@ -104,6 +104,7 @@ namespace EngineeringDashboard
             return input;
         }
         internal void ValidateTowerInputs() { var common=CreateTowerInput(false);if(IndependentBeams.Count>30)throw new ArgumentException("Use at most 30 independent beams.");foreach(var b in IndependentBeams)IndependentInput(common,b); if (BeamLengthMm > 50000) throw new ArgumentException("Beam length must not exceed 50,000 mm."); }
+        internal BeamSolverSession SharedSolverSession;
         public async Task OptimizeTowersAsync(bool useTimeLimit=false)
         {
             if (!UseTowers || IsOptimizing) return;
@@ -124,11 +125,15 @@ namespace EngineeringDashboard
                     +(input.Network==null ? "" : "\n"+string.Join("\n",input.Network.Beams.Select((b,i)=>System.FormattableString.Invariant($"B{i+1}: area load={input.Network.AreaLoad(b.DepthMm):R} kN/m²; beam line load={input.Network.AreaLoad(b.DepthMm)*b.WidthMm/1000:R} kN/m")).Concat(input.Network.Bays.Select((s,i)=>System.FormattableString.Invariant($"S{i+1}: area load={input.Network.AreaLoad(s.ThicknessMm):R} kN/m²"))))));
                 TransferNetworkResult networkResult=null;
                 TowerLayout[] independentResults=null;
+                var sharedSolver=SharedSolverSession;
                 var result = await Task.Run(() => {
                     using(trace.Measure(BeamSearchStage.SolverWall))
                     {
-                        var main=input.Network==null ? TowerOptimizer.Optimize(input) : (networkResult=TransferNetworkOptimizer.Optimize(input,input.Network)).Beams[0];
-                        independentResults=independentInputs.Select(i=>TransferredSlabOptimizer.Optimize(i)).ToArray();return main;
+                        using(var ownedSolver=sharedSolver==null ? new BeamSolverSession() : null)
+                        {
+                            var reply=(sharedSolver??ownedSolver).Solve(new BeamSolverRequest {Main=input,Independent=independentInputs});
+                            networkResult=reply.Network;independentResults=reply.Independent;return reply.Main;
+                        }
                     }
                 });
                 cancellation.Token.ThrowIfCancellationRequested();

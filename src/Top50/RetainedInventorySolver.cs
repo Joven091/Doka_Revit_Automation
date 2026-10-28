@@ -21,19 +21,23 @@ namespace EngineeringDashboard.Top50
             if(included.Count==0 || stock.Count==0 || stock.Any(x=>x.Key<=0||x.Value<=0))throw new ArgumentException("Positive reusable stock and included walls are required.");
             var lengths=included.GroupBy(w=>w.LengthMicrometres).OrderByDescending(g=>g.Key).Select(g=>g.OrderBy(w=>w.Id,StringComparer.Ordinal).ToArray()).ToArray();
             var retained=lengths.Select(group=>patterns.Enumerate(group[0].LengthMicrometres,stock.Keys,limits,cancellation).Where(p=>p.PanelsMm.GroupBy(n=>n).All(g=>g.Count()<=stock[g.Key])).ToArray()).ToArray();
+            cancellation.ThrowIfCancellationRequested();
             if(retained.Any(p=>p.Length==0)){progress?.Report("No stock-feasible retained pattern; this does not prove full-space infeasibility.");return null;}
             int groupCount=Math.Min(limits.MaximumGroups,included.Count);var model=new CpModel();
-            var active=Enumerable.Range(0,groupCount).Select(g=>model.NewBoolVar("active-"+g)).ToArray();
+            var active=Enumerable.Range(0,groupCount).Select(g=>{cancellation.ThrowIfCancellationRequested();return model.NewBoolVar("active-"+g);}).ToArray();
             var variables=new Dictionary<Tuple<int,int,int>,IntVar>();
-            for(int t=0;t<lengths.Length;t++)for(int p=0;p<retained[t].Length;p++)for(int g=0;g<groupCount;g++)variables.Add(Tuple.Create(t,p,g),model.NewIntVar(0,lengths[t].Length,"count-"+t+"-"+p+"-"+g));
+            for(int t=0;t<lengths.Length;t++)for(int p=0;p<retained[t].Length;p++)for(int g=0;g<groupCount;g++)
+            {if((variables.Count&127)==0)cancellation.ThrowIfCancellationRequested();variables.Add(Tuple.Create(t,p,g),model.NewIntVar(0,lengths[t].Length,"count-"+t+"-"+p+"-"+g));}
             var orderedVariables=variables.OrderBy(v=>v.Key.Item1).ThenBy(v=>v.Key.Item2).ThenBy(v=>v.Key.Item3).ToArray();
-            for(int t=0;t<lengths.Length;t++)model.Add(LinearExpr.Sum(orderedVariables.Where(v=>v.Key.Item1==t).Select(v=>v.Value))==lengths[t].Length);
+            for(int t=0;t<lengths.Length;t++){cancellation.ThrowIfCancellationRequested();model.Add(LinearExpr.Sum(orderedVariables.Where(v=>v.Key.Item1==t).Select(v=>v.Value))==lengths[t].Length);}
             for(int g=0;g<groupCount;g++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 var groupVariables=orderedVariables.Where(v=>v.Key.Item3==g).Select(v=>v.Value).ToArray();
                 var number=LinearExpr.Sum(groupVariables);model.Add(number>=active[g]);model.Add(number<=included.Count*active[g]);
                 foreach(var size in stock.Keys)
                 {
+                    cancellation.ThrowIfCancellationRequested();
                     var entries=orderedVariables.Where(v=>v.Key.Item3==g).ToArray();
                     model.Add(LinearExpr.WeightedSum(entries.Select(e=>e.Value),entries.Select(e=>(long)retained[e.Key.Item1][e.Key.Item2].PanelsMm.Count(n=>n==size)))<=stock[size]);
                 }
@@ -42,6 +46,7 @@ namespace EngineeringDashboard.Top50
             var longest=included.OrderByDescending(w=>w.LengthMicrometres).ThenBy(w=>w.Id,StringComparer.Ordinal).Take(limits.LongestSimultaneous).ToArray();
             for(int t=0;t<lengths.Length;t++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 int required=longest.Count(w=>w.LengthMicrometres==lengths[t][0].LengthMicrometres);
                 if(required>0)model.Add(LinearExpr.Sum(orderedVariables.Where(v=>v.Key.Item1==t&&v.Key.Item3==0).Select(v=>v.Value))>=required);
             }
@@ -51,12 +56,14 @@ namespace EngineeringDashboard.Top50
                 var entries=orderedVariables.Where(v=>v.Key.Item3==g).ToArray();
                 return LinearExpr.WeightedSum(entries.Select(v=>v.Value),entries.Select(v=>retained[v.Key.Item1][v.Key.Item2].PanelsMm.Sum(n=>(long)n)));
             }
-            for(int g=2;g<groupCount;g++)model.Add(Load(g)<=Load(g-1));
+            for(int g=2;g<groupCount;g++){cancellation.ThrowIfCancellationRequested();model.Add(Load(g)<=Load(g-1));}
             model.Minimize(LinearExpr.Sum(active));
             var solver=new CpSolver {StringParameters="max_deterministic_time:"+limits.SolverDeterministicWork.ToString("R",CultureInfo.InvariantCulture)+" num_search_workers:1 randomize_search:false random_seed:"+limits.Seed.ToString(CultureInfo.InvariantCulture)};
             progress?.Report("Solving inventory allocation in the retained-pattern model; omitted arrangements are not proven infeasible.");
-            CpSolverStatus status;
-            using(cancellation.Register(solver.StopSearch))status=solver.Solve(model);
+            // CpSolver creates/releases its wrapper under this same instance lock.
+            // It protects StopSearch from racing wrapper teardown; it does not
+            // hold the lock for the native solve itself.
+            var status=CancellableSearch.Run(()=>solver.Solve(model),solver.StopSearch,solver,cancellation);
             cancellation.ThrowIfCancellationRequested();
             progress?.Report("Retained status: "+status+"; deterministic work allocation: "+limits.SolverDeterministicWork.ToString("R",CultureInfo.InvariantCulture)+". Optimal refers only to this retained inventory model.");
             if(status==CpSolverStatus.ModelInvalid)throw new InvalidOperationException("The retained allocation model is invalid.");
