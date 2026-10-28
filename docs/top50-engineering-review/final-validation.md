@@ -3,11 +3,13 @@
 Target: Engineering Dashboard 1.1.27, Revit 2024 x64/net48. Top50 remains an
 integrated planner. Project format V5; search policy V4.
 
-**Supervisor decision: APPROVED FOR PACKAGING, 28 October 2026.** Independent QA
-and practical engineering acceptance both pass for the exact source below. All
-approved application requirements are met, with no known release-blocking defect
-in the stated planning scope. Installer creation may now begin. Final package
-distribution acceptance still requires the separate installed-application checks.
+**Supervisor decision: application and isolated package validation PASS,
+28 October 2026.** Independent QA and practical engineering acceptance pass for
+the source below, and the final installer has passed the separate Windows package
+checks recorded in the final addendum. All approved requirements are met within
+the stated verification scope. Actual Revit-host and clean-machine prerequisite
+acceptance remain unperformed. The earlier packaging decisions below preserve
+the approval sequence; no installer preceded the application acceptance gate.
 
 ## Scope and supervision
 
@@ -144,3 +146,70 @@ approval against the corrected harness revision. The workflow must repeat all
 native/application validation successfully before it rebuilds the installer and
 runs the full installation/upgrade/restart/uninstall checks. No failed package is
 approved for distribution. The source/test/build diff gate remains unchanged.
+
+## Final installed-package acceptance and deliverables
+
+Successful run [40762298379](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/40762298379)
+repeats the full application/native validation and gate, then builds and tests
+the installer in separate Windows job `123078533497`. Built source is
+`634b4d2ca3492325d658feba0f10b37904eed117`, tree
+`cb2f6f86c548be738d455db28c33ed8415dfc6cc`. The application/installer sources remain
+identical to the independently accepted application; the only subsequent
+executable-file change is the independently reviewed disposable test path.
+
+The supervisor reviewed the successful full job log, locally digest-verified
+installed-evidence ZIP, installation/upgrade logs, installed checks/diagnoses and
+actual installed results image. Independent package QA is recorded separately
+in [package-acceptance.md](package-acceptance.md).
+
+| Actual package check | Result |
+| --- | --- |
+| Fresh isolated installation, version, registration and payload hashes | PASS |
+| All bundled self-contained worker files compared with the build | PASS |
+| Installed planner solves, diagnoses, persists and renders; no Excel export | 114 checks PASS |
+| Installed dashboard and locked entries | 22 checks PASS |
+| Installed Steel Shape native/browser interactions and failure recovery | 24 checks PASS |
+| Actual installed production DLL path, direct/filler quantities and bundled worker | 8 checks PASS |
+| Fresh-process saved-project reopening, reoptimization and bundled worker | 9 checks PASS |
+| Upgrade fixture from1.1.26; recursive worker/settings backup and preservation | PASS |
+| Fresh/upgrade uninstallation; user data and backup preservation | PASS |
+| Combined installed payload/backup assertions | 249 checks PASS |
+| Newer-version/custom-registration rejection, simulated live-Revit install/uninstall block, cleanup after simulated host exit | 5 guards PASS |
+
+The installed production diagnosis reports1.1.27.0, MVID
+`5781dc60-c93f-4ce5-a46b-3d159c35c194`. The two-wall example remains eight
+physical panels, 2.25 LM per face, one allocation group and two standard/two
+adjustable connectors per level on both faces. The first and restarted processes
+use the actual bundled .NET10 worker without silent Framework fallback. These
+are isolated Windows tests, including a copied previous-version fixture and
+simulated Revit process guards; no actual Revit session is implied.
+
+Deliverables:
+
+- [Installer, release notes, reports, release-info and SHA256SUMS](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/40762298379/artifacts/12849965823),
+  artifact12849965823, **41,153,182 bytes**. Archive SHA-256 reported consistently
+  by GitHub artifact metadata and its upload log:
+  `48db026e7f98f57327d9551058b4083edd2740b1dee2e414b21cd5455d9c09d2`.
+  Installer filename: `Install_DokaRevitAutomation.exe`.
+- [Installed evidence](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/40762298379/artifacts/12849935290),
+  artifact12849935290; locally recomputed ZIP SHA-256
+  `f8eb5b4756a76f345f2b41fdd5e0d0ab8747f0f287136a7a3f1b8baa779c2b86`.
+- Repeated application-validation artifact12849515411; GitHub ZIP SHA-256
+  `59f2f31d298d6faffb71ea13c8237296cf60e920990644ff9174724b6cd2594d`.
+
+The41MB release ZIP was fetched by the GitHub connector into a reusable user file
+reference. It exceeds this executor's32MiB download-tool limit and was not
+separately unpacked or rehashed here; no network-policy exception was requested.
+The CI job tests the actual installer and installed binaries, then writes the
+per-file checksum manifest and resolved dependency metadata before uploading the
+release. The reported upload/archive digest is not misrepresented as a local
+rehash. The final post-package reports in this branch supplement the immutable
+prepackaging report snapshot included in the release ZIP.
+
+The supervisor approves delivery within these verified limits. No known blocker
+remains in the approved Top50 planning scope. This record does not claim every
+unrelated long-running repository workflow completed. Source/build/test files
+remain unchanged after successful package testing. Final documentation is added
+without rebuilding the accepted artifact. PR174 and PR175 remain draft/unmerged;
+main remains`e78f771122f92b58205e74ac5114cb22ebdf4e2d`. No company publication or
+real-user installation occurred.
