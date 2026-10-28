@@ -55,7 +55,8 @@ internal static class Program
             var selector=Find<ComboBox>(planner).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50CastingGroupSelector");string choice=(string)selector.SelectedItem.GetType().GetProperty("Choice").GetValue(selector.SelectedItem);
             Check(choice.Contains("C-01")&&choice.Contains("85.71% utilization"),"casting selector shows actual installed-panel utilization");
             selector.SelectedIndex=1;Pump();delay=false;pending.SetResult(new RevitHighlightResult{Requested=1,Found=1,Message="First group selected"});Wait(()=>requests.Count==2);
-            Check(requests.Last().UniqueIds.SequenceEqual(new[]{"unique-102"})&&!requests.Last().Locate,"rapid group changes eventually highlight the latest group");
+            // Use LINQ explicitly: the installed host deliberately has no binding redirects for span extensions.
+            Check(Enumerable.SequenceEqual(requests.Last().UniqueIds,new[]{"unique-102"})&&!requests.Last().Locate,"rapid group changes eventually highlight the latest group");
             Menu(Find<MenuItem>(planner).Single(m=>AutomationProperties.GetAutomationId(m)=="Top50LocateRevit"));Wait(()=>requests.Count==3);Check(requests.Last().Locate,"Locate explicitly opts into changing the Revit view");
             SaveImage(planner,Path.Combine(output,"casting-utilization.png"));
             Menu(Find<MenuItem>(planner).Single(m=>AutomationProperties.GetAutomationId(m)=="Top50RefreshRevit"));Wait(()=>model.IsStale);Check(model.Input.Walls.First().LengthMm==6250&&model.Input.Walls.First().Id==ids[0],"refresh updates dimensions, preserves identity and invalidates the old offer");
