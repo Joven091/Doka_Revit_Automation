@@ -28,7 +28,7 @@ namespace EngineeringDashboard
         public bool Dirty {get;private set;}
         public string Status {get;private set;}="Import a DXF or add reviewed wall dimensions.";
         public string ProjectPath {get;private set;}
-        public SearchLimits Limits=>new SearchLimits(Settings.MaxFillers,Settings.MaxFillerMm,Settings.MaxGroups,Settings.OfferingMode==1?1:Settings.LongestCount,Top50PlannerPolicy.ThoroughSearchEffort,Settings.Seed);
+        public SearchLimits Limits=>new SearchLimits(Settings.MaxFillers,Settings.MaxFillerMm,Settings.MaxGroups,Settings.OfferingMode==1?1:Settings.LongestCount,Top50PlannerPolicy.ThoroughSearchEffort,Settings.Seed,requireIdenticalKits:Top50PlannerPolicy.EffectiveIdenticalKits(Settings));
         public event PropertyChangedEventHandler PropertyChanged;
         public void Import(string path,DxfImportOptions options=null)
         {
@@ -62,8 +62,9 @@ namespace EngineeringDashboard
             try
             {
             if(input==null)throw new InvalidOperationException("Import measured walls first.");
+            Top50PlannerPolicy.ValidateSettings(Settings);
             var walls=input.Walls.Select(w=>w.Snapshot()).ToArray();var catalog=Settings.CatalogMm.ToArray();var limits=Limits;
-            var preset=(PlanningPreset)Settings.Preset;var displayLimit=Top50PlannerPolicy.DisplayLimit;var percentage=Settings.OfferingMode==1?(decimal?)Settings.Percentage:null;var band=Settings.BandPoints;var expand=Settings.AllowExpansion;var identical=Settings.RequireIdenticalKits;
+            var preset=(PlanningPreset)Settings.Preset;var displayLimit=Top50PlannerPolicy.DisplayLimit;var percentage=Settings.OfferingMode==1?(decimal?)Settings.Percentage:null;var band=Settings.BandPoints;var expand=Settings.AllowExpansion;var identical=Top50PlannerPolicy.EffectiveIdenticalKits(Settings);
             int started=revision;cancellation=new CancellationTokenSource();var token=cancellation.Token;IsBusy=true;Status="Searching retained inventory models…";Refresh();
             var progress=new Progress<string>(text=>{if(!IsBusy||token.IsCancellationRequested)return;search.Progress.Add(DateTime.UtcNow.ToString("O",System.Globalization.CultureInfo.InvariantCulture)+" | "+text);Status=text;Notify(nameof(Status));});
             try
@@ -76,16 +77,17 @@ namespace EngineeringDashboard
                 AcceptValidatedRun(result);
                 search.Outcome="Accepted "+result.Proposals.Count+" independently validated proposal(s).";
             }
-            catch(OperationCanceledException){search.Outcome="Cancelled; previous proposals retained.";Status="Search cancelled; previous proposals retained.";}
+            catch(OperationCanceledException){search.Outcome=Proposals.Count>0?"Cancelled; previous proposals retained.":"Cancelled; no proposal created.";Status=Proposals.Count>0?"Search cancelled; previous proposals retained.":"Search cancelled. No equipment offer was created.";}
             finally{IsBusy=false;cancellation.Dispose();cancellation=null;Refresh();}
             }
-            catch(Exception error){search.Outcome="Failed";FailOperation(attempt,error);throw;}
+            catch(Exception error){search.Outcome="Failed";Status="Optimization failed: "+error.Message;Notify(nameof(Status));FailOperation(attempt,error);throw;}
             finally{search.Clock.Stop();EndOperation(attempt,search.Outcome);}
         }
         public void Cancel(){cancellation?.Cancel();Status="Cancelling at the next solver checkpoint…";Notify(nameof(Status));}
         internal void AcceptValidatedRun(SearchRun run)
         {
-            foreach(var p in run.Proposals)if(Top50Validation.Validate(input.Walls,p,Limits).Count>0)throw new InvalidOperationException("Only independently validated proposals can enter the UI.");
+            Top50PlannerPolicy.ValidateSettings(Settings);
+            foreach(var p in run.Proposals)if(Top50Validation.Validate(input.Walls,p,Limits).Count>0||Top50PlannerPolicy.ValidateProposal(input.Walls,p,Settings).Count>0)throw new InvalidOperationException("Only proposals validated against the current geometry and project settings can enter the UI.");
             Proposals=QuantityShortlist(run.Proposals,input,Settings);SearchLog=run.Log;selected=Proposals.FirstOrDefault();Settings.SearchPolicyVersion=Top50PlannerPolicy.SearchPolicyVersion;IsStale=false;NewToken();RememberEdit();Status="Validated "+Proposals.Count+" displayed proposal(s); fewest panel count found: "+(selected==null?"none":Top50PlannerPolicy.TotalPanels(selected).ToString()+" (both faces)")+". Global optimum not established.";Refresh();
         }
         public void Save(string path)
@@ -95,6 +97,7 @@ namespace EngineeringDashboard
             if(IsBusy)throw new InvalidOperationException("Cancel optimization before saving the project.");
             if(input==null)throw new InvalidOperationException("There is no source project to save.");
             Top50PlannerPolicy.Apply(Settings);
+            Top50PlannerPolicy.ValidateSettings(Settings);
             var document=NativeProjectStore.Capture(input,IsStale?Array.Empty<Proposal>():Proposals,selected?.Id);
             document.LongestCount=Settings.LongestCount;document.CatalogMm=Settings.CatalogMm.ToArray();document.Preset=Settings.Preset;document.MaxFillers=Settings.MaxFillers;document.MaxFillerMm=Settings.MaxFillerMm;document.MaxGroups=Settings.MaxGroups;document.CandidateDisplayLimit=Settings.CandidateDisplayLimit;document.Seconds=Settings.Seconds;document.Seed=Settings.Seed;document.OfferingMode=Settings.OfferingMode;document.Percentage=Settings.Percentage;document.BandPoints=Settings.BandPoints;document.AllowExpansion=Settings.AllowExpansion;document.RequireIdenticalKits=Settings.RequireIdenticalKits;document.SearchLog=SearchLog.ToArray();
             document.ConnectionLevels=Settings.ConnectionLevels;document.ConnectionFaces=Settings.ConnectionFaces;document.ConnectionReviewed=Settings.ConnectionReviewed;document.AdjustableOnDirect=Settings.AdjustableOnDirect;
@@ -107,19 +110,20 @@ namespace EngineeringDashboard
             TrackOperation("Open project",path,()=>
             {
             if(IsBusy)throw new InvalidOperationException("Cancel optimization before opening another project.");
-            var document=NativeProjectStore.Load(path);Top50PlannerPolicy.Apply(document);var restored=NativeProjectStore.RestoreInput(document,cache);
+            var document=NativeProjectStore.Load(path);Top50PlannerPolicy.Apply(document);Top50PlannerPolicy.ValidateSettings(document);var restored=NativeProjectStore.RestoreInput(document,cache);
             var restoredLimits=new SearchLimits(document.MaxFillers,document.MaxFillerMm,document.MaxGroups,document.OfferingMode==1?1:document.LongestCount,document.Seconds,document.Seed);
             var proposals=document.Proposals.Select(NativeProjectStore.FromDto).ToArray();
-            foreach(var p in proposals)if(Top50Validation.Validate(restored.Walls,p,restoredLimits).Count>0)throw new InvalidOperationException("Saved proposal validation failed; original project remains unchanged.");
-            var eligible=QuantityShortlist(proposals,restored,document);
+            foreach(var p in proposals)if(Top50Validation.ValidateGeometry(restored.Walls,p,restoredLimits).Count>0)throw new InvalidOperationException("Saved proposal geometry validation failed; original project remains unchanged.");
+            var policyIssues=proposals.SelectMany(p=>Top50PlannerPolicy.ValidateProposal(restored.Walls,p,document)).Distinct().ToArray();
+            var eligible=policyIssues.Length>0?Array.Empty<Proposal>():QuantityShortlist(proposals,restored,document);
             bool shortlistChanged=!proposals.Select(p=>p.Id).SequenceEqual(eligible.Select(p=>p.Id));
-            input=restored;Settings=document;Proposals=eligible;selected=eligible.FirstOrDefault(p=>p.Id==document.SelectedId)??eligible.FirstOrDefault();SearchLog=document.SearchLog??Array.Empty<string>();ProjectPath=path;IsStale=false;Dirty=shortlistChanged||document.Version<Top50PlannerPolicy.ProjectVersion;revision++;
-            Status=document.SearchPolicyVersion<Top50PlannerPolicy.SearchPolicyVersion?"Saved proposals revalidated and quantity-first shortlist applied. Optimize to run the current repeatable search with automatic panel counts.":"Project opened and cached proposals independently revalidated.";ResetEdits(!Dirty);Refresh();
+            input=restored;Settings=document;Proposals=eligible;selected=eligible.FirstOrDefault(p=>p.Id==document.SelectedId)??eligible.FirstOrDefault();SearchLog=(document.SearchLog??Array.Empty<string>()).Concat(policyIssues.Select(issue=>"Discarded cached results: "+issue)).ToArray();ProjectPath=path;IsStale=policyIssues.Length>0;Dirty=shortlistChanged||document.Version<Top50PlannerPolicy.ProjectVersion;revision++;
+            Status=policyIssues.Length>0?"Project inputs opened; cached results do not match the current settings and were discarded. Optimize to update the offer.":eligible.Count==0?"Project inputs opened. Optimize reviewed walls to prepare an equipment offer.":document.SearchPolicyVersion<Top50PlannerPolicy.SearchPolicyVersion?"Saved proposals revalidated and quantity-first shortlist applied. Optimize to run the current repeatable search with automatic panel counts.":"Project opened and cached proposals independently revalidated.";ResetEdits(!Dirty);Refresh();
             });
         }
         private static IReadOnlyList<Proposal> QuantityShortlist(IEnumerable<Proposal> proposals,ImportSnapshot source,NativeTop50Project settings)
         {
-            var all=proposals.ToArray();if(all.Length==0)return Array.Empty<Proposal>();
+            var all=Top50PlannerPolicy.PreferOfferingBand(source.Walls,proposals,settings).ToArray();if(all.Length==0)return Array.Empty<Proposal>();
             var included=source.Walls.Where(w=>w.Included).ToArray();decimal length=included.Sum(w=>w.LengthMm)/1000;
             var target=settings.OfferingMode==1?(decimal?)(length*settings.Percentage/100):null;
             var scales=new RankingScales(length,settings.CatalogMm.Distinct().Count(),settings.MaxGroups,included.Length*settings.MaxFillers,target);

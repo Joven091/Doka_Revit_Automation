@@ -82,6 +82,7 @@ namespace EngineeringDashboard
             text.AppendLine("Page: "+CurrentPage+"; selected casting group index: "+SelectedGroupIndex);
             text.AppendLine("--- Current settings ---");text.Append(DescribeSettings(Settings));
             text.AppendLine("OfferingMode: 0 = fixed longest-wall sets; 1 = percentage reference. Preset: "+(PlanningPreset)Settings.Preset);
+            text.AppendLine("Effective identical fixed kits: "+Top50PlannerPolicy.EffectiveIdenticalKits(Settings)+"; the stored fixed-set preference is ignored in percentage mode.");
             text.AppendLine("Ranking: fewest validated panel quantity first; higher-count offers excluded. Presets compare equal-count offers using fixed project scales.");
             text.AppendLine("Panel components: chosen automatically from wall geometry and permitted panel sizes; no user-set count ceiling. Legacy MaxComponents values are ignored.");
             text.AppendLine("Search effort uses repeatable pattern-node and single-worker deterministic solver work. No wall-clock deadline; elapsed seconds are observations only.");
@@ -133,8 +134,8 @@ namespace EngineeringDashboard
                 }
                 try
                 {
-                    var issues=Top50Validation.Validate(input.Walls,proposal,Limits);
-                    text.AppendLine("Validation against CURRENT inputs/settings"+(IsStale?" (proposal is stale)":"")+": "+(issues.Count==0?"passed":string.Join("; ",issues)));
+                    var issues=Top50Validation.Validate(input.Walls,proposal,Limits).Concat(Top50PlannerPolicy.ValidateProposal(input.Walls,proposal,Settings)).Distinct().ToArray();
+                    text.AppendLine("Validation against CURRENT inputs/settings"+(IsStale?" (proposal is stale)":"")+": "+(issues.Length==0?"passed":string.Join("; ",issues)));
                 }
                 catch(Exception error){text.AppendLine("Current validation unavailable: "+error.GetType().Name+": "+Value(error.Message));}
             }

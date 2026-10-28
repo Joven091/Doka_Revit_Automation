@@ -31,6 +31,17 @@ internal static class Program
         Fails(()=>Wait(empty.OptimizeAsync()),"Optimize without input");
         Check(empty.BuildDiagnosticReport().Contains("Import measured walls first")&&empty.BuildDiagnosticReport().Contains("Outcome: Failed"),"pre-search validation failure remains diagnosable");
 
+        var restrictive=new Top50ViewModel();for(int i=0;i<4;i++)restrictive.AddManual(1000,"Restricted percentage outcome check");
+        restrictive.EditSettings(s=>{s.CatalogMm=new[]{1000};s.OfferingMode=1;s.Percentage=45;s.BandPoints=1;});Wait(restrictive.OptimizeAsync());
+        var outcomeWindow=new Top50Window(restrictive);var outcomeRoot=(FrameworkElement)outcomeWindow.Content;outcomeWindow.ShowPage(2);
+        var outcome=Find<TextBlock>(outcomeRoot).Single(t=>AutomationProperties.GetAutomationId(t)=="Top50Outcome");
+        Check(restrictive.Proposals.Count==0&&!restrictive.IsBusy&&!restrictive.IsStale&&outcome.Visibility==Visibility.Visible&&outcome.Text.Contains("No complete proposal found"),"first restrictive no-result remains readable while idle with no stale result");
+        Render(outcomeRoot,1000,680,1,Path.Combine(output,"first-no-result.png"));
+        var firstCancel=restrictive.OptimizeAsync();restrictive.Cancel();Wait(firstCancel);
+        Check(outcome.Visibility==Visibility.Visible&&outcome.Text.Contains("cancelled")&&restrictive.Selected==null,"cancellation before the first offer keeps an explicit visible outcome");
+        Render(outcomeRoot,1000,680,1,Path.Combine(output,"first-cancelled.png"));
+        restrictive.Save(Path.Combine(output,"restrictive.top50"));outcomeWindow.Close();
+
         // Controlled measurements only. These are not the original Top50 parity/reference drawing.
         var vm=new Top50ViewModel();for(int i=0;i<4;i++)vm.AddManual(5000,"Controlled planner diagnosis check");
         vm.Settings.CatalogMm=new[]{5000};vm.Settings.LongestCount=2;vm.Settings.Seconds=5;
@@ -87,6 +98,13 @@ internal static class Program
         {
             window.ShowPage(page);var diagnose=Command(root,"Top50Diagnose");
             Check(diagnose.IsEnabled,"diagnose available on page "+page);
+            if(page==1)Check((Find<ComboBox>(root).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50PlanningPreset").ToolTip as string)?.Contains("construction duration is not calculated")==true,"preset help states the actual allocation-group meaning of Fastest");
+            if(page==2)
+            {
+                Check(Find<TextBlock>(root).Any(t=>t.Text.Contains("Best found")&&t.Text.Contains("global optimum not established")),"results state best-found quantity-first scope locally");
+                Check(Find<Border>(root).Any(b=>(b.ToolTip as string)?.Contains("approved assembly permits")==true),"connector context explains conditional adjustable substitution and reuse");
+            }
+            if(page==3)Check(Find<TextBlock>(root).Any(t=>t.Text.Contains("not a pour sequence")),"casting groups visibly distinguish sequential reuse from approved site sequence");
             foreach(double scale in new[]{1d,1.25,1.5})
             {
                 double width=scale==1?1000:1600/scale,height=scale==1?680:1000/scale;

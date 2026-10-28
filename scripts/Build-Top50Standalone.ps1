@@ -16,9 +16,9 @@ Get-ChildItem -LiteralPath $build -File | Where-Object {$_.Extension -eq '.dll' 
 $version=([version][Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $output 'Top50Planner.exe')).FileVersion).ToString(3)
 $commit=(& git -C $repo rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0){throw 'Source commit could not be recorded.'}
-$sources=@(Get-ChildItem (Join-Path $repo 'src/Top50/*.cs');Get-ChildItem (Join-Path $repo 'src/ViewModels/Top50ViewModel*.cs');Get-Item (Join-Path $repo 'src/Views/Top50Window.cs');Get-Item (Join-Path $repo 'src/Views/Top50DiagnosticWindow.cs');Get-Item (Join-Path $repo 'src/Views/CalculatorStyles.xaml'))
+$sources=@(Get-ChildItem (Join-Path $repo 'src/Top50/*.cs');Get-ChildItem (Join-Path $repo 'src/ViewModels/Top50ViewModel*.cs');Get-ChildItem (Join-Path $repo 'src/Views/Top50*.cs');Get-Item (Join-Path $repo 'src/Views/DashboardToolbar.cs');Get-Item (Join-Path $repo 'src/Views/CalculatorStyles.xaml');Get-ChildItem (Join-Path $repo 'tools/Top50Tester') -File;Get-Item (Join-Path $repo 'Directory.Build.props'))
 $hashes=@($sources | Sort-Object FullName | ForEach-Object {@{path=$_.FullName.Substring($repo.Length+1).Replace('\','/');sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
-@{version=$version;sourceCommit=$commit;plannerBaseline='835e6de78f9170d4777ca14d982661ae7530c0dd';mode='Portable Windows x64 tester';plannerSources=$hashes} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output 'release-info.json') -Encoding UTF8
+@{version=$version;sourceCommit=$commit;plannerBaseline=$commit;mode='Portable Windows x64 tester';plannerSources=$hashes} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output 'release-info.json') -Encoding UTF8
 @"
 TOP50 PLANNER — STANDALONE TESTER $version
 
@@ -35,11 +35,11 @@ Panel Qty covers BOTH wall faces. Offered length is LM PER FACE.
 Connector Qty covers ONE LEVEL on BOTH faces, reused between casting groups.
 
 No installer, Revit or AutoCAD is needed. This tester does not register an add-in
-or update the installed dashboard. It uses the same planner source as PR #172.
+or update the installed dashboard. The source manifest records the exact planner build.
 Windows x64 and .NET Framework 4.8 are required. The native solver uses the
 Microsoft Visual C++ 2015–2022 x64 runtime, normally already present with Revit.
 
-Projects: older .top50 files can be opened. New saves use version 4 and require
+Projects: older .top50 files can be opened. New saves use version 5 and require
 the updated planner. Save a separate test copy to retain your earlier file.
 The tester starts with empty input; no sample proposal is supplied as a result.
 Unexpected startup error logs: %LOCALAPPDATA%\Doka\Top50StandaloneTester\Logs

@@ -34,7 +34,7 @@ namespace EngineeringDashboard
         public void EditSettings(Action<NativeTop50Project> edit)
         {
             RequireEditable();if(edit==null)throw new ArgumentNullException(nameof(edit));var before=CopySettings(Settings);
-            try{edit(Settings);}catch{Settings=before;throw;}Changed();
+            try{edit(Settings);Top50PlannerPolicy.Apply(Settings);Top50PlannerPolicy.ValidateSettings(Settings);}catch{Settings=before;throw;}Changed();
         }
         public void ReviewWall(string id,decimal lengthMm,bool include,string reason)
         {

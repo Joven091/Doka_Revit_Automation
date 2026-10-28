@@ -50,6 +50,7 @@ jobs:
         shell: pwsh
         run: |
           $compiler=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          ./scripts/Build-BeamSolverWorker.ps1 -OutputDirectory src/bin/Release/net48/BeamSolver
           & $compiler installer.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
           $installer=(Resolve-Path artifacts/installer/Install_DokaRevitAutomation.exe).Path

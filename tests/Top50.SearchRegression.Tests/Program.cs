@@ -114,9 +114,39 @@ internal static class Program
         }
         Console.WriteLine("PASS Top50 cancellation: before preparation/native startup, repeated forced startup races, completed native solve");
     }
+    static void IdenticalKitAllocation()
+    {
+        var walls=new[]{Wall(1,500000),Wall(2,500000),Wall(3,1500000)};
+        var stock=new Dictionary<int,int>{{750,2},{500,2}};
+        var ordinary=new SearchLimits(1,350,3,2,1,50);
+        var kits=new SearchLimits(1,350,3,2,1,50,requireIdenticalKits:true);
+        var pooled=new RetainedInventorySolver().Solve("pooled",walls,stock,ordinary,CancellationToken.None);
+        Check(pooled!=null&&pooled.Groups.Count==1,"Fixture must distinguish pooled stock from two identical kits");
+        var proposal=new RetainedInventorySolver().Solve("kits",walls,stock,kits,CancellationToken.None);
+        Check(proposal!=null&&proposal.IdenticalKitCount==2&&proposal.Groups.Count==2,"Required walls must use actual per-kit allocations before minimizing groups");
+        var longest=proposal.Groups.SelectMany(g=>g.Walls).Single(w=>w.WallId=="W-3").Pattern;
+        Check(longest.PanelsMm.OrderBy(x=>x).SequenceEqual(new[]{500,750})&&longest.InternalGapsMicrometres.Single()==250000,"Long wall must use its compatible 750 + 500 + 250 mm pattern");
+        Check(Top50Validation.Validate(walls,proposal,kits).Count==0,"Constrained identical-kit result failed independent allocation validation");
+        Check(Top50Validation.Validate(walls,pooled,kits).Count>0,"Missing kit metadata and pooled pattern must not satisfy a required kit policy");
+        var run=new Top50Search().Run(walls,new[]{500,750,1000},ordinary,PlanningPreset.BalancedOptimization,3,CancellationToken.None,identicalKits:true);
+        Check(run.Proposals.Count>0&&run.Proposals.All(p=>Top50Validation.Validate(walls,p,kits).Count==0),"Full identical-set search must return valid results without a post-solve validation exception");
+        var percent=new Top50Search().Run(walls,new[]{500,750,1000},ordinary,PlanningPreset.BalancedOptimization,3,CancellationToken.None,percentage:100,bandPoints:100,identicalKits:true);
+        Check(percent.Proposals.Count>0&&percent.Proposals.All(p=>p.IdenticalKitCount==0),"Percentage search must ignore the stored fixed-kit preference");
+        Check(!percent.Log.Any(line=>line.Contains("Identical-kit seed completion")),"Percentage preference must not introduce identical-only candidate completion");
+        var ordinaryRun=new Top50Search().Run(new[]{Wall(1,1000000),Wall(2,1000000)},new[]{1000},new SearchLimits(1,350,3,1,1,50),PlanningPreset.BalancedOptimization,3,CancellationToken.None);
+        Check(ordinaryRun.Proposals.Single().Stock.Single().Key==1000&&ordinaryRun.Proposals.Single().PanelCount==1&&ordinaryRun.Proposals.Single().Groups.Count==2&&!ordinaryRun.Log.Any(line=>line.Contains("Identical-kit seed completion")),"Ordinary inventory and allocation remain unchanged without identical completion");
+        foreach(var lengths in new[]{new[]{500,500,3000},new[]{500,1000,3000},new[]{1000,1000,3000},new[]{1500,1500,3000}})
+        {
+            var recovered=lengths.Select((length,index)=>Wall(index,(long)length*1000)).ToArray();
+            var recoveredRun=new Top50Search().Run(recovered,new[]{500,750,1000},ordinary,PlanningPreset.BalancedOptimization,3,CancellationToken.None,identicalKits:true);
+            Check(recoveredRun.Proposals.Count>0&&recoveredRun.Proposals.All(p=>Top50Validation.Validate(recovered,p,kits).Count==0),"Per-kit seed envelope must recover "+string.Join(",",lengths));
+            Check(recoveredRun.Log.Any(line=>line.Contains("seed completion appended"))&&recoveredRun.Proposals.All(p=>p.Stock.Keys.All(size=>new[]{500,750,1000}.Contains(size))),"Completion must be diagnosed and stay inside the existing panel catalog");
+        }
+        Console.WriteLine("PASS Top50 identical-kit allocation: actual kit-compatible patterns, required metadata and percentage method switch");
+    }
     static int Main()
     {
-        try{PatternReuse();Cancellation();Console.WriteLine("PASS "+checks+" Top50 search regression checks");return 0;}
+        try{PatternReuse();Cancellation();IdenticalKitAllocation();Console.WriteLine("PASS "+checks+" Top50 search regression checks");return 0;}
         catch(Exception e){Console.Error.WriteLine(e);return 1;}
     }
 }
