@@ -54,6 +54,7 @@ namespace EngineeringDashboard
         private readonly Stack<State> undo=new Stack<State>(),redo=new Stack<State>();
         private readonly Action save,load,export,refreshInputs,checkForUpdates;
         private readonly Func<RevitSelectionSnapshot> readRevitSelection;
+        private readonly Func<System.Threading.Tasks.Task<RevitSelectionSnapshot>> requestRevitSelection;
         internal Func<bool> ConfirmNewSession {get;set;}
         private bool changing,refreshQueued,closed;
         private bool sectionMode;
@@ -85,9 +86,10 @@ namespace EngineeringDashboard
             internal int SelectedIndex;
         }
         private const string StateProperties="Depth,Width,PlanOriginYmm,BeamLengthMm,TowerLegCapacityKn,PrimaryMaterial,StockLengthsText,StockEndSetbackMm,MaximumConcreteEndOverhangMm,AllowCustomH20Lengths,CustomH20Scope,IgnoreUplift,Exclude600Standalone,DeflectionLimit,PlywoodDeflectionLimit,SelectedPlywood,TransferSlabLoads,UseBeamNetwork,HasLeftSlab,HasRightSlab,LeftSlabThickness,RightSlabThickness,LeftSlabBayMm,RightSlabBayMm,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad";
-        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null,Action checkForUpdates=null,Func<RevitSelectionSnapshot> readRevitSelection=null)
+        internal BeamFormworkWorkspace(BeamCalculatorViewModel model,Action saveInputs,Action loadInputs,Action exportReport,Action refreshCalculatorInputs=null,Action changeSystem=null,Action checkForUpdates=null,Func<RevitSelectionSnapshot> readRevitSelection=null,Func<System.Threading.Tasks.Task<RevitSelectionSnapshot>> requestRevitSelection=null)
         {
             this.readRevitSelection=readRevitSelection;
+            this.requestRevitSelection=requestRevitSelection;
             this.checkForUpdates=checkForUpdates;
             Model=model;save=saveInputs;load=loadInputs;export=exportReport;refreshInputs=refreshCalculatorInputs;
             ConfirmNewSession=()=>MessageBox.Show(DialogOwner,"Start a new beam formwork session? Current inputs, results and undo history will be cleared. Saved files are unchanged.","New session",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes;
@@ -112,7 +114,7 @@ namespace EngineeringDashboard
             InspectorTabs.SelectionChanged+=(s,e)=> {if(ReferenceEquals(e.Source,InspectorTabs) && !changing)Refresh();};
             var governingScroll=new ScrollViewer {Content=GoverningMembers,MaxHeight=200,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Margin=new Thickness(12,0,12,8)};Grid.SetRow(governingScroll,2);inspector.Children.Add(governingScroll);
             Grid.SetRow(status,2);root.Children.Add(status);Content=root;
-            Drawing.CanInteract=()=>!Model.IsOptimizing && CommitFields();
+            Drawing.CanInteract=()=>!Model.IsOptimizing && !readingRevit && CommitFields();
             Drawing.SelectionChanged+=()=> {InspectorTabs.SelectedIndex=0;BuildProperties();Refresh();
                 if(Drawing.SelectedKind==FormworkObject.Slab && Drawing.SelectedObjects.Length==1)SeparateSlabNotice.ShowBay(Drawing.SelectedIndex);};
             Drawing.ActiveRevitPartChanged+=()=> {ClearDiagrams();refreshInputs?.Invoke();BuildProperties();Refresh();};
@@ -128,6 +130,7 @@ namespace EngineeringDashboard
             InitializeDrawingEditors(root);root.Loaded+=(s,e)=>Drawing.Fit();Closed+=(s,e)=> {closed=true;Diagnostics?.Close();Model.PropertyChanged-=ModelChanged;Model.SetAdditionalTextInputErrors(this,false);ClearDiagrams();};
             root.PreviewKeyDown+=(s,e)=>
             {
+                if(readingRevit){e.Handled=true;return;}
                 if(DimensionPopup.IsOpen)return;
                 if(e.Key==Key.Escape){HandleGeometryKey(e.Key,Keyboard.Modifiers);e.Handled=true;return;}
                 if(Keyboard.FocusedElement is TextBox)return;
@@ -145,11 +148,11 @@ namespace EngineeringDashboard
         {var item=new MenuItem {Header=text,Name="Workspace"+name};item.Click+=(s,e)=>action();Buttons[name]=item;return item;}
         private void StartNewSession()
         {
-            if(Model.IsOptimizing || ConfirmNewSession==null || !ConfirmNewSession())return;
+            if(Model.IsOptimizing || readingRevit || ConfirmNewSession==null || !ConfirmNewSession())return;
             changing=true;
             try
             {
-                ClearDiagrams();Diagnostics?.Close();Model.StartNewSession();refreshInputs?.Invoke();CancelDrafting();copiedBeam=null;copiedCrossing=null;copiedIndependent=null;if(GeometryMenu!=null)GeometryMenu.IsOpen=false;
+                ClearDiagrams();Diagnostics?.Close();lastRevitSelection=null;lastRevitImport=null;Model.StartNewSession();refreshInputs?.Invoke();CancelDrafting();copiedBeam=null;copiedCrossing=null;copiedIndependent=null;if(GeometryMenu!=null)GeometryMenu.IsOpen=false;
                 undo.Clear();redo.Clear();settingsExpanded.Clear();failure.Text="";failures.Children.Clear();
                 failureExpander.IsExpanded=false;
                 Drawing.Select(FormworkObject.Beam,0,false);
@@ -166,7 +169,7 @@ namespace EngineeringDashboard
         private void ShowDiagnostics()
         {
             if(Diagnostics!=null){Diagnostics.RefreshReport();Diagnostics.Activate();return;}
-            Diagnostics=new BeamDiagnosticWindow(remarks=>Model.BuildDiagnosticReport(remarks,"Source: Drawing workspace; selected "+Drawing.SelectedKind+" index "+Drawing.SelectedIndex+" (zero based)\n"+string.Join("\n",Fields.Select(f=>f.Key+" = "+f.Value.Text+"; enabled="+f.Value.IsEnabled))));
+            Diagnostics=new BeamDiagnosticWindow(remarks=>Model.BuildDiagnosticReport(remarks,"Source: Drawing workspace; selected "+Drawing.SelectedKind+" index "+Drawing.SelectedIndex+" (zero based)\n"+string.Join("\n",Fields.Select(f=>f.Key+" = "+f.Value.Text+"; enabled="+f.Value.IsEnabled))+"\n"+LastRevitImportReport));
             Diagnostics.Closed+=(s,e)=>Diagnostics=null;if(DialogOwner.IsVisible)Diagnostics.Owner=DialogOwner;Diagnostics.Show();
         }
         private void Geometry()
@@ -195,7 +198,7 @@ namespace EngineeringDashboard
         private void Mutate(Action change,bool fit=true)
         {if(fit)CancelDrafting();var old=Capture();changing=true;try {change();}finally {changing=false;}if(!Same(old,Capture())){undo.Push(old);redo.Clear();}BuildProperties();Refresh();if(fit)Drawing.Fit();}
         private void History(Stack<State> from,Stack<State> to)
-        {if(!CommitFields() || from.Count==0 || Model.IsOptimizing)return;CancelDrafting();to.Push(Capture());Apply(from.Pop());}
+        {if(!CommitFields() || from.Count==0 || Model.IsOptimizing || readingRevit)return;CancelDrafting();to.Push(Capture());Apply(from.Pop());}
         internal void AddBay(bool before)
         {
             if(!CommitFields() || Model.IsOptimizing || !Model.CanAddNetworkBay)return;
@@ -582,13 +585,13 @@ namespace EngineeringDashboard
         private void Refresh()
         {
             RefreshCombinedRevitControls();
-            properties.IsEnabled=SharedProperties.IsEnabled=!Model.IsOptimizing;
+            properties.IsEnabled=SharedProperties.IsEnabled=!Model.IsOptimizing && !readingRevit;
             Drawing.InvalidateVisual();changing=true;try {foreach(var e in editors)if(!e.Dirty && !e.Box.IsKeyboardFocused)e.Box.Text=e.Get().ToString("0.###",CultureInfo.CurrentCulture);foreach(var e in stringEditors)if(!e.Dirty && !e.Box.IsKeyboardFocused)e.Box.Text=e.Get();foreach(var sync in syncControls)sync();}finally {changing=false;}
             bool pending=editors.Any(e=>e.Dirty && e.Box.IsEnabled) || stringEditors.Any(e=>e.Dirty),valid=editors.Where(e=>e.Box.IsEnabled).All(ValidateEditor) && stringEditors.All(ValidateStock);
             Model.SetAdditionalTextInputErrors(this,pending);
-            Buttons["NewSession"].IsEnabled=!Model.IsOptimizing;
-            if(Buttons.ContainsKey("FromRevit"))Buttons["FromRevit"].IsEnabled=!Model.IsOptimizing;
-            Buttons["Calculate"].IsEnabled=valid && !Model.IsOptimizing;
+            Buttons["NewSession"].IsEnabled=!Model.IsOptimizing && !readingRevit;
+            if(Buttons.ContainsKey("FromRevit"))Buttons["FromRevit"].IsEnabled=!Model.IsOptimizing && !readingRevit;
+            Buttons["Calculate"].IsEnabled=valid && !Model.IsOptimizing && !readingRevit;
             Buttons["Cancel"].IsEnabled=Model.CanCancelOptimization;
             Buttons["Formwork"].IsEnabled=Model.IsCalculationValid && !pending;
             Buttons["Section"].IsEnabled=Model.IsCalculationValid && Model.NetworkResult!=null && !pending;
@@ -596,17 +599,17 @@ namespace EngineeringDashboard
             ((CheckBox)Buttons["SecondaryH20s"]).IsChecked=Drawing.ShowSecondaryH20s;
             Buttons["SecondaryH20s"].Visibility=!sectionMode && Drawing.Formwork ? Visibility.Visible : Visibility.Collapsed;
             Buttons["Cancel"].Visibility=Model.IsOptimizing ? Visibility.Visible : Visibility.Collapsed;
-            Buttons["Delete"].Visibility=!sectionMode && !Drawing.Formwork && Drawing.SelectedObjects.Length>0 ? Visibility.Visible : Visibility.Collapsed;
+            Buttons["Delete"].Visibility=Visibility.Visible;
             addMenu.Visibility=!sectionMode && !Drawing.Formwork ? Visibility.Visible : Visibility.Collapsed;
             sectionControls.Visibility=sectionMode ? Visibility.Visible : Visibility.Collapsed;
-            if(Buttons.ContainsKey("ChangeSystem"))Buttons["ChangeSystem"].IsEnabled=!Model.IsOptimizing;
-            Buttons["AddAbove"].IsEnabled=Buttons["AddBelow"].IsEnabled=!sectionMode && !Drawing.Formwork && !Model.IsOptimizing && (!Model.IsNetworkMode || Model.CanAddNetworkBay);
-            Buttons["AddIndependent"].IsEnabled=!sectionMode && !Drawing.Formwork && !Model.IsOptimizing && Model.IndependentBeams.Count<30;
-            Buttons["AddCrossing"].IsEnabled=!sectionMode && !Drawing.Formwork && Model.IsNetworkMode && Model.CrossingBeams.Count<30 && !Model.IsOptimizing;
-            Buttons["Delete"].IsEnabled=!sectionMode && !Drawing.Formwork && !Model.IsOptimizing && PlanRemoval().Allowed;
+            if(Buttons.ContainsKey("ChangeSystem"))Buttons["ChangeSystem"].IsEnabled=!Model.IsOptimizing && !readingRevit;
+            Buttons["AddAbove"].IsEnabled=Buttons["AddBelow"].IsEnabled=!sectionMode && !Drawing.Formwork && !Model.IsOptimizing && !readingRevit && (!Model.IsNetworkMode || Model.CanAddNetworkBay);
+            Buttons["AddIndependent"].IsEnabled=!sectionMode && !Drawing.Formwork && !Model.IsOptimizing && !readingRevit && Model.IndependentBeams.Count<30;
+            Buttons["AddCrossing"].IsEnabled=!sectionMode && !Drawing.Formwork && Model.IsNetworkMode && Model.CrossingBeams.Count<30 && !Model.IsOptimizing && !readingRevit;
+            Buttons["Delete"].IsEnabled=!sectionMode && !Drawing.Formwork && !Model.IsOptimizing && !readingRevit && PlanRemoval().Allowed;
             Buttons["Delete"].ToolTip=RemovalPreview;
-            Buttons["Undo"].IsEnabled=undo.Count>0 && !Model.IsOptimizing;Buttons["Redo"].IsEnabled=redo.Count>0 && !Model.IsOptimizing;
-            Buttons["Save"].IsEnabled=valid && !Model.IsOptimizing;Buttons["Export"].IsEnabled=Model.IsCalculationValid && !pending;Buttons["Load"].IsEnabled=!Model.IsOptimizing;
+            Buttons["Undo"].IsEnabled=undo.Count>0 && !Model.IsOptimizing && !readingRevit;Buttons["Redo"].IsEnabled=redo.Count>0 && !Model.IsOptimizing && !readingRevit;
+            Buttons["Save"].IsEnabled=valid && !Model.IsOptimizing && !readingRevit;Buttons["Export"].IsEnabled=Model.IsCalculationValid && !pending;Buttons["Load"].IsEnabled=!Model.IsOptimizing && !readingRevit;
             UpdateViewButtons();
             foreach(string name in new[] {"Geometry","Formwork","Section"})Buttons[name].Background=Buttons[name].FontWeight==FontWeights.Bold ? new SolidColorBrush(Color.FromRgb(255,242,191)) : Brushes.White;
             if(!Model.IsCalculationValid || pending) {ClearDiagrams();Section.SetResult(null);if(sectionMode)Geometry();}
@@ -682,6 +685,7 @@ namespace EngineeringDashboard
             $"Efficiency: {beam.SupportEfficiencyPercent:0.0}%";
         internal async Task CalculateAsync(bool useTimeLimit=false)
         {
+            if(readingRevit)return;
             if(!CommitFields())return;CancelDrafting();await Model.OptimizeTowersAsync(useTimeLimit);
             try
             {

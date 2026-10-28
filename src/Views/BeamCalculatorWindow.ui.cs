@@ -21,6 +21,7 @@ namespace EngineeringDashboard
         internal BeamFormworkWorkspace FormworkWorkspace {get;private set;}
         internal Action CheckForUpdates {get;set;}
         internal Func<RevitSelectionSnapshot> ReadRevitSelection {get;set;}
+        internal Func<System.Threading.Tasks.Task<RevitSelectionSnapshot>> RequestRevitSelection {get;set;}
         internal object ClassicCalculatorContent {get;private set;}
         private bool updatingWorkspace;
         internal BeamDiagnosticWindow Diagnostics {get;private set;}
@@ -44,7 +45,7 @@ namespace EngineeringDashboard
                 ()=>CalculationFiles.Run(this,()=> {var path=CalculationFiles.ChooseLoad(this);if(path!=null)RestoreCalculation(CalculationFiles.Read<CalculationRecord>(path));}),
                 ()=>CalculationFiles.Run(this,()=>CalculationFiles.ExportHtml(this,"Beam",BuildReport())),
                 ()=> {CloseTowerDiagrams();Diagnostics?.Close();RefreshInputValidity();},
-                ()=>ChangeSupportSystem_Click(null,null),CheckForUpdates,ReadRevitSelection) {HostWindow=this};
+                ()=>ChangeSupportSystem_Click(null,null),CheckForUpdates,ReadRevitSelection,RequestRevitSelection) {HostWindow=this};
             FormworkWorkspace.Closed+=(s,args)=> {FormworkWorkspace=null;Content=ClassicCalculatorContent;Title="Beam Calculator";MinWidth=900;};
             var surface=FormworkWorkspace.Surface;FormworkWorkspace.Content=null;Content=surface;
             Title=FormworkWorkspace.Title;MinWidth=980;Width=Math.Max(Width,1280);

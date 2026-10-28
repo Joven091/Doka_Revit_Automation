@@ -50,15 +50,20 @@ namespace EngineeringDashboard
             file.Items.Add(MenuAction("Save","Save inputs…",()=> {if(CommitFields())save?.Invoke();}));
             file.Items.Add(new Separator());file.Items.Add(MenuAction("Export","Export report…",()=> {if(CommitFields())export?.Invoke();}));
             if(checkForUpdates!=null){file.Items.Add(new Separator());file.Items.Add(MenuAction("CheckUpdates","Check for updates…",checkForUpdates));}
+            var tools=new MenuItem {Header="_Tools",Padding=new Thickness(10,6,10,6)};tools.Items.Add(MenuAction("Diagnose","Diagnose…",ShowDiagnostics));menus.Items.Add(tools);
             addMenu=new MenuItem {Header="+ _Add",Padding=new Thickness(10,6,10,6)};menus.Items.Add(addMenu);
             addMenu.Items.Add(MenuAction("AddAbove","Bay above selected beam",()=>AddBay(true)));
             addMenu.Items.Add(MenuAction("AddBelow","Bay below selected beam",()=>AddBay(false)));
             addMenu.Items.Add(MenuAction("AddIndependent","Independent beam (two endpoints)",BeginIndependent));
             addMenu.Items.Add(MenuAction("AddCrossing","Crossing beam",()=> {if(CommitFields() && Model.IsNetworkMode){Geometry();Drawing.AddCrossing=true;Drawing.Cursor=Cursors.Cross;Drawing.InvalidateVisual();}}));
-            var tools=new MenuItem {Header="_Tools",Padding=new Thickness(10,6,10,6)};tools.Items.Add(MenuAction("Diagnose","Diagnose…",ShowDiagnostics));menus.Items.Add(tools);
-            edit.Children.Add(menus);edit.Children.Add(Button("Undo","Undo",()=>History(undo,redo)));edit.Children.Add(Button("Redo","Redo",()=>History(redo,undo)));
-            if(readRevitSelection!=null)edit.Children.Add(Button("FromRevit","From Revit…",ImportRevitSelection));
-            edit.Children.Add(Button("Delete","Delete selection",RemoveSelected));toolbar.Children.Add(edit);return toolbar;
+            edit.Children.Add(menus);
+            if(readRevitSelection!=null || requestRevitSelection!=null)
+            {
+                var selection=Button("FromRevit","Use Revit selection",ImportRevitSelection);
+                selection.ToolTip="Select beams, slabs, columns and walls in Revit, then click once to replace the canvas. Undo restores the previous drawing.";edit.Children.Add(selection);
+            }
+            edit.Children.Add(Button("Undo","Undo",()=>History(undo,redo)));edit.Children.Add(Button("Redo","Redo",()=>History(redo,undo)));
+            edit.Children.Add(Button("Delete","Delete",RemoveSelected));toolbar.Children.Add(edit);return toolbar;
         }
         private FrameworkElement BuildViewToolbar()
         {

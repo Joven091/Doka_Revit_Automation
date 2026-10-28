@@ -11,14 +11,21 @@ namespace EngineeringDashboard
     {
         public BeamCalculatorWindow() { InitializeComponent(); InitializeUi(); }
 
-        private void BtnApplyToBeams_Click(object sender, RoutedEventArgs e)
+        private bool applyingToBeams;
+        private async void BtnApplyToBeams_Click(object sender,RoutedEventArgs e)
+        {
+            if(applyingToBeams)return;applyingToBeams=true;
+            try {await Command.Request(app=>{if(IsLoaded)ApplyToBeams(app);return true;});}
+            catch(Exception error){if(IsLoaded)MessageBox.Show(this,error.Message,"Revit request",MessageBoxButton.OK,MessageBoxImage.Information);}
+            finally {applyingToBeams=false;}
+        }
+        private void ApplyToBeams(Autodesk.Revit.UI.UIApplication app)
         {
             if (!TryGetValidCalculation(out BeamCalculatorViewModel vm) || !vm.CanImport)
             {
                 MessageBox.Show("Correct the inputs before importing values.", "Invalid calculation", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-            var app = EngineeringDashboard.Command.App;
             if (app?.ActiveUIDocument == null) return;
             var uiDocument = app.ActiveUIDocument;
             var doc = uiDocument.Document;

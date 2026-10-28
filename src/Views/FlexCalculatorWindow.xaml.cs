@@ -129,14 +129,21 @@ namespace EngineeringDashboard
             }
         }
 
-        private void BtnImportValues_Click(object sender, RoutedEventArgs e)
+        private bool applyingToSlab;
+        private async void BtnImportValues_Click(object sender,RoutedEventArgs e)
+        {
+            if(applyingToSlab)return;applyingToSlab=true;
+            try {await Command.Request(app=>{if(IsLoaded)ApplyToSlab(app);return true;});}
+            catch(Exception error){if(IsLoaded)MessageBox.Show(this,error.Message,"Revit request",MessageBoxButton.OK,MessageBoxImage.Information);}
+            finally {applyingToSlab=false;}
+        }
+        private void ApplyToSlab(Autodesk.Revit.UI.UIApplication app)
         {
             if (!TryGetValidCalculation(out FlexCalculatorViewModel vm))
             {
                 MessageBox.Show("Correct the inputs before importing values.", "Invalid calculation", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-            var app = EngineeringDashboard.Command.App;
             if (app?.ActiveUIDocument == null) return;
             var uiDocument = app.ActiveUIDocument;
             var doc = uiDocument.Document;

@@ -24,25 +24,15 @@ internal static class RevitSelectionUiTests
         var standalone=new BeamFormworkWorkspace(model,null,null,null);Check(!standalone.Buttons.ContainsKey("FromRevit"),"standalone has no live Revit command");standalone.Close();
         int reads=0;bool columnSelection=false;var w=new BeamFormworkWorkspace(model,null,null,null,readRevitSelection:()=> {reads++;return columnSelection ? RevitImportFixtures.Columns() : RevitStructureImportTests.Sample();});w.Show();Pump();
         Check(w.Buttons.ContainsKey("FromRevit"),"Revit host has visible import button");
-        w.ShowRevitImportPreview=dialog=> {Check(dialog.Result.CanImport && dialog.ImportButton.IsEnabled,"valid preview ready");dialog.Close();return false;};
-        Click(w,"FromRevit");Check(reads==1 && model.NetworkConfigurationXml==original && model.BeamLengthMm==originalLength,"cancel does not replace canvas");
-        w.ShowRevitImportPreview=dialog=>
-        {
-            dialog.Show();Pump();dialog.RefreshPreview();Pump();dialog.PreviewCanvas.Fit();Pump();
-            Check(dialog.PreviewCanvas.DrawnReferenceCount==2,"preview draws both wall references");
-            Check(dialog.PreviewCanvas.AnnotationLabels.Any(t=>t.Contains("Wall start")),"boundary labels appear in preview");
-            Check(dialog.PreviewCanvas.AnnotationLabels.Any(t=>t.StartsWith("S1")),"slab label remains visible beside boundary references");
-            Check(dialog.PreviewCanvas.Model.BeamLengthMm*dialog.PreviewCanvas.Zoom>dialog.PreviewCanvas.ActualHeight*.65,"compact preview uses the available drawing area");
-            Check(!dialog.PreviewCanvas.AnnotationLabels.Any(t=>t.StartsWith("Click:")),"read-only preview has no drawing-edit hints");
-            if(png!=null)
-            {
-                var content=(FrameworkElement)dialog.Content;content.UpdateLayout();
-                var bitmap=new RenderTargetBitmap((int)content.ActualWidth,(int)content.ActualHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(content);
-                var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(png))encoder.Save(file);
-            }
-            dialog.Close();return true;
-        };
+        Check((string)((Button)w.Buttons["FromRevit"]).Content=="Use Revit selection","approved selection label has no dialog ellipsis");
+        var toolbar=(Panel)w.Buttons["FromRevit"].Parent;
+        var menu=toolbar.Children.OfType<Menu>().Single();
+        Check(menu.Items.OfType<MenuItem>().Select(x=>(string)x.Header).Skip(1).SequenceEqual(new[]{"_File","_Tools","+ _Add"}),"File, Tools and Add order");
+        Check(toolbar.Children.OfType<Button>().Select(x=>(string)x.Content).SequenceEqual(new[]{"Use Revit selection","Undo","Redo","Delete"}),"selection, Undo, Redo and Delete order");
         Click(w,"FromRevit");Pump();
+        Check(reads==1 && w.LastRevitImportReport.Contains("Outcome: Imported") && w.LastRevitImportReport.Contains("no review dialog"),"one click reads and imports without another page");
+        Click(w,"Diagnose");Pump();
+        Check(w.Diagnostics.ReportBox.Text.Contains("Original Revit selection") && w.Diagnostics.ReportBox.Text.Contains("101") && w.Diagnostics.ReportBox.Text.Contains("Outcome: Imported"),"Tools diagnosis includes source geometry and completed import");w.Diagnostics.Close();
         Check(model.BeamLengthMm==7000 && model.CrossingBeams.Single().PositionMm==3350,"accepted geometry reaches shared solver inputs");
         Check(model.RevitContext.References.Length==2 && w.Drawing.DrawnReferenceCount==2,"canvas keeps visible boundary references");
         Check(!model.AllowCustomH20Lengths && model.TowerLegCapacityKn==50 && model.FloorHeight==4000,"project settings preserved");
@@ -66,22 +56,7 @@ internal static class RevitSelectionUiTests
             var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.Combine(Path.GetDirectoryName(png),"individual-spans.png")))encoder.Save(file);
         }
         columnSelection=true;
-        w.ShowRevitImportPreview=dialog=>
-        {
-            dialog.Show();Pump();dialog.RefreshPreview();Pump();dialog.PreviewCanvas.Fit();Pump();
-            Check(dialog.ImportButton.IsEnabled && dialog.Result.CanImport,"reported columns in slab cutbacks enable import");
-            Check(dialog.PreviewCanvas.DrawnReferenceCount==4,"all four reported columns appear in the preview");
-            Check(dialog.PreviewCanvas.Model.NetworkBays[0].Outline.Length>=8 && dialog.PreviewCanvas.Model.NetworkBays[3].Outline.Length>=8,"preview retains both actual corner outlines");
-            Check(dialog.BuildDiagnosticReport("").Contains("Preview status: Ready to import"),"reported selection now has a successful diagnostic");
-            if(png!=null)
-            {
-                var content=(FrameworkElement)dialog.Content;content.UpdateLayout();
-                var bitmap=new RenderTargetBitmap((int)content.ActualWidth,(int)content.ActualHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(content);
-                var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using(var file=File.Create(Path.Combine(Path.GetDirectoryName(png),"column-cutbacks.png")))encoder.Save(file);
-            }
-            dialog.Close();return true;
-        };
-        Click(w,"FromRevit");Pump();Check(model.RevitContext.References.Length==4 && model.NetworkBeams.Count==5,"reported thirteen-element selection reaches canvas");
+        Click(w,"FromRevit");Pump();Check(model.RevitContext.References.Length==4 && model.NetworkBeams.Count==5,"reported thirteen-element selection reaches canvas in one click");
         Check(!model.AllowCustomH20Lengths && model.TowerLegCapacityKn==50,"column fix preserves project stock and capacity settings");
         Click(w,"Undo");Pump();Check(model.RevitContext.References.Length==0,"undo restores the earlier drawing without columns");
         Click(w,"Redo");Pump();Check(model.RevitContext.References.Length==4 && model.NetworkBays[0].Outline.Length>=8,"redo preserves columns and cutbacks");
@@ -191,15 +166,42 @@ internal static class RevitSelectionUiTests
         fault.RefreshPreview();Check(!fault.ImportButton.IsEnabled && fault.DiagnoseButton.IsEnabled,"unexpected preview failure retains Diagnose");
         Check(fault.BuildDiagnosticReport("").Contains("Unexpected preview fixture"),"unexpected exception is copyable without a preview result");fault.Close();
         var readFailure=new BeamFormworkWorkspace(model,null,null,null,readRevitSelection:()=>throw new InvalidOperationException("Revit reader fixture"));readFailure.Show();Pump();
-        readFailure.ShowRevitImportPreview=dialog=> {Check(dialog.DiagnoseButton.IsEnabled && dialog.BuildDiagnosticReport("").Contains("Revit reader fixture"),"reader exceptions still open a diagnosable import window");Check(!dialog.BuildDiagnosticReport("").Contains("Select at least one straight"),"a reader failure cannot ask the user to reselect a beam that was never read");dialog.Close();return false;};
-        Click(readFailure,"FromRevit");readFailure.Close();
+        Click(readFailure,"FromRevit");Pump();
+        Click(readFailure,"Diagnose");Pump();
+        Check(readFailure.Diagnostics.ReportBox.Text.Contains("Revit reader fixture") && readFailure.Diagnostics.ReportBox.Text.Contains("Requesting Revit selection"),"Tools diagnosis retains reader stack and failure stage");
+        Check(!readFailure.Diagnostics.ReportBox.Text.Contains("Select at least one straight"),"reader exception does not invent a geometry rejection");readFailure.Close();
+        DirectImportFailures();
         var missing=RevitStructureImportTests.Sample();missing.Beams[0].WidthMm=0;
         var edit=new RevitSelectionImportWindow(missing);Check(!edit.ImportButton.IsEnabled,"missing dimension blocks import");missing.Beams[0].WidthMm=800;edit.RefreshPreview();Check(edit.ImportButton.IsEnabled,"reviewed dimension enables import");edit.Close();
         var longWall=RevitStructureImportTests.Sample();longWall.Boundaries[0].Outline=RevitStructureImportTests.Rect(-200,300,-100000,100000);
         var fit=new RevitSelectionImportWindow(longWall);fit.Show();Pump();fit.PreviewCanvas.Fit();Pump();Check(fit.PreviewCanvas.SceneBounds.Height<6000,"a long boundary wall cannot squash the imported beam view");fit.Close();
         w.ConfirmNewSession=()=>true;w.Buttons["NewSession"].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));Pump();Check(model.RevitContext==null && w.Drawing.DrawnReferenceCount==0,"new session clears boundary context");w.Close();
-        Console.WriteLine("Passed "+checks+" Revit selection preview/canvas checks.");
+        Console.WriteLine("Passed "+checks+" Revit direct selection/diagnosis/canvas checks.");
     }
+    private static void DirectImportFailures()
+    {
+        Func<BeamCalculatorViewModel> fresh=()=>new BeamCalculatorViewModel {UseTowers=true,HasSelectedSupportSystem=true,UseBeamNetwork=true};
+        var model=fresh();var original=model.NetworkConfigurationXml;
+        var completion=new System.Threading.Tasks.TaskCompletionSource<RevitSelectionSnapshot>();int calls=0;
+        var window=new BeamFormworkWorkspace(model,null,null,null,requestRevitSelection:()=>{calls++;return completion.Task;});window.Show();Pump();
+        Click(window,"FromRevit");Click(window,"FromRevit");
+        Check(calls==1 && !window.Buttons["FromRevit"].IsEnabled && !window.Buttons["Calculate"].IsEnabled && !window.Buttons["NewSession"].IsEnabled,"pending external request prevents duplicate reads and competing operations");
+        Check(model.NetworkConfigurationXml==original,"pending Revit event leaves canvas intact");
+        Click(window,"Diagnose");Pump();Check(window.Diagnostics.ReportBox.Text.Contains("Waiting for Revit"),"pending request remains diagnosable");
+        completion.SetResult(RevitStructureImportTests.Sample());Wait(()=>window.Buttons["FromRevit"].IsEnabled);
+        Check(model.BeamLengthMm==7000 && window.Diagnostics.ReportBox.Text.Contains("Outcome: Imported"),"external-event response populates canvas and refreshes the open report");
+        Click(window,"Undo");Check(model.NetworkConfigurationXml==original,"asynchronous import is one Undo step");window.Close();
+        var blocked=RevitStructureImportTests.Sample();blocked.Beams[0].WidthMm=0;
+        window=new BeamFormworkWorkspace(model,null,null,null,readRevitSelection:()=>blocked);window.Show();Pump();Click(window,"FromRevit");Pump();
+        Check(model.NetworkConfigurationXml==original && window.LastRevitImportReport.Contains("enter a valid width") && window.LastRevitImportReport.Contains("101"),"invalid geometry preserves canvas and records the precise source rejection");window.Close();
+        window=new BeamFormworkWorkspace(model,null,null,null,readRevitSelection:RevitStructureImportTests.Sample);window.BuildRevitImport=(snapshot,direction)=>throw new InvalidOperationException("Controlled direct builder failure");window.Show();Pump();Click(window,"FromRevit");Pump();
+        Check(model.NetworkConfigurationXml==original && window.LastRevitImportReport.Contains("Controlled direct builder failure") && window.LastRevitImportReport.Contains("Building geometry"),"geometry exceptions retain original selection and stack without opening a review page");window.Close();
+        completion=new System.Threading.Tasks.TaskCompletionSource<RevitSelectionSnapshot>();
+        window=new BeamFormworkWorkspace(model,null,null,null,requestRevitSelection:()=>completion.Task);window.Show();Pump();var pending=window.ImportRevitSelectionAsync();window.Close();completion.SetResult(RevitStructureImportTests.Sample());Wait(()=>pending.IsCompleted);
+        Check(model.NetworkConfigurationXml==original,"closing the calculator discards a late selection response");
+    }
+    private static void Wait(Func<bool> done)
+    {var watch=System.Diagnostics.Stopwatch.StartNew();while(!done()){Pump();System.Threading.Thread.Sleep(5);if(watch.Elapsed.TotalSeconds>5)throw new Exception("UI request did not finish");}Pump();}
     private static void SaveImage(Window window,string name,string sample)
     {
         if(sample==null)return;

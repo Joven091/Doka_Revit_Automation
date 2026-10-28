@@ -43,6 +43,17 @@ internal static class Program
             Check(AutomationProperties.GetName(buttons.Single(b => b.Name == "BtnSteelShape")) == "Steel Shape", "dashboard card has an accessible Steel Shape label");
             Check(buttons.Single(b => b.Name == "BtnTop50").IsEnabled, "Top50 remains available as a planner");
             Check(buttons.Single(b => b.Name == "BtnDomeCalculator").IsEnabled && AutomationProperties.GetName(buttons.Single(b => b.Name == "BtnDomeCalculator")).Contains("Beta"), "approved Dome Beta remains available");
+            var showTool=typeof(LauncherWindow).GetMethod("ShowTool",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
+            var modeless=new Window {Title="Controlled modeless tool",Width=300,Height=200};
+            showTool.Invoke(launcher,new object[]{modeless,null});Pump();
+            Check(modeless.IsVisible && !launcher.IsVisible && modeless.IsEnabled,"dashboard opens a modeless tool and immediately returns control");
+            var duplicate=new Window();showTool.Invoke(launcher,new object[]{duplicate,null});Pump();
+            Check(!duplicate.IsVisible && modeless.IsVisible,"reopening the dashboard activates the existing tool instead of duplicating it");duplicate.Close();
+            modeless.Close();Pump();Check(launcher.IsVisible,"closing a modeless tool returns to the retained dashboard");
+            var chooser=new SlabSystemWindow();bool chosen=false;
+            showTool.Invoke(launcher,new object[]{chooser,new Action(()=>chosen=true)});Pump();
+            Find<Button>(chooser).Single(b=>b.Name=="PickPropsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+            Check(chosen && !chooser.IsVisible && !chooser.UseD3,"slab selection completes without a modal DialogResult");launcher.Show();
 
             var window = new SteelShapeWindow { Owner = launcher }; window.Show();
             Wait(window.Initialization);

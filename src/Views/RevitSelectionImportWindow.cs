@@ -131,27 +131,75 @@ namespace EngineeringDashboard
     }
     internal sealed partial class BeamFormworkWorkspace
     {
-        internal Func<RevitSelectionImportWindow,bool?> ShowRevitImportPreview {get;set;}
-        private void ImportRevitSelection()
+        private bool readingRevit;
+        private string revitImportStatus,revitImportException,revitOriginalSelection,revitDirection,revitImportStage;
+        private RevitSelectionSnapshot lastRevitSelection;
+        private RevitStructureImportResult lastRevitImport;
+        private DateTime revitImportStarted,revitImportFinished;
+        internal Func<RevitSelectionSnapshot,string,RevitStructureImportResult> BuildRevitImport {get;set;}=RevitStructureImport.Build;
+        internal string LastRevitImportReport
         {
-            if(Model.IsOptimizing || readRevitSelection==null)return;
+            get
+            {
+                if(lastRevitSelection==null)return "Use Revit selection: no import attempted in this session.";
+                var state="Mode: one-click selection; no review dialog.\nStarted UTC: "+revitImportStarted.ToString("O")+"\nFinished UTC: "+(readingRevit ? "pending" : revitImportFinished.ToString("O"))
+                    +"\nStage: "+revitImportStage+"\nOutcome: "+revitImportStatus+"\nExisting drawing kept until valid geometry is ready. Undo restores a completed import.";
+                return RevitImportDiagnostics.Build(lastRevitSelection,revitOriginalSelection,revitDirection,lastRevitImport,
+                    revitImportStatus=="Imported",state,revitImportException,null);
+            }
+        }
+        private async void ImportRevitSelection()=>await ImportRevitSelectionAsync();
+        internal async System.Threading.Tasks.Task ImportRevitSelectionAsync()
+        {
+            if(Model.IsOptimizing || readingRevit || (readRevitSelection==null && requestRevitSelection==null))return;
+            if(!CommitFields()){status.Text="Finish editing the highlighted input, then use the Revit selection.";return;}
+            readingRevit=true;revitImportStarted=DateTime.UtcNow;revitImportFinished=default(DateTime);
+            revitImportStage="Requesting Revit selection";revitImportStatus="Waiting for Revit";
+            revitImportException=null;lastRevitImport=null;revitDirection=null;revitOriginalSelection=null;
+            lastRevitSelection=new RevitSelectionSnapshot();Refresh();status.Text="Waiting for Revit to read the selected elements…";
             try
             {
-                RevitSelectionSnapshot selection;
-                try {selection=readRevitSelection()??throw new InvalidOperationException("No Revit selection data was returned.");}
-                catch(Exception ex){selection=new RevitSelectionSnapshot {Problems=new[] {"Revit selection could not be read. Click Diagnose to copy the error details."},ReadException=ex.ToString()};}
-                var dialog=new RevitSelectionImportWindow(selection) {Owner=DialogOwner};
-                bool? accepted=ShowRevitImportPreview!=null ? ShowRevitImportPreview(dialog) : dialog.ShowDialog();
-                if(accepted!=true || dialog.Result?.CanImport!=true || !dialog.ImportButton.IsEnabled)return;
-                ApplyRevitImport(dialog.Result);
+                var selection=requestRevitSelection!=null ? await requestRevitSelection() : readRevitSelection();
+                lastRevitSelection=selection??throw new InvalidOperationException("No Revit selection data was returned.");
+                revitOriginalSelection=RevitImportDiagnostics.CaptureSelection(selection);
+                if(closed){revitImportStatus="Dashboard closed before import";return;}
+                revitImportStage="Building geometry";revitDirection=RevitStructureImport.DefaultDirection(selection);
+                lastRevitImport=BuildRevitImport(selection,revitDirection);
+                if(lastRevitImport?.CanImport!=true)
+                {
+                    revitImportStatus="Blocked";
+                    return;
+                }
+                if(Model.IsOptimizing){revitImportStatus="Calculation started before import could be applied";return;}
+                revitImportStage="Applying canvas";
+                ApplyRevitImport(lastRevitImport);
+                revitImportStatus="Imported";revitImportStage="Complete";
             }
-            catch(Exception ex)
-            {MessageBox.Show(DialogOwner,"The selection was not imported.\n"+ex.Message,"Revit selection",MessageBoxButton.OK,MessageBoxImage.Information);}
+            catch(Exception error)
+            {
+                revitImportException=error.ToString();revitImportStatus="Failed";
+                if(revitImportStage=="Requesting Revit selection")lastRevitSelection.ReadException=error.ToString();
+            }
+            finally
+            {
+                readingRevit=false;revitImportFinished=DateTime.UtcNow;
+                if(!closed)
+                {
+                    Refresh();
+                    status.Text=revitImportStatus=="Imported"
+                        ? "Revit selection added to the canvas. Review floor height and shared settings, then Calculate. Undo restores the previous drawing."
+                        : "Revit selection was not imported. "+(lastRevitImport?.Problems?.FirstOrDefault()??"Finish the current Revit command, select beams, slabs, columns and walls, then try again.")+" Open Tools → Diagnose for details.";
+                    Diagnostics?.RefreshReport();
+                }
+            }
         }
         internal void ApplyRevitImport(RevitStructureImportResult result)
         {
             if(Model.IsOptimizing || result?.CanImport!=true)return;
-            Mutate(()=>result.Apply(Model));ClearDiagrams();refreshInputs?.Invoke();Drawing.ClearSelection();Geometry();Drawing.Fit();
+            var previous=Capture();
+            try {Mutate(()=>result.Apply(Model));}
+            catch {Apply(previous);throw;}
+            ClearDiagrams();refreshInputs?.Invoke();Drawing.ClearSelection();Geometry();Drawing.Fit();
             status.Text="Revit geometry imported. Review floor height and shared settings, then Calculate. Undo restores the previous drawing.";
         }
     }

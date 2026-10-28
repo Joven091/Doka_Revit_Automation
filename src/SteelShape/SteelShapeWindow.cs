@@ -27,8 +27,10 @@ namespace EngineeringDashboard.SteelShape
             Title = "Steel Shape";
             Width = 1440; Height = 960; MinWidth = 760; MinHeight = 560;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            Background = new SolidColorBrush(Color.FromRgb(243, 245, 248));
+            Background = Brushes.WhiteSmoke;
+            Foreground = new SolidColorBrush(Color.FromRgb(32,42,51));
             FontFamily = new FontFamily("Segoe UI");
+            Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("pack://application:,,,/MyRevitAddin;component/Views/CalculatorStyles.xaml",UriKind.Absolute)});
             var grid = new Grid(); Content = grid;
             AutomationProperties.SetAutomationId(view, "SteelShapeBrowser");
             grid.Children.Add(view);
