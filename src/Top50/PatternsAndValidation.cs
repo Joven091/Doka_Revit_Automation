@@ -36,7 +36,14 @@ namespace EngineeringDashboard.Top50
                 }
             }
             Check();
-            for(int count=1;count<=limits.MaxComponents && result.Count<limits.PatternsPerLength;count++)Find(count,0,0,count);
+            // Geometry bounds the finite search: even the shortest permitted panel
+            // cannot be repeated past the wall length. This is not a design cap.
+            int maximumCount=checked((int)(length/((long)sizes[sizes.Length-1]*1000)));
+            long fillerCapacity=(long)Math.Min(limits.MaxInternalFillers,Math.Max(0,maximumCount-1))*limits.MaxFillerMm*1000;
+            long requiredPanelLength=Math.Max(0,length-fillerCapacity),longestPanel=(long)sizes[0]*1000;
+            int minimumCount=checked((int)Math.Max(1,requiredPanelLength/longestPanel+(requiredPanelLength%longestPanel==0?0:1)));
+            for(int count=minimumCount;count<=maximumCount && result.Count<limits.PatternsPerLength;count++)
+            {Find(count,0,0,count);if(count==maximumCount)break;}
             return result.AsReadOnly();
         }
     }
@@ -58,7 +65,7 @@ namespace EngineeringDashboard.Top50
                     if(!included.TryGetValue(a.WallId,out var wall)){errors.Add("Unknown or excluded wall: "+a.WallId);continue;}
                     if(!seen.Add(a.WallId))errors.Add("Wall assigned more than once: "+a.WallId);
                     var p=a.Pattern;
-                    if(p.PanelsMm.Count<1 || p.PanelsMm.Count>limits.MaxComponents || p.InternalGapsMicrometres.Count!=p.PanelsMm.Count-1)errors.Add("Invalid component/internal-gap count: "+a.WallId);
+                    if(p.PanelsMm.Count<1 || p.InternalGapsMicrometres.Count!=p.PanelsMm.Count-1)errors.Add("Invalid component/internal-gap count: "+a.WallId);
                     if(p.InternalGapsMicrometres.Any(g=>g<0 || g>(long)limits.MaxFillerMm*1000) || p.FillerLocations>limits.MaxInternalFillers)errors.Add("Invalid internal filler: "+a.WallId);
                     if(p.LengthMicrometres!=wall.LengthMicrometres)errors.Add("Arrangement does not close to the rounded-once source measurement: "+a.WallId);
                     foreach(var size in p.PanelsMm){used.TryGetValue(size,out var n);used[size]=n+1;}

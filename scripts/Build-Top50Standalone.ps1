@@ -34,7 +34,7 @@ or update the installed dashboard. It uses the same planner source as PR #172.
 Windows x64 and .NET Framework 4.8 are required. The native solver uses the
 Microsoft Visual C++ 2015–2022 x64 runtime, normally already present with Revit.
 
-Projects: older .top50 files can be opened. New saves use version 2 and require
+Projects: older .top50 files can be opened. New saves use version 3 and require
 the updated planner. Save a separate test copy to retain your earlier file.
 The tester starts with empty input; no sample proposal is supplied as a result.
 Unexpected startup error logs: %LOCALAPPDATA%\Doka\Top50StandaloneTester\Logs

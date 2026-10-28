@@ -51,6 +51,7 @@ internal static class Program
             Check(!reviewed.AssumedSingleLevel&&reviewed.StandardStock==12&&reviewed.AdjustableStock==20,"saved reviewed connector multipliers remain supported");
             var settingsModel=new Top50ViewModel();var settingsWindow=new Top50Window(settingsModel);settingsWindow.ShowPage(1);
             var settingsRoot=(FrameworkElement)settingsWindow.Content;Render(settingsRoot,1280,800,Path.Combine(output,"method-fixed.png"));
+            Check(!Find<TextBlock>(settingsRoot).Any(t=>t.Text=="Maximum panel components"),"settings omit the removed user-set panel component limit");
             var method=Find<ComboBox>(settingsRoot).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50OfferingMethod");
             var fixedInputs=Find<StackPanel>(settingsRoot).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50FixedMethodInputs");
             var percentageInputs=Find<StackPanel>(settingsRoot).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50PercentageMethodInputs");
@@ -70,7 +71,7 @@ internal static class Program
             Check(signature==Signature(model),"repeat optimization preserves complete stock and group allocations");
             string project=Path.Combine(output,"roundtrip.top50");model.Save(project);
             var loaded=new Top50ViewModel();loaded.Open(project,Path.Combine(output,"cache"));
-            Check(Signature(loaded)==signature&&loaded.Settings.Version==2&&!loaded.Dirty,"version-2 project roundtrip preserves proposals and selected stock");
+            Check(Signature(loaded)==signature&&loaded.Settings.Version==3&&!loaded.Dirty,"version-3 project roundtrip preserves proposals and selected stock");
             var labels=new Top50WallLabels(loaded.Input.Walls);var reorderedLabels=new Top50WallLabels(Enumerable.Reverse(loaded.Input.Walls));
             var idleOffer=new Proposal("more-idle-stock",new Dictionary<int,int>{{5000,1},{5500,1}},loaded.Input.Walls.Select(w=>new CastingGroup(new[]{new WallArrangement(w.Id,new PanelPattern(new[]{5000},Array.Empty<long>()))})));
             var explanation=new Top50OfferPresentation(loaded.Input,new NativeTop50Project{LongestCount=1},new[]{loaded.Selected,idleOffer});
@@ -110,6 +111,7 @@ internal static class Program
                 if(page==0)
                 {
                     var imported=Find<DataGrid>(root).Single();
+                    Check(imported.Columns.Select(c=>c.Header as string).SequenceEqual(new[]{"Include","Wall","Length (mm)","Status"}),"import shows only Include, Wall, Length and Status; source evidence remains in diagnosis");
                     Check(imported.Items.Cast<object>().All(row=>((string)row.GetType().GetProperty("Id").GetValue(row)).StartsWith("W-",StringComparison.Ordinal)),"import rows show readable wall names");
                     Check(!Find<TextBlock>(root).Any(t=>t.Text.Contains("valid walls")||t.Text.Contains("Edit length (mm) to record")||t.Text.StartsWith("Source:",StringComparison.Ordinal)),"import page omits the marked summary, instruction and source-audit text");
                 }

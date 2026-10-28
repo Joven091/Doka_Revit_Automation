@@ -83,6 +83,7 @@ namespace EngineeringDashboard
             text.AppendLine("--- Current settings ---");text.Append(DescribeSettings(Settings));
             text.AppendLine("OfferingMode: 0 = fixed longest-wall sets; 1 = percentage reference. Preset: "+(PlanningPreset)Settings.Preset);
             text.AppendLine("Ranking: fewest validated panel quantity first; higher-count offers excluded. Presets compare equal-count offers using fixed project scales.");
+            text.AppendLine("Panel components: chosen automatically from wall geometry and permitted panel sizes; no user-set count ceiling. Legacy MaxComponents values are ignored.");
             text.AppendLine("Search effort uses repeatable pattern-node and single-worker deterministic solver work. No wall-clock deadline; elapsed seconds are observations only.");
             text.AppendLine("--- Current input geometry (millimetres) ---");
             if(input==null)text.AppendLine("No input imported or added. Inspect operation errors below.");

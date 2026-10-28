@@ -72,7 +72,6 @@ namespace EngineeringDashboard.Top50
 
     public sealed class SearchLimits
     {
-        public int MaxComponents { get; }
         public int MaxInternalFillers { get; }
         public int MaxFillerMm { get; }
         public int PatternsPerLength { get; }
@@ -85,11 +84,11 @@ namespace EngineeringDashboard.Top50
         public double SolverDeterministicWork { get; }
         public long PatternVisitLimit { get; }
         public int Seed { get; }
-        public SearchLimits(int maxComponents,int maxInternalFillers,int maxFillerMm,int maximumGroups,int longestSimultaneous,double seconds,int seed,int patternsPerLength=4,double? solverDeterministicWork=null)
+        public SearchLimits(int maxInternalFillers,int maxFillerMm,int maximumGroups,int longestSimultaneous,double seconds,int seed,int patternsPerLength=4,double? solverDeterministicWork=null)
         {
             double work=solverDeterministicWork??seconds;
-            if(maxComponents<1 || maxInternalFillers<0 || maxFillerMm<0 || maxFillerMm>350 || maximumGroups<1 || longestSimultaneous<1 || seconds<=0 || double.IsNaN(seconds) || double.IsInfinity(seconds) || work<=0 || double.IsNaN(work) || double.IsInfinity(work) || patternsPerLength<1 || patternsPerLength>4) throw new ArgumentOutOfRangeException(nameof(maxComponents));
-            MaxComponents=maxComponents;MaxInternalFillers=maxInternalFillers;MaxFillerMm=maxFillerMm;MaximumGroups=maximumGroups;LongestSimultaneous=longestSimultaneous;SearchEffort=seconds;SolverDeterministicWork=work;Seed=seed;PatternsPerLength=patternsPerLength;
+            if(maxInternalFillers<0 || maxFillerMm<0 || maxFillerMm>350 || maximumGroups<1 || longestSimultaneous<1 || seconds<=0 || double.IsNaN(seconds) || double.IsInfinity(seconds) || work<=0 || double.IsNaN(work) || double.IsInfinity(work) || patternsPerLength<1 || patternsPerLength>4) throw new ArgumentOutOfRangeException(nameof(maxInternalFillers));
+            MaxInternalFillers=maxInternalFillers;MaxFillerMm=maxFillerMm;MaximumGroups=maximumGroups;LongestSimultaneous=longestSimultaneous;SearchEffort=seconds;SolverDeterministicWork=work;Seed=seed;PatternsPerLength=patternsPerLength;
             PatternVisitLimit=(long)Math.Max(1,Math.Ceiling(Math.Min(1000000000,seconds*50000)));
         }
     }

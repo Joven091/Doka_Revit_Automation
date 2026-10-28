@@ -20,11 +20,11 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build portable package from current planner sources
         run: ./scripts/Build-Top50Standalone.ps1 -OutputDirectory artifacts/top50-standalone
-      - name: Verify solver, geometry and input-model source against the tested PR
+      - name: Verify retained DXF reader and native allocation solver against the tested PR
         shell: pwsh
         run: |
           $release=Get-Content artifacts/top50-standalone/release-info.json -Raw | ConvertFrom-Json
-          $retained=@('src/Top50/CandidateSearch.cs','src/Top50/Domain.cs','src/Top50/DxfImporter.cs','src/Top50/PatternsAndValidation.cs','src/Top50/Ranking.cs','src/Top50/RetainedInventorySolver.cs','src/Top50/Top50Runtime.cs','src/ViewModels/Top50ViewModel.cs')
+          $retained=@('src/Top50/DxfImporter.cs','src/Top50/Ranking.cs','src/Top50/RetainedInventorySolver.cs','src/Top50/Top50Runtime.cs')
           foreach($source in $retained){
             if(!(Test-Path -LiteralPath $source)){throw "Retained source not found: $source"}
             git diff --exit-code $release.plannerBaseline HEAD -- $source

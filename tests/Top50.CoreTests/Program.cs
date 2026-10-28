@@ -29,7 +29,7 @@ internal static class Program
         Check(conflict.RawCodes.Any(c=>c.Code==42)&&!conflict.Acknowledged,"raw measurement evidence and acknowledgement state");
         Check(valid.All(w=>w.Id=="DXF-"+w.Handle)&&valid.All(w=>w.LabelScale==1),"original handle IDs and annotation scale");
         try{conflict.Review(19200,true,"");throw new Exception("missing reason accepted");}catch(ArgumentException){checks++;}
-        var limits=new SearchLimits(12,1,350,15,5,10,50);
+        var limits=new SearchLimits(1,350,15,5,10,50);
         var patterns=new FewestComponentPatterns();
         var p1600=patterns.Enumerate(1600000,new[]{500,750},limits,CancellationToken.None);
         Check(p1600.Any(p=>p.PanelsMm.SequenceEqual(new[]{750,500})&&p.InternalGapsMicrometres.SequenceEqual(new long[]{350000})),"internal 350mm exact filler fixture");
@@ -67,17 +67,17 @@ internal static class Program
         Check(Top50Validation.Validate(source.Walls,proposal,limits).Count==0,"complete allocation independently validated");
         Check(proposal.FillerLocations==63,"one internal filler for every included reference wall");
         var four=Enumerable.Range(1,4).Select(i=>new WallRow{Id="MANUAL-"+i,LengthMicrometres=5000000,Included=true,Status=WallReviewStatus.Valid}).ToArray();
-        var percentageRun=new Top50Search().Run(four,new[]{5000},new SearchLimits(4,1,350,4,1,3,50),PlanningPreset.BalancedOptimization,4,CancellationToken.None,percentage:45,bandPoints:10);
+        var percentageRun=new Top50Search().Run(four,new[]{5000},new SearchLimits(1,350,4,1,3,50),PlanningPreset.BalancedOptimization,4,CancellationToken.None,percentage:45,bandPoints:10);
         Check(percentageRun.Proposals.Count>0&&percentageRun.Proposals.All(p=>p.StockMicrometres==10000000&&p.Groups.Count==2),"percentage band uses whole walls and a valid 50-percent stock proposal for a 45-percent reference");
-        var identicalRun=new Top50Search().Run(four,new[]{5000},new SearchLimits(4,1,350,4,2,3,50),PlanningPreset.BalancedOptimization,4,CancellationToken.None,identicalKits:true);
-        Check(identicalRun.Proposals.Any(p=>p.IdenticalKitCount==2&&Top50Validation.Validate(four,p,new SearchLimits(4,1,350,4,2,3,50)).Count==0),"declared identical kits are validated against actual required-wall arrangements");
+        var identicalRun=new Top50Search().Run(four,new[]{5000},new SearchLimits(1,350,4,2,3,50),PlanningPreset.BalancedOptimization,4,CancellationToken.None,identicalKits:true);
+        Check(identicalRun.Proposals.Any(p=>p.IdenticalKitCount==2&&Top50Validation.Validate(four,p,new SearchLimits(1,350,4,2,3,50)).Count==0),"declared identical kits are validated against actual required-wall arrangements");
         Console.WriteLine("GENERAL ALLOCATION groups="+proposal.Groups.Count+" mean="+proposal.MeanUtilization.ToString("P4",CultureInfo.InvariantCulture)+" minimum="+proposal.MinimumUtilization.ToString("P4",CultureInfo.InvariantCulture)+" status="+proposal.RetainedModelStatus+" objective="+proposal.RetainedObjective+" bound="+proposal.RetainedBound+" elapsed="+clock.Elapsed.TotalSeconds.ToString("F3",CultureInfo.InvariantCulture));
         Console.WriteLine("NOTE: allocation is independently valid; exact original group membership, all candidates and hidden settings remain unverified.");
         Directory.CreateDirectory(args[1]);
         File.WriteAllLines(Path.Combine(args[1],"core-checks.txt"),new[]{checks+" checks passed", "groups="+proposal.Groups.Count,"mean="+proposal.MeanUtilization.ToString(CultureInfo.InvariantCulture),"minimum="+proposal.MinimumUtilization.ToString(CultureInfo.InvariantCulture),"status="+proposal.RetainedModelStatus});
         if(args.Contains("--discover"))
         {
-            var discovery=new Top50Search().Run(source.Walls,Precision.CatalogMm,new SearchLimits(12,1,350,15,5,5,50),PlanningPreset.BalancedOptimization,4,CancellationToken.None);
+            var discovery=new Top50Search().Run(source.Walls,Precision.CatalogMm,new SearchLimits(1,350,15,5,5,50),PlanningPreset.BalancedOptimization,4,CancellationToken.None);
             Check(discovery.Proposals.Count>0&&discovery.Proposals.All(p=>Top50Validation.Validate(source.Walls,p,limits).Count==0),"fresh end-to-end discovery returns independently validated proposals");
             foreach(var p in discovery.Proposals)Console.WriteLine("DISCOVERY "+p.Id+" rank="+p.Rank+" stock="+p.StockMicrometres/1000000m+" groups="+p.Groups.Count+" mean="+p.MeanUtilization+" minimum="+p.MinimumUtilization);
             var document=NativeProjectStore.Capture(source,discovery.Proposals,discovery.Proposals[0].Id);document.MaxGroups=15;document.Seconds=5;document.SearchLog=discovery.Log.ToArray();NativeProjectStore.Save(document,Path.Combine(args[1],"fresh-discovery.top50"));

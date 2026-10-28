@@ -16,7 +16,7 @@ internal static class Program
         if(IntPtr.Size!=8)throw new Exception("64-bit host required");
         var source=new Top50DxfImporter().Import(args[0],new DxfImportOptions());
         if(source.Walls.Count!=65||source.Walls.Count(w=>w.Included)!=63)throw new Exception("Import regression");
-        var limits=new SearchLimits(12,1,350,15,5,2,50);
+        var limits=new SearchLimits(1,350,15,5,2,50);
         var run=new Top50Search().Run(source.Walls,Precision.CatalogMm,limits,PlanningPreset.BalancedOptimization,4,CancellationToken.None);
         if(run.Proposals.Count==0||run.Proposals.Any(p=>Top50Validation.Validate(source.Walls,p,limits).Count!=0))throw new Exception("Invalid packaged search");
         var resolver=typeof(Top50Runtime).GetMethod("Resolve",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);

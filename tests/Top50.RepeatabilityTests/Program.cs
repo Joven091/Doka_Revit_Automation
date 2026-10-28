@@ -18,7 +18,7 @@ internal static class Program
     private static RankingMetrics Metric(string id,int panels,decimal metres,int groups=11,int types=5,decimal mean=.74m,decimal minimum=.35m)
         =>new RankingMetrics(id,panels,metres,types,groups,mean,63,minimum,stableKey:id);
     private static WallRow Wall(string id,long micrometres)=>new WallRow{Id=id,LengthMicrometres=micrometres,Included=true,Status=WallReviewStatus.Valid};
-    private static SearchLimits Limits(int longest=1,double effort=1)=>new SearchLimits(12,1,350,64,longest,effort,50);
+    private static SearchLimits Limits(int longest=1,double effort=1)=>new SearchLimits(1,350,64,longest,effort,50);
     private static string Signature(SearchRun run)
     {
         var text=new StringBuilder();text.AppendLine(run.Attempted+"/"+run.Unsearched+"/"+run.SkippedForPanelQuantity);
@@ -36,7 +36,7 @@ internal static class Program
         {
             string output=Path.GetFullPath(args[0]);Directory.CreateDirectory(output);
             if(args.Contains("--signature")){Distribution(output,args.Contains("--reverse"));return 0;}
-            Ranking();FixedWork();Projects(output);
+            Ranking();FixedWork();Projects(output);AutomaticPanelCounts(output);
             File.WriteAllText(Path.Combine(output,"checks.txt"),checks+" quantity/work/project checks passed. Fresh-process native allocation checks run separately.");
             Console.WriteLine(checks+" quantity/work/project checks passed.");return 0;
         }
@@ -105,7 +105,7 @@ internal static class Program
         vm.Settings.CatalogMm=new[]{5000};vm.Settings.LongestCount=2;vm.Settings.SearchEffort=2;
         vm.OptimizeAsync().GetAwaiter().GetResult();Check(vm.Selected!=null&&vm.Selected.PanelCount==2,"fresh native search satisfies simultaneous longest walls with two panels");
         var path=Path.Combine(output,"current.top50");vm.Save(path);var document=NativeProjectStore.Load(path);
-        Check(document.Version==2&&document.SearchPolicyVersion==1&&document.SearchEffort==2,"V2 project persists repeatable effort and search policy");
+        Check(document.Version==3&&document.SearchPolicyVersion==2&&document.SearchEffort==2,"V3 project persists repeatable effort and automatic-count search policy");
         var reopened=new Top50ViewModel();reopened.Open(path,Path.Combine(output,"cache"));
         Check(!reopened.Dirty&&Top50Order.Stock(reopened.Selected.Stock)==Top50Order.Stock(vm.Selected.Stock)&&reopened.Selected.PanelCount==2,"current project reopens without changing the chosen inventory or dirty state");
         var before=Signature(new SearchRun{Proposals=vm.Proposals});reopened.OptimizeAsync().GetAwaiter().GetResult();
@@ -120,9 +120,48 @@ internal static class Program
         Check(bytes.SequenceEqual(File.ReadAllBytes(legacy)),"opening a legacy project leaves its original file intact");
         Check(reopened.Status.Contains("current repeatable search"),"legacy allocations are distinguished from a fresh repeatable solve");
         var migrated=Path.Combine(output,"migrated.top50");reopened.Save(migrated);
-        Check(NativeProjectStore.Load(migrated).Version==2,"saving migration writes V2 so old readers reject its changed effort semantics");
+        Check(NativeProjectStore.Load(migrated).Version==3,"saving migration writes V3 so old readers reject automatic-count projects");
         var invalid=new Proposal("too-many-castings",low.Stock.ToDictionary(p=>p.Key,p=>p.Value),low.Groups);
-        Check(Top50Validation.Validate(vm.Input.Walls,invalid,new SearchLimits(12,1,350,1,2,2,50)).Contains("Casting group limit exceeded."),"a lower panel count cannot bypass the casting-group limit");
+        Check(Top50Validation.Validate(vm.Input.Walls,invalid,new SearchLimits(1,350,1,2,2,50)).Contains("Casting group limit exceeded."),"a lower panel count cannot bypass the casting-group limit");
+    }
+    private static void AutomaticPanelCounts(string output)
+    {
+        var patterns=new FewestComponentPatterns();var limits=Limits(effort:3);
+        // Independent exhaustive oracle: enumerate all component counts that can
+        // physically fit, without the production minimum-count pruning.
+        foreach(var catalog in new[]{new[]{500},new[]{500,750},new[]{500,750,1250},new[]{750,1000}})
+        for(long length=100000;length<=8500000;length+=100000)
+        {
+            var sizes=catalog.OrderByDescending(n=>n).ToArray();var expected=new List<string>();var parts=new List<int>();
+            void Visit(int left,int start,long sum,int count)
+            {
+                if(expected.Count==4)return;
+                if(left==0){long remainder=length-sum;if(remainder>=0&&remainder<=Math.Min(1,count-1)*350000L)expected.Add(string.Join(",",parts)+"|"+remainder);return;}
+                for(int i=start;i<sizes.Length;i++){if(sum+sizes[i]*1000L>length)continue;parts.Add(sizes[i]);Visit(left-1,i,sum+sizes[i]*1000L,count);parts.RemoveAt(parts.Count-1);}
+            }
+            for(int count=1;count<=length/(sizes.Last()*1000L)&&expected.Count<4;count++)Visit(count,0,0,count);
+            var actual=patterns.Enumerate(length,catalog,limits,CancellationToken.None).Select(pattern=>string.Join(",",pattern.PanelsMm)+"|"+pattern.InternalGapsMicrometres.Sum());
+            Check(expected.SequenceEqual(actual),"automatic bounds match exhaustive patterns: "+length+" / "+string.Join(",",catalog));
+        }
+        var thirteen=patterns.Enumerate(6500000,new[]{500},limits,CancellationToken.None);
+        Check(thirteen.Count==1&&thirteen[0].PanelsMm.Count==13,"6500 mm wall may use thirteen 500 mm panels without a user ceiling");
+        var sixtyOne=patterns.Enumerate(30500000,new[]{500},limits,CancellationToken.None);
+        Check(sixtyOne.Count==1&&sixtyOne[0].PanelsMm.Count==61,"component count follows a longer wall rather than a replacement fixed ceiling");
+        var shorter=patterns.Enumerate(6500000,new[]{500,1250,3000},limits,CancellationToken.None);
+        Check(shorter[0].PanelsMm.Count==3&&shorter.All(pattern=>pattern.LengthMicrometres==6500000),"optimizer still starts with fewer panels and closes the wall exactly");
+        Check(patterns.Enumerate(6800000,new[]{500},limits,CancellationToken.None).Single().InternalGapsMicrometres.Sum()==300000,"geometry-derived counts preserve a permitted internal filler");
+        Check(patterns.Enumerate(6900000,new[]{500},limits,CancellationToken.None).Count==0,"automatic counts cannot bypass maximum filler width or overrun the wall");
+        var rows=new[]{Wall("thirteen",6500000)};
+        var offer=new Proposal("thirteen",new Dictionary<int,int>{{500,13}},new[]{new CastingGroup(new[]{new WallArrangement(rows[0].Id,thirteen[0])})});
+        Check(Top50Validation.Validate(rows,offer,limits).Count==0,"independent validation accepts a complete thirteen-panel arrangement");
+        var vm=new Top50ViewModel();vm.AddManual(6500,"Automatic component regression");vm.Settings.CatalogMm=new[]{500};vm.Settings.LongestCount=1;vm.Settings.SearchEffort=3;vm.OptimizeAsync().GetAwaiter().GetResult();
+        Check(vm.Selected.PanelCount==13&&vm.Selected.Groups.Single().Walls.Single().Pattern.PanelsMm.Count==13,"shipping search and native allocation find the formerly blocked thirteen-panel wall");
+        string path=Path.Combine(output,"automatic-count.top50");vm.Save(path);
+        string json=File.ReadAllText(path);Check(!json.Contains("MaxComponents")&&NativeProjectStore.Load(path).Version==3,"new projects omit the removed component limit and identify V3 semantics");
+        var legacy=NativeProjectStore.Load(path);legacy.Version=2;string legacyPath=Path.Combine(output,"legacy-component-limit.top50");NativeProjectStore.Save(legacy,legacyPath);
+        json=File.ReadAllText(legacyPath);File.WriteAllText(legacyPath,"{\"MaxComponents\":1,"+json.Substring(1));var original=File.ReadAllBytes(legacyPath);
+        var restored=new Top50ViewModel();restored.Open(legacyPath,Path.Combine(output,"automatic-cache"));restored.OptimizeAsync().GetAwaiter().GetResult();
+        Check(restored.Selected.PanelCount==13&&original.SequenceEqual(File.ReadAllBytes(legacyPath)),"old project component limits are ignored without overwriting the original file");
     }
     private static void Distribution(string output,bool reverse)
     {

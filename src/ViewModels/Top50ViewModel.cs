@@ -28,7 +28,7 @@ namespace EngineeringDashboard
         public bool Dirty {get;private set;}
         public string Status {get;private set;}="Import a DXF or add reviewed wall dimensions.";
         public string ProjectPath {get;private set;}
-        public SearchLimits Limits=>new SearchLimits(Settings.MaxComponents,Settings.MaxFillers,Settings.MaxFillerMm,Settings.MaxGroups,Settings.OfferingMode==1?1:Settings.LongestCount,Settings.SearchEffort,Settings.Seed);
+        public SearchLimits Limits=>new SearchLimits(Settings.MaxFillers,Settings.MaxFillerMm,Settings.MaxGroups,Settings.OfferingMode==1?1:Settings.LongestCount,Settings.SearchEffort,Settings.Seed);
         public event PropertyChangedEventHandler PropertyChanged;
         public void Import(string path,DxfImportOptions options=null)
         {
@@ -80,7 +80,7 @@ namespace EngineeringDashboard
         internal void AcceptValidatedRun(SearchRun run)
         {
             foreach(var p in run.Proposals)if(Top50Validation.Validate(input.Walls,p,Limits).Count>0)throw new InvalidOperationException("Only independently validated proposals can enter the UI.");
-            Proposals=QuantityShortlist(run.Proposals,input,Settings);SearchLog=run.Log;selected=Proposals.FirstOrDefault();Settings.SearchPolicyVersion=1;IsStale=false;Dirty=true;Status="Validated "+Proposals.Count+" displayed proposal(s); fewest panel count found: "+(selected?.PanelCount.ToString()??"none")+". Global optimum not established.";Refresh();
+            Proposals=QuantityShortlist(run.Proposals,input,Settings);SearchLog=run.Log;selected=Proposals.FirstOrDefault();Settings.SearchPolicyVersion=2;IsStale=false;Dirty=true;Status="Validated "+Proposals.Count+" displayed proposal(s); fewest panel count found: "+(selected?.PanelCount.ToString()??"none")+". Global optimum not established.";Refresh();
         }
         public void Save(string path)
         {
@@ -88,10 +88,10 @@ namespace EngineeringDashboard
             {
             if(input==null)throw new InvalidOperationException("There is no source project to save.");
             var document=NativeProjectStore.Capture(input,IsStale?Array.Empty<Proposal>():Proposals,selected?.Id);
-            document.LongestCount=Settings.LongestCount;document.CatalogMm=Settings.CatalogMm.ToArray();document.Preset=Settings.Preset;document.MaxComponents=Settings.MaxComponents;document.MaxFillers=Settings.MaxFillers;document.MaxFillerMm=Settings.MaxFillerMm;document.MaxGroups=Settings.MaxGroups;document.CandidateDisplayLimit=Settings.CandidateDisplayLimit;document.Seconds=Settings.Seconds;document.Seed=Settings.Seed;document.OfferingMode=Settings.OfferingMode;document.Percentage=Settings.Percentage;document.BandPoints=Settings.BandPoints;document.AllowExpansion=Settings.AllowExpansion;document.RequireIdenticalKits=Settings.RequireIdenticalKits;document.SearchLog=SearchLog.ToArray();
+            document.LongestCount=Settings.LongestCount;document.CatalogMm=Settings.CatalogMm.ToArray();document.Preset=Settings.Preset;document.MaxFillers=Settings.MaxFillers;document.MaxFillerMm=Settings.MaxFillerMm;document.MaxGroups=Settings.MaxGroups;document.CandidateDisplayLimit=Settings.CandidateDisplayLimit;document.Seconds=Settings.Seconds;document.Seed=Settings.Seed;document.OfferingMode=Settings.OfferingMode;document.Percentage=Settings.Percentage;document.BandPoints=Settings.BandPoints;document.AllowExpansion=Settings.AllowExpansion;document.RequireIdenticalKits=Settings.RequireIdenticalKits;document.SearchLog=SearchLog.ToArray();
             document.ConnectionLevels=Settings.ConnectionLevels;document.ConnectionFaces=Settings.ConnectionFaces;document.ConnectionReviewed=Settings.ConnectionReviewed;document.AdjustableOnDirect=Settings.AdjustableOnDirect;
             document.SearchPolicyVersion=Settings.SearchPolicyVersion;
-            NativeProjectStore.Save(document,path);Settings.Version=2;ProjectPath=path;Dirty=false;Status=IsStale?"Saved inputs. Recalculate stale proposals before export.":"Project saved.";Refresh();
+            NativeProjectStore.Save(document,path);Settings.Version=3;ProjectPath=path;Dirty=false;Status=IsStale?"Saved inputs. Recalculate stale proposals before export.":"Project saved.";Refresh();
             });
         }
         public void Open(string path,string cache)
@@ -100,13 +100,13 @@ namespace EngineeringDashboard
             {
             if(IsBusy)throw new InvalidOperationException("Cancel optimization before opening another project.");
             var document=NativeProjectStore.Load(path);var restored=NativeProjectStore.RestoreInput(document,cache);
-            var restoredLimits=new SearchLimits(document.MaxComponents,document.MaxFillers,document.MaxFillerMm,document.MaxGroups,document.OfferingMode==1?1:document.LongestCount,document.Seconds,document.Seed);
+            var restoredLimits=new SearchLimits(document.MaxFillers,document.MaxFillerMm,document.MaxGroups,document.OfferingMode==1?1:document.LongestCount,document.Seconds,document.Seed);
             var proposals=document.Proposals.Select(NativeProjectStore.FromDto).ToArray();
             foreach(var p in proposals)if(Top50Validation.Validate(restored.Walls,p,restoredLimits).Count>0)throw new InvalidOperationException("Saved proposal validation failed; original project remains unchanged.");
             var eligible=QuantityShortlist(proposals,restored,document);
             bool shortlistChanged=!proposals.Select(p=>p.Id).SequenceEqual(eligible.Select(p=>p.Id));
-            input=restored;Settings=document;Proposals=eligible;selected=eligible.FirstOrDefault(p=>p.Id==document.SelectedId)??eligible.FirstOrDefault();SearchLog=document.SearchLog??Array.Empty<string>();ProjectPath=path;IsStale=false;Dirty=shortlistChanged||document.Version<2;revision++;
-            Status=document.SearchPolicyVersion<1?"Saved proposals revalidated and quantity-first shortlist applied. Optimize to run the current repeatable search.":"Project opened and cached proposals independently revalidated.";Refresh();
+            input=restored;Settings=document;Proposals=eligible;selected=eligible.FirstOrDefault(p=>p.Id==document.SelectedId)??eligible.FirstOrDefault();SearchLog=document.SearchLog??Array.Empty<string>();ProjectPath=path;IsStale=false;Dirty=shortlistChanged||document.Version<3;revision++;
+            Status=document.SearchPolicyVersion<2?"Saved proposals revalidated and quantity-first shortlist applied. Optimize to run the current repeatable search with automatic panel counts.":"Project opened and cached proposals independently revalidated.";Refresh();
             });
         }
         private static IReadOnlyList<Proposal> QuantityShortlist(IEnumerable<Proposal> proposals,ImportSnapshot source,NativeTop50Project settings)
@@ -114,7 +114,7 @@ namespace EngineeringDashboard
             var all=proposals.ToArray();if(all.Length==0)return Array.Empty<Proposal>();
             var included=source.Walls.Where(w=>w.Included).ToArray();decimal length=included.Sum(w=>w.LengthMm)/1000;
             var target=settings.OfferingMode==1?(decimal?)(length*settings.Percentage/100):null;
-            var scales=new RankingScales(length,settings.CatalogMm.Distinct().Count(),settings.MaxGroups,included.Length*Math.Min(settings.MaxFillers,settings.MaxComponents-1),target);
+            var scales=new RankingScales(length,settings.CatalogMm.Distinct().Count(),settings.MaxGroups,included.Length*settings.MaxFillers,target);
             var ranked=ProposalRanking.Rank(all.Select(p=>RankingMetrics.From(p,target.HasValue?p.StockMicrometres/1000000m-target.Value:0)),(PlanningPreset)settings.Preset,settings.CandidateDisplayLimit,scales);
             var shown=ranked.Select(r=>all.Single(p=>p.Id==r.Id)).ToArray();for(int i=0;i<shown.Length;i++){shown[i].Rank=i+1;shown[i].Pareto=ranked[i].Pareto;}
             return Array.AsReadOnly(shown);

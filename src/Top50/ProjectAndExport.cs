@@ -26,7 +26,7 @@ namespace EngineeringDashboard.Top50
     public sealed class NativeTop50Project
     {
         public string Kind {get;set;}="Doka.Top50.Native";
-        public int Version {get;set;}=2;
+        public int Version {get;set;}=3;
         public string Name {get;set;}="Top50 project";
         public string SourceName {get;set;}
         public string SourceBase64 {get;set;}
@@ -38,7 +38,6 @@ namespace EngineeringDashboard.Top50
         public int LongestCount {get;set;}=5;
         public int[] CatalogMm {get;set;}=Precision.CatalogMm.ToArray();
         public int Preset {get;set;}=1;
-        public int MaxComponents {get;set;}=12;
         public int MaxFillers {get;set;}=1;
         public int MaxFillerMm {get;set;}=350;
         public int MaxGroups {get;set;}=64;
@@ -84,7 +83,7 @@ namespace EngineeringDashboard.Top50
         public static NativeTop50Project Load(string path)
         {
             NativeTop50Project project;using(var stream=File.OpenRead(path))project=(NativeTop50Project)new DataContractJsonSerializer(typeof(NativeTop50Project)).ReadObject(stream);
-            if(project==null||project.Kind!="Doka.Top50.Native"||(project.Version!=1&&project.Version!=2)||project.Walls==null)throw new InvalidDataException("Unsupported Top50 project kind or version.");
+            if(project==null||project.Kind!="Doka.Top50.Native"||(project.Version!=1&&project.Version!=2&&project.Version!=3)||project.Walls==null)throw new InvalidDataException("Unsupported Top50 project kind or version.");
             if(Hash(Convert.FromBase64String(project.SourceBase64))!=project.SourceSha256)throw new InvalidDataException("Embedded DXF checksum mismatch.");
             return project;
         }

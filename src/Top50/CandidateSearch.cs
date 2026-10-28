@@ -66,7 +66,7 @@ namespace EngineeringDashboard.Top50
                 for(int count=1;count<=Math.Min(included.Length,center+2);count++)
                 {
                     cancellation.ThrowIfCancellationRequested();
-                    var seedLimits=new SearchLimits(limits.MaxComponents,limits.MaxInternalFillers,limits.MaxFillerMm,limits.MaximumGroups,count,limits.SearchEffort,limits.Seed,limits.PatternsPerLength);
+                    var seedLimits=new SearchLimits(limits.MaxInternalFillers,limits.MaxFillerMm,limits.MaximumGroups,count,limits.SearchEffort,limits.Seed,limits.PatternsPerLength);
                     allInventories.AddRange(candidates.Generate(walls,catalog,seedLimits,cancellation));
                 }
             }
@@ -90,7 +90,7 @@ namespace EngineeringDashboard.Top50
                     foreach(var inventory in tier)
                     {
                         cancellation.ThrowIfCancellationRequested();
-                        var perInventory=new SearchLimits(limits.MaxComponents,limits.MaxInternalFillers,limits.MaxFillerMm,limits.MaximumGroups,percentage.HasValue?1:limits.LongestSimultaneous,limits.SearchEffort,limits.Seed,limits.PatternsPerLength,workPerInventory);
+                        var perInventory=new SearchLimits(limits.MaxInternalFillers,limits.MaxFillerMm,limits.MaximumGroups,percentage.HasValue?1:limits.LongestSimultaneous,limits.SearchEffort,limits.Seed,limits.PatternsPerLength,workPerInventory);
                         string id="S"+(++attempts);progress?.Report("Checking "+tier.Key+"-panel inventory "+id+" of "+candidateCount);
                         try
                         {
@@ -112,7 +112,7 @@ namespace EngineeringDashboard.Top50
                 }
                 if(found.Count>0)break;
             }
-            var scales=new RankingScales(totalMicrometres/1000000m,catalog.Distinct().Count(),limits.MaximumGroups,included.Length*Math.Min(limits.MaxInternalFillers,limits.MaxComponents-1),percentage.HasValue?totalMicrometres/1000000m*percentage.Value/100:(decimal?)null);
+            var scales=new RankingScales(totalMicrometres/1000000m,catalog.Distinct().Count(),limits.MaximumGroups,included.Length*limits.MaxInternalFillers,percentage.HasValue?totalMicrometres/1000000m*percentage.Value/100:(decimal?)null);
             var ranked=ProposalRanking.Rank(found.Select(p=>RankingMetrics.From(p,percentage.HasValue?p.StockMicrometres/1000000m-totalMicrometres/1000000m*percentage.Value/100:0)),preset,displayLimit,scales);
             var shown=ranked.Select(r=>found.Single(p=>p.Id==r.Id)).ToArray();
             for(int i=0;i<shown.Length;i++){shown[i].Rank=i+1;shown[i].Pareto=ranked[i].Pareto;}

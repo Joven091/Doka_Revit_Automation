@@ -19,7 +19,7 @@ namespace EngineeringDashboard.Top50
             if(stale){metrics=new Dictionary<string,RankingMetrics>();return;}
             var included=input.Walls.Where(w=>w.Included).ToArray();decimal length=included.Sum(w=>w.LengthMm)/1000;
             decimal? target=settings.OfferingMode==1?(decimal?)(length*settings.Percentage/100):null;
-            scales=new RankingScales(length,settings.CatalogMm.Distinct().Count(),settings.MaxGroups,included.Length*Math.Min(settings.MaxFillers,settings.MaxComponents-1),target);
+            scales=new RankingScales(length,settings.CatalogMm.Distinct().Count(),settings.MaxGroups,included.Length*settings.MaxFillers,target);
             metrics=proposals.ToDictionary(p=>p.Id,p=>
             {
                 var value=RankingMetrics.From(p,target.HasValue?p.StockMicrometres/1000000m-target.Value:0);
