@@ -6,7 +6,7 @@ $Installer=(Resolve-Path -LiteralPath $Installer).Path
 $OldPayload=(Resolve-Path -LiteralPath $OldPayload).Path
 $evidence=[IO.Path]::GetFullPath($EvidenceDirectory)
 New-Item -ItemType Directory -Force $evidence | Out-Null
-$root=Join-Path $env:LOCALAPPDATA ('Temp\Doka Top50 Installer Tests\'+[guid]::NewGuid().ToString('N'))
+$root=Join-Path $env:LOCALAPPDATA ('Temp\DokaTop50InstallerTests\'+[guid]::NewGuid().ToString('N')+'\path with spaces')
 New-Item -ItemType Directory -Path $root | Out-Null
 $expected=[Diagnostics.FileVersionInfo]::GetVersionInfo($Installer).FileVersion.Trim()
 $checks=0
