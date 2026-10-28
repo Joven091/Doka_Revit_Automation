@@ -26,33 +26,22 @@ static class Program
   var launcher=new LauncherWindow();launcher.Show();
   var dome=(Button)launcher.FindName("BtnDomeCalculator");
   Check(dome.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(dome).Contains("Beta"),"Dome is available and labelled Beta");
-  bool openedDome=false;
-  Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
-  {
-   var beta=Application.Current.Windows.OfType<EngineeringDashboard.Dome.MainWindow>().Single(w=>w.IsVisible);openedDome=true;Check(beta.Owner==launcher&&beta.Title.Contains("Beta"),"Dome Beta opens with its dashboard owner and Beta title");beta.Close();
-  }),DispatcherPriority.ApplicationIdle);
-  dome.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-  Check(openedDome&&launcher.IsVisible,"closing Dome Beta returns to the dashboard");
-  Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
-  {
-   var choice=Application.Current.Windows.OfType<SlabSystemWindow>().Single(w=>w.IsVisible);Check(choice.Owner==launcher,"slab choices owned by launcher");
-   var towers=(Button)choice.FindName("PickTowersButton");
-   Check(!towers.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(towers).Contains("Coming soon"),"D3 slab is disabled and labelled Coming soon");
-   towers.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-   Check(!choice.UseD3 && choice.IsVisible && !Application.Current.Windows.OfType<D3SlabCalculatorWindow>().Any(w=>w.IsVisible),"D3 slab click cannot select or launch the locked system");
-   Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
-   {
-    var flex=Application.Current.Windows.OfType<FlexCalculatorWindow>().Single(w=>w.IsVisible);Check(flex.Owner==launcher,"Dokaflex remains available");
-    Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
-    {
-     var second=Application.Current.Windows.OfType<SlabSystemWindow>().Single(w=>w.IsVisible);
-     Check(!((Button)second.FindName("PickTowersButton")).IsEnabled,"change-system picker keeps D3 slab locked");second.Close();
-    }),DispatcherPriority.ApplicationIdle);
-    Call(flex,"ChangeSystem_Click",null,new RoutedEventArgs());Check(flex.ChangeSystemRequested,"Dokaflex can return to system choices");
-   }),DispatcherPriority.ApplicationIdle);
-   ((Button)choice.FindName("PickPropsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-  }),DispatcherPriority.ApplicationIdle);
-  ((Button)launcher.FindName("BtnFlexCalculator")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(launcher.IsVisible,"closing choices returns to launcher");launcher.Close();
+  dome.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+  var beta=Application.Current.Windows.OfType<EngineeringDashboard.Dome.MainWindow>().Single(w=>w.IsVisible);
+  Check(!launcher.IsVisible && beta.Owner==launcher && beta.Title.Contains("Beta"),"Dome Beta opens modeless with its dashboard owner and Beta title");
+  beta.Close();Pump();Check(launcher.IsVisible,"closing Dome Beta returns to the dashboard");
+  ((Button)launcher.FindName("BtnFlexCalculator")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+  var choice=Application.Current.Windows.OfType<SlabSystemWindow>().Single(w=>w.IsVisible);Check(choice.Owner==launcher,"slab choices owned by launcher");
+  var towers=(Button)choice.FindName("PickTowersButton");
+  Check(!towers.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(towers).Contains("Coming soon"),"D3 slab is disabled and labelled Coming soon");
+  towers.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+  Check(!choice.UseD3 && choice.IsVisible && !Application.Current.Windows.OfType<D3SlabCalculatorWindow>().Any(w=>w.IsVisible),"D3 slab click cannot select or launch the locked system");
+  ((Button)choice.FindName("PickPropsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+  var flex=Application.Current.Windows.OfType<FlexCalculatorWindow>().Single(w=>w.IsVisible);Check(flex.Owner==launcher,"Dokaflex remains available modeless");
+  Call(flex,"ChangeSystem_Click",null,new RoutedEventArgs());Pump();Check(flex.ChangeSystemRequested,"Dokaflex can return to system choices");
+  var second=Application.Current.Windows.OfType<SlabSystemWindow>().Single(w=>w.IsVisible);
+  Check(!((Button)second.FindName("PickTowersButton")).IsEnabled,"change-system picker keeps D3 slab locked");second.Close();Pump();
+  Check(launcher.IsVisible,"closing choices returns to launcher");launcher.Close();
  }
  [STAThread]static int Main(string[] args)
  {
