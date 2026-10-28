@@ -768,6 +768,10 @@ namespace EngineeringDashboard
             if(checkedSeedFirst && common.Trace?.BudgetReached!=true)
             {
                 worker.FirstCompleteNetworkOnly=false;
+                // Recovery can replace best after setting the previous warm start.
+                // Publish the exact recovered input's checked result so final ranking
+                // starts with a valid junction-wide bound, rather than rediscovering it.
+                worker.NetworkWarmStart=common.WarmStartNetwork ? best : null;
                 common.Trace?.Work("Optimizing final recovered network spacing");
                 try{best=SearchSpacing(worker,best.Input);acceptedDiagnostics=worker.Diagnostics;}
                 catch(TowerOptimizationException){ /* Keep the already checked complete seed. */ }

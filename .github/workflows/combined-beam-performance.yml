@@ -1,0 +1,48 @@
+name: Combined drawing beam regression and timing
+on:
+  pull_request:
+    paths:
+      - 'src/Models/EngineerDesignWorkflow.cs'
+      - 'src/Models/TransferredSlabOptimizer.cs'
+      - 'src/Models/CrossBeamSupport.cs'
+      - 'src/Models/TransferBeamNetwork.cs'
+      - 'tests/Beam.Tests/ReportedCombinedTests.cs'
+      - 'tests/Beam.Tests/ProjectedCrossingTests.cs'
+      - 'tests/Beam.Tests/Fixtures/Combined20261028/**'
+      - '.github/workflows/combined-beam-performance.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reported-net48:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build production runtime test harness
+        run: dotnet build tests/Beam.Net48/Beam.Net48.csproj -c Release --warnaserror
+      - name: Exact boundaries and crossing parity
+        shell: pwsh
+        run: |
+          foreach ($flag in @('--combined-boundaries','--projected-crossing','--crossing-footprints','--network-search-reuse','--crossing-local-reuse','--primary-bearings')) {
+            & tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe $flag
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Full five-area reported search and independent design checks
+        shell: pwsh
+        run: |
+          & tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --combined-reported --areas 1,2,3,4,5 --workers 4 --seconds 300 --profile --output combined-beam-results 2>&1 | Tee-Object combined-beam-timing.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: combined-beam-net48-evidence
+          path: |
+            combined-beam-timing.txt
+            combined-beam-results/

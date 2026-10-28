@@ -691,12 +691,18 @@ namespace EngineeringDashboard
             // Dedicated/negative-gap crossings have identical geometry and checks
             // at counts 3 through 8; do not repeat a failed search six times.
             bool refineReceivers=t.EngineerNetwork!=null && EngineerPrimaryPlan.Adjacent(t.EngineerNetwork,t.EngineerBeam).Any();
+            // Increasing the station ceiling changes candidate geometry only.
+            // Keep exact transverse options, rows and numerical checks for each
+            // fixed receiver count instead of preparing them again at every tier.
+            var preparations=input.ReuseSearchWork && shareDiagnostics ? new Dictionary<int,ReceivingPreparation>() : null;
             int receiverCount=3;
             while(true)
             {
                 var worker=input.CopyForSearch();worker.EngineerStationLimit=limit;
                 worker.TransferredSlab=t.Copy();worker.TransferredSlab.SharedGeometryCache=cache;worker.TransferredSlab.EngineerReceiverCount=receiverCount;
-                try{return OptimizeCoreByLegTier(worker,shareDiagnostics);}
+                ReceivingPreparation prepared=null;
+                if(preparations!=null && !preparations.TryGetValue(receiverCount,out prepared))preparations[receiverCount]=prepared=new ReceivingPreparation();
+                try{return OptimizeCoreByLegTier(worker,shareDiagnostics,prepared);}
                 catch(TowerOptimizationException) when(refineReceivers && receiverCount<8){receiverCount++;}
                 catch(TowerOptimizationException) when(limit<maximum){limit=Math.Min(maximum,limit+(input.EngineerPlan==null ? 4 : 2));receiverCount=3;}
             }
@@ -870,21 +876,30 @@ namespace EngineeringDashboard
             }
             catch(ArgumentException){return null;}
         }
-        private static TowerLayout OptimizeCoreByLegTier(TowerInput input,bool shareDiagnostics)
+        // Private to one receiving solve and one spreader receiver count;
+        // loads, criteria, permissions and junction callbacks stay unchanged.
+        private sealed class ReceivingPreparation
+        {
+            internal readonly Dictionary<Tuple<double,double>,CrossOption[]> Crosses=new Dictionary<Tuple<double,double>,CrossOption[]>();
+            internal readonly Dictionary<Tuple<double,double>,RowGrid> Rows=new Dictionary<Tuple<double,double>,RowGrid>();
+            internal readonly ResponseCache<PrimaryKey,PrimaryCheck> Primaries=new ResponseCache<PrimaryKey,PrimaryCheck>(4096);
+            internal readonly LoadedBeamAnalysis.MatrixCache Matrix=new LoadedBeamAnalysis.MatrixCache();
+        }
+        private static TowerLayout OptimizeCoreByLegTier(TowerInput input,bool shareDiagnostics,ReceivingPreparation prepared=null)
         {
             var t = input.TransferredSlab; t.Validate(input); TowerLayout best = null; int tested = 0;
             var work=new List<LayoutWork>();
             var geometryCache = input.ReuseSearchWork ? t.SharedGeometryCache ?? new GeometryCache() : null;
             // A receiving-beam solve has fixed beam loads and upper-foot plans. These options
             // depend on transverse width and tributary size, not the primary stock cover.
-            var crossCache = new Dictionary<Tuple<double,double>,CrossOption[]>();
-            var rowCache = new Dictionary<Tuple<double,double>,RowGrid>();
+            var crossCache = prepared?.Crosses ?? new Dictionary<Tuple<double,double>,CrossOption[]>();
+            var rowCache = prepared?.Rows ?? new Dictionary<Tuple<double,double>,RowGrid>();
             // Different tower combinations often repeat an identical local primary member.
             // Include every support, distributed-load boundary and intensity, without rounding. This cache
             // lives only in one receiving-beam solve and retains at most 4096 checks.
-            var primaryCache = input.ReuseSearchWork ? new ResponseCache<PrimaryKey,PrimaryCheck>(4096) : null;
+            var primaryCache = input.ReuseSearchWork ? prepared?.Primaries ?? new ResponseCache<PrimaryKey,PrimaryCheck>(4096) : null;
             var shared = input.ReuseSearchWork && input.ReuseNetworkNumerics ? t.SharedSearchWork : null;
-            var matrixCache = input.ReuseSearchWork ? shared?.Matrix ?? new LoadedBeamAnalysis.MatrixCache() : null;
+            var matrixCache = input.ReuseSearchWork ? shared?.Matrix ?? prepared?.Matrix ?? new LoadedBeamAnalysis.MatrixCache() : null;
             if(!shareDiagnostics || input.Diagnostics==null)input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace,ignoreUplift:input.IgnoreUplift) {LazyLocations=input.LazySearchDiagnostics};var diag=input.Diagnostics;
             input.Trace?.Work("Transfer primary cover generation");
             double[][] covers;
@@ -1778,6 +1793,17 @@ namespace EngineeringDashboard
         }
         private static double PrimaryUtilization(TowerInput input,LoadedBeamAnalysis analysis)=>Math.Max(analysis.DeflectionUtilization,input.Primary.Strength(analysis));
         private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,ResponseCache<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent)
+        {
+            try {return EvaluateCandidate(input,g,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared,incumbent);}
+            catch(ArgumentException error) when(error.Message=="Beam load equilibrium failed." || error.Message=="Unstable beam supports.")
+            {
+                // A numerically rejected trial must not discard an already passing
+                // stock plan or prevent the remaining generated layouts being checked.
+                input.Diagnostics?.Geometry(input.DiagnosticScope+"candidate numerics",input.DiagnosticScope+error.Message+" Generated primary stocks "+string.Join(", ",g.Stock.Select(p=>p.StockLengthMm))+" mm rejected.","This trial is excluded; other support arrangements remain eligible.");
+                return null;
+            }
+        }
+        private static TowerLayout EvaluateCandidate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,ResponseCache<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent)
         {
             if(!input.DeferTransferLayout)return EvaluateReference(input,g,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared);
             if(input.EngineerSearch && !AcceptTransverseCases(input,cross,width,grid,edge))return null;

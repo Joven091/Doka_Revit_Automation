@@ -684,8 +684,45 @@ namespace EngineeringDashboard
             return new[] {preferred,earliest,latest}.Concat(boundaries)
                 .Where(s=>s>=earliest-1e-7 && s<=latest+1e-7).Select(s=>Math.Max(earliest,Math.Min(latest,s))).Distinct().ToArray();
         }
-        private static CrossBeamSupportResult ProjectedJunction(TowerInput common,TransferNetworkResult r,int index,double spacing,double width,double offset,double alongSpan,double near,double far,IEnumerable<FormworkSolid> obstacles,out string failure,double? preferredBay=null,CrossShutterAllowance allowance=null,TowerInput preparedInput=null)
+        internal readonly struct ProjectedSecondaryKey : IEquatable<ProjectedSecondaryKey>
         {
+            readonly double Width,Offset,Stock;
+            internal ProjectedSecondaryKey(double width,double offset,double stock)
+            {Width=width;Offset=offset;Stock=stock;}
+            public bool Equals(ProjectedSecondaryKey other)=>Width==other.Width && Offset==other.Offset && Stock==other.Stock;
+            public override bool Equals(object other)=>other is ProjectedSecondaryKey && Equals((ProjectedSecondaryKey)other);
+            public override int GetHashCode(){unchecked {int h=17;h=h*31+Width.GetHashCode();h=h*31+Offset.GetHashCode();h=h*31+Stock.GetHashCode();return h;}}
+        }
+        internal readonly struct ProjectedPrimaryFailureKey : IEquatable<ProjectedPrimaryFailureKey>
+        {
+            readonly double Stock,Start,Near,Far,Edge,Span,Left,Right;
+            internal ProjectedPrimaryFailureKey(double stock,double start,double near,double far,double edge,double span,double left,double right)
+            {Stock=stock;Start=start;Near=near;Far=far;Edge=edge;Span=span;Left=left;Right=right;}
+            public bool Equals(ProjectedPrimaryFailureKey other)=>Stock==other.Stock && Start==other.Start && Near==other.Near && Far==other.Far && Edge==other.Edge && Span==other.Span && Left==other.Left && Right==other.Right;
+            public override bool Equals(object other)=>other is ProjectedPrimaryFailureKey && Equals((ProjectedPrimaryFailureKey)other);
+            public override int GetHashCode(){unchecked {int h=17;h=h*31+Stock.GetHashCode();h=h*31+Start.GetHashCode();h=h*31+Near.GetHashCode();h=h*31+Far.GetHashCode();h=h*31+Edge.GetHashCode();h=h*31+Span.GetHashCode();h=h*31+Left.GetHashCode();h=h*31+Right.GetHashCode();return h;}}
+        }
+        // Fixed obstacle subsets for one junction. A frame reservation can only
+        // conflict with legs/other frames; an ordinary primary cannot conflict
+        // with an open frame envelope. Keep the complete final solid check.
+        internal sealed class ProjectedJunctionWork
+        {
+            internal readonly FormworkObstacleIndex Frames,Primary;
+            // Owned only by this junction: geometry/ledger loads, criteria and
+            // stock permissions cannot change during these placement trials.
+            internal readonly Dictionary<ProjectedSecondaryKey,TransferMember> Units=new Dictionary<ProjectedSecondaryKey,TransferMember>();
+            internal readonly TransferredSlabOptimizer.ResponseCache<ProjectedPrimaryFailureKey,bool> PrimaryFailures=new TransferredSlabOptimizer.ResponseCache<ProjectedPrimaryFailureKey,bool>(16384);
+            internal ProjectedJunctionWork(IEnumerable<FormworkSolid> obstacles)
+            {
+                var all=obstacles.ToArray();
+                Frames=new FormworkObstacleIndex(all.Where(s=>s.IsLeg || s.IsTowerEnvelope).ToArray());
+                Primary=new FormworkObstacleIndex(all.Where(s=>!s.IsTowerEnvelope).ToArray());
+            }
+        }
+        private static CrossBeamSupportResult ProjectedJunction(TowerInput common,TransferNetworkResult r,int index,double spacing,double width,double offset,double alongSpan,double near,double far,IEnumerable<FormworkSolid> obstacles,out string failure,double? preferredBay=null,CrossShutterAllowance allowance=null,TowerInput preparedInput=null,ProjectedJunctionWork obstacleWork=null)
+        {
+            using(common.Trace?.Hot(BeamHotStage.CrossingPlacement))
+            {
             allowance=allowance??CrossShutterAllowance.Standard;failure=null;var c=r.Input.CrossingBeams[index];int bay=c.BayNumber-1;
             double face=r.BeamCentresMm[bay]+r.Input.Beams[bay].WidthMm/2+near,span=r.Input.Bays[bay].WidthMm-near-far;
             bool rotated=width!=1524;
@@ -694,7 +731,7 @@ namespace EngineeringDashboard
                 common.Trace?.CheckCancellation();
                 double[] positions={span/2+alongSpan-towerBay/2,span/2+alongSpan+towerBay/2};
                 var footprint=new TowerLayout {PositionsMm=positions,Joined=new[] {true},WidthMm=width};
-                var footprintClash=Clash(TowerEnvelopes(footprint,$"X{index+1}",c.PositionMm+offset,face,false,c.BottomElevationMm-200-common.Primary.DepthMm),obstacles);if(footprintClash!=null){failure=footprintClash;continue;}
+                var footprintClash=Clash(TowerEnvelopes(footprint,$"X{index+1}",c.PositionMm+offset,face,false,c.BottomElevationMm-200-common.Primary.DepthMm),obstacleWork?.Frames??obstacles);if(footprintClash!=null){failure=footprintClash;if(common.Trace?.EnableHotProfiling==true)common.Trace.Increment(BeamSearchCounter.ProjectedFootprintFailures);continue;}
                 // The final result would reject these exact legs against the same
                 // fixed obstacles. Reject that impossible footprint before stock,
                 // row, member and result construction; retain the final full clash check.
@@ -711,29 +748,52 @@ namespace EngineeringDashboard
                     double preferred=Math.Max(earliest,Math.Min(latest,common.EngineerWorkflow ? (positions[0]+positions[1]-stock)/2 : (span-stock)/2));
                     foreach(double start in PrimaryStarts(common,preferred,earliest,latest,stock,face,c.PositionMm+offset,width,c.BottomElevationMm-200,obstacles))
                     {
+                    if(common.Trace?.EnableHotProfiling==true)common.Trace.Increment(BeamSearchCounter.ProjectedPrimaryTrials);
                     double edge=Math.Max(0,Math.Max(start,span-start-stock));
                     if(edge>common.MaximumConcreteEndOverhangMm+1e-7 || 2*edge>=span)continue;
                     var l=new TowerLayout {EngineerSearch=common.EngineerSearch,PrimaryMaterial=common.PrimaryMaterial,IgnoreUplift=common.IgnoreUplift,LengthMm=span,ConcreteEndOverhangMm=edge,WidthMm=width,Rotated=rotated,PositionsMm=positions,Joined=new[] {true},LegCapacityKn=common.LegCapacityKn,DeflectionDenominator=common.DeflectionDenominator,DeflectionLimitMm=common.DeflectionLimitMm,StockPlan=new TowerStockPlan {PrimaryMaterial=common.PrimaryMaterial,Pieces=new[] {new TowerStockPiece {StartMm=start,StockLengthMm=stock,IsCustomLength=!common.PrimaryStockLengthsMm.Contains(stock),FirstSupport=0,LastSupport=1}}}};
                     var geometry=TowerEnvelopes(l,$"X{index+1}",c.PositionMm+offset,face,false,c.BottomElevationMm-200-l.Primary.DepthMm).ToList();
                     foreach(int side in new[] {-1,1})geometry.AddRange(PrimarySolids($"X{index+1} projected primary",c.PositionMm+offset+side*width/2,face+start,stock,false,c.BottomElevationMm-200,common.Primary));
-                    var primaryClash=Clash(geometry,obstacles);if(primaryClash!=null){failure=primaryClash;continue;}
+                    var primaryClash=obstacleWork==null ? Clash(geometry,obstacles) : Clash(geometry.Where(s=>!s.IsTowerEnvelope),obstacleWork.Primary);if(primaryClash!=null){failure=primaryClash;continue;}
                     double lowerLo=Math.Min(-width/2,-offset-c.WidthMm/2)-150,lowerHi=Math.Max(width/2,-offset+c.WidthMm/2)+150;
+                    double covered=span-2*edge;
+                    // Rows and tributaries depend on this primary placement, not
+                    // on the length of the transverse stock's unloaded tails.
+                    int count=Math.Max(2,(int)Math.Ceiling((covered-H20WidthMm)/spacing)+1);double actualSpacing=(covered-H20WidthMm)/(count-1);
+                    var rows=r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.SheetSupportRows(edge,span-edge,spacing,r.Input.PlywoodSheetLengthMm) : Enumerable.Range(0,count).Select(i=>(span-(count-1)*actualSpacing)/2+i*actualSpacing).ToArray();
+                    if(rows.Any(y=>y<start-1e-7 || y>=start+stock-1e-7))continue;
+                    var tributaries=EndZoneWidths(0,span,rows);
+                    var edgeLoads=SlabEdgeLoads(r,index);
+                    double q=r.Input.AreaLoad(c.DepthMm)*c.WidthMm/1000+edgeLoads.Sum(p=>p.Kn);
+                    bool reuse=common.ReuseSearchWork && common.OptimizeCrossingJunctions;
+                    // A rejected primary cannot be repaired by a different lower
+                    // stock yielding exactly the same two reactions. The key is
+                    // exact; changed loads still receive their own primary check.
+                    var rejectedPrimaryLoads=reuse ? new HashSet<Tuple<double,double>>() : null;
                     foreach(double lowerStock in TailStocks(common,2*Math.Max(-offset-lowerLo,lowerHi+offset),50000))
                     {
+                        if(common.Trace?.EnableHotProfiling==true)common.Trace.Increment(BeamSearchCounter.ProjectedSecondaryTrials);
                         double lowerStart=-offset-lowerStock/2;
-                        double covered=span-2*edge;
-                        // Leave the full 80 mm flange clear of the receiving timber
-                        // or shutter at each junction while respecting maximum spacing.
-                        int count=Math.Max(2,(int)Math.Ceiling((covered-H20WidthMm)/spacing)+1);double actualSpacing=(covered-H20WidthMm)/(count-1);
-                        var rows=r.Input.PlywoodSheetLengthMm>0 ? PlywoodSpacing.SheetSupportRows(edge,span-edge,spacing,r.Input.PlywoodSheetLengthMm) : Enumerable.Range(0,count).Select(i=>(span-(count-1)*actualSpacing)/2+i*actualSpacing).ToArray();
-                        if(rows.Any(y=>y<start-1e-7 || y>=start+stock-1e-7))continue;
-                        var secondarySolids=rows.Select(y=>Timber($"X{index+1} junction secondary",c.PositionMm+offset+lowerStart,face+y,lowerStock,true,c.BottomElevationMm)).ToArray();
-                        var secondaryClash=Clash(secondarySolids,obstacles);if(secondaryClash!=null){failure=secondaryClash;continue;}
-                        var tributaries=EndZoneWidths(0,span,rows);double q=r.Input.AreaLoad(c.DepthMm)*c.WidthMm/1000+SlabEdgeLoads(r,index).Sum(p=>p.Kn);
-                        var transverse=new TransferMember {H20Count=1,Name="Junction secondary",StartMm=lowerStart,LengthMm=lowerStock,SupportsMm=new[] {-width/2-lowerStart,width/2-lowerStart},Points=SlabEdgeLoads(r,index).Select(p=>new BeamPointLoad {PositionMm=p.PositionMm-offset-lowerStart,Kn=p.Kn}).ToArray(),Uniform=new[] {new BeamDistributedLoad {StartMm=-offset-c.WidthMm/2-lowerStart,EndMm=-offset+c.WidthMm/2-lowerStart,KnPerM=r.Input.AreaLoad(c.DepthMm)}}};
+                        if(!reuse)
+                        {
+                            var solids=rows.Select(y=>Timber($"X{index+1} junction secondary",c.PositionMm+offset+lowerStart,face+y,lowerStock,true,c.BottomElevationMm)).ToArray();
+                            var clash=Clash(solids,obstacles);if(clash!=null){failure=clash;continue;}
+                        }
                         var input=preparedInput??common.CopyForSearch();input.Network=null;input.EngineerPlan=null;
-                        var unit=Analyze(transverse,transverse.Points,transverse.Uniform,input,"Cross concrete");
-                        bool reuse=common.ReuseSearchWork && common.OptimizeCrossingJunctions,passing=true;
+                        var unitKey=new ProjectedSecondaryKey(width,offset,lowerStock);
+                        TransferMember unit;
+                        if(!reuse || obstacleWork==null || !obstacleWork.Units.TryGetValue(unitKey,out unit))
+                        {
+                            var transverse=new TransferMember {H20Count=1,Name="Junction secondary",StartMm=lowerStart,LengthMm=lowerStock,SupportsMm=new[] {-width/2-lowerStart,width/2-lowerStart},Points=edgeLoads.Select(p=>new BeamPointLoad {PositionMm=p.PositionMm-offset-lowerStart,Kn=p.Kn}).ToArray(),Uniform=new[] {new BeamDistributedLoad {StartMm=-offset-c.WidthMm/2-lowerStart,EndMm=-offset+c.WidthMm/2-lowerStart,KnPerM=r.Input.AreaLoad(c.DepthMm)}}};
+                            if(common.Trace?.EnableHotProfiling==true)common.Trace.Increment(BeamSearchCounter.ProjectedMemberTrials);
+                            unit=Analyze(transverse,transverse.Points,transverse.Uniform,input,"Cross concrete");
+                            if(reuse && obstacleWork!=null)obstacleWork.Units[unitKey]=unit;
+                        }
+                        var reactionKey=reuse ? Tuple.Create(unit.Analysis.Reactions[0],unit.Analysis.Reactions[1]) : null;
+                        var primaryKey=new ProjectedPrimaryFailureKey(stock,start,positions[0],positions[1],edge,span,unit.Analysis.Reactions[0],unit.Analysis.Reactions[1]);
+                        if(reuse && (rejectedPrimaryLoads.Contains(reactionKey) || obstacleWork!=null && obstacleWork.PrimaryFailures.TryGetValue(primaryKey,out _)))
+                        {if(common.Trace?.EnableHotProfiling==true)common.Trace.Increment(BeamSearchCounter.ProjectedPrimaryFailuresReused);continue;}
+                        bool passing=true;
                         TransferMember[] lower;
                         if(!reuse)
                         {
@@ -766,17 +826,25 @@ namespace EngineeringDashboard
                             if(legClash!=null){failure=legClash;return null;}
                         }
                         if(!passing)continue;
+                        if(reuse)
+                        {
+                            var solids=rows.Select(y=>Timber($"X{index+1} junction secondary",c.PositionMm+offset+lowerStart,face+y,lowerStock,true,c.BottomElevationMm)).ToArray();
+                            var clash=Clash(solids,obstacles);if(clash!=null){failure=clash;continue;}
+                        }
                         // As in the existing end-strip model, distribute the full load on
                         // centred covered concrete, conserving force and its exact centroid.
                         var primary=Enumerable.Range(0,2).Select(line=>new TransferMember {PrimaryMaterial=common.PrimaryMaterial,Name=$"P1 {(line==0 ? "L" : "R")}",H20Count=2,StartMm=start,LengthMm=stock,SupportsMm=positions.Select(x=>x-start).ToArray(),Points=Array.Empty<BeamPointLoad>(),Uniform=new[] {new BeamDistributedLoad {StartMm=edge-start,EndMm=span-edge-start,KnPerM=unit.Analysis.Reactions[line]*span/(span-2*edge)}}}).ToArray();
                         l.Transfer=new TransferredSlabResult {RowsMm=rows,TributaryWidthsMm=tributaries,EnteredUpperSpacingMm=spacing,LowerStockStartMm=lowerStart,LowerStockLengthMm=lowerStock,LowerCustom=!common.StockLengthsMm.Contains(lowerStock),PrimaryCases=new[] {primary},LowerCases=new[] {lower},UpperMembers=new TransferMember[0],CaseNames=new[] {"Cross concrete + construction/formwork"},BeamLoadKn=q*span/1000};
                         var result=FinishDedicated(common,r,index,face,offset,alongSpan,l,input,out failure,Math.Max(0,-start),Math.Max(0,start+stock-span),allowance:allowance);
                         if(result!=null && Clash(result.Solids,obstacles)==null)return result;
+                        if(reuse && result==null && failure=="Dedicated primary UDL or leg check failed.")
+                        {rejectedPrimaryLoads.Add(reactionKey);obstacleWork?.PrimaryFailures.Store(primaryKey,true);}
                     }
                     }
                 }
             }
             return null;
+            }
         }
         private static CrossBeamSupportResult Junction(TowerInput common,TransferNetworkResult r,int index,FormworkSolid[] obstacles,out string failure,CrossShutterAllowance allowance=null)
         {
@@ -900,6 +968,7 @@ namespace EngineeringDashboard
         {
             failure=null;double span=r.Input.Bays[r.Input.CrossingBeams[index].BayNumber-1].WidthMm,central=span-near-far;
             var placements=new List<CrossPlacement>();
+            var obstacleWork=common.ReuseSearchWork && common.OptimizeCrossingJunctions ? new ProjectedJunctionWork(obstacles) : null;
             // Stock fit and imbalance depend on the bay/shift, not frame width
             // or transverse offset. Share their exact result within this call.
             var symmetryBounds=new Dictionary<Tuple<double,double>,double>();
@@ -931,7 +1000,7 @@ namespace EngineeringDashboard
                 // balanced remaining placement can improve this bounded candidate.
                 // This also avoids repeating footprint rejections at every pitch.
                 if(best!=null && (placement.Brace>bestBrace || placement.Brace==bestBrace && placement.Symmetry>=bestSymmetry-1e-7))continue;
-                var result=ProjectedJunction(common,r,index,spacing,placement.Width,placement.Offset,placement.Shift,near,far,collisions,out string reason,placement.Bay,allowance,prepared);
+                var result=ProjectedJunction(common,r,index,spacing,placement.Width,placement.Offset,placement.Shift,near,far,collisions,out string reason,placement.Bay,allowance,prepared,obstacleWork);
                 if(result==null)
                 {
                     if(reason!=null){failure=reason;if(balancedFailure==null)balancedFailure=reason;}

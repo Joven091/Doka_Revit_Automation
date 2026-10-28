@@ -1,0 +1,79 @@
+<ReportedBeamArea LengthMm="13899.99972696882">
+<TransferNetworkConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <SupportFormatVersion>3</SupportFormatVersion>
+  <PlanOriginYmm>0</PlanOriginYmm>
+  <Beams>
+    <TransferBeamRow>
+      <RevitSource>Structural Framing [523735]</RevitSource>
+      <Label>B1</Label>
+      <SpanLengthMm>13899.99972696882</SpanLengthMm>
+      <BottomElevationMm>-1550</BottomElevationMm>
+      <DepthMm>1550</DepthMm>
+      <WidthMm>800.0000061035156</WidthMm>
+    </TransferBeamRow>
+    <TransferBeamRow>
+      <RevitSource>Structural Framing [523732]</RevitSource>
+      <Label>B2</Label>
+      <SpanLengthMm>13899.99972696882</SpanLengthMm>
+      <BottomElevationMm>-1550</BottomElevationMm>
+      <DepthMm>1550</DepthMm>
+      <WidthMm>800.0000061035156</WidthMm>
+    </TransferBeamRow>
+  </Beams>
+  <Bays>
+    <TransferBayRow>
+      <RevitSource>Floors [583582]; Floors [583610]; Floors [583621]; Floors [583678]</RevitSource>
+      <Outline>
+        <ImportPoint>
+          <X>0</X>
+          <Y>0</Y>
+        </ImportPoint>
+        <ImportPoint>
+          <X>13899.99972696882</X>
+          <Y>0</Y>
+        </ImportPoint>
+        <ImportPoint>
+          <X>13899.99972696882</X>
+          <Y>4203.3922668457035</Y>
+        </ImportPoint>
+        <ImportPoint>
+          <X>0</X>
+          <Y>4203.3922668457035</Y>
+        </ImportPoint>
+      </Outline>
+      <WidthMm>4203.3922668457035</WidthMm>
+      <ThicknessMm>200.00000152587882</ThicknessMm>
+    </TransferBayRow>
+  </Bays>
+  <CrossingBeams>
+    <TransferCrossingBeamRow>
+      <RevitSource>Structural Framing [523526]</RevitSource>
+      <BottomElevationMm>-1150</BottomElevationMm>
+      <SupportMode>Automatic</SupportMode>
+      <BayNumber>1</BayNumber>
+      <PositionMm>2749.9995849609368</PositionMm>
+      <WidthMm>649.9998596191407</WidthMm>
+      <DepthMm>1150</DepthMm>
+    </TransferCrossingBeamRow>
+    <TransferCrossingBeamRow>
+      <RevitSource>Structural Framing [523528]</RevitSource>
+      <BottomElevationMm>-1150</BottomElevationMm>
+      <SupportMode>Automatic</SupportMode>
+      <BayNumber>1</BayNumber>
+      <PositionMm>6950.000198364258</PositionMm>
+      <WidthMm>649.9998596191407</WidthMm>
+      <DepthMm>1150</DepthMm>
+    </TransferCrossingBeamRow>
+    <TransferCrossingBeamRow>
+      <RevitSource>Structural Framing [523530]</RevitSource>
+      <BottomElevationMm>-1150</BottomElevationMm>
+      <SupportMode>Automatic</SupportMode>
+      <BayNumber>1</BayNumber>
+      <PositionMm>10662.831420135499</PositionMm>
+      <WidthMm>650.0004409790039</WidthMm>
+      <DepthMm>1150</DepthMm>
+    </TransferCrossingBeamRow>
+  </CrossingBeams>
+  <IndependentBeams />
+</TransferNetworkConfiguration>
+</ReportedBeamArea>
