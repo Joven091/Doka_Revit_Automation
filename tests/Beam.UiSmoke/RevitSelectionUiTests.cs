@@ -14,7 +14,8 @@ internal static class RevitSelectionUiTests
     private static int checks;
     private static void Check(bool condition,string name){checks++;if(!condition)throw new Exception(name);}
     private static void Pump()=>Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));
-    private static void Click(BeamFormworkWorkspace w,string name)=>w.Buttons[name].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    private static void Click(BeamFormworkWorkspace w,string name)
+    {var control=w.Buttons[name];control.RaiseEvent(new RoutedEventArgs(control is MenuItem ? MenuItem.ClickEvent : Button.ClickEvent));}
     private static IEnumerable<T> Find<T>(DependencyObject parent) where T:DependencyObject
     {for(int i=0;i<VisualTreeHelper.GetChildrenCount(parent);i++){var child=VisualTreeHelper.GetChild(parent,i);if(child is T value)yield return value;foreach(var nested in Find<T>(child))yield return nested;}}
     internal static void Run(string png)
