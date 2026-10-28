@@ -66,5 +66,36 @@ steps skipped. Evidence: commit `b035f4f3e5345b19d62755b66169fc80d77e8a97`,
 [workflow 40739801765](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/40739801765).
 Existing 397 Top50 quantity/history/persistence checks also pass locally.
 
-Windows worker evidence is recorded with the reviewed commit after the CI run
-completes. Actual Revit 2024 host acceptance remains unrun.
+## Windows host-to-worker results
+
+Tested code: `799b61f2b35015131863695491bd74d3b6dcaa96`. The first Windows
+attempt exposed a Framework redirected-input Unicode preamble rejected by
+Console.ReadLine. Explicit stream decoding fixes it, with UTF8 and UTF16
+preamble regressions. The actual Windows net48-host-to-worker path then passes
+all round-trip, mode, permissions, malformed-data, fallback, cancellation and
+stale-result checks above.
+
+Two full five-area comparisons ran on one Windows runner, with normal trace
+instrumentation in both solvers. Each area first runs directly under net48 and
+then through the persistent self-contained net10 worker. Worker timings include
+startup, input/output transport, decoding and result validation. Totals exclude
+the separate post-timing regression assertions and UI/Revit model extraction.
+
+| Path | Run 1 | Run 2 | Mean |
+| --- | ---: | ---: | ---: |
+| Direct .NET Framework 4.8 | 47.074 s | 49.138 s | 48.106 s |
+| .NET 4.8 host → .NET 10 worker | 33.238 s | 31.676 s | 32.457 s |
+
+The integrated worker reduces the measured mean by **32.53%**. Both runs retain
+the exact checked selected geometry/load fingerprints, shared member identities,
+494 member reactions/utilizations/diagram responses and independent engineering
+validation. The mean is still **2.457 seconds above the 30-second target**.
+Actual Revit 2024 host acceptance and UI timing remain unrun.
+
+Evidence: [workflow 40741469382](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/40741469382),
+job `123003893269`; artifact `beam-worker-integration-evidence`, ID
+`12840017224`, SHA-256
+`940772274f5098ecbd9f95656554dd5f1d0f5265d92bd957a11a17e98e3825b4`.
+The evidence ZIP was downloaded, checksum-verified and its two totals re-parsed.
+The final documentation commit only records these results; solver code was not
+changed after this validation.
