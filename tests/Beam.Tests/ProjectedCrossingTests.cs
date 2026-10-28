@@ -16,7 +16,8 @@ internal static class ProjectedCrossingTests
     }
     internal static void Run()
     {
-        int passed=0,failed=0,checks=0,finerRescues=0;
+        int passed=0,failed=0,checks=0,finerRescues=0,boundaries=0;
+        var boundaryMaterials=new System.Collections.Generic.HashSet<PrimaryBeamMaterial>();
         foreach(var material in new[] {PrimaryBeamMaterial.DoubleH20,PrimaryBeamMaterial.WS10})
         foreach(bool custom in new[] {false,true})
         foreach(double width in new[] {1000.0,1500,1524,2000})
@@ -42,7 +43,24 @@ internal static class ProjectedCrossingTests
             if((reference==null)!=(actual==null))throw new Exception("Projected crossing feasibility changed: "+material+" "+custom+" "+width+" "+example);
             if(actual==null){failed++;coarserFailed=true;continue;}
             if(coarserFailed)finerRescues++;
-            passed++;var a=Demands(reference);var b=Demands(actual);
+            passed++;
+            if(boundaryMaterials.Add(material))
+            {
+                // Reuse the first passing fixture for each material, then check
+                // unrounded leg thresholds in fresh criterion-specific scopes.
+                double capacity=input.LegCapacityKn;
+                foreach(double delta in new[] {-1e-6,0,1e-6})
+                {
+                    input.LegCapacityKn=actual.Towers.MaxLegKn+delta;input.ReuseSearchWork=false;
+                    var expected=Solve(input,r,width,offset,shift,obstacles,spacing,null);
+                    input.ReuseSearchWork=true;
+                    var screened=Solve(input,r,width,offset,shift,obstacles,spacing,new CrossBeamSupportOptimizer.ProjectedJunctionWork(obstacles));
+                    if((expected==null)!=(screened==null) || screened!=null && !Demands(expected).SequenceEqual(Demands(screened)))throw new Exception("Early primary screening changed an exact leg-capacity boundary");
+                    boundaries++;
+                }
+                input.LegCapacityKn=capacity;
+            }
+            var a=Demands(reference);var b=Demands(actual);
             if(a.Length!=b.Length || !a.Zip(b,(x,y)=>Math.Abs(x-y)<=1e-12*Math.Max(1,Math.Abs(x))).All(x=>x))throw new Exception("Projected crossing unrounded member demands changed");
             if(!reference.SecondaryStationsMm.SequenceEqual(actual.SecondaryStationsMm) || !reference.Towers.PositionsMm.SequenceEqual(actual.Towers.PositionsMm))throw new Exception("Projected crossing selected geometry changed");
             foreach(var m in actual.Members)
@@ -53,8 +71,9 @@ internal static class ProjectedCrossingTests
             if(actual.Towers.MaxLegKn>input.LegCapacityKn+1e-8)throw new Exception("Projected leg capacity failed");
             }
         }
+        if(boundaries!=6)throw new Exception("Capacity-boundary checks did not cover both primary materials");
         if(passed==0 || failed==0)throw new Exception("Projected parity cases did not exercise both passing and rejected designs: "+passed+" / "+failed);
         if(finerRescues==0)throw new Exception("Projected cases did not test a finer pitch repairing a row-capacity failure");
-        Console.WriteLine("PASS projected crossing optimized/reference parity: "+passed+" passing, "+failed+" rejected, "+checks+" checked members, "+finerRescues+" finer-pitch recoveries; both materials and catalogue/custom scopes");
+        Console.WriteLine("PASS projected crossing optimized/reference parity: "+passed+" passing, "+failed+" rejected, "+checks+" checked members, "+finerRescues+" finer-pitch recoveries, "+boundaries+" exact leg boundaries; both materials and catalogue/custom scopes");
     }
 }

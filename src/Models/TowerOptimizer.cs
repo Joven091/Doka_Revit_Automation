@@ -250,6 +250,7 @@ namespace EngineeringDashboard
         internal bool ReuseSearchWork = true;
         internal bool OptimizeCrossingJunctions = true;
         internal bool PrecheckCrossingFootprints = true;
+        internal bool PrecheckProjectedPrimaries = true;
         // Regression tests can replay the former common-primary-coverage restriction.
         // Production networks share slab/primary extents. Retained internally for historical regression fixtures.
         internal bool IndependentNetworkPrimaryCoverage = false;

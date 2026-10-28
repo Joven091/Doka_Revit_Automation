@@ -6,6 +6,7 @@ on:
       - 'src/Models/TransferredSlabOptimizer.cs'
       - 'src/Models/CrossBeamSupport.cs'
       - 'src/Models/TransferBeamNetwork.cs'
+      - 'src/Models/BeamSearchTrace.cs'
       - 'tests/Beam.Tests/ReportedCombinedTests.cs'
       - 'tests/Beam.Tests/ProjectedCrossingTests.cs'
       - 'tests/Beam.Tests/GeometryExtensionTests.cs'
@@ -27,19 +28,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          ref: 1a4582073eaec93b19537b9b37fc93c6bae94739
+          ref: 6650347cd7b361a8b73f62cc4bc8dbebfd47b501
           path: baseline
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Build identical reported-input harness against both source versions
+      - name: Build identical reported-input harness against both versions and runtimes
         shell: pwsh
         run: |
           Copy-Item tests/Beam.Tests/ReportedCombinedTests.cs baseline/tests/Beam.Tests/ReportedCombinedTests.cs
-          dotnet build tests/Beam.Net48/Beam.Net48.csproj -c Release --warnaserror
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build baseline/tests/Beam.Net48/Beam.Net48.csproj -c Release --warnaserror
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($project in @('tests/Beam.Net48/Beam.Net48.csproj','tests/Beam.Tests/Beam.Tests.csproj','baseline/tests/Beam.Net48/Beam.Net48.csproj')) {
+            dotnet build $project -c Release --warnaserror
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - name: Exact boundaries and crossing parity
         shell: pwsh
         run: |
@@ -47,18 +48,37 @@ jobs:
             & tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe $flag
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-      - name: Same-runner ABBA full searches and bounded area scheduling experiment
+          dotnet tests/Beam.Tests/bin/Release/net10.0/Beam.Tests.dll --projected-crossing
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Same-runner source and runtime comparisons
         shell: pwsh
         run: |
+          function Compare-NumericFingerprint($reference,$actual) {
+            $pattern = '[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
+            if ([regex]::Replace($reference,$pattern,'#') -cne [regex]::Replace($actual,$pattern,'#')) { throw 'Cross-runtime design structure changed' }
+            $a = [regex]::Matches($reference,$pattern)
+            $b = [regex]::Matches($actual,$pattern)
+            if ($a.Count -ne $b.Count) { throw 'Cross-runtime member count changed' }
+            $largest = 0.0
+            for ($j=0; $j -lt $a.Count; $j++) {
+              $x = [double]::Parse($a[$j].Value,[cultureinfo]::InvariantCulture)
+              $y = [double]::Parse($b[$j].Value,[cultureinfo]::InvariantCulture)
+              $delta = [math]::Abs($x-$y)
+              if (-not [double]::IsFinite($x) -or -not [double]::IsFinite($y) -or $delta -gt 1e-8+1e-10*[math]::Max([math]::Abs($x),[math]::Abs($y))) { throw "Cross-runtime geometry/demand changed at value $j`: $x vs $y" }
+              $largest = [math]::Max($largest,$delta)
+            }
+            return $largest
+          }
           $records = @()
           $firstResults = @{}
           $i = 0
-          foreach ($version in @('baseline','candidate','candidate','baseline','parallel')) {
+          foreach ($version in @('baseline-net48','candidate-net48','candidate-net10','candidate-net10','candidate-net48','baseline-net48')) {
             $i++
-            $exe = if ($version -eq 'baseline') { 'baseline/tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe' } else { 'tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe' }
+            $modern = $version -eq 'candidate-net10'
+            $exe = if ($version -eq 'baseline-net48') { 'baseline/tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe' } else { 'tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe' }
             $folder = "combined-beam-results/$version-$i"
-            $degree = if ($version -eq 'parallel') { 2 } else { 1 }
-            $output = & $exe --combined-reported --areas 1,2,3,4,5 --workers 4 --area-workers $degree --seconds 300 --profile --output $folder 2>&1
+            $arguments = @('--combined-reported','--areas','1,2,3,4,5','--workers','4','--seconds','300','--profile','--output',$folder)
+            $output = if ($modern) { & dotnet tests/Beam.Tests/bin/Release/net10.0/Beam.Tests.dll @arguments 2>&1 } else { & $exe @arguments 2>&1 }
             $exitCode = $LASTEXITCODE
             $output | Tee-Object "combined-beam-$version-$i.txt"
             if ($exitCode -ne 0) { exit $exitCode }
@@ -66,21 +86,25 @@ jobs:
             if ($line -notmatch 'TOTAL seconds=([0-9.]+)') { throw 'Missing completed search timing' }
             $seconds = [double]::Parse($Matches[1],[cultureinfo]::InvariantCulture)
             $identical = $true
+            $maximumDelta = 0.0
             foreach ($area in 1..5) {
               $report = (Get-Content "$folder/area$area.txt" -Raw).Replace("`r`n","`n")
               $fingerprint = [regex]::Match($report,'(?ms)^legs=.*\z').Value.TrimEnd()
               if (-not $fingerprint) { throw 'Missing complete result fingerprint' }
               if (-not $firstResults.ContainsKey($area)) { $firstResults[$area] = $fingerprint }
-              elseif ($firstResults[$area] -cne $fingerprint) { $identical = $false }
+              elseif ($firstResults[$area] -cne $fingerprint) {
+                $identical = $false
+                if (-not $modern) { throw 'Same-runtime selected design or unrounded member demands changed' }
+                $maximumDelta = [math]::Max($maximumDelta,(Compare-NumericFingerprint $firstResults[$area] $fingerprint))
+              }
             }
-            $records += [pscustomobject]@{ Version=$version; Seconds=$seconds; IdenticalFingerprint=$identical; Workers=4; AreaWorkers=$degree }
-            if ($version -ne 'parallel' -and -not $identical) { throw 'Completed selected design or member demands changed' }
+            $records += [pscustomobject]@{ Version=$version; Seconds=$seconds; ExactFingerprint=$identical; MaximumCrossRuntimeDifference=$maximumDelta; Workers=4; AreaWorkers=1 }
           }
           $records | ConvertTo-Json | Set-Content combined-beam-comparison.json
-          $before = ($records | Where-Object Version -eq baseline | Measure-Object Seconds -Average).Average
-          $after = ($records | Where-Object Version -eq candidate | Measure-Object Seconds -Average).Average
-          Write-Host "MEASURED baseline_mean=$before candidate_mean=$after reduction_percent=$((1-$after/$before)*100)"
-          Write-Host "PARALLEL $($records | Where-Object Version -eq parallel | ConvertTo-Json -Compress)"
+          $before = ($records | Where-Object Version -eq baseline-net48 | Measure-Object Seconds -Average).Average
+          $after = ($records | Where-Object Version -eq candidate-net48 | Measure-Object Seconds -Average).Average
+          $modern = ($records | Where-Object Version -eq candidate-net10 | Measure-Object Seconds -Average).Average
+          Write-Host "MEASURED baseline_net48_mean=$before candidate_net48_mean=$after reduction_percent=$((1-$after/$before)*100) candidate_net10_mean=$modern runtime_reduction_percent=$((1-$modern/$after)*100)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

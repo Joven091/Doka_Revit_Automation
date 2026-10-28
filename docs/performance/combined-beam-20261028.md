@@ -116,3 +116,37 @@ Additional checks cover 240 optimized/reference crossing cases (including eight
 finer-pitch recoveries after a coarse-pitch capacity failure), 160 complete
 single-band response/diagram comparisons with exact acceptance-boundary fallback,
 receiver-ceiling reuse, and geometry extension/cancellation/concurrent limits.
+
+## Third pass: reject primary-capacity failures before detailed crossing construction
+
+Projected dedicated crossings now check their exact primary UDLs, self-weight
+where applicable, deflection, uplift policy and leg capacity before constructing
+secondary rows and complete solids. The shared primary-check routine also serves
+final result construction. Every permitted transverse-stock reaction pair must
+fail before an entire placement can be rejected; a secondary-row failure never
+proves another pitch impossible. Passing primary responses are reused only inside
+the same immutable junction/criteria snapshot, with a bounded 4,096-entry cache.
+Slab-edge line loads are likewise prepared once for that fixed snapshot.
+
+The current net48 source is frozen at
+`6650347cd7b361a8b73f62cc4bc8dbebfd47b501` for the next controlled comparison.
+One Windows runner executes baseline-net48, candidate-net48, candidate-net10,
+candidate-net10, candidate-net48, baseline-net48. All use four workers and
+sequential areas. Production remains a Revit 2024/net48 add-in. The modern-runtime
+console run is an architecture experiment; no worker integration is included.
+
+The identical harness is compiled against both source versions and records every
+returned member's unrounded geometry, loads, reactions and response peaks, in
+addition to the selected network fingerprint. Same-runtime output must match
+exactly. A cross-runtime result must retain the same structure and agree within
+`1e-8 + 1e-10 * max(abs(reference), abs(actual))` for every recorded number.
+Independent stock, strength, evaluated deflection, leg, equilibrium and clash
+validation runs in both runtimes. Six extra leg-capacity threshold cases cover
+both primary materials alongside the existing 240 crossing parity cases.
+
+Two additional experiments were excluded: cached stock-pattern prefixes did not
+improve the five-area replay, and prepared primary placement windows changed the
+local Area 1 ABBA mean from 18.146 to 17.984 seconds (under 1%, within run-to-run
+variation). Their extra implementation is not retained. Full Windows results for
+this third pass are pending the controlled workflow; local development timings
+are not a claim that the installed Revit tool meets 30 seconds.
