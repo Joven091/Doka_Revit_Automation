@@ -51,6 +51,20 @@ internal static class Program
         Wait(restrictive.OptimizeAsync());string completedStatus=restrictive.Status;restrictive.Cancel();Check(restrictive.Status==completedStatus&&outcome.Text==completedStatus,"late Cancel cannot replace a fast no-result outcome");
         restrictive.Save(Path.Combine(output,"restrictive.top50"));outcomeWindow.Close();
 
+        // Separate settings session keeps the main result fixture/history intact.
+        var methodModel=new Top50ViewModel();methodModel.EditSettings(s=>s.RequireIdenticalKits=true);
+        var methodWindow=new Top50Window(methodModel);methodWindow.ShowPage(1);var methodRoot=(FrameworkElement)methodWindow.Content;
+        Render(methodRoot,1280,800,1,Path.Combine(output,"settings-fixed.png"));
+        var method=Find<ComboBox>(methodRoot).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50OfferingMethod");
+        var fixedInputs=Find<StackPanel>(methodRoot).Single(p=>AutomationProperties.GetAutomationId(p)=="Top50FixedMethodInputs");
+        var percentageInputs=Find<StackPanel>(methodRoot).Single(p=>AutomationProperties.GetAutomationId(p)=="Top50PercentageMethodInputs");
+        Check(fixedInputs.Visibility==Visibility.Visible&&percentageInputs.Visibility==Visibility.Collapsed,"production fixed method displays set controls and hides percentage controls");
+        method.SelectedIndex=1;Render(methodRoot,1280,800,1,Path.Combine(output,"settings-percentage.png"));
+        Check(fixedInputs.Visibility==Visibility.Collapsed&&percentageInputs.Visibility==Visibility.Visible&&methodModel.Settings.OfferingMode==1,"production percentage method displays target controls and hides fixed-set controls");
+        method.SelectedIndex=0;Render(methodRoot,1280,800,1,Path.Combine(output,"settings-fixed-restored.png"));
+        Check(fixedInputs.Visibility==Visibility.Visible&&percentageInputs.Visibility==Visibility.Collapsed&&methodModel.Settings.RequireIdenticalKits&&Find<CheckBox>(methodRoot).Single(c=>(c.Content as string)=="Use identical panel sets").IsChecked==true,"returning to fixed method preserves the identical-set preference");
+        methodModel.AddManual(1000,"Native settings review fixture");methodModel.Save(Path.Combine(output,"settings-method-review.top50"));methodWindow.Close();
+
         // Controlled measurements only. These are not the original Top50 parity/reference drawing.
         var vm=new Top50ViewModel();for(int i=0;i<4;i++)vm.AddManual(5000,"Controlled planner diagnosis check");
         vm.Settings.CatalogMm=new[]{5000};vm.Settings.LongestCount=2;vm.Settings.Seconds=5;
@@ -107,17 +121,22 @@ internal static class Program
         {
             window.ShowPage(page);var diagnose=Command(root,"Top50Diagnose");
             Check(diagnose.IsEnabled,"diagnose available on page "+page);
-            if(page==1)Check((Find<ComboBox>(root).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50PlanningPreset").ToolTip as string)?.Contains("construction duration is not calculated")==true,"preset help states the actual allocation-group meaning of Fastest");
-            if(page==2)
-            {
-                Check(Find<TextBlock>(root).Any(t=>t.Text.Contains("Best found")&&t.Text.Contains("global optimum not established")),"results state best-found quantity-first scope locally");
-                Check(Find<Border>(root).Any(b=>(b.ToolTip as string)?.Contains("approved assembly permits")==true),"connector context explains conditional adjustable substitution and reuse");
-            }
-            if(page==3)Check(Find<TextBlock>(root).Any(t=>t.Text.Contains("not a pour sequence")),"casting groups visibly distinguish sequential reuse from approved site sequence");
             foreach(double scale in new[]{1d,1.25,1.5})
             {
                 double width=scale==1?1000:1600/scale,height=scale==1?680:1000/scale;
                 Render(root,width,height,scale,Path.Combine(output,"planner-page-"+page+"-"+scale.ToString(CultureInfo.InvariantCulture)+".png"));
+                // ScrollViewer/ContentPresenter children join the visual tree
+                // during layout. Inspect the native controls after rendering.
+                if(scale==1)
+                {
+                    if(page==1)Check((Find<ComboBox>(root).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50PlanningPreset").ToolTip as string)?.Contains("construction duration is not calculated")==true,"preset help states the actual allocation-group meaning of Fastest");
+                    if(page==2)
+                    {
+                        Check(Find<TextBlock>(root).Any(t=>t.Text.Contains("Best found")&&t.Text.Contains("global optimum not established")),"results state best-found quantity-first scope locally");
+                        Check(Find<Border>(root).Any(b=>(b.ToolTip as string)?.Contains("approved assembly permits")==true),"connector context explains conditional adjustable substitution and reuse");
+                    }
+                    if(page==3)Check(Find<TextBlock>(root).Any(t=>t.Text.Contains("not a pour sequence")),"casting groups visibly distinguish sequential reuse from approved site sequence");
+                }
                 foreach(var menu in Find<Menu>(root).SelectMany(m=>m.Items.OfType<MenuItem>()))
                 {var position=menu.TransformToAncestor(root).Transform(new Point(0,0));Check(position.X>=0&&position.X+menu.ActualWidth<=width+1,"D3-style menu "+menu.Header+" visible at "+scale+" on page "+page);}
                 foreach(var action in Find<Button>(root).Where(b=>new[]{"Optimize","Cancel"}.Contains(b.Content as string)&&b.Visibility==Visibility.Visible))
