@@ -19,10 +19,11 @@ internal static class Program
             long expectedStart=long.Parse(ownerData[1],CultureInfo.InvariantCulture);
             if(Math.Abs(owner.StartTime.ToUniversalTime().Ticks-expectedStart)>TimeSpan.FromSeconds(1).Ticks)throw new InvalidDataException("The beam worker owner process changed before startup.");
             File.WriteAllText(Path.Combine(root,"ready.tmp"),"beam-worker/"+BeamWire.Protocol+"/"+BeamWire.EngineIdentity);File.Move(Path.Combine(root,"ready.tmp"),Path.Combine(root,"ready.txt"));
+            using var requests=BeamWire.RequestReader(Console.OpenStandardInput());
             string id;
-            while((id=Console.ReadLine())!=null)
+            while((id=requests.ReadLine())!=null)
             {
-                if(!Guid.TryParseExact(id,"N",out _))return 3;
+                if(!Guid.TryParseExact(id,"N",out _)){Console.Error.WriteLine("Invalid beam worker request identifier (length "+id.Length+").");return 3;}
                 string folder=Path.Combine(root,id);var reply=new BeamSolverReply();BeamSearchTrace trace=null;
                 using(var cancel=new CancellationTokenSource())
                 {

@@ -177,6 +177,14 @@ internal static class Program
     }
     static void Failures(string host)
     {
+        var requestId=Guid.NewGuid().ToString("N");
+        foreach(var encoding in new System.Text.Encoding[] {new System.Text.UTF8Encoding(true),new System.Text.UTF8Encoding(false),System.Text.Encoding.Unicode})
+        {
+            var bytes=encoding.GetPreamble().Concat(encoding.GetBytes(requestId+"\n")).ToArray();
+            using(var stream=new MemoryStream(bytes))using(var reader=BeamWire.RequestReader(stream))
+                if(reader.ReadLine()!=requestId || reader.ReadLine()!=null)throw new Exception("Redirected request preamble was not decoded");
+        }
+        Console.WriteLine("PASS request identifiers accept Framework Unicode preambles and modern UTF8 streams");
         string own=typeof(Program).Assembly.Location;
         foreach(string mode in new[] {"identity","crash","corrupt","partial","stopped"})
         {
@@ -232,20 +240,21 @@ internal static class Program
     }
     static int Fake(string root)
     {
+        using var requests=BeamWire.RequestReader(Console.OpenStandardInput());
         string mode=Environment.GetEnvironmentVariable("DOKA_BEAM_FAKE_MODE");
         if(mode=="slow-start")Thread.Sleep(10000);
         File.WriteAllText(Path.Combine(root,"ready.txt"),mode=="identity" ? "incompatible" : "beam-worker/"+BeamWire.Protocol+"/"+BeamWire.EngineIdentity);
-        string id=Console.ReadLine();if(id==null)return 0;if(mode=="crash")return 17;
+        string id=requests.ReadLine();if(id==null)return 0;if(mode=="crash")return 17;
         if(mode=="partial")
         {
-            BeamWire.Write(Path.Combine(root,id,"response.bin"),new BeamSolverReply {Main=new TowerLayout(),Counters=new long[Enum.GetValues(typeof(BeamSearchCounter)).Length]});Console.ReadLine();
+            BeamWire.Write(Path.Combine(root,id,"response.bin"),new BeamSolverReply {Main=new TowerLayout(),Counters=new long[Enum.GetValues(typeof(BeamSearchCounter)).Length]});requests.ReadLine();
         }
-        if(mode=="corrupt"){File.WriteAllBytes(Path.Combine(root,id,"response.bin"),new byte[] {1,2,3});Console.ReadLine();}
-        if(mode=="stopped"){BeamWire.Write(Path.Combine(root,id,"response.bin"),new BeamSolverReply {ErrorKind="cancelled",Error="Unexpected worker interruption"});Console.ReadLine();}
+        if(mode=="corrupt"){File.WriteAllBytes(Path.Combine(root,id,"response.bin"),new byte[] {1,2,3});requests.ReadLine();}
+        if(mode=="stopped"){BeamWire.Write(Path.Combine(root,id,"response.bin"),new BeamSolverReply {ErrorKind="cancelled",Error="Unexpected worker interruption"});requests.ReadLine();}
         if(mode=="slow-result")
         {
             var request=BeamWire.Read<BeamSolverRequest>(Path.Combine(root,id,"request.bin"));var reply=BeamSolverSession.SolveLocally(request);reply.Counters=new long[Enum.GetValues(typeof(BeamSearchCounter)).Length];
-            Thread.Sleep(500);string temporary=Path.Combine(root,id,"response.tmp");BeamWire.Write(temporary,reply);File.Move(temporary,Path.Combine(root,id,"response.bin"));Console.ReadLine();
+            Thread.Sleep(500);string temporary=Path.Combine(root,id,"response.tmp");BeamWire.Write(temporary,reply);File.Move(temporary,Path.Combine(root,id,"response.bin"));requests.ReadLine();
         }
         return 0;
     }

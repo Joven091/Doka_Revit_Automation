@@ -80,6 +80,10 @@ namespace EngineeringDashboard
                 }
             }
         }
+        // Framework Process.StandardInput can emit a Unicode preamble on its
+        // first write. Console.ReadLine does not reliably consume that preamble
+        // in a redirected modern-runtime child. Decode the stream explicitly.
+        internal static StreamReader RequestReader(Stream input)=>new StreamReader(input,new UTF8Encoding(false,true),true);
         static string TypeId(Type t)
         {
             if(t.IsArray)return "array"+t.GetArrayRank()+"("+TypeId(t.GetElementType())+")";
