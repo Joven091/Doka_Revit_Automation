@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 
@@ -13,11 +12,11 @@ namespace EngineeringDashboard.Top50
             if(length<=0)throw new ArgumentOutOfRangeException(nameof(length));
             var sizes=catalog.Distinct().OrderByDescending(x=>x).ToArray();
             if(sizes.Length==0 || sizes.Any(x=>x<=0))throw new ArgumentException("A positive nominal panel catalog is required.");
-            var result=new List<PanelPattern>();var panels=new List<int>();var clock=Stopwatch.StartNew();long visits=0;
-            void Check(){cancellation.ThrowIfCancellationRequested();if(clock.Elapsed.TotalSeconds>limits.Seconds)throw new TimeoutException("Retained pattern enumeration exceeded its explicit test/search budget; no infeasibility conclusion follows.");}
+            var result=new List<PanelPattern>();var panels=new List<int>();long visits=0;
+            void Check(){cancellation.ThrowIfCancellationRequested();if(visits>limits.PatternVisitLimit)throw new TimeoutException("Retained pattern enumeration reached its repeatable node limit; no infeasibility conclusion follows.");}
             void Find(int remaining,int start,long installed,int count)
             {
-                if((++visits&1023)==0)Check();
+                if(++visits>limits.PatternVisitLimit || (visits&1023)==0)Check();
                 if(result.Count>=limits.PatternsPerLength)return;
                 int maximumFillers=Math.Min(limits.MaxInternalFillers,count-1);
                 long minimum=length-(long)maximumFillers*limits.MaxFillerMm*1000;
@@ -37,7 +36,14 @@ namespace EngineeringDashboard.Top50
                 }
             }
             Check();
-            for(int count=1;count<=limits.MaxComponents && result.Count<limits.PatternsPerLength;count++)Find(count,0,0,count);
+            // Geometry bounds the finite search: even the shortest permitted panel
+            // cannot be repeated past the wall length. This is not a design cap.
+            int maximumCount=checked((int)(length/((long)sizes[sizes.Length-1]*1000)));
+            long fillerCapacity=(long)Math.Min(limits.MaxInternalFillers,Math.Max(0,maximumCount-1))*limits.MaxFillerMm*1000;
+            long requiredPanelLength=Math.Max(0,length-fillerCapacity),longestPanel=(long)sizes[0]*1000;
+            int minimumCount=checked((int)Math.Max(1,requiredPanelLength/longestPanel+(requiredPanelLength%longestPanel==0?0:1)));
+            for(int count=minimumCount;count<=maximumCount && result.Count<limits.PatternsPerLength;count++)
+            {Find(count,0,0,count);if(count==maximumCount)break;}
             return result.AsReadOnly();
         }
     }
@@ -48,6 +54,7 @@ namespace EngineeringDashboard.Top50
         {
             var errors=new List<string>();var included=walls.Where(w=>w.Included).ToDictionary(w=>w.Id);
             if(proposal.Stock.Count==0 || proposal.Stock.Any(x=>x.Key<=0 || x.Value<=0))errors.Add("Reusable stock must have positive nominal sizes and counts.");
+            if(proposal.Groups.Count>limits.MaximumGroups)errors.Add("Casting group limit exceeded.");
             var seen=new HashSet<string>();
             foreach(var group in proposal.Groups)
             {
@@ -58,7 +65,7 @@ namespace EngineeringDashboard.Top50
                     if(!included.TryGetValue(a.WallId,out var wall)){errors.Add("Unknown or excluded wall: "+a.WallId);continue;}
                     if(!seen.Add(a.WallId))errors.Add("Wall assigned more than once: "+a.WallId);
                     var p=a.Pattern;
-                    if(p.PanelsMm.Count<1 || p.PanelsMm.Count>limits.MaxComponents || p.InternalGapsMicrometres.Count!=p.PanelsMm.Count-1)errors.Add("Invalid component/internal-gap count: "+a.WallId);
+                    if(p.PanelsMm.Count<1 || p.InternalGapsMicrometres.Count!=p.PanelsMm.Count-1)errors.Add("Invalid component/internal-gap count: "+a.WallId);
                     if(p.InternalGapsMicrometres.Any(g=>g<0 || g>(long)limits.MaxFillerMm*1000) || p.FillerLocations>limits.MaxInternalFillers)errors.Add("Invalid internal filler: "+a.WallId);
                     if(p.LengthMicrometres!=wall.LengthMicrometres)errors.Add("Arrangement does not close to the rounded-once source measurement: "+a.WallId);
                     foreach(var size in p.PanelsMm){used.TryGetValue(size,out var n);used[size]=n+1;}

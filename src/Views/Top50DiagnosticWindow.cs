@@ -14,6 +14,7 @@ namespace EngineeringDashboard
         public Top50DiagnosticWindow(Func<string> capture)
         {
             if(capture==null)throw new ArgumentNullException(nameof(capture));
+            Resources.MergedDictionaries.Add(new ResourceDictionary{Source=new Uri("pack://application:,,,/"+typeof(Top50DiagnosticWindow).Assembly.GetName().Name+";component/Views/CalculatorStyles.xaml",UriKind.Absolute)});
             Title="Top50 Planner — diagnosis";Width=1080;Height=760;MinWidth=640;MinHeight=420;WindowStartupLocation=WindowStartupLocation.CenterOwner;
             Background=Brushes.White;FontFamily=new FontFamily("Segoe UI");FontSize=13;
             var root=new Grid{Margin=new Thickness(16),Background=Brushes.White};

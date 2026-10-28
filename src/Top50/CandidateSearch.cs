@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -45,6 +44,7 @@ namespace EngineeringDashboard.Top50
         public int Attempted { get; internal set; }
         public int Unsearched { get; internal set; }
         public bool BudgetExpired { get; internal set; }
+        public int SkippedForPanelQuantity { get; internal set; }
     }
     public sealed class Top50Search
     {
@@ -56,8 +56,7 @@ namespace EngineeringDashboard.Top50
             using var runtimeScope=Top50Runtime.Enter();
             if(percentage.HasValue&&(percentage<=0||percentage>100||bandPoints<0))throw new ArgumentOutOfRangeException(nameof(percentage));
             if(identicalKits&&percentage.HasValue)throw new ArgumentException("Identical fixed kits require Fixed longest-wall sets.");
-            var log=new List<string>{"Native candidate strategy: descending catalog cutoffs and retained longest-wall multisets, plus solo-fit coverage. This is an explicit reconstructed strategy, not recovered original source.","Feasible / best found. Bounds apply only to each retained-pattern inventory allocation; no global design-space proof."};
-            var clock=Stopwatch.StartNew();
+            var log=new List<string>{"Native candidate strategy: descending catalog cutoffs and retained longest-wall multisets, plus solo-fit coverage. This is an explicit reconstructed strategy, not recovered original source.","Quantity-first policy: show only the fewest-panel validated tier. Presets compare equal-panel-count inventories.","Repeatable search: fixed pattern-node and single-worker deterministic solver-work limits; no elapsed-time cutoff. Cancellation remains available.","Feasible / best found. Work-limited or omitted lower-count arrangements are not proven infeasible; no global design-space proof."};
             var included=walls.Where(w=>w.Included).ToArray();if(included.Length==0)throw new ArgumentException("Include reviewed walls before optimizing.");
             decimal totalMicrometres=included.Sum(w=>(decimal)w.LengthMicrometres);
             var allInventories=new List<IDictionary<int,int>>();
@@ -66,48 +65,62 @@ namespace EngineeringDashboard.Top50
                 int center=(int)Math.Ceiling(totalMicrometres*percentage.Value/100/included.Max(w=>w.LengthMicrometres));
                 for(int count=1;count<=Math.Min(included.Length,center+2);count++)
                 {
-                    cancellation.ThrowIfCancellationRequested();if(clock.Elapsed.TotalSeconds>=limits.Seconds)break;
-                    var seedLimits=new SearchLimits(limits.MaxComponents,limits.MaxInternalFillers,limits.MaxFillerMm,limits.MaximumGroups,count,limits.Seconds,limits.Seed,limits.PatternsPerLength);
+                    cancellation.ThrowIfCancellationRequested();
+                    var seedLimits=new SearchLimits(limits.MaxInternalFillers,limits.MaxFillerMm,limits.MaximumGroups,count,limits.SearchEffort,limits.Seed,limits.PatternsPerLength);
                     allInventories.AddRange(candidates.Generate(walls,catalog,seedLimits,cancellation));
                 }
             }
             else allInventories.AddRange(candidates.Generate(walls,catalog,limits,cancellation));
             if(identicalKits)
                 allInventories=allInventories.Select(stock=>(IDictionary<int,int>)stock.ToDictionary(p=>p.Key,p=>(int)Math.Ceiling(p.Value/(decimal)limits.LongestSimultaneous)*limits.LongestSimultaneous)).ToList();
-            var unique=allInventories.GroupBy(stock=>string.Join(";",stock.OrderBy(p=>p.Key).Select(p=>p.Key+":"+p.Value))).Select(g=>g.First()).ToArray();
+            var unique=allInventories.GroupBy(Top50Order.Stock).Select(g=>(IDictionary<int,int>)g.First().OrderBy(p=>p.Key).ToDictionary(p=>p.Key,p=>p.Value)).ToArray();
             Func<IDictionary<int,int>,bool> inBand=stock=>!percentage.HasValue||Math.Abs(stock.Sum(p=>(decimal)p.Key*p.Value*1000)/totalMicrometres*100-percentage.Value)<=bandPoints;
-            var inventories=unique.Where(inBand).Concat(allowExpansion?unique.Where(s=>!inBand(s)):Enumerable.Empty<IDictionary<int,int>>()).ToArray();
-            var found=new List<Proposal>();int attempts=0;bool foundInside=false;
-            foreach(var inventory in inventories)
+            Func<IEnumerable<IDictionary<int,int>>,IDictionary<int,int>[]> ordered=items=>items.OrderBy(s=>s.Sum(p=>p.Value)).ThenBy(s=>s.Sum(p=>(long)p.Key*p.Value)).ThenBy(Top50Order.Stock,StringComparer.Ordinal).ToArray();
+            var inside=ordered(unique.Where(inBand));var outside=allowExpansion?ordered(unique.Where(s=>!inBand(s))):Array.Empty<IDictionary<int,int>>();
+            int candidateCount=inside.Length+outside.Length;
+            double workPerInventory=limits.SearchEffort/Math.Max(1,candidateCount);
+            log.Add("Eligible inventories: "+candidateCount+"; pattern visit limit per enumeration: "+limits.PatternVisitLimit+"; deterministic solver work per inventory: "+workPerInventory.ToString("R",CultureInfo.InvariantCulture)+".");
+            var found=new List<Proposal>();int attempts=0,skippedQuantity=0;
+            // The requested percentage band is a project requirement. Expanded
+            // offers are considered only when no validated in-band offer exists.
+            foreach(var phase in new[]{inside,outside})
             {
-                cancellation.ThrowIfCancellationRequested();double remaining=limits.Seconds-clock.Elapsed.TotalSeconds;if(remaining<=0)break;
-                if(!inBand(inventory)&&foundInside)break;
-                double slice=Math.Min(2,Math.Max(.1,remaining/Math.Max(1,inventories.Length-attempts)));
-                var perInventory=new SearchLimits(limits.MaxComponents,limits.MaxInternalFillers,limits.MaxFillerMm,limits.MaximumGroups,percentage.HasValue?1:limits.LongestSimultaneous,slice,limits.Seed,limits.PatternsPerLength);
-                string id="S"+(++attempts);progress?.Report("Exploring "+id+" of "+inventories.Length+" retained inventory candidates");
-                try
+                foreach(var tier in phase.GroupBy(s=>s.Sum(p=>p.Value)))
                 {
-                    var result=solver.Solve(id,walls,inventory,perInventory,cancellation);
-                    if(result!=null)
+                    foreach(var inventory in tier)
                     {
-                        if(identicalKits)
+                        cancellation.ThrowIfCancellationRequested();
+                        var perInventory=new SearchLimits(limits.MaxInternalFillers,limits.MaxFillerMm,limits.MaximumGroups,percentage.HasValue?1:limits.LongestSimultaneous,limits.SearchEffort,limits.Seed,limits.PatternsPerLength,workPerInventory);
+                        string id="S"+(++attempts);progress?.Report("Checking "+tier.Key+"-panel inventory "+id+" of "+candidateCount);
+                        try
                         {
-                            bool fit=included.OrderByDescending(w=>w.LengthMicrometres).Take(limits.LongestSimultaneous).All(w=>new FewestComponentPatterns().Enumerate(w.LengthMicrometres,inventory.Keys,perInventory,cancellation).Any(p=>p.PanelsMm.GroupBy(n=>n).All(g=>g.Count()<=inventory[g.Key]/limits.LongestSimultaneous)));
-                            if(!fit){log.Add(id+": rejected: repeated stock does not provide an independently fitting kit for every required longest wall.");continue;}
-                            result.IdenticalKitCount=limits.LongestSimultaneous;
-                            if(Top50Validation.Validate(walls,result,perInventory).Count>0){log.Add(id+": rejected: returned allocation did not fit the declared individual identical kits.");continue;}
+                            var result=solver.Solve(id,walls,inventory,perInventory,cancellation,new SearchProgress(message=>{log.Add(id+": "+message);progress?.Report(id+": "+message);}));
+                            if(result==null){log.Add(id+": no complete retained-model allocation within fixed work; no full-space infeasibility claim.");continue;}
+                            if(identicalKits)
+                            {
+                                bool fit=included.OrderByDescending(w=>w.LengthMicrometres).ThenBy(w=>w.Id,StringComparer.Ordinal).Take(limits.LongestSimultaneous).All(w=>new FewestComponentPatterns().Enumerate(w.LengthMicrometres,inventory.Keys,perInventory,cancellation).Any(p=>p.PanelsMm.GroupBy(n=>n).All(g=>g.Count()<=inventory[g.Key]/limits.LongestSimultaneous)));
+                                if(!fit){log.Add(id+": rejected: repeated stock does not provide an independently fitting kit for every required longest wall.");continue;}
+                                result.IdenticalKitCount=limits.LongestSimultaneous;
+                            }
+                            var issues=Top50Validation.Validate(walls,result,perInventory);
+                            if(issues.Count>0)throw new InvalidOperationException("Returned allocation failed independent validation: "+string.Join("; ",issues));
+                            found.Add(result);log.Add(id+": validated "+result.PanelCount+" panels, "+(result.StockMicrometres/1000000m).ToString(CultureInfo.InvariantCulture)+"m, "+result.Groups.Count+" groups; retained status "+result.RetainedModelStatus+".");
                         }
-                        found.Add(result);if(inBand(inventory))foundInside=true;log.Add(id+": validated "+result.StockMicrometres/1000000m+"m, "+result.Groups.Count+" groups; retained status "+result.RetainedModelStatus+".");
+                        catch(TimeoutException e){log.Add(id+": "+e.Message);}
                     }
-                    else log.Add(id+": no complete proposal returned within its retained-model budget; not a full-space infeasibility claim.");
+                    if(found.Count>0){skippedQuantity=phase.Count(s=>s.Sum(p=>p.Value)>tier.Key);break;}
                 }
-                catch(TimeoutException e){log.Add(id+": "+e.Message);}
+                if(found.Count>0)break;
             }
-            var ranked=ProposalRanking.Rank(found.Select(p=>RankingMetrics.From(p,percentage.HasValue?p.StockMicrometres/1000000m-totalMicrometres/1000000m*percentage.Value/100:0)),preset,displayLimit);
+            var scales=new RankingScales(totalMicrometres/1000000m,catalog.Distinct().Count(),limits.MaximumGroups,included.Length*limits.MaxInternalFillers,percentage.HasValue?totalMicrometres/1000000m*percentage.Value/100:(decimal?)null);
+            var ranked=ProposalRanking.Rank(found.Select(p=>RankingMetrics.From(p,percentage.HasValue?p.StockMicrometres/1000000m-totalMicrometres/1000000m*percentage.Value/100:0)),preset,displayLimit,scales);
             var shown=ranked.Select(r=>found.Single(p=>p.Id==r.Id)).ToArray();
             for(int i=0;i<shown.Length;i++){shown[i].Rank=i+1;shown[i].Pareto=ranked[i].Pareto;}
             log.Add("All "+found.Count+" found candidates ranked before display limit "+displayLimit+"; "+Math.Max(0,found.Count-shown.Length)+" feasible alternatives omitted from display.");
-            return new SearchRun{Proposals=Array.AsReadOnly(shown),Log=log.AsReadOnly(),Attempted=attempts,Unsearched=inventories.Length-attempts,BudgetExpired=clock.Elapsed.TotalSeconds>=limits.Seconds};
+            log.Add("Skipped "+skippedQuantity+" higher-panel-count candidates under the quantity-first policy. Elapsed time does not select the inventory pool.");
+            return new SearchRun{Proposals=Array.AsReadOnly(shown),Log=log.AsReadOnly(),Attempted=attempts,Unsearched=candidateCount-attempts,SkippedForPanelQuantity=skippedQuantity,BudgetExpired=false};
         }
+        private sealed class SearchProgress:IProgress<string>
+        {private readonly Action<string> report;public SearchProgress(Action<string> report){this.report=report;}public void Report(string value)=>report(value);}
     }
 }

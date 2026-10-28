@@ -25,9 +25,14 @@ static class Program
   using var approvedSession=new ApprovedLauncherSession(typeof(LauncherWindow).Assembly);
   var launcher=new LauncherWindow();launcher.Show();
   var dome=(Button)launcher.FindName("BtnDomeCalculator");
-  Check(!dome.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(dome).Contains("Coming soon"),"Dome is disabled and labelled Coming soon");
+  Check(dome.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(dome).Contains("Beta"),"Dome is available and labelled Beta");
+  bool openedDome=false;
+  Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
+  {
+   var beta=Application.Current.Windows.OfType<EngineeringDashboard.Dome.MainWindow>().Single(w=>w.IsVisible);openedDome=true;Check(beta.Owner==launcher&&beta.Title.Contains("Beta"),"Dome Beta opens with its dashboard owner and Beta title");beta.Close();
+  }),DispatcherPriority.ApplicationIdle);
   dome.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-  Check(!Application.Current.Windows.OfType<EngineeringDashboard.Dome.MainWindow>().Any(w=>w.IsVisible),"Dome click cannot launch the locked calculator");
+  Check(openedDome&&launcher.IsVisible,"closing Dome Beta returns to the dashboard");
   Dispatcher.CurrentDispatcher.BeginInvoke(new Action(()=>
   {
    var choice=Application.Current.Windows.OfType<SlabSystemWindow>().Single(w=>w.IsVisible);Check(choice.Owner==launcher,"slab choices owned by launcher");

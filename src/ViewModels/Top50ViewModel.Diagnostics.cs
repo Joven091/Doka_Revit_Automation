@@ -62,6 +62,7 @@ namespace EngineeringDashboard
             foreach(var property in typeof(NativeTop50Project).GetProperties().OrderBy(p=>p.Name,StringComparer.Ordinal))
             {
                 if(property.Name==nameof(NativeTop50Project.SourceBase64))continue;
+                if(property.Name==nameof(NativeTop50Project.Seconds))continue;
                 if(property.Name==nameof(NativeTop50Project.CatalogMm))text.AppendLine("CatalogMm: "+(settings.CatalogMm==null?"none":string.Join(", ",settings.CatalogMm)));
                 else if(property.PropertyType==typeof(string)||property.PropertyType.IsValueType)text.AppendLine(property.Name+": "+Value(property.GetValue(settings)));
             }
@@ -81,6 +82,9 @@ namespace EngineeringDashboard
             text.AppendLine("Page: "+CurrentPage+"; selected casting group index: "+SelectedGroupIndex);
             text.AppendLine("--- Current settings ---");text.Append(DescribeSettings(Settings));
             text.AppendLine("OfferingMode: 0 = fixed longest-wall sets; 1 = percentage reference. Preset: "+(PlanningPreset)Settings.Preset);
+            text.AppendLine("Ranking: fewest validated panel quantity first; higher-count offers excluded. Presets compare equal-count offers using fixed project scales.");
+            text.AppendLine("Panel components: chosen automatically from wall geometry and permitted panel sizes; no user-set count ceiling. Legacy MaxComponents values are ignored.");
+            text.AppendLine("Search effort uses repeatable pattern-node and single-worker deterministic solver work. No wall-clock deadline; elapsed seconds are observations only.");
             text.AppendLine("--- Current input geometry (millimetres) ---");
             if(input==null)text.AppendLine("No input imported or added. Inspect operation errors below.");
             else
@@ -89,6 +93,8 @@ namespace EngineeringDashboard
                 text.AppendLine("DXF INSUNITS: "+input.InsUnits+"; mm-per-unit override: "+Value(input.UnitOverride)+"; override reason: "+Value(input.UnitOverrideReason));
                 text.AppendLine("Measurement policy: "+input.MeasurementPolicy);AppendWalls(text,input.Walls);
             }
+            text.AppendLine("--- Removed walls retained for audit ---");if(input!=null)AppendWalls(text,input.RemovedWalls);
+            text.AppendLine("Equipment quantities: both wall faces. Offered LM: per face. Connector stock: one level, both faces, with adjustable reuse enabled.");
             text.AppendLine("--- Operations in this session ---");
             if(diagnosticOperations.Count==0)text.AppendLine("None");
             foreach(var operation in diagnosticOperations)
@@ -103,7 +109,7 @@ namespace EngineeringDashboard
             {
                 text.AppendLine("Search UTC: "+search.StartedUtc.ToString("O",CultureInfo.InvariantCulture)+"; input revision: "+search.Revision);
                 text.AppendLine("Outcome: "+search.Outcome+"; elapsed seconds: "+search.Clock.Elapsed.TotalSeconds.ToString("F3",CultureInfo.InvariantCulture));
-                text.AppendLine("Attempted inventories: "+Value(search.Attempted)+"; unsearched inventories: "+Value(search.Unsearched)+"; budget expired: "+Value(search.BudgetExpired));
+                text.AppendLine("Attempted inventories: "+Value(search.Attempted)+"; unsearched inventories: "+Value(search.Unsearched)+"; elapsed-time budget expired: "+Value(search.BudgetExpired));
                 text.AppendLine("Unknown counters mean the solver has not returned a complete SearchRun; they do not mean zero candidates.");
                 text.AppendLine("Settings at search start:");text.Append(search.Settings);text.AppendLine("Walls at search start:");AppendWalls(text,search.Walls);
                 text.AppendLine("Returned search log:");foreach(var line in search.Log)text.AppendLine(Value(line));
@@ -118,10 +124,11 @@ namespace EngineeringDashboard
                 text.AppendLine("Stock length mm: "+Value(proposal.StockMicrometres/1000m)+"; panels: "+proposal.PanelCount+"; casting groups: "+proposal.Groups.Count+"; identical kits: "+proposal.IdenticalKitCount);
                 text.AppendLine("Mean utilization: "+Value(proposal.MeanUtilization)+"; minimum utilization: "+Value(proposal.MinimumUtilization)+"; fillers: "+proposal.FillerLocations+"; panel changes: "+proposal.PanelChanges);
                 text.AppendLine("Retained model status: "+Value(proposal.RetainedModelStatus)+"; objective: "+Value(proposal.RetainedObjective)+"; bound: "+Value(proposal.RetainedBound));
-                text.AppendLine("Stock (size mm x quantity): "+string.Join(", ",proposal.Stock.OrderBy(p=>p.Key).Select(p=>p.Key+" x "+p.Value)));
+                text.AppendLine("Total panels (both faces): "+Top50PlannerPolicy.TotalPanels(proposal));
+                text.AppendLine("Stock (per face; size mm x quantity): "+string.Join(", ",proposal.Stock.OrderBy(p=>p.Key).Select(p=>p.Key+" x "+p.Value)));
                 for(int index=0;index<proposal.Groups.Count;index++)
                 {
-                    text.AppendLine("Group "+(index+1)+"; installed panel length mm: "+Value(proposal.Groups[index].InstalledPanelMicrometres/1000m));
+                    text.AppendLine("Casting Group "+Top50OfferPresentation.CastingGroup(index)+"; installed panel length mm: "+Value(proposal.Groups[index].InstalledPanelMicrometres/1000m));
                     foreach(var wall in proposal.Groups[index].Walls)text.AppendLine("  "+wall.WallId+" | panels mm: "+string.Join(", ",wall.Pattern.PanelsMm)+" | internal gaps mm: "+string.Join(", ",wall.Pattern.InternalGapsMicrometres.Select(g=>Value(g/1000m)))+" | total mm: "+Value(wall.Pattern.LengthMicrometres/1000m));
                 }
                 try
@@ -137,12 +144,13 @@ namespace EngineeringDashboard
             text.AppendLine("Diagnosis reads in-memory state only; it does not optimize, reimport, change proposals, or read account credentials.");
             text.AppendLine("=== END TOP50 PLANNER DIAGNOSTIC REPORT ===");return text.ToString();
         }
-        private static void AppendWalls(StringBuilder text,IReadOnlyList<WallRow> walls)
+        private void AppendWalls(StringBuilder text,IReadOnlyList<WallRow> walls)
         {
             text.AppendLine("Walls: "+walls.Count+"; included: "+walls.Count(w=>w.Included)+"; needing review: "+walls.Count(w=>w.Status==WallReviewStatus.NeedsReview)+"; included length mm: "+Value(walls.Where(w=>w.Included).Sum(w=>w.LengthMm)));
+            var labels=new Top50WallLabels(input==null?walls:input.AllWalls);
             foreach(var wall in walls)
             {
-                text.AppendLine("Wall "+wall.Id+" | handle: "+Value(wall.Handle)+" | layer: "+Value(wall.Layer)+" | length mm: "+Value(wall.LengthMm)+" | included: "+wall.Included+" | status: "+wall.Status+" | acknowledged: "+wall.Acknowledged);
+                text.AppendLine("Wall "+labels[wall.Id]+" | source ID: "+wall.Id+" | handle: "+Value(wall.Handle)+" | layer: "+Value(wall.Layer)+" | length mm: "+Value(wall.LengthMm)+" | included: "+wall.Included+" | status: "+wall.Status+" | acknowledged: "+wall.Acknowledged);
                 text.AppendLine("  dimension type: "+wall.DimensionType+"; source units: "+wall.SourceUnits+"; mm per unit: "+Value(wall.MmPerUnit)+"; projected raw mm: "+Value(wall.ProjectedRawMm)+"; endpoint distance mm: "+Value(wall.EndpointDistanceMm)+"; stored measurement mm: "+Value(wall.StoredMeasurementMm)+"; label scale: "+Value(wall.LabelScale)+"; text: "+Value(wall.Text));
                 text.AppendLine("  Review reason: "+Value(wall.ReviewReason));foreach(var note in wall.Diagnostics)text.AppendLine("  Diagnostic: "+Value(note));
                 text.AppendLine("  Raw DXF codes: "+string.Join(" | ",wall.RawCodes.Select(c=>c.Code+"="+Value(c.Value))));

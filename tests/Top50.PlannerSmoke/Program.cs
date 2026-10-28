@@ -38,7 +38,7 @@ internal static class Program
         Check(vm.Proposals.Count>0&&vm.Proposals.All(p=>Top50Validation.Validate(vm.Input.Walls,p,vm.Limits).Count==0),"fresh native solver proposals independently validate");
         var selected=vm.Selected;var proposals=vm.Proposals;var original=vm.Input.Walls.Select(w=>w.LengthMicrometres).ToArray();bool dirty=vm.Dirty;
         var report=vm.BuildDiagnosticReport();
-        foreach(var expected in new[]{typeof(Top50ViewModel).Assembly.GetName().Version.ToString(),"MVID:","CatalogMm: 5000","Attempted inventories:","Outcome: Accepted","Retained model status:","Stock (size mm x quantity):","Group 1","MANUAL-001","total mm: 5000","Validation against CURRENT inputs/settings: passed"})Check(report.Contains(expected),"report contains "+expected);
+        foreach(var expected in new[]{typeof(Top50ViewModel).Assembly.GetName().Version.ToString(),"MVID:","CatalogMm: 5000","Attempted inventories:","Outcome: Accepted","Retained model status:","Stock (per face; size mm x quantity):","Casting Group C-01","MANUAL-001","total mm: 5000","Validation against CURRENT inputs/settings: passed"})Check(report.Contains(expected),"report contains "+expected);
         Check(ReferenceEquals(selected,vm.Selected)&&ReferenceEquals(proposals,vm.Proposals)&&vm.Dirty==dirty&&vm.Input.Walls.Select(w=>w.LengthMicrometres).SequenceEqual(original),"diagnosis leaves input, selected proposal, allocations and dirty state unchanged");
         File.WriteAllText(Path.Combine(output,"validated-planner-diagnosis.txt"),report);
         var culture=CultureInfo.CurrentCulture;CultureInfo.CurrentCulture=new CultureInfo("de-DE");
@@ -47,20 +47,20 @@ internal static class Program
         var cancellation=vm.OptimizeAsync();Check(vm.IsBusy,"search becomes busy before cancellation");
         Check(vm.BuildDiagnosticReport().Contains("Outcome: Running"),"diagnosis can capture an in-flight search");vm.Cancel();Wait(cancellation);
         Check(!vm.IsBusy&&ReferenceEquals(selected,vm.Selected)&&vm.BuildDiagnosticReport().Contains("Outcome: Cancelled"),"cancellation is distinguished from failure and retains previous validated proposal");
-        vm.Settings.MaxComponents=0;vm.Changed();Fails(()=>Wait(vm.OptimizeAsync()),"Invalid search settings");
-        Check(vm.BuildDiagnosticReport().Contains("MaxComponents: 0")&&vm.BuildDiagnosticReport().Contains("Outcome: Failed")&&vm.BuildDiagnosticReport().Contains("stale: True"),"invalid settings reported alongside clearly stale retained proposals");
-        vm.Settings.MaxComponents=1;vm.Settings.CatalogMm=new[]{6000};vm.Changed();Wait(vm.OptimizeAsync());
+        vm.Settings.MaxFillers=-1;vm.Changed();Fails(()=>Wait(vm.OptimizeAsync()),"Invalid search settings");
+        Check(vm.BuildDiagnosticReport().Contains("MaxFillers: -1")&&vm.BuildDiagnosticReport().Contains("Outcome: Failed")&&vm.BuildDiagnosticReport().Contains("stale: True"),"invalid settings reported alongside clearly stale retained proposals");
+        vm.Settings.MaxFillers=1;vm.Settings.CatalogMm=new[]{6000};vm.Changed();Wait(vm.OptimizeAsync());
         Check(vm.BuildDiagnosticReport().Contains("Outcome: No complete proposal found")&&vm.BuildDiagnosticReport().Contains("Attempted inventories: 0"),"no-result search preserves actual returned counters and bounded-search outcome");
         Fails(()=>vm.Export(Path.Combine(output,"stale.xlsx")),"Stale export");
         Check(vm.BuildDiagnosticReport().Contains("Export workbook")&&!File.Exists(Path.Combine(output,"stale.xlsx")),"blocked export is recorded without producing a workbook");
         Fails(()=>vm.Open(Path.Combine(output,"missing-project.top50"),Path.Combine(output,"cache")),"Missing project");
         Fails(()=>vm.Save(output),"Unwritable project target");
         Check(vm.BuildDiagnosticReport().Contains("Open project")&&vm.BuildDiagnosticReport().Contains("Save project"),"project open/save failures retain their contexts");
-        vm.Settings.CatalogMm=new[]{5000};vm.Settings.MaxComponents=12;vm.Changed();Wait(vm.OptimizeAsync());
-        Check(!vm.IsBusy&&!vm.IsStale&&vm.BuildDiagnosticReport().Contains("MaxComponents: 0"),"successful retry retains earlier failed-attempt evidence");
+        vm.Settings.CatalogMm=new[]{5000};vm.Settings.MaxFillers=12;vm.Changed();Wait(vm.OptimizeAsync());
+        Check(!vm.IsBusy&&!vm.IsStale&&vm.BuildDiagnosticReport().Contains("MaxFillers: -1"),"successful retry retains earlier failed-attempt evidence");
         var project=Path.Combine(output,"planner.top50");vm.Save(project);var restored=new Top50ViewModel();restored.Open(project,Path.Combine(output,"cache"));
         Check(restored.BuildDiagnosticReport().Contains("No optimization executed in this session")&&restored.Selected!=null,"reopened proposals are identified separately from current-session searches");
-        restored.Export(Path.Combine(output,"planner.xlsx"));Check(File.Exists(Path.Combine(output,"planner.xlsx")),"existing workbook export still operates");
+        Fails(()=>restored.Export(Path.Combine(output,"planner.xlsx")),"Disabled workbook export");Check(!File.Exists(Path.Combine(output,"planner.xlsx")),"disabled export produces no workbook");
 
         var dxf=Path.Combine(output,"controlled-wall-dimensions.dxf");File.WriteAllText(dxf,SyntheticDxf());
         var imported=new Top50ViewModel();imported.Import(dxf);
@@ -75,22 +75,25 @@ internal static class Program
         var panel=(Panel)((FrameworkElement)launcher.FindName("BtnTop50")).Parent;
         int planners=panel.Children.IndexOf((UIElement)launcher.FindName("PlannersSection"));int planner=panel.Children.IndexOf((UIElement)launcher.FindName("BtnTop50"));
         Check(planners>=0&&planner==planners+1,"Top50 belongs to its own Planners section");
-        foreach(var name in new[]{"BtnFlexCalculator","BtnBeamCalculator","BtnBackpropping","BtnDomeCalculator"})Check(panel.Children.IndexOf((UIElement)launcher.FindName(name))<planners,"planner appears below "+name);
-        Check(!((Button)launcher.FindName("BtnDomeCalculator")).IsEnabled,"Dome remains locked Coming soon");
+        foreach(var name in new[]{"BtnFlexCalculator","BtnBeamCalculator","BtnBackpropping","BtnSteelShape"})Check(panel.Children.IndexOf((UIElement)launcher.FindName(name))<planners,"planner appears below "+name);
+        Check(((Button)launcher.FindName("BtnDomeCalculator")).IsEnabled&&AutomationProperties.GetName((Button)launcher.FindName("BtnDomeCalculator")).Contains("Beta"),"Dome Beta is available");
+        Check(panel.Children.IndexOf((UIElement)launcher.FindName("BetaSection"))>planner&&panel.Children.IndexOf((UIElement)launcher.FindName("BtnDomeCalculator"))>panel.Children.IndexOf((UIElement)launcher.FindName("BetaSection")),"Dome Beta appears below Top50 Planner");
         Check(launcher.Title=="Engineering Dashboard"&&AutomationProperties.GetName((Button)launcher.FindName("BtnTop50"))=="Top50 Planner","dashboard and accessible entry call Top50 a planner");
         Render(launchRoot,620,840,1,Path.Combine(output,"dashboard-planners.png"));
         var window=new Top50Window(restored);var root=(FrameworkElement)window.Content;
         Check(window.Title.StartsWith("Top50 Planner"),"planner window terminology consistent");
         Check(!app.Windows.OfType<Top50DiagnosticWindow>().Any(),"diagnosis does not open automatically");
-        for(int page=0;page<5;page++)
+        for(int page=0;page<4;page++)
         {
-            window.ShowPage(page);var diagnose=Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose");
+            window.ShowPage(page);var diagnose=Command(root,"Top50Diagnose");
             Check(diagnose.IsEnabled,"diagnose available on page "+page);
             foreach(double scale in new[]{1d,1.25,1.5})
             {
                 double width=scale==1?1000:1600/scale,height=scale==1?680:1000/scale;
                 Render(root,width,height,scale,Path.Combine(output,"planner-page-"+page+"-"+scale.ToString(CultureInfo.InvariantCulture)+".png"));
-                foreach(var action in Find<Button>(root).Where(b=>new[]{"Open project","Save project","Optimize","Cancel","Diagnose"}.Contains(b.Content as string)))
+                foreach(var menu in Find<Menu>(root).SelectMany(m=>m.Items.OfType<MenuItem>()))
+                {var position=menu.TransformToAncestor(root).Transform(new Point(0,0));Check(position.X>=0&&position.X+menu.ActualWidth<=width+1,"D3-style menu "+menu.Header+" visible at "+scale+" on page "+page);}
+                foreach(var action in Find<Button>(root).Where(b=>new[]{"Optimize","Cancel"}.Contains(b.Content as string)&&b.Visibility==Visibility.Visible))
                 {var position=action.TransformToAncestor(root).Transform(new Point(0,0));Check(position.X>=0&&position.X+action.ActualWidth<=width+1,"header "+action.Content+" visible at "+scale+" on page "+page);}
             }
         }
@@ -111,9 +114,9 @@ internal static class Program
             var first=box.Text;Find<Button>(dialog).Single(b=>(string)b.Content=="Refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(box.Text.Contains("MANUAL-001")&&box.Text.Length>=first.Length-10,"refresh retains complete active planner evidence");
             dialog.Close();
         }));
-        Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Command(root,"Top50Diagnose").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Check(sawDialog&&ReferenceEquals(captureBefore,restored.Selected)&&!restored.Dirty,"opening, refreshing and closing diagnosis preserve the project");
-        var busy=restored.OptimizeAsync();Check(Find<Button>(root).Single(b=>AutomationProperties.GetAutomationId(b)=="Top50Diagnose").IsEnabled,"diagnosis stays enabled while optimize runs");restored.Cancel();Wait(busy);
+        var busy=restored.OptimizeAsync();Check(Command(root,"Top50Diagnose").IsEnabled,"diagnosis stays enabled while optimize runs");restored.Cancel();Wait(busy);
         restored.Save(project);window.Close();launcher.Close();
         File.WriteAllText(Path.Combine(output,"planner-checks.txt"),checks+" checks passed. Controlled inputs; actual Revit2024 host acceptance and original Top50 solver parity are not established.");
         Console.WriteLine(checks+" Top50 planner/diagnostic/production-dashboard checks passed.");return 0;
@@ -129,6 +132,7 @@ internal static class Program
     private static void Pump(){var frame=new DispatcherFrame();Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=>frame.Continue=false));Dispatcher.PushFrame(frame);}
     private static void Render(FrameworkElement root,double width,double height,double scale,string path)
     {root.Width=width;root.Height=height;root.Measure(new Size(width,height));root.Arrange(new Rect(0,0,width,height));root.UpdateLayout();var image=new RenderTargetBitmap((int)(width*scale),(int)(height*scale),96*scale,96*scale,PixelFormats.Pbgra32);image.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));using(var stream=File.Create(path))encoder.Save(stream);}
+    private static MenuItem Command(DependencyObject root,string id)=>Find<Menu>(root).SelectMany(menu=>menu.Items.OfType<MenuItem>()).SelectMany(menu=>menu.Items.OfType<MenuItem>()).Single(item=>AutomationProperties.GetAutomationId(item)==id);
     private static IEnumerable<T> Find<T>(DependencyObject root)where T:DependencyObject
     {if(root is T item)yield return item;for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)foreach(var child in Find<T>(VisualTreeHelper.GetChild(root,i)))yield return child;}
 }

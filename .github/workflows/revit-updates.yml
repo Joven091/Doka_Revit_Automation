@@ -12,6 +12,11 @@ on:
       - 'scripts/*RevitUpdate.ps1'
       - '.github/workflows/revit-updates.yml'
   workflow_dispatch:
+    inputs:
+      build_installer:
+        description: Build an installer only after explicit release approval
+        type: boolean
+        default: false
 concurrency:
   group: revit-updates-${{ github.ref }}
   cancel-in-progress: true
@@ -25,6 +30,7 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet run --project tests/Updates.Tests -c Release
   windows-update:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
     runs-on: windows-latest
     timeout-minutes: 15
     steps:

@@ -28,7 +28,7 @@ $smoke=Join-Path $repo 'tests/Top50.PlannerSmoke/bin/Release/net48/Top50.Planner
 Copy-Item $smoke (Join-Path $root 'Top50.PlannerSmoke.exe')
 '<configuration><runtime><assemblyBinding xmlns="urn:schemas-microsoft-com:asm.v1"><probing privatePath="fresh"/></assemblyBinding></runtime></configuration>' | Set-Content (Join-Path $root 'Top50.PlannerSmoke.exe.config')
 & (Join-Path $root 'Top50.PlannerSmoke.exe') (Join-Path $evidence 'installed-planner') *> (Join-Path $evidence 'installed-planner.log')
-Check ($LASTEXITCODE -eq 0) 'actual installed planner solves, diagnoses, exports and renders without binding redirects'
+Check ($LASTEXITCODE -eq 0) 'actual installed planner solves, diagnoses and renders with Excel export disabled and without binding redirects'
 
 $steelSmoke=Join-Path $repo 'tests/SteelShape.HostSmoke/bin/Release/net48/SteelShape.HostSmoke.exe'
 if(Test-Path $steelSmoke){

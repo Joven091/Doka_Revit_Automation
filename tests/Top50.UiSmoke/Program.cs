@@ -27,25 +27,19 @@ internal static class Program
         string project=Path.Combine(output,"roundtrip.top50");vm.Save(project);
         var loaded=new Top50ViewModel();loaded.Open(project,Path.Combine(output,"source-cache"));
         Check(loaded.Input.Walls.Count==65&&loaded.Selected.Groups.Count==11&&loaded.Selected.StockMicrometres==96250000,"project source, selected stock and validated allocation round trip");
-        string workbook=Path.Combine(output,"selected.xlsx");loaded.Export(workbook);
-        using(var document=SpreadsheetDocument.Open(workbook,false))
-        {
-            Check(document.WorkbookPart.Workbook.Descendants<DocumentFormat.OpenXml.Spreadsheet.Sheet>().Count()==9,"nine native workbook sheets");
-            var issues=new OpenXmlValidator().Validate(document).ToArray();Check(issues.Length==0,"Open XML workbook schema validation: "+string.Join("; ",issues.Select(i=>i.Description)));
-            Check(document.WorkbookPart.WorksheetParts.Any(p=>p.Worksheet.InnerText.Contains("S3")),"selected alternative represented in workbook");
-        }
+        bool exportDisabled=false;try{loaded.Export(Path.Combine(output,"selected.xlsx"));}catch(NotSupportedException){exportDisabled=true;}Check(exportDisabled,"Excel export is disabled in the planner");
         loaded.SelectedGroupIndex=2;var window=new Top50Window(loaded);var root=(FrameworkElement)window.Content;
-        string[] names={"import","settings","results","casting-groups","reports"};
+        string[] names={"import","settings","results","casting-groups"};
         foreach(var scale in new[]{1d,1.25,1.5})
         {
             int width=scale==1?2536:1600,height=scale==1?1350:1000;
-            for(int page=0;page<5;page++)
+            for(int page=0;page<4;page++)
             {
                 window.ShowPage(page);root.Width=width/scale;root.Height=height/scale;root.Measure(new Size(width/scale,height/scale));root.Arrange(new Rect(0,0,width/scale,height/scale));root.UpdateLayout();
-                var footer=Find<TextBlock>(root).Single(t=>t.Text==Top50Window.Disclaimer);var footerOrigin=footer.TransformToAncestor(root).Transform(new Point(0,0));Check(footerOrigin.Y>=0&&footerOrigin.Y+footer.ActualHeight<=height/scale+1,"fixed review footer visible "+names[page]+" at "+(scale*100)+"%");
-                foreach(var action in Find<Button>(root).Where(b=>new[]{"Open project","Save project","Optimize","Cancel"}.Contains(b.Content as string))){var origin=action.TransformToAncestor(root).Transform(new Point(0,0));Check(origin.X>=0&&origin.X+action.ActualWidth<=width/scale+1,"header "+action.Content+" remains visible");}
+                Check(!Find<TextBlock>(root).Any(t=>t.Text==Top50Window.Disclaimer),"no persistent review footer "+names[page]+" at "+(scale*100)+"%");
+                foreach(var action in Find<Button>(root).Where(b=>new[]{"Open","Save","Optimize","Cancel"}.Contains(b.Content as string)&&b.Visibility==Visibility.Visible)){var origin=action.TransformToAncestor(root).Transform(new Point(0,0));Check(origin.X>=0&&origin.X+action.ActualWidth<=width/scale+1,"header "+action.Content+" remains visible");}
                 var bitmap=new RenderTargetBitmap(width,height,96*scale,96*scale,PixelFormats.Pbgra32);bitmap.Render(root);
-                var corner=new byte[4];bitmap.CopyPixels(new Int32Rect(width-2,height-2,1,1),corner,4,0);Check(corner[3]==255&&corner[2]==242&&corner[1]==243&&corner[0]==246,"opaque original main background "+names[page]+" at "+(scale*100)+"%");
+                var corner=new byte[4];bitmap.CopyPixels(new Int32Rect(width-2,height-2,1,1),corner,4,0);Check(corner[3]==255&&corner[2]==245&&corner[1]==245&&corner[0]==245,"opaque dashboard main background "+names[page]+" at "+(scale*100)+"%");
                 var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));string path=Path.Combine(output,names[page]+"-"+(int)(scale*100)+".png");using(var stream=File.Create(path))encoder.Save(stream);
                 Check(root.ActualWidth>0&&root.ActualHeight>0,"render "+names[page]+" at "+(scale*100)+"% DPI");
             }
@@ -54,9 +48,9 @@ internal static class Program
         root.ClearValue(FrameworkElement.WidthProperty);root.ClearValue(FrameworkElement.HeightProperty);
         window.Show();Pump();SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(window.Dispatcher));
         Check(new System.Windows.Interop.WindowInteropHelper(window).Handle!=IntPtr.Zero,"native WPF HWND created");
-        for(int cycle=0;cycle<3;cycle++)for(int page=0;page<5;page++)
+        for(int cycle=0;cycle<3;cycle++)for(int page=0;page<4;page++)
         {
-            var nav=Find<Button>(root).Single(b=>(b.Content as string)?.StartsWith((page+1).ToString("00")+"   ")==true);
+            var nav=Find<Button>(root).Single(b=>System.Windows.Automation.AutomationProperties.GetAutomationId(b)=="Top50Page"+page);
             nav.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Check(window.CurrentPage==page,"routed navigation cycle "+cycle+" page "+page);
         }
         foreach(var size in new[]{new Size(1000,680),new Size(1500,960),new Size(1900,1100)})

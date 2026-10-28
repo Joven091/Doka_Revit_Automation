@@ -1,16 +1,17 @@
-Doka Engineering Dashboard 1.1.17 — Top50 review release
+Doka Engineering Dashboard 1.1.25 — Top50 Planner
 
-Includes the existing PR168 calculator and reader fixes plus native integrated Top50 Planner, its diagnosis report, and a separate Planners dashboard section.
-Requires Autodesk Revit2024 x64. Save your models and close every Revit window first.
-Installs per Windows user; do not run as a different administrator account.
-The installer registers the add-in automatically. No XML editing or manual DLL copying is required.
+Retains the beam/import fixes, Steel Shape, dashboard access and update controls. Dome Beta is below Planners / Top50; D3 slab remains Coming soon.
 
-Top50 recreates the recorded original V1 workflow. Exact original search/result equivalence remains unverified. Revit2024 host acceptance and native dependency coexistence remain unrun. This is a review release, not an approved engineering design or company-wide release.
+Top50 includes Undo, Redo, Delete and Ctrl+Z / Ctrl+Y / Delete, a simple Import table, fixed thorough search and up to three quantity-first alternatives. Component counts follow geometry rather than a fixed limit. Compact results show Panel length and Qty, connectors and conversational Status comparisons. Casting groups use a dropdown above the panel/filler schematic. Reports and Excel export are unavailable.
 
-Existing access/update settings and saved projects are preserved. Before replacing an existing Dashboard, the installer copies its current DLLs, manifest, updater and settings to %LOCALAPPDATA%\DokaRevitAutomation\Backups. The installation log records the backup location. Backups remain after uninstall.
+Panel quantities cover both matching wall faces, while offered length is LM per face. Connector quantities cover one connection level on both faces, with adjustable reuse enabled. The user determines the required connection levels. New project saves use V4; V1–V3 projects remain readable. Save a separate copy when retaining compatibility with older versions.
 
-To roll back: close Revit, uninstall this version, then reinstall your previously trusted calculator installer. If that installer is unavailable, retain the backup and ask for a reviewed restoration; do not mix DLLs from different versions. Saved projects and settings are not removed by uninstall. Backup creation is not an automatic rollback service.
+Requires Revit2024 x64. Save your models and close all Revit windows first. Installs per Windows user and registers the add-in automatically; do not run as a different administrator account.
 
-Only the standard per-user Revit2024 installation is supported. Another active Dashboard registration in the all-users folder or under another filename is blocked to prevent duplicate IDs. Machine-wide/custom installations require a reviewed migration.
+Existing access/update settings and saved projects are preserved. Before replacing a dashboard, the installer backs up its DLLs, manifest, updater and settings to %LOCALAPPDATA%\DokaRevitAutomation\Backups. The installation log records the location. Backups remain after uninstall.
 
-No company feed publication, GitHub merge, or automatic update is performed by this installer. The existing updater remains user initiated. Never publish this review release to the company feed before Revit2024 acceptance.
+To roll back, close Revit, uninstall this version and reinstall the previously trusted installer. Keep its backup if restoration is needed; do not mix DLLs from different versions. Backups are not an automatic rollback service.
+
+Only the standard per-user Revit2024 installation is supported. Conflicting dashboard registrations, unsupported custom paths, running Revit and downgrades are blocked. The installer does not publish to the company feed; updates remain user initiated.
+
+Search is bounded best-found, without a global-optimality proof. Automated Windows tests do not establish actual Revit2024 host acceptance or exact original Top50 solver parity; verify operation on a team computer before wider use.

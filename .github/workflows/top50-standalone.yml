@@ -1,0 +1,63 @@
+name: Top50 standalone tester
+on:
+  push:
+    branches: [codex/top50-fewest-panels-repeatable]
+    paths: ['tools/Top50Tester/**', 'tests/Top50.StandaloneSmoke/**', 'scripts/Build-Top50Standalone.ps1', '.github/workflows/top50-standalone.yml', 'src/Top50/**', 'src/ViewModels/Top50ViewModel*.cs', 'src/Views/Top50*.cs', 'Directory.Build.props']
+  workflow_dispatch:
+concurrency:
+  group: top50-standalone-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  portable:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build portable package from current planner sources
+        run: ./scripts/Build-Top50Standalone.ps1 -OutputDirectory artifacts/top50-standalone
+      - name: Verify retained DXF reader and native allocation solver against the tested PR
+        shell: pwsh
+        run: |
+          $release=Get-Content artifacts/top50-standalone/release-info.json -Raw | ConvertFrom-Json
+          $retained=@('src/Top50/DxfImporter.cs','src/Top50/Ranking.cs','src/Top50/RetainedInventorySolver.cs','src/Top50/Top50Runtime.cs')
+          foreach($source in $retained){
+            if(!(Test-Path -LiteralPath $source)){throw "Retained source not found: $source"}
+            git diff --exit-code $release.plannerBaseline HEAD -- $source
+            if($LASTEXITCODE -ne 0){throw "Solver/input source differs from tested baseline: $source"}
+          }
+      - name: Build isolated portable integration checks
+        run: dotnet build tests/Top50.StandaloneSmoke -c Release --warnaserror
+      - name: Run the extracted package without Revit
+        shell: pwsh
+        run: |
+          $isolated='artifacts/isolated portable tester'
+          Copy-Item artifacts/top50-standalone $isolated -Recurse
+          Copy-Item tests/Top50.StandaloneSmoke/bin/Release/net48/Top50.StandaloneSmoke.exe $isolated
+          Copy-Item tests/Top50.StandaloneSmoke/bin/Release/net48/Top50.StandaloneSmoke.exe.config $isolated
+          & "$isolated/Top50.StandaloneSmoke.exe" artifacts/top50-standalone-checks
+          if($LASTEXITCODE -ne 0){throw 'Standalone integration checks failed.'}
+          $package=(Resolve-Path artifacts/top50-standalone).Path
+          Get-ChildItem $package -File | Where-Object Name -ne 'SHA256SUMS' | ForEach-Object {
+            $expected="$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
+            if(!(Get-Content "$package/SHA256SUMS").Contains($expected)){throw "Package changed: $($_.Name)"}
+          }
+      - name: Emit compact UI review previews
+        if: success()
+        run: ./scripts/emit-ui-previews.ps1 -Directory artifacts/top50-standalone-checks -Names results-typical.png,casting-typical.png,results-alternatives.png
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: top50-planner-standalone-tester
+          path: artifacts/top50-standalone/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: top50-standalone-test-evidence
+          path: artifacts/top50-standalone-checks/
+          if-no-files-found: warn

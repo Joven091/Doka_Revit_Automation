@@ -26,24 +26,29 @@ namespace EngineeringDashboard.Top50
     public sealed class NativeTop50Project
     {
         public string Kind {get;set;}="Doka.Top50.Native";
-        public int Version {get;set;}=1;
+        public int Version {get;set;}=Top50PlannerPolicy.ProjectVersion;
         public string Name {get;set;}="Top50 project";
         public string SourceName {get;set;}
         public string SourceBase64 {get;set;}
         public string SourceSha256 {get;set;}
         public ProjectWallDto[] Walls {get;set;}
+        public ProjectWallDto[] RemovedWalls {get;set;}=Array.Empty<ProjectWallDto>();
         public ProposalDto[] Proposals {get;set;}=Array.Empty<ProposalDto>();
         public string SelectedId {get;set;}
         public string[] SearchLog {get;set;}=Array.Empty<string>();
         public int LongestCount {get;set;}=5;
         public int[] CatalogMm {get;set;}=Precision.CatalogMm.ToArray();
         public int Preset {get;set;}=1;
-        public int MaxComponents {get;set;}=12;
         public int MaxFillers {get;set;}=1;
         public int MaxFillerMm {get;set;}=350;
         public int MaxGroups {get;set;}=64;
-        public int CandidateDisplayLimit {get;set;}=4;
-        public double Seconds {get;set;}=20;
+        public int CandidateDisplayLimit {get;set;}=Top50PlannerPolicy.DisplayLimit;
+        public double Seconds {get;set;}=Top50PlannerPolicy.ThoroughSearchEffort;
+        // Preserve the old JSON member for reading V1 projects. V2 readers treat
+        // this value as effort; V1 applications reject V2 instead of misreading it.
+        [System.Runtime.Serialization.IgnoreDataMember]
+        public double SearchEffort {get=>Seconds;set=>Seconds=value;}
+        public int SearchPolicyVersion {get;set;}
         public int Seed {get;set;}=50;
         public int OfferingMode {get;set;}
         public decimal Percentage {get;set;}=45;
@@ -63,7 +68,7 @@ namespace EngineeringDashboard.Top50
         {
             var bytes=string.IsNullOrEmpty(input.SourcePath)?Array.Empty<byte>():File.ReadAllBytes(input.SourcePath);string hash=Hash(bytes);
             if(hash!=input.SourceSha256)throw new InvalidDataException("The original source file changed. Reimport or use the preserved project source.");
-            return new NativeTop50Project{SourceName=Path.GetFileName(input.SourcePath??""),SourceBase64=Convert.ToBase64String(bytes),SourceSha256=hash,UnitOverride=input.UnitOverride,UnitOverrideReason=input.UnitOverrideReason,Walls=input.Walls.Select(w=>new ProjectWallDto{Id=w.Id,LengthMm=w.LengthMm,Included=w.Included,Acknowledged=w.Acknowledged,Reason=w.ReviewReason,Manual=w.Id.StartsWith("MANUAL-",StringComparison.Ordinal)}).ToArray(),Proposals=proposals.Select(ToDto).ToArray(),SelectedId=selectedId};
+            return new NativeTop50Project{SourceName=Path.GetFileName(input.SourcePath??""),SourceBase64=Convert.ToBase64String(bytes),SourceSha256=hash,UnitOverride=input.UnitOverride,UnitOverrideReason=input.UnitOverrideReason,Walls=input.Walls.Select(WallDto).ToArray(),RemovedWalls=input.RemovedWalls.Select(WallDto).ToArray(),Proposals=proposals.Select(ToDto).ToArray(),SelectedId=selectedId};
         }
         public static void Save(NativeTop50Project project,string path)
         {
@@ -79,7 +84,7 @@ namespace EngineeringDashboard.Top50
         public static NativeTop50Project Load(string path)
         {
             NativeTop50Project project;using(var stream=File.OpenRead(path))project=(NativeTop50Project)new DataContractJsonSerializer(typeof(NativeTop50Project)).ReadObject(stream);
-            if(project==null||project.Kind!="Doka.Top50.Native"||project.Version!=1||project.Walls==null)throw new InvalidDataException("Unsupported Top50 project kind or version.");
+            if(project==null||project.Kind!="Doka.Top50.Native"||(project.Version<1||project.Version>Top50PlannerPolicy.ProjectVersion)||project.Walls==null)throw new InvalidDataException("Unsupported Top50 project kind or version.");
             if(Hash(Convert.FromBase64String(project.SourceBase64))!=project.SourceSha256)throw new InvalidDataException("Embedded DXF checksum mismatch.");
             return project;
         }
@@ -95,13 +100,15 @@ namespace EngineeringDashboard.Top50
                 input=new Top50DxfImporter().Import(path,new DxfImportOptions{MmPerUnitOverride=project.UnitOverride,OverrideReason=project.UnitOverrideReason});
             }
             var rows=input.Walls.ToList();
-            foreach(var manual in project.Walls.Where(w=>w.Manual))
+            var removed=project.RemovedWalls??Array.Empty<ProjectWallDto>();
+            var savedRows=project.Walls.Concat(removed).ToArray();
+            foreach(var manual in savedRows.Where(w=>w.Manual))
             {
                 if(!manual.Id.StartsWith("MANUAL-",StringComparison.Ordinal)||!manual.Acknowledged)throw new InvalidDataException("Manual walls require reviewed stable identities.");
                 var row=new WallRow{Id=manual.Id,Handle="",Layer="Manual",SourceUnits=4,MmPerUnit=1,ProjectedRawMm=manual.LengthMm,EndpointDistanceMm=manual.LengthMm};row.Review(manual.LengthMm,manual.Included,manual.Reason);rows.Add(row);
             }
             input.Walls=rows.AsReadOnly();
-            var saved=project.Walls.ToDictionary(w=>w.Id);
+            var saved=savedRows.ToDictionary(w=>w.Id);
             if(input.Walls.Count!=saved.Count||input.Walls.Any(w=>!saved.ContainsKey(w.Id)))throw new InvalidDataException("Source wall identities differ from saved project.");
             foreach(var row in input.Walls)
             {
@@ -109,8 +116,12 @@ namespace EngineeringDashboard.Top50
                 if(prior.Acknowledged)row.Review(prior.LengthMm,prior.Included,prior.Reason);
                 else if(prior.LengthMm!=row.LengthMm||prior.Included!=row.Included)throw new InvalidDataException("Unreviewed source values were modified.");
             }
+            var removedIds=new HashSet<string>(removed.Select(w=>w.Id),StringComparer.Ordinal);
+            input.RemovedWalls=Array.AsReadOnly(input.Walls.Where(w=>removedIds.Contains(w.Id)).ToArray());
+            input.Walls=Array.AsReadOnly(input.Walls.Where(w=>!removedIds.Contains(w.Id)).ToArray());
             return input;
         }
+        private static ProjectWallDto WallDto(WallRow w)=>new ProjectWallDto{Id=w.Id,LengthMm=w.LengthMm,Included=w.Included,Acknowledged=w.Acknowledged,Reason=w.ReviewReason,Manual=w.Id.StartsWith("MANUAL-",StringComparison.Ordinal)};
         public static ProposalDto ToDto(Proposal p)=>new ProposalDto{Id=p.Id,Stock=p.Stock.Select(x=>new StockDto{SizeMm=x.Key,Quantity=x.Value}).ToArray(),Groups=p.Groups.Select(g=>g.Walls.Select(a=>new PatternDto{WallId=a.WallId,PanelsMm=a.Pattern.PanelsMm.ToArray(),GapsMicrometres=a.Pattern.InternalGapsMicrometres.ToArray()}).ToArray()).ToArray(),Status=p.RetainedModelStatus,Objective=p.RetainedObjective,Bound=p.RetainedBound,KitCount=p.IdenticalKitCount,Rank=p.Rank,Pareto=p.Pareto};
         public static Proposal FromDto(ProposalDto p)=>new Proposal(p.Id,p.Stock.ToDictionary(x=>x.SizeMm,x=>x.Quantity),p.Groups.Select(g=>new CastingGroup(g.Select(a=>new WallArrangement(a.WallId,new PanelPattern(a.PanelsMm,a.GapsMicrometres)))))){RetainedModelStatus=p.Status,RetainedObjective=p.Objective,RetainedBound=p.Bound,IdenticalKitCount=p.KitCount,Rank=p.Rank,Pareto=p.Pareto};
         private static string Hash(byte[] bytes){using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-","").ToLowerInvariant();}
@@ -123,26 +134,28 @@ namespace EngineeringDashboard.Top50
             using var runtimeScope=Top50Runtime.Enter();
             var connectors=ConnectorAllocation.Calculate(selected,connectorSettings??new NativeTop50Project());
             var issues=Top50Validation.Validate(input.Walls,selected,limits);if(issues.Count>0)throw new InvalidDataException("Only independently validated complete results may export: "+string.Join("; ",issues));
+            var labels=new Top50WallLabels(input.AllWalls);
+            var offers=new Top50OfferPresentation(input,connectorSettings??new NativeTop50Project(),alternatives);
             var tables=SheetNames.ToDictionary(n=>n,n=>new List<object[]>());
             tables["Summary"].Add(new object[]{"Metric","Value"});
-            tables["Summary"].AddRange(new[]{new object[]{"Selected alternative",selected.Id},new object[]{"Panel types",selected.Stock.Count},new object[]{"Offered panels",selected.PanelCount},new object[]{"Offered length m",selected.StockMicrometres/1000000m},new object[]{"Casting groups",selected.Groups.Count},new object[]{"Mean utilization",selected.MeanUtilization},new object[]{"Minimum utilization",selected.MinimumUtilization},new object[]{"Connector units",connectors.Description},new object[]{"Source SHA-256",input.SourceSha256},new object[]{"Status","feasible / best found"}});
-            tables["Wall Schedule"].Add(new object[]{"Wall ID","Included","Length mm","Projected raw mm","Aligned endpoint mm","Stored measurement mm","Layer","Review","Reason"});
-            tables["Wall Schedule"].AddRange(input.Walls.Select(w=>new object[]{w.Id,w.Included,w.LengthMm,w.ProjectedRawMm,w.EndpointDistanceMm,w.StoredMeasurementMm,w.Layer,string.Join("; ",w.Diagnostics),w.ReviewReason}));
+            tables["Summary"].AddRange(new[]{new object[]{"Selected rank",offers.Rank(selected)},new object[]{"Panel types",selected.Stock.Count},new object[]{"Offered panels",selected.PanelCount},new object[]{"Offered length m",selected.StockMicrometres/1000000m},new object[]{"Casting groups",selected.Groups.Count},new object[]{"Mean utilization",selected.MeanUtilization},new object[]{"Minimum utilization",selected.MinimumUtilization},new object[]{"Connector units",connectors.Description},new object[]{"Source SHA-256",input.SourceSha256},new object[]{"Why this rank",offers.Reason(selected)}});
+            tables["Wall Schedule"].Add(new object[]{"Wall","Included","Length mm","Projected raw mm","Aligned endpoint mm","Stored measurement mm","Layer","Review","Reason"});
+            tables["Wall Schedule"].AddRange(input.Walls.Select(w=>new object[]{labels[w.Id],w.Included,w.LengthMm,w.ProjectedRawMm,w.EndpointDistanceMm,w.StoredMeasurementMm,w.Layer,string.Join("; ",w.Diagnostics),w.ReviewReason}));
             tables["Panel Inventory"].Add(new object[]{"Nominal length m","Stock quantity","Total m"});tables["Panel Inventory"].AddRange(selected.Stock.OrderBy(s=>s.Key).Select(s=>new object[]{s.Key/1000m,s.Value,s.Key*s.Value/1000m}));
-            tables["Panel Arrangements"].Add(new object[]{"Group","Wall ID","Panel lengths mm","Internal gaps mm","Closure mm"});
-            tables["Casting Schedule"].Add(new object[]{"Group","Walls","Installed m","Use fraction","Direct locations","Filler locations","Wall IDs"});
-            tables["Material Utilization"].Add(new object[]{"Group","Nominal mm","Used","Idle"});
-            tables["Connector Schedule"].Add(new object[]{"Group","Direct locations","Filler locations","Direct units","Filler units","Standard peak stock 587533000","Adjustable peak stock 587532000","Review status"});
+            tables["Panel Arrangements"].Add(new object[]{"Casting Group","Wall","Panel lengths mm","Internal gaps mm","Closure mm"});
+            tables["Casting Schedule"].Add(new object[]{"Casting Group","Walls","Installed m","Use fraction","Direct locations","Filler locations","Wall names"});
+            tables["Material Utilization"].Add(new object[]{"Casting Group","Nominal mm","Used","Idle"});
+            tables["Connector Schedule"].Add(new object[]{"Casting Group","Direct locations","Filler locations","Direct units","Filler units",ConnectorEquipment.DirectName+" ("+ConnectorEquipment.DirectArticle+")",ConnectorEquipment.FillerName+" ("+ConnectorEquipment.FillerArticle+")","Quantity basis"});
             for(int i=0;i<selected.Groups.Count;i++)
             {
-                var g=selected.Groups[i];string id="G"+(i+1).ToString("00",CultureInfo.InvariantCulture);
-                tables["Casting Schedule"].Add(new object[]{id,g.Walls.Count,g.InstalledPanelMicrometres/1000000m,(decimal)g.InstalledPanelMicrometres/selected.StockMicrometres,g.Walls.Sum(a=>a.Pattern.DirectLocations),g.Walls.Sum(a=>a.Pattern.FillerLocations),string.Join(", ",g.Walls.Select(a=>a.WallId))});
-                foreach(var a in g.Walls)tables["Panel Arrangements"].Add(new object[]{id,a.WallId,string.Join(" + ",a.Pattern.PanelsMm),string.Join(", ",a.Pattern.InternalGapsMicrometres.Select(x=>(x/1000m).ToString(CultureInfo.InvariantCulture))),a.Pattern.LengthMicrometres/1000m});
+                var g=selected.Groups[i];string id=Top50OfferPresentation.CastingGroup(i);
+                tables["Casting Schedule"].Add(new object[]{id,g.Walls.Count,g.InstalledPanelMicrometres/1000000m,(decimal)g.InstalledPanelMicrometres/selected.StockMicrometres,g.Walls.Sum(a=>a.Pattern.DirectLocations),g.Walls.Sum(a=>a.Pattern.FillerLocations),string.Join(", ",g.Walls.Select(a=>labels[a.WallId]))});
+                foreach(var a in g.Walls)tables["Panel Arrangements"].Add(new object[]{id,labels[a.WallId],string.Join(" + ",a.Pattern.PanelsMm),string.Join(", ",a.Pattern.InternalGapsMicrometres.Select(x=>(x/1000m).ToString(CultureInfo.InvariantCulture))),a.Pattern.LengthMicrometres/1000m});
                 foreach(var size in selected.Stock){int used=g.Walls.Sum(a=>a.Pattern.PanelsMm.Count(n=>n==size.Key));tables["Material Utilization"].Add(new object[]{id,size.Key,used,size.Value-used});}
                 tables["Connector Schedule"].Add(new object[]{id,g.Walls.Sum(a=>a.Pattern.DirectLocations),g.Walls.Sum(a=>a.Pattern.FillerLocations),connectors.Determined?(object)connectors.DirectUnits[i]:"Not determined",connectors.Determined?(object)connectors.FillerUnits[i]:"Not determined",connectors.Determined?(object)connectors.StandardStock:"Not determined",connectors.Determined?(object)connectors.AdjustableStock:"Not determined",connectors.Description});
             }
-            tables["Solution Comparison"].Add(new object[]{"Scenario","Types","Panels","Stock m","Groups","Mean use","Minimum use","Filler locations"});
-            tables["Solution Comparison"].AddRange(alternatives.Select(p=>new object[]{p.Id,p.Stock.Count,p.PanelCount,p.StockMicrometres/1000000m,p.Groups.Count,p.MeanUtilization,p.MinimumUtilization,p.FillerLocations}));
+            tables["Solution Comparison"].Add(new object[]{"Rank","Types","Panels","Stock m","Casting Groups","Why this rank"});
+            tables["Solution Comparison"].AddRange(alternatives.OrderBy(p=>offers.RankNumber(p)).Select(p=>new object[]{offers.Rank(p),p.Stock.Count,p.PanelCount,p.StockMicrometres/1000000m,p.Groups.Count,offers.Reason(p)}));
             tables["Engineering Checks"].Add(new object[]{"Check","Evidence"});
             tables["Engineering Checks"].AddRange(new[]{new object[]{"Measurement policy",input.MeasurementPolicy},new object[]{"Allocation validation","Passed"},new object[]{"Retained solver status",selected.RetainedModelStatus},new object[]{"Retained objective",selected.RetainedObjective},new object[]{"Retained bound",selected.RetainedBound},new object[]{"Global optimality","Not established; retained-pattern bounds only"},new object[]{"Engineering review","Planning proposal only. Doka assembly, walings, ties, pressure, height, corners, clearance, collisions and two-face design require engineering verification. Casting groups are mathematical equipment allocations, not site-approved pour sequences."}});
             using(var document=SpreadsheetDocument.Create(path,SpreadsheetDocumentType.Workbook))

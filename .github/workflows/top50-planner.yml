@@ -3,6 +3,11 @@ on:
   pull_request:
     paths: ['src/**', 'tests/Top50*/**', 'Directory.Build.props', 'installer-top50.iss', 'packaging/top50-review.txt', 'scripts/*Top50*.ps1', '.github/workflows/top50-planner.yml']
   workflow_dispatch:
+    inputs:
+      build_installer:
+        description: Build an installer only after explicit release approval
+        type: boolean
+        default: false
 concurrency:
   group: top50-planner-${{ github.ref }}
   cancel-in-progress: true
@@ -19,18 +24,22 @@ jobs:
         run: dotnet build tests/Top50.PlannerSmoke -c Release --warnaserror
       - name: Diagnose, optimize, cancel, retry, persist and render
         run: tests/Top50.PlannerSmoke/bin/Release/net48/Top50.PlannerSmoke.exe artifacts/top50-planner-checks
-      - name: Existing locked calculator availability
+      - name: Dashboard Dome Beta entry and retained D3 slab lock
         run: dotnet run --project tests/D3Slab.UiSmoke -c Release -- --release-availability
       - name: Build review installer
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         shell: pwsh
         run: ./scripts/Build-Top50Installer.ps1 -Compiler "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" -OutputDirectory artifacts/top50-planner-release -NoRestore
       - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         with:
           ref: bb37debee36f9d6a9dbce79bc41f3d47bdb35b6b
           path: artifacts/beam-baseline
       - name: Build original beam upgrade fixture
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         run: dotnet build artifacts/beam-baseline/src/MyRevitAddin.csproj -c Release --warnaserror
       - name: Test isolated fresh installation and backed-up upgrade
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         shell: pwsh
         run: |
           $installer=(Get-ChildItem artifacts/top50-planner-release/DokaEngineeringDashboard_Top50_Setup_*.exe).FullName
@@ -47,7 +56,7 @@ jobs:
         if: success()
         run: ./scripts/emit-ui-previews.ps1 -Directory artifacts/top50-planner-checks -Names dashboard-planners.png,top50-diagnosis.png,planner-page-0-1.png
       - uses: actions/upload-artifact@v4
-        if: success()
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         with:
           name: top50-planner-test-installer
           path: artifacts/top50-planner-release/

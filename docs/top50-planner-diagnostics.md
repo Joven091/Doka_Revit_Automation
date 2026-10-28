@@ -1,5 +1,7 @@
 # Top50 Planner test release 1.1.17
 
+Historical diagnosis/UI release notes. This source was subsequently merged through PR171. For the new quantity-first and repeatable-search policy, see [top50-quantity-repeatability.md](top50-quantity-repeatability.md).
+
 The Engineering Dashboard now places Top50 Planner in a **Planners** section below **Calculators**. Slab, Beam, Backpropping and the locked Coming soon choices retain their existing behavior. Top50 is an equipment and casting-group planner.
 
 Choose **Diagnose** in the Top50 header from any page, including before import or while optimization runs. The report opens only when clicked. **Refresh**, **Copy report** and **Save report…** work with the active planner session. Copy or save it before closing Revit if a search, import, project or export fails.
