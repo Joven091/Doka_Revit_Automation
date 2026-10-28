@@ -57,7 +57,6 @@ namespace EngineeringDashboard
             var actions = new StackPanel { Orientation = Orientation.Horizontal }; footer.Children.Add(actions);
             SaveButton = ActionButton("Save calculation", () => CalculationFiles.Save(this, CaptureCalculation(), "D3 slab")); SaveButton.SetBinding(IsEnabledProperty, new Binding(nameof(Model.HasResult))); actions.Children.Add(SaveButton);
             actions.Children.Add(ActionButton("Load calculation", () => { var path = CalculationFiles.ChooseLoad(this); if (path != null) RestoreCalculation(CalculationFiles.Read<CalculationRecord>(path)); }));
-            var export = ActionButton("Export report", () => CalculationFiles.ExportHtml(this, "D3 slab", BuildReport())); export.SetBinding(IsEnabledProperty, new Binding(nameof(Model.HasResult))); actions.Children.Add(export);
             Content = root; AddHandler(Validation.ErrorEvent, new EventHandler<ValidationErrorEventArgs>((s, e) => { RefreshValidation(); Dispatcher.BeginInvoke(new Action(RefreshValidation), System.Windows.Threading.DispatcherPriority.DataBind); }));
             Model.PropertyChanged += ModelChanged; Closed += (s, e) => Model.PropertyChanged -= ModelChanged; UpdateResult();
         }

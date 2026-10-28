@@ -24,7 +24,7 @@ namespace EngineeringDashboard
             var serializer=new DataContractJsonSerializer(typeof(NativeTop50Project));
             using(var stream=new MemoryStream()){serializer.WriteObject(stream,settings);stream.Position=0;return (NativeTop50Project)serializer.ReadObject(stream);}
         }
-        private static ImportSnapshot CopyInput(ImportSnapshot source)=>source==null?null:new ImportSnapshot{SourcePath=source.SourcePath,SourceSha256=source.SourceSha256,InsUnits=source.InsUnits,UnitOverride=source.UnitOverride,UnitOverrideReason=source.UnitOverrideReason,Walls=Array.AsReadOnly(source.Walls.Select(w=>w.Snapshot()).ToArray()),RemovedWalls=Array.AsReadOnly(source.RemovedWalls.Select(w=>w.Snapshot()).ToArray())};
+        private static ImportSnapshot CopyInput(ImportSnapshot source)=>source==null?null:new ImportSnapshot{SourcePath=source.SourcePath,SourceKind=source.SourceKind,RevitSource=source.RevitSource?.Copy(),SourceSha256=source.SourceSha256,InsUnits=source.InsUnits,UnitOverride=source.UnitOverride,UnitOverrideReason=source.UnitOverrideReason,Walls=Array.AsReadOnly(source.Walls.Select(w=>w.Snapshot()).ToArray()),RemovedWalls=Array.AsReadOnly(source.RemovedWalls.Select(w=>w.Snapshot()).ToArray())};
         private EditState CaptureEdit()=>new EditState{Input=CopyInput(input),Settings=CopySettings(Settings),Proposals=Proposals.ToArray(),SelectedId=selected?.Id,SearchLog=SearchLog.ToArray(),Stale=IsStale,Token=stateToken,Page=CurrentPage,Group=SelectedGroupIndex};
         private void NewToken(){stateToken=++nextStateToken;Dirty=stateToken!=savedStateToken;}
         private void RememberEdit(){checkpoint=CaptureEdit();Notify(nameof(CanUndo));Notify(nameof(CanRedo));}

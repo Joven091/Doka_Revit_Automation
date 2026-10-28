@@ -89,13 +89,13 @@ namespace EngineeringDashboard
             if(input==null)text.AppendLine("No input imported or added. Inspect operation errors below.");
             else
             {
-                text.AppendLine("Source path: "+Value(input.SourcePath));text.AppendLine("Source SHA-256 at import: "+Value(input.SourceSha256));
+                text.AppendLine("Source kind: "+input.SourceKind);text.AppendLine(Top50RevitSource.Describe(input.RevitSource));text.AppendLine("Source path: "+Value(input.SourcePath));text.AppendLine("Source SHA-256 at import: "+Value(input.SourceSha256));
                 text.AppendLine("DXF INSUNITS: "+input.InsUnits+"; mm-per-unit override: "+Value(input.UnitOverride)+"; override reason: "+Value(input.UnitOverrideReason));
                 text.AppendLine("Measurement policy: "+input.MeasurementPolicy);AppendWalls(text,input.Walls);
             }
             text.AppendLine("--- Removed walls retained for audit ---");if(input!=null)AppendWalls(text,input.RemovedWalls);
             text.AppendLine("Equipment quantities: both wall faces. Offered LM: per face. Connector stock: one level, both faces, with adjustable reuse enabled.");
-            text.AppendLine("--- Operations in this session ---");
+            text.AppendLine("--- Last Revit operation ---\n"+LastRevitReport);text.AppendLine("--- Operations in this session ---");
             if(diagnosticOperations.Count==0)text.AppendLine("None");
             foreach(var operation in diagnosticOperations)
             {

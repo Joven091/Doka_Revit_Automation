@@ -7,7 +7,7 @@ using Autodesk.Revit.UI;
 
 namespace EngineeringDashboard
 {
-    /// <summary>Read-only adapter. Called synchronously inside the modal external command.</summary>
+    /// <summary>Read-only adapter. Run only inside a Revit external command or ExternalEvent callback.</summary>
     internal static class RevitStructureSelection
     {
         private const double MmPerFoot=304.8;

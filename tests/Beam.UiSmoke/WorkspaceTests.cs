@@ -282,7 +282,7 @@ internal static class WorkspaceTests
             workspace.InspectorTabs.SelectedIndex=1;Render();var advanced=Controls<Expander>(workspace.SharedProperties).Single(e=>Equals(e.Tag,"Available lengths"));advanced.IsExpanded=true;
             drawing.Select(FormworkObject.Beam,0);Render();Check(workspace.InspectorTabs.SelectedIndex==0 && Controls<Expander>(workspace.SharedProperties).Single(e=>Equals(e.Tag,"Available lengths")).IsExpanded,"selection returns to object properties and preserves expanded shared settings");
             drawing.Select(FormworkObject.Beam,1);Render();
-            Enter("DepthMm","1325");Check(model.NetworkBeams[1].DepthMm==1325 && !model.IsCalculationValid && workspace.Diagrams==null && !workspace.Buttons["Export"].IsEnabled,"editing invalidates shared result and diagrams");
+            Enter("DepthMm","1325");Check(model.NetworkBeams[1].DepthMm==1325 && !model.IsCalculationValid && workspace.Diagrams==null && !workspace.Buttons.ContainsKey("Export"),"editing invalidates shared result and diagrams");
             Check(workspace.NetworkResultText=="" && workspace.SelectedResultText=="","an edit hides all stale result quantities");
             Check(parent.CaptureDrawingInputs().Inputs.Any(f=>f.Name=="NetworkConfigurationXml") && workspace.Buttons["Save"].IsEnabled,"draft geometry can be saved before recalculation");
             Click("Undo");Check(model.NetworkBeams[1].DepthMm==1200,"undo restores beam depth");Click("Redo");Check(model.NetworkBeams[1].DepthMm==1325,"redo restores edited depth");Click("Undo");
@@ -418,7 +418,7 @@ internal static class WorkspaceTests
             Check(model.NetworkBeams.All(b=>b.WidthMm==defaults.Width && b.DepthMm==defaults.Depth) && model.BeamLengthMm==defaults.BeamLengthMm && model.StockLengthsText==defaults.StockLengthsText && model.TowerLegCapacityKn==defaults.TowerLegCapacityKn && model.UpperSupportSpacingMm==defaults.UpperSupportSpacingMm,"new session resets geometry, stock, capacity and spacing to defaults");
             Check(workspace.SeparateSlabNotice.Visibility==Visibility.Collapsed,"new session clears the previous independent-slab explanation");
             Check(model.TowerResult==null && model.NetworkResult==null && !model.IsCalculationValid && !model.HasTowerFailure && workspace.Diagrams==null && !retainedDiagram.IsVisible && workspace.Diagnostics==null,"new session clears results, failure and child windows");
-            Check(!model.BuildDiagnosticReport().Contains("Search outcome: Succeeded") && workspace.NetworkResultText=="" && !workspace.Buttons["Export"].IsEnabled,"new session has no old search trace, visible quantities or exportable result");
+            Check(!model.BuildDiagnosticReport().Contains("Search outcome: Succeeded") && workspace.NetworkResultText=="" && !workspace.Buttons.ContainsKey("Export"),"new session has no old search trace, visible quantities or exportable result");
             Check(!workspace.Buttons["Undo"].IsEnabled && !workspace.Buttons["Redo"].IsEnabled && !drawing.Formwork && workspace.Buttons["Calculate"].IsEnabled,"new session clears undo history and returns to editable geometry");
             Render(output==null ? null : Path.ChangeExtension(output,"workspace-new-session.png"));
             model.AddCrossingBeam();Pump();Render();workspace.Fields["DepthMm"].Text="bad";Pump();

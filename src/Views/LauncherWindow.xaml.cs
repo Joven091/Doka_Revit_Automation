@@ -1,115 +1,108 @@
+using System;
 using System.Windows;
-
-
 
 namespace EngineeringDashboard
 {
     public partial class LauncherWindow : Window
     {
-        // Static ViewModels to persist state across command executions
         private static FlexCalculatorViewModel _flexViewModel;
         private static BeamCalculatorViewModel _beamViewModel;
         private static D3SlabCalculatorViewModel _d3SlabViewModel;
         private static Dome.MainViewModel _domeViewModel;
         private static Top50ViewModel _top50ViewModel;
+        private Window currentTool;
+        private bool closing;
+        internal Window CurrentTool=>currentTool;
 
         public LauncherWindow()
         {
             InitializeComponent();
+            Closing+=(s,e)=>closing=true;
         }
-        private void BtnAccount_Click(object sender, RoutedEventArgs e) => MyRevitAddin.Access.AccessWindow.Manage(this);
-        private void BtnUpdates_Click(object sender, RoutedEventArgs e) => new MyRevitAddin.Updates.UpdateWindow { Owner=this }.ShowDialog();
-        private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
-
-        private void BtnDomeCalculator_Click(object sender, RoutedEventArgs e)
+        internal void ActivateCurrentTool()
         {
-            if(!BtnDomeCalculator.IsEnabled)return;
-            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
-            Hide();
-            try
+            var target=currentTool??this;
+            if(target.WindowState==WindowState.Minimized)target.WindowState=WindowState.Normal;
+            if(!target.IsVisible)target.Show();
+            target.Activate();
+        }
+        private void ShowDashboard(){if(!closing){Show();Activate();}}
+        // Owned windows remain modeless; returning to Revit does not close or
+        // reset the current calculation. Only one dashboard tool is opened.
+        internal void ShowTool(Window tool,Action afterClose=null)
+        {
+            if(currentTool!=null){ActivateCurrentTool();return;}
+            tool.Owner=this;currentTool=tool;
+            tool.Closed+=(s,e)=>
             {
-                if (_domeViewModel == null) _domeViewModel = new Dome.MainViewModel();
-                new Dome.MainWindow(_domeViewModel) { Owner = this }.ShowDialog();
-            }
-            finally { Show(); }
-        }
-
-        private void BtnBackpropping_Click(object sender, RoutedEventArgs e)
-        {
-            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
+                currentTool=null;
+                if(closing)return;
+                if(afterClose!=null)afterClose();else ShowDashboard();
+            };
             Hide();
-            try { new BackproppingWindow { Owner = this }.ShowDialog(); }
-            finally { Show(); }
+            try {tool.Show();}
+            catch {currentTool=null;ShowDashboard();throw;}
         }
-
-        private void BtnSteelShape_Click(object sender, RoutedEventArgs e)
+        private void BtnAccount_Click(object sender,RoutedEventArgs e)=>MyRevitAddin.Access.AccessWindow.Manage(this);
+        private void BtnUpdates_Click(object sender,RoutedEventArgs e)=>ShowTool(new MyRevitAddin.Updates.UpdateWindow());
+        private void BtnClose_Click(object sender,RoutedEventArgs e)=>Close();
+        private void BtnDomeCalculator_Click(object sender,RoutedEventArgs e)
         {
-            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
-            Hide();
-            try { new SteelShape.SteelShapeWindow { Owner = this }.ShowDialog(); }
-            finally { Show(); }
+            if(!BtnDomeCalculator.IsEnabled || !MyRevitAddin.Access.AccessWindow.Require(this))return;
+            if(_domeViewModel==null)_domeViewModel=new Dome.MainViewModel();
+            ShowTool(new Dome.MainWindow(_domeViewModel));
         }
-
-        private void BtnTop50_Click(object sender, RoutedEventArgs e)
+        private void BtnBackpropping_Click(object sender,RoutedEventArgs e)
+        {if(MyRevitAddin.Access.AccessWindow.Require(this))ShowTool(new BackproppingWindow());}
+        private void BtnSteelShape_Click(object sender,RoutedEventArgs e)
+        {if(MyRevitAddin.Access.AccessWindow.Require(this))ShowTool(new SteelShape.SteelShapeWindow());}
+        private void BtnTop50_Click(object sender,RoutedEventArgs e)
         {
-            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
-            Hide();
-            try
+            if(!MyRevitAddin.Access.AccessWindow.Require(this))return;
+            if(_top50ViewModel==null)_top50ViewModel=new Top50ViewModel();
+            Top50Window planner=null;
+            var connection=new Top50.Top50RevitConnection
             {
-                if (_top50ViewModel == null) _top50ViewModel = new Top50ViewModel();
-                new Top50Window(_top50ViewModel) { Owner = this }.ShowDialog();
-            }
-            finally { Show(); }
+                ReadSelection=()=>Command.Request(app=>{if(planner?.IsLoaded!=true)throw new System.ObjectDisposedException("Top50 Planner");return Top50RevitSelection.ReadSelected(app);}),
+                Refresh=request=>Command.Request(app=>{if(planner?.IsLoaded!=true)throw new System.ObjectDisposedException("Top50 Planner");return Top50RevitSelection.Refresh(app,request);}),
+                Highlight=request=>Command.Request(app=>{if(planner?.IsLoaded!=true)throw new System.ObjectDisposedException("Top50 Planner");return Top50RevitSelection.Highlight(app,request);})
+            };
+            planner=new Top50Window(_top50ViewModel,connection);ShowTool(planner);
         }
-
-        private void BtnFlexCalculator_Click(object sender, RoutedEventArgs e)
+        private void BtnFlexCalculator_Click(object sender,RoutedEventArgs e)
+        {if(MyRevitAddin.Access.AccessWindow.Require(this))OpenSlabChoice();}
+        private void OpenSlabChoice()
         {
-            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
-            Hide();
-            try
+            var choice=new SlabSystemWindow();
+            ShowTool(choice,()=>
             {
-                while (true)
+                if(!choice.HasSelection){ShowDashboard();return;}
+                if(choice.UseD3)
                 {
-                    var choice = new SlabSystemWindow { Owner = this };
-                    if (choice.ShowDialog() != true) break;
-                    if (!MyRevitAddin.Access.AccessWindow.Require(this)) break;
-                    if (choice.UseD3)
-                    {
-                        if (_d3SlabViewModel == null) _d3SlabViewModel = new D3SlabCalculatorViewModel();
-                        var d3 = new D3SlabCalculatorWindow(_d3SlabViewModel) { Owner = this };
-                        d3.ShowDialog(); if (d3.ChangeSystemRequested) continue; break;
-                    }
-                    if (_flexViewModel == null) _flexViewModel = new FlexCalculatorViewModel();
-                    var flex = new FlexCalculatorWindow { ViewModel = _flexViewModel, Owner = this };
-                    bool? result = flex.ShowDialog();
-                    if (flex.ChangeSystemRequested) continue;
-                    if (result == true) { closingAfterImport = true; Close(); return; }
-                    break;
+                    if(_d3SlabViewModel==null)_d3SlabViewModel=new D3SlabCalculatorViewModel();
+                    var d3=new D3SlabCalculatorWindow(_d3SlabViewModel);
+                    ShowTool(d3,()=>{if(d3.ChangeSystemRequested)OpenSlabChoice();else ShowDashboard();});
                 }
-            }
-            finally { if (!closingAfterImport) Show(); }
+                else
+                {
+                    if(_flexViewModel==null)_flexViewModel=new FlexCalculatorViewModel();
+                    var flex=new FlexCalculatorWindow{ViewModel=_flexViewModel};
+                    ShowTool(flex,()=>{if(flex.ChangeSystemRequested)OpenSlabChoice();else ShowDashboard();});
+                }
+            });
         }
-        private bool closingAfterImport;
-        private void BtnBeamCalculator_Click(object sender, RoutedEventArgs e)
+        private void BtnBeamCalculator_Click(object sender,RoutedEventArgs e)
         {
-            if (!MyRevitAddin.Access.AccessWindow.Require(this)) return;
-            // Hide the launcher
-            this.Hide();
-
-            if (_beamViewModel == null)
+            if(!MyRevitAddin.Access.AccessWindow.Require(this))return;
+            if(_beamViewModel==null)_beamViewModel=new BeamCalculatorViewModel();
+            var beam=new BeamCalculatorWindow{DataContext=_beamViewModel};
+            beam.CheckForUpdates=()=>
             {
-                _beamViewModel = new BeamCalculatorViewModel();
-            }
-
-            BeamCalculatorWindow beamWindow = new BeamCalculatorWindow();
-            beamWindow.CheckForUpdates=()=>new MyRevitAddin.Updates.UpdateWindow {Owner=beamWindow}.ShowDialog();
-            beamWindow.ReadRevitSelection=()=>RevitStructureSelection.Read(Command.App);
-            beamWindow.DataContext = _beamViewModel;
-
-            beamWindow.ShowDialog();
-
-            // Show the launcher again once the calculator is closed
-            this.Show();
+                var update=new MyRevitAddin.Updates.UpdateWindow{Owner=beam};
+                update.Show();
+            };
+            beam.RequestRevitSelection=()=>Command.Request(RevitStructureSelection.Read);
+            ShowTool(beam);
         }
     }
 }

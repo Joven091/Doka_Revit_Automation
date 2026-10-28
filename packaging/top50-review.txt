@@ -1,10 +1,10 @@
-Doka Engineering Dashboard 1.1.25 — Top50 Planner
+Doka Engineering Dashboard 1.1.26 — Top50 Planner
 
-Retains the beam/import fixes, Steel Shape, dashboard access and update controls. Dome Beta is below Planners / Top50; D3 slab remains Coming soon.
+Retains the beam/import fixes, Steel Shape, dashboard access and update controls. Dome Beta is locked below Planners / Top50; D3 slab remains Coming soon.
 
 Top50 includes Undo, Redo, Delete and Ctrl+Z / Ctrl+Y / Delete, a simple Import table, fixed thorough search and up to three quantity-first alternatives. Component counts follow geometry rather than a fixed limit. Compact results show Panel length and Qty, connectors and conversational Status comparisons. Casting groups use a dropdown above the panel/filler schematic. Reports and Excel export are unavailable.
 
-Panel quantities cover both matching wall faces, while offered length is LM per face. Connector quantities cover one connection level on both faces, with adjustable reuse enabled. The user determines the required connection levels. New project saves use V4; V1–V3 projects remain readable. Save a separate copy when retaining compatibility with older versions.
+Panel quantities cover both wall faces, while offered length is LM per face. Connector quantities cover one connection level on both faces, with adjustable reuse enabled. The user determines the required connection levels. New project saves use V5; V1–V4 projects remain readable. Save a separate copy when retaining compatibility with older versions.
 
 Requires Revit2024 x64. Save your models and close all Revit windows first. Installs per Windows user and registers the add-in automatically; do not run as a different administrator account.
 
@@ -15,3 +15,7 @@ To roll back, close Revit, uninstall this version and reinstall the previously t
 Only the standard per-user Revit2024 installation is supported. Conflicting dashboard registrations, unsupported custom paths, running Revit and downgrades are blocked. The installer does not publish to the company feed; updates remain user initiated.
 
 Search is bounded best-found, without a global-optimality proof. Automated Windows tests do not establish actual Revit2024 host acceptance or exact original Top50 solver parity; verify operation on a team computer before wider use.
+
+Revit wall planning: straight native basic walls use the longer of the two measured forming faces. Unequal faces are flagged for review. Walls retain document and UniqueId references for refresh and casting-group selection; Locate explicitly changes the view. DXF and manual input remain supported. New saves use V5; V1-V4 projects remain readable. Keep a separate older-format copy if needed.
+
+Active calculators share File / Tools headers. Undo, Redo and Delete use icon buttons with tooltips. Export report actions are removed. Actual Revit2024 host acceptance remains to be checked on a company computer.

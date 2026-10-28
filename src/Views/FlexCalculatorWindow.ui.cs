@@ -16,6 +16,8 @@ namespace EngineeringDashboard
         private bool refreshingValidation;
         private void InitializeUi()
         {
+            var toolbar=new DashboardToolbar(this,"Slab · Dokaflex",()=>LoadCalculation_Click(null,null),()=>SaveCalculation_Click(null,null),changeSystem:()=>ChangeSystem_Click(null,null));
+            toolbar.SaveItem.SetBinding(IsEnabledProperty,new System.Windows.Data.Binding("IsCalculationValid"));CalculatorToolbarHost.Content=toolbar;
             AddHandler(Validation.ErrorEvent, new EventHandler<ValidationErrorEventArgs>(InputValidation_Error));
             DataContextChanged += (s,e) => {
                 if(observedModel != null) observedModel.PropertyChanged -= ModelChanged;

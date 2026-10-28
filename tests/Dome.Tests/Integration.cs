@@ -23,8 +23,8 @@ static partial class Program
         var dome = (Button)launcher.FindName("BtnDomeCalculator");
         Check(new[] { slab, beam, back, dome }.All(b => b != null), "Four calculator choices available");
         double Gap(Button first, Button second) => second.TranslatePoint(new Point(), root).Y - first.TranslatePoint(new Point(0, first.ActualHeight), root).Y;
-        Check(Gap(back, dome) > Gap(slab, beam) + 20, "Coming-soon choice separated from available calculators");
-        Check(!dome.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(dome).Contains("Coming soon"), "Dome disabled with accessible Coming soon label");
+        Check(Gap(back, dome) > Gap(slab, beam) + 20, "Locked Beta choice separated from available calculators");
+        Check(!dome.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(dome).Contains("Locked"), "Dome disabled with accessible Locked label");
         Render(launcher, "doka-launcher.png", 600, 680);
         // Locked launcher remains safe even when a click is raised programmatically.
         dome.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -66,7 +66,7 @@ static partial class Program
             Check(launcher.IsVisible, "Closing calculator returns to launcher");
         }
         launcher.Close();
-        Console.WriteLine("PASS Coming-soon lock, direct calculator modal ownership and retained state");
+        Console.WriteLine("PASS Beta lock, direct calculator modal ownership and retained state");
     }
 
     private static void Render(Window window, string name, int width, int height)

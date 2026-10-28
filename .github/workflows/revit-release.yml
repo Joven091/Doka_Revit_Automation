@@ -1,10 +1,10 @@
 name: Revit 2024 team installer
 on:
   pull_request:
-    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
+    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'tests/Dashboard.ReleaseSmoke/**', 'tests/Top50.RevitSource.Tests/**', 'tests/Top50.PlannerSmoke/**', 'tests/Dome.Tests/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
   push:
-    branches: [main]
-    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
+    branches: [main, codex/dashboard-modeless-selection]
+    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'tests/Dashboard.ReleaseSmoke/**', 'tests/Top50.RevitSource.Tests/**', 'tests/Top50.PlannerSmoke/**', 'tests/Dome.Tests/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
   workflow_dispatch:
     inputs:
       build_installer:
@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   installer:
-    if: (github.event_name == 'workflow_dispatch' && inputs.build_installer == true) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[build-installer]'))
+    if: (github.event_name == 'workflow_dispatch' && inputs.build_installer == true) || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/dashboard-modeless-selection') && contains(github.event.head_commit.message, '[build-installer]'))
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -24,6 +24,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/Top50.RevitSource.Tests -c Release
       - run: dotnet run --project tests/Updates.Tests -c Release
       - run: dotnet run --project tests/Beam.Tests -c Release -- --primary-bearings
       - run: dotnet build tests/Beam.Net48 -c Release --warnaserror
@@ -35,6 +36,8 @@ jobs:
       - run: dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
       - run: dotnet build tests/SteelShape.HostSmoke -c Release --warnaserror
       - run: dotnet build tests/Top50.PlannerSmoke -c Release --warnaserror
+      - run: dotnet build tests/Dashboard.ReleaseSmoke -c Release --warnaserror
+      - run: tests/Dashboard.ReleaseSmoke/bin/Release/net48/Dashboard.ReleaseSmoke.exe artifacts/dashboard-release-checks
       - name: Prepare installed browser host test
         run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
       - uses: actions/checkout@v4
@@ -57,7 +60,7 @@ jobs:
           New-Item -ItemType Directory -Force $release | Out-Null
           Copy-Item $installer "$release/Install_DokaRevitAutomation.exe"
           Copy-Item scripts/Publish-RevitUpdate.ps1 "$release/Publish-RevitUpdate.ps1"
-          ./scripts/Publish-RevitUpdate.ps1 -Installer $installer -Version $version -ReleaseNotes "Revit 2024 release ${version}: Steel Shape, Top50 Planner with editing and both-face quantities, Dome Beta, retained beam import and company-folder updates." -Destination $release
+          ./scripts/Publish-RevitUpdate.ps1 -Installer $installer -Version $version -ReleaseNotes "Revit 2024 release ${version}: Steel Shape, Top50 Planner with editing and both-face quantities, Dome Beta locked, shared icon toolbars and Revit wall planning, retained beam import and company-folder updates." -Destination $release
           @{
             version=$version; sourceCommit=$env:GITHUB_SHA; revitVersion=2024
             installerSha256=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -67,7 +70,7 @@ jobs:
           } | ConvertTo-Json | Set-Content "$release/release-info.json"
           @"
           @echo off
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Publish-RevitUpdate.ps1" -Installer "%~dp0Install_DokaRevitAutomation.exe" -Version $version -ReleaseNotes "Revit 2024 release ${version}: Steel Shape, Top50 Planner with editing and both-face quantities, Dome Beta, retained beam import and company-folder updates."
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Publish-RevitUpdate.ps1" -Installer "%~dp0Install_DokaRevitAutomation.exe" -Version $version -ReleaseNotes "Revit 2024 release ${version}: Steel Shape, Top50 Planner with editing and both-face quantities, Dome Beta locked, shared icon toolbars and Revit wall planning, retained beam import and company-folder updates."
           if errorlevel 1 goto failed
           echo Published. Team installer: S:\MEA\ENG\Joven\BeamCalculator\Updates\DokaRevitAutomation-$version.exe
           pause
@@ -87,7 +90,7 @@ jobs:
 
           Future updates: Publish a higher-version release. Team members use Check for updates in the dashboard or the beam File menu, then save and close Revit when ready. The updater waits for Revit to close before installation.
 
-          This installer adds Steel Shape to the dashboard and retains the latest beam importer, Top50 planner/diagnosis, and updater. Steel Shape runs offline and uses Microsoft Edge WebView2; if unavailable, Open in browser uses the same page. D3 slab remains grey Coming soon. Dome is available in the Beta section below Top50 Planner. Box-out design remains outside the beam calculator scope. Actual Revit operation and access to the company share must be checked on a company computer.
+          This installer includes matching File/Tools headers, icon edit commands, one-click beam and Top50 Revit selection, forming-face wall allowances, group highlighting and the shared-folder updater. Export report actions are removed. Top50 uses V5 projects and reads V1-V4 files. Steel Shape runs offline and uses Microsoft Edge WebView2; if unavailable, Open in browser uses the same page. D3 slab remains grey Coming soon. Dome Beta is visible but locked below Top50 Planner. Box-out design remains outside the beam calculator scope. Actual Revit operation and access to the company share must be checked on a company computer.
           "@ | Set-Content "$release/README.txt" -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
@@ -101,4 +104,5 @@ jobs:
           path: |
             artifacts/team-installer-checks/
             artifacts/team-installer-guards/
+            artifacts/dashboard-release-checks/
           if-no-files-found: warn

@@ -1,11 +1,15 @@
-Doka Revit Automation 1.1.25 — Engineering Dashboard
+Doka Revit Automation 1.1.26 — Engineering Dashboard
 
-Includes Beam Formwork, Steel Shape, Top50 Planner and the approved Dome Beta. D3 slab remains Coming soon. Steel Shape retains sixteen section weight tools, schematics and interactive weld allowance, with an offline browser fallback when WebView2 is unavailable.
+Includes Beam Formwork, Steel Shape, Top50 Planner and a visible but locked Dome Beta entry. D3 slab remains Coming soon. Steel Shape retains sixteen section weight tools, schematics and interactive weld allowance, with an offline browser fallback when WebView2 is unavailable.
 
-Top50 includes Undo, Redo, Delete and shortcuts, repeatable quantity-first search, compact equipment results, a casting-group selector and Diagnose. Panel quantities cover both matching wall faces. Offered length is LM per face. Connector quantities cover one level on both faces, with reuse enabled. The user determines the required connection levels.
+Top50 includes Undo, Redo, Delete and shortcuts, repeatable quantity-first search, compact equipment results, a casting-group selector and Diagnose. Panel quantities cover both wall faces. Offered length is LM per face. Connector quantities cover one level on both faces, with reuse enabled. The user determines the required connection levels.
 
-New Top50 project saves use format V4. Older projects remain readable; save a separate test copy when retaining compatibility with an older version. Search is best-found and does not establish a global optimum.
+New Top50 project saves use format V5. Older projects remain readable; save a separate test copy when retaining compatibility with an older version. Search is best-found and does not establish a global optimum.
 
 Requires Autodesk Revit 2024 x64. Save your models and close every Revit window before installation. Installation is per Windows user; the installer registers the add-in and backs up an existing dashboard. Existing settings and saved projects are preserved. Administrator elevation is not required.
 
 Automated checks use isolated Windows test hosts. Actual Revit2024 acceptance must be verified on the team computer. Steel Shape is a mass estimate, not a connection strength design. This installer does not publish to the company update share.
+
+Revit wall planning: straight native basic walls use the longer of the two measured forming faces. Unequal faces are flagged for review. Walls retain document and UniqueId references for refresh and casting-group selection; Locate explicitly changes the view. DXF and manual input remain supported. New saves use V5; V1-V4 projects remain readable. Keep a separate older-format copy if needed.
+
+Active calculators share File / Tools headers. Undo, Redo and Delete use icon buttons with tooltips. Export report actions are removed. Actual Revit2024 host acceptance remains to be checked on a company computer.

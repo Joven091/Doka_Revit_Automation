@@ -47,6 +47,7 @@ namespace EngineeringDashboard
         public BackproppingWindow()
         {
             InitializeComponent();
+            CalculatorToolbarHost.Content=new DashboardToolbar(this,"Backpropping",()=>LoadCalculation_Click(null,null),()=>SaveCalculation_Click(null,null));
             updating = true; Temperature.SelectedIndex = 0; updating = false;
             ready = true; NewDraft(); Refresh();
             if(retained != null) RestoreSession(retained);
@@ -189,7 +190,7 @@ namespace EngineeringDashboard
             }
             ProgressBorder.Background = complete ? new SolidColorBrush(Color.FromRgb(232,245,233)) : Yellow;
             SlabGrid.ItemsSource = null; SlabGrid.ItemsSource = slabs;
-            RemoveLowest.IsEnabled = slabs.Count > 0; RemoveLowest.Content = slabs.Count == 0 ? "Remove lowest slab" : "Remove lowest: " + slabs.Last().Name;
+            RemoveLowest.IsEnabled = slabs.Count > 0; DashboardToolbar.Icon(RemoveLowest,"Delete",slabs.Count == 0 ? "Remove lowest slab" : "Remove lowest slab: " + slabs.Last().Name);
             CalculateButton.IsEnabled = slabs.Count >= 2;
             RenderSection(loads); RenderBreakdown(loads);
             if (rebuildStoreys) RenderStoreys(loads);

@@ -8,7 +8,7 @@
     r = Math.min(r, w / 2, h / 2);
     return `M${x + r} ${y}H${x + w - r}Q${x + w} ${y} ${x + w} ${y + r}V${y + h - r}Q${x + w} ${y + h} ${x + w - r} ${y + h}H${x + r}Q${x} ${y + h} ${x} ${y + h - r}V${y + r}Q${x} ${y} ${x + r} ${y}Z`;
   }
-  const defs = prefix => `<defs><linearGradient id="${prefix}-steel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d1dfe9"/><stop offset="1" stop-color="#8aa7bd"/></linearGradient><marker id="${prefix}-start" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M6 0L0 3L6 6Z" fill="#526b83"/></marker><marker id="${prefix}-end" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L6 3L0 6Z" fill="#526b83"/></marker></defs>`;
+  const defs = prefix => `<defs><linearGradient id="${prefix}-steel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E6E8EA"/><stop offset="1" stop-color="#ADB5BD"/></linearGradient><marker id="${prefix}-start" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M6 0L0 3L6 6Z" fill="#586772"/></marker><marker id="${prefix}-end" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L6 3L0 6Z" fill="#586772"/></marker></defs>`;
   function label(prefix, key, value, unit, x, y, rotate = null) {
     return `<text data-label="${esc(key)}" x="${x}" y="${y}" text-anchor="middle"${rotate ? ` transform="rotate(${rotate} ${x} ${y})"` : ''}>${esc(key)} = ${esc(short(value))} ${unit}</text>`;
   }
@@ -51,16 +51,16 @@
     return { circular, w, h, t, s, polygon, vKey, hKey };
   }
   function front(definition, g, x, y, prefix, ellipse = false) {
-    const stroke = 'stroke="#41627d" stroke-width="1.6" stroke-linejoin="round"';
+    const stroke = 'stroke="#586772" stroke-width="1.6" stroke-linejoin="round"';
     if (g.circular) {
       const rx = ellipse ? g.w * .30 : g.w / 2, ry = g.h / 2;
       let body = `<ellipse cx="${x + g.w / 2}" cy="${y + ry}" rx="${rx}" ry="${ry}" fill="url(#${prefix}-steel)" ${stroke}/>`;
-      if (definition.kind === 'tube') body += `<ellipse cx="${x + g.w / 2}" cy="${y + ry}" rx="${Math.max(1, rx - g.t * (ellipse ? .6 : 1))}" ry="${Math.max(1, ry - g.t)}" fill="#f8fafc" ${stroke}/>`;
+      if (definition.kind === 'tube') body += `<ellipse cx="${x + g.w / 2}" cy="${y + ry}" rx="${Math.max(1, rx - g.t * (ellipse ? .6 : 1))}" ry="${Math.max(1, ry - g.t)}" fill="#F5F5F5" ${stroke}/>`;
       return body;
     }
     let body;
     if (definition.kind === 'hollow') {
-      body = `<path d="${rect(x, y, g.w, g.h, g.t * 1.5)}" fill="url(#${prefix}-steel)" ${stroke}/><path d="${rect(x + g.t, y + g.t, g.w - 2 * g.t, g.h - 2 * g.t, g.t * .5)}" fill="#f8fafc" ${stroke}/>`;
+      body = `<path d="${rect(x, y, g.w, g.h, g.t * 1.5)}" fill="url(#${prefix}-steel)" ${stroke}/><path d="${rect(x + g.t, y + g.t, g.w - 2 * g.t, g.h - 2 * g.t, g.t * .5)}" fill="#F5F5F5" ${stroke}/>`;
     } else body = `<path d="${path(g.polygon.map(p => [p[0] + x, p[1] + y]))}" fill="url(#${prefix}-steel)" ${stroke}/>`;
     return body;
   }
@@ -83,12 +83,12 @@
     let drawing = '';
     if (g.circular) {
       const cx = x + g.w / 2, rx = g.w * .30, ry = g.h / 2, cy = y + ry;
-      drawing += `<path d="M${cx} ${cy - ry}L${cx + dx} ${cy + dy - ry}A${rx} ${ry} 0 0 1 ${cx + dx} ${cy + dy + ry}L${cx} ${cy + ry}Z" fill="#8faabe" stroke="#64839b" stroke-width="1.4"/>`;
+      drawing += `<path d="M${cx} ${cy - ry}L${cx + dx} ${cy + dy - ry}A${rx} ${ry} 0 0 1 ${cx + dx} ${cy + dy + ry}L${cx} ${cy + ry}Z" fill="#A8B0B7" stroke="#78858F" stroke-width="1.4"/>`;
     } else {
-      drawing += `<path d="${path(g.polygon.map(p => [p[0] + x + dx, p[1] + y + dy]))}" fill="#c7d7e2" stroke="#64839b" stroke-width="1.2"/>`;
+      drawing += `<path d="${path(g.polygon.map(p => [p[0] + x + dx, p[1] + y + dy]))}" fill="#DFE3E6" stroke="#78858F" stroke-width="1.2"/>`;
       for (let i = 0; i < g.polygon.length; i++) {
         const a = g.polygon[i], b = g.polygon[(i + 1) % g.polygon.length], ex = b[0] - a[0], ey = b[1] - a[1];
-        if (ex * dy - ey * dx < 0) drawing += `<path d="${path([[a[0] + x, a[1] + y], [a[0] + x + dx, a[1] + y + dy], [b[0] + x + dx, b[1] + y + dy], [b[0] + x, b[1] + y]])}" fill="${Math.abs(ex) > Math.abs(ey) ? '#b7ccdc' : '#8da8bd'}" stroke="#64839b" stroke-width="1.1"/>`;
+        if (ex * dy - ey * dx < 0) drawing += `<path d="${path([[a[0] + x, a[1] + y], [a[0] + x + dx, a[1] + y + dy], [b[0] + x + dx, b[1] + y + dy], [b[0] + x, b[1] + y]])}" fill="${Math.abs(ex) > Math.abs(ey) ? '#CCD1D5' : '#A8B0B7'}" stroke="#78858F" stroke-width="1.1"/>`;
       }
     }
     drawing += front(definition, g, x, y, prefix, g.circular);
@@ -100,11 +100,11 @@
   function weldCoverage(definition, dimensions) {
     const g = geometry(definition, dimensions, 98, 104), x = 75 - g.w / 2, y = 68 - g.h / 2, prefix = 'coverage';
     let drawing = front(definition, g, x, y, prefix);
-    const stroke = 'fill="none" stroke="#d39512" stroke-width="4" stroke-linejoin="round"';
+    const stroke = 'fill="none" stroke="#D4AA00" stroke-width="4" stroke-linejoin="round"';
     if (g.circular) drawing += `<ellipse cx="${x + g.w / 2}" cy="${y + g.h / 2}" rx="${g.w / 2}" ry="${g.h / 2}" ${stroke}/>`;
     else if (definition.kind === 'hollow') drawing += `<path d="${rect(x, y, g.w, g.h, g.t * 1.5)}" ${stroke}/>`;
     else drawing += `<path d="${path(g.polygon.map(p => [p[0] + x, p[1] + y]))}" ${stroke}/>`;
-    return `<svg id="weld-coverage-schematic" viewBox="0 0 150 142" role="img" aria-label="Orange outline shows one continuous weld all around the section; internal hollow boundary is excluded."><title>Weld all around the section</title>${defs(prefix)}${drawing}<text x="75" y="137" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#8b6418">Weld all around</text></svg>`;
+    return `<svg id="weld-coverage-schematic" viewBox="0 0 150 142" role="img" aria-label="Yellow outline shows one continuous weld all around the section; internal hollow boundary is excluded."><title>Weld all around the section</title>${defs(prefix)}${drawing}<text x="75" y="137" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="12" fill="#806500">Weld all around</text></svg>`;
   }
   function weldSelector(definition, model, choices = {}, activeEdge = '') {
     const physicalW=number(model.modelWidth),physicalH=number(model.modelHeight), ratio=physicalW/physicalH;
@@ -119,22 +119,22 @@
       return (move?'M'+a.join(' '):'')+tail;
     }
     const closed=model.segments.map((edge,i)=>command(edge,0,1,i===0)).join(' ')+'Z';
-    let drawing=`<path d="${closed}" fill="#bfd1df" stroke="#8da4b6" stroke-width="1"/>`;
+    let drawing=`<path d="${closed}" fill="#CCD1D5" stroke="#78858F" stroke-width="1"/>`;
     const t=number(model.dimensions.t),kind=definition.kind;
-    if(kind==='tube') drawing+=`<ellipse cx="${ox+w/2}" cy="${oy+h/2}" rx="${Math.max(0,(physicalW/2-t)*sx)}" ry="${Math.max(0,(physicalH/2-t)*sy)}" fill="#f8fafc" stroke="#9bafbf"/>`;
-    if(kind==='hollow') drawing+=`<rect x="${ox+t*sx}" y="${oy+t*sy}" width="${Math.max(0,(physicalW-2*t)*sx)}" height="${Math.max(0,(physicalH-2*t)*sy)}" rx="${Math.max(0,(model.radius-t)*sx)}" ry="${Math.max(0,(model.radius-t)*sy)}" fill="#f8fafc" stroke="#9bafbf"/>`;
+    if(kind==='tube') drawing+=`<ellipse cx="${ox+w/2}" cy="${oy+h/2}" rx="${Math.max(0,(physicalW/2-t)*sx)}" ry="${Math.max(0,(physicalH/2-t)*sy)}" fill="#F5F5F5" stroke="#ADB5BD"/>`;
+    if(kind==='hollow') drawing+=`<rect x="${ox+t*sx}" y="${oy+t*sy}" width="${Math.max(0,(physicalW-2*t)*sx)}" height="${Math.max(0,(physicalH-2*t)*sy)}" rx="${Math.max(0,(model.radius-t)*sx)}" ry="${Math.max(0,(model.radius-t)*sy)}" fill="#F5F5F5" stroke="#ADB5BD"/>`;
     for(const edge of model.segments) {
       const raw=Object.prototype.hasOwnProperty.call(choices,edge.id)?choices[edge.id]:'full',max=Number(edge.lengthMm),entered=raw==='full'?max:Number(String(raw).replace(',','.'));
       const fraction=Number.isFinite(entered)&&max>0?Math.max(0,Math.min(1,entered/max)):0,invalid=!Number.isFinite(entered)||entered<0||entered>max;
       const selected=fraction>0,full=command(edge),edgeName=esc(edge.name),description=`${edgeName}: ${show(entered)} of ${show(max)} mm welded`;
       drawing+=`<g class="weld-edge" data-weld-edge="${edge.id}" role="button" tabindex="${max>0?'0':'-1'}" aria-pressed="${selected}" aria-disabled="${max<=0}" aria-label="${description}" data-partial="${selected&&fraction<1}" data-invalid="${invalid}"><title>${description}</title>`;
-      if(activeEdge===edge.id) drawing+=`<path d="${full}" fill="none" stroke="#9dc4dd" stroke-width="11" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
-      drawing+=`<path class="weld-edge-base" d="${full}" fill="none" stroke="#8496a5" stroke-width="3" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
-      if(selected) drawing+=`<path class="weld-edge-selected" d="${command(edge,(1-fraction)/2,(1+fraction)/2)}" fill="none" stroke="${invalid?'#b93432':'#d39512'}" stroke-width="5" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+      if(activeEdge===edge.id) drawing+=`<path d="${full}" fill="none" stroke="#FFF2BF" stroke-width="11" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+      drawing+=`<path class="weld-edge-base" d="${full}" fill="none" stroke="#78858F" stroke-width="3" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+      if(selected) drawing+=`<path class="weld-edge-selected" d="${command(edge,(1-fraction)/2,(1+fraction)/2)}" fill="none" stroke="${invalid?'#B42318':'#D4AA00'}" stroke-width="5" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
       if(max>0) drawing+=`<path d="${full}" fill="none" stroke="transparent" stroke-width="16" vector-effect="non-scaling-stroke" pointer-events="stroke"/>`;
       drawing+='</g>';
     }
-    return `<svg id="weld-coverage-schematic" viewBox="0 0 440 280" role="group" aria-label="Click edges to select welds. Orange means welded; grey means unwelded."><title>Interactive weld selection</title>${drawing}<text x="220" y="274" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="14" fill="#60738b">Orange: welded · Grey: unwelded</text></svg>`;
+    return `<svg id="weld-coverage-schematic" viewBox="0 0 440 280" role="group" aria-label="Click edges to select welds. Yellow means welded; grey means unwelded."><title>Interactive weld selection</title>${drawing}<text x="220" y="274" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="14" fill="#586772">Yellow: welded · Grey: unwelded</text></svg>`;
   }
   function weldDrawing(input, summary = null, layoutOnly = false) {
     const w = input.weld || {}, corner = w.connection === 'L', type = w.type === 'butt' ? 'butt' : 'fillet', guide = !summary, prefix = layoutOnly ? 'layout' : 'joint';
@@ -147,31 +147,31 @@
       const lines = caption.split('|').map((text, i) => `<tspan x="${tx}"${i ? ' dy="17"' : ''}>${text}</tspan>`).join('');
       return `<g class="dimension" data-dimension="weld-${key}"><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-start="url(#${prefix}-start)" marker-end="url(#${prefix}-end)"/><text x="${tx}" y="${ty}" text-anchor="middle"${rotate ? ` transform="rotate(${rotate} ${tx} ${ty})"` : ''}>${lines}<tspan x="${tx}" dy="18">${value(key, suffix)}</tspan></text></g>`;
     }
-    let drawing = `<text x="18" y="25" fill="#203047" font-size="16" font-weight="600">${corner ? 'L connection · 90°' : 'Straight connection'}</text>`;
+    let drawing = `<text x="18" y="25" fill="#202A33" font-size="16" font-weight="600">${corner ? 'L connection · 90°' : 'Straight connection'}</text>`;
     if (corner) {
-      drawing += '<path d="M55 82H275L245 112H55Z" fill="#99b5c9" stroke="#526f86"/><path d="M275 82V241H245V112Z" fill="#c7d9e6" stroke="#526f86"/><path d="M274 83L246 111" stroke="#c19327" stroke-width="6"/>';
+      drawing += '<path d="M55 82H275L245 112H55Z" fill="#BCC3C8" stroke="#586772"/><path d="M275 82V241H245V112Z" fill="#DFE3E6" stroke="#586772"/><path d="M274 83L246 111" stroke="#D4AA00" stroke-width="6"/>';
       drawing += measure('L1', 'First piece length', 55, 65, 260, 65, 155, 130, 0, unit);
       drawing += measure('L2', 'Second piece|length', 290, 97, 290, 241, 357, 174, 0, unit);
-      drawing += '<path d="M273 96L324 58H374" fill="none" stroke="#a3751a"/><text x="350" y="48" text-anchor="middle" fill="#8b6418" font-size="14">Welded corner</text>';
+      drawing += '<path d="M273 96L324 58H374" fill="none" stroke="#806500"/><text x="350" y="48" text-anchor="middle" fill="#806500" font-size="14">Welded corner</text>';
     } else {
-      drawing += '<rect x="35" y="80" width="185" height="28" fill="#99b5c9" stroke="#526f86"/><rect x="220" y="80" width="185" height="28" fill="#c7d9e6" stroke="#526f86"/><rect x="216" y="77" width="8" height="34" fill="#e4b34b" stroke="#a3751a"/><path d="M223 81L266 51H312" fill="none" stroke="#a3751a"/><text x="289" y="43" text-anchor="middle" fill="#8b6418" font-size="14">Welded joint</text>';
+      drawing += '<rect x="35" y="80" width="185" height="28" fill="#BCC3C8" stroke="#586772"/><rect x="220" y="80" width="185" height="28" fill="#DFE3E6" stroke="#586772"/><rect x="216" y="77" width="8" height="34" fill="#F2CD24" stroke="#806500"/><path d="M223 81L266 51H312" fill="none" stroke="#806500"/><text x="289" y="43" text-anchor="middle" fill="#806500" font-size="14">Welded joint</text>';
       drawing += measure('L1', 'First piece length', 35, 127, 220, 127, 126, 151, 0, unit) + measure('L2', 'Second piece length', 220, 127, 405, 127, 312, 151, 0, unit);
     }
     const base = corner ? 286 : 214;
     if (!layoutOnly) {
-      drawing += `<path d="M18 ${base - 19}H422" stroke="#d9e2eb"/><text x="18" y="${base + 3}" fill="#203047" font-size="16" font-weight="600">${type === 'fillet' ? 'Fillet weld · cross-section' : 'Butt weld · cross-section'}</text>`;
+      drawing += `<path d="M18 ${base - 19}H422" stroke="#DFE3E6"/><text x="18" y="${base + 3}" fill="#202A33" font-size="16" font-weight="600">${type === 'fillet' ? 'Fillet weld · cross-section' : 'Butt weld · cross-section'}</text>`;
       if (type === 'fillet') {
         const y = base + 45;
-        drawing += `<path d="M95 ${y - 8}H115V${y + 72}H217V${y + 92}H95Z" fill="#c7d9e6" stroke="#526f86"/><path d="M115 ${y}V${y + 72}H187Z" fill="#e4b34b" stroke="#a3751a"/>`;
+        drawing += `<path d="M95 ${y - 8}H115V${y + 72}H217V${y + 92}H95Z" fill="#DFE3E6" stroke="#586772"/><path d="M115 ${y}V${y + 72}H187Z" fill="#F2CD24" stroke="#806500"/>`;
         drawing += measure('z', 'Leg size', 72, y, 72, y + 72, 43, y + 40, -90) + measure('z', 'Leg size', 115, y + 113, 187, y + 113, 151, y + 137);
-        drawing += `<text x="266" y="${y + 27}" fill="#8b6418" font-size="14">Orange = weld</text><text x="266" y="${y + 54}" fill="#60738b" font-size="13">Two equal legs</text>`;
+        drawing += `<text x="266" y="${y + 27}" fill="#806500" font-size="14">Yellow = weld</text><text x="266" y="${y + 54}" fill="#586772" font-size="13">Two equal legs</text>`;
       } else {
         const y = base + 101, gap = guide || Number(w.gapMm) > 0 ? 16 : 0, left = 164 - gap / 2, right = 164 + gap / 2;
         const cap = guide || Number(w.capHeightMm) > 0, faces = String(w.faces || '1');
-        drawing += `<rect x="91" y="${y}" width="${left - 91}" height="62" fill="#99b5c9" stroke="#526f86"/><rect x="${right}" y="${y}" width="${237 - right}" height="62" fill="#c7d9e6" stroke="#526f86"/>`;
-        if (gap) drawing += `<rect x="${left}" y="${y}" width="${gap}" height="62" fill="#e4b34b" stroke="#a3751a"/>`;
+        drawing += `<rect x="91" y="${y}" width="${left - 91}" height="62" fill="#BCC3C8" stroke="#586772"/><rect x="${right}" y="${y}" width="${237 - right}" height="62" fill="#DFE3E6" stroke="#586772"/>`;
+        if (gap) drawing += `<rect x="${left}" y="${y}" width="${gap}" height="62" fill="#F2CD24" stroke="#806500"/>`;
         if (cap) {
-          const previewCap = guide && !(Number(w.capHeightMm) > 0) ? 'fill="none" stroke="#a3751a" stroke-dasharray="4 3"' : 'fill="#e4b34b" stroke="#a3751a"';
+          const previewCap = guide && !(Number(w.capHeightMm) > 0) ? 'fill="none" stroke="#806500" stroke-dasharray="4 3"' : 'fill="#F2CD24" stroke="#806500"';
           drawing += `<path d="M112 ${y}L164 ${y - 22}L216 ${y}Z" ${previewCap}/>`;
           if (faces === '2') drawing += `<path d="M112 ${y + 62}L164 ${y + 84}L216 ${y + 62}Z" ${previewCap}/>`;
         }
@@ -179,7 +179,7 @@
         drawing += measure('capWidthMm', 'Cap width', 112, y - 33, 216, y - 33, 164, y - 59);
         drawing += measure('capHeightMm', 'Cap height', 258, y - 22, 258, y, 332, y - 8);
         drawing += measure('gapMm', 'Gap between pieces', left, y + 103, right, y + 103, 164, y + 126);
-        drawing += `<text x="280" y="${y + 54}" fill="#60738b" font-size="13">${esc(faces)} reinforced side${faces === '2' ? 's' : ''}</text>`;
+        drawing += `<text x="280" y="${y + 54}" fill="#586772" font-size="13">${esc(faces)} reinforced side${faces === '2' ? 's' : ''}</text>`;
       }
     }
     const height = layoutOnly ? (corner ? 265 : 190) : base + (type === 'butt' ? 257 : 226);

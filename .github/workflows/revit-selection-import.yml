@@ -1,10 +1,10 @@
 name: Revit selection import
 on:
   pull_request:
-    paths: ['src/**', 'tests/Beam*/**', 'tests/Revit.Reader*/**', 'tests/D3Slab.Tests/**', 'Directory.Build.props', '.github/workflows/revit-selection-import.yml']
+    paths: ['src/**', 'tests/Beam*/**', 'tests/Revit.Reader*/**', 'tests/Revit.Modeless.Tests/**', 'tests/Top50.RevitSource.Tests/**', 'tests/Dashboard.ReleaseSmoke/**', 'tests/D3Slab.Tests/**', 'Directory.Build.props', '.github/workflows/revit-selection-import.yml']
   push:
     branches: [main]
-    paths: ['src/**', 'tests/Beam*/**', 'tests/Revit.Reader*/**', 'tests/D3Slab.Tests/**', 'Directory.Build.props', '.github/workflows/revit-selection-import.yml']
+    paths: ['src/**', 'tests/Beam*/**', 'tests/Revit.Reader*/**', 'tests/Revit.Modeless.Tests/**', 'tests/Top50.RevitSource.Tests/**', 'tests/Dashboard.ReleaseSmoke/**', 'tests/D3Slab.Tests/**', 'Directory.Build.props', '.github/workflows/revit-selection-import.yml']
   workflow_dispatch:
 concurrency:
   group: revit-selection-${{ github.ref }}
@@ -37,8 +37,22 @@ jobs:
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --revit-junctions
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --revit-selection-size
       - run: tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --individual-spans
+  interaction:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/Revit.Modeless.Tests -c Release
+      - run: dotnet run --project tests/Top50.RevitSource.Tests -c Release
+      - run: dotnet build tests/Dashboard.ReleaseSmoke -c Release --warnaserror
+      - run: tests/Dashboard.ReleaseSmoke/bin/Release/net48/Dashboard.ReleaseSmoke.exe artifacts/dashboard-release-checks
+      - run: dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
+      - run: dotnet run --project tests/D3Slab.UiSmoke -c Release -- --release-availability
       - run: dotnet build tests/Beam.UiSmoke -c Release --warnaserror
-      - name: Review, preview, replacement and undo
+      - name: One-click selection, retained diagnosis, combined canvas and undo
         run: |
           New-Item -ItemType Directory -Force tests/revit-selection-preview | Out-Null
           tests/Beam.UiSmoke/bin/Release/net48/MyRevitAddin.exe --revit-selection-ui tests/revit-selection-preview/import.png
@@ -49,4 +63,6 @@ jobs:
         if: always()
         with:
           name: revit-selection-preview
-          path: tests/revit-selection-preview/*.png
+          path: |
+            tests/revit-selection-preview/*.png
+            artifacts/dashboard-release-checks/

@@ -76,7 +76,7 @@ internal static class Program
         int planners=panel.Children.IndexOf((UIElement)launcher.FindName("PlannersSection"));int planner=panel.Children.IndexOf((UIElement)launcher.FindName("BtnTop50"));
         Check(planners>=0&&planner==planners+1,"Top50 belongs to its own Planners section");
         foreach(var name in new[]{"BtnFlexCalculator","BtnBeamCalculator","BtnBackpropping","BtnSteelShape"})Check(panel.Children.IndexOf((UIElement)launcher.FindName(name))<planners,"planner appears below "+name);
-        Check(((Button)launcher.FindName("BtnDomeCalculator")).IsEnabled&&AutomationProperties.GetName((Button)launcher.FindName("BtnDomeCalculator")).Contains("Beta"),"Dome Beta is available");
+        Check(!((Button)launcher.FindName("BtnDomeCalculator")).IsEnabled&&AutomationProperties.GetName((Button)launcher.FindName("BtnDomeCalculator")).Contains("Beta"),"Dome Beta is locked");
         Check(panel.Children.IndexOf((UIElement)launcher.FindName("BetaSection"))>planner&&panel.Children.IndexOf((UIElement)launcher.FindName("BtnDomeCalculator"))>panel.Children.IndexOf((UIElement)launcher.FindName("BetaSection")),"Dome Beta appears below Top50 Planner");
         Check(launcher.Title=="Engineering Dashboard"&&AutomationProperties.GetName((Button)launcher.FindName("BtnTop50"))=="Top50 Planner","dashboard and accessible entry call Top50 a planner");
         Render(launchRoot,620,840,1,Path.Combine(output,"dashboard-planners.png"));
@@ -114,7 +114,7 @@ internal static class Program
             var first=box.Text;Find<Button>(dialog).Single(b=>(string)b.Content=="Refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(box.Text.Contains("MANUAL-001")&&box.Text.Length>=first.Length-10,"refresh retains complete active planner evidence");
             dialog.Close();
         }));
-        Command(root,"Top50Diagnose").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Command(root,"Top50Diagnose").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));
         Check(sawDialog&&ReferenceEquals(captureBefore,restored.Selected)&&!restored.Dirty,"opening, refreshing and closing diagnosis preserve the project");
         var busy=restored.OptimizeAsync();Check(Command(root,"Top50Diagnose").IsEnabled,"diagnosis stays enabled while optimize runs");restored.Cancel();Wait(busy);
         restored.Save(project);window.Close();launcher.Close();

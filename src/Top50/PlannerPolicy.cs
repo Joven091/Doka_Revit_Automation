@@ -12,7 +12,7 @@ namespace EngineeringDashboard.Top50
         public const int DisplayLimit=3;
         public const double ThoroughSearchEffort=100;
         public const int SearchPolicyVersion=3;
-        public const int ProjectVersion=4;
+        public const int ProjectVersion=5;
         public static void Apply(NativeTop50Project settings)
         {
             settings.Seed=50;settings.SearchEffort=ThoroughSearchEffort;settings.CandidateDisplayLimit=DisplayLimit;

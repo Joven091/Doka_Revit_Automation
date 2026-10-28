@@ -27,11 +27,14 @@ namespace EngineeringDashboard.SteelShape
             Title = "Steel Shape";
             Width = 1440; Height = 960; MinWidth = 760; MinHeight = 560;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            Background = new SolidColorBrush(Color.FromRgb(243, 245, 248));
+            Background = Brushes.WhiteSmoke;
+            Foreground = new SolidColorBrush(Color.FromRgb(32,42,51));
             FontFamily = new FontFamily("Segoe UI");
-            var grid = new Grid(); Content = grid;
+            Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("pack://application:,,,/MyRevitAddin;component/Views/CalculatorStyles.xaml",UriKind.Absolute)});
+            var grid = new Grid(); Content = grid;grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});grid.RowDefinitions.Add(new RowDefinition());
+            var toolbar=new DashboardToolbar(this,"Steel Shape",null,null);toolbar.ToolsMenu.Items.Add(DashboardToolbar.Item("Open in browser",()=>{try{Process.Start(new ProcessStartInfo(SteelShapeContent.WriteBrowserCopy()){UseShellExecute=true});}catch(Exception error){MessageBox.Show(this,error.Message,"Steel Shape");}}));grid.Children.Add(toolbar);
             AutomationProperties.SetAutomationId(view, "SteelShapeBrowser");
-            grid.Children.Add(view);
+            Grid.SetRow(view,1);grid.Children.Add(view);
             fallback = new StackPanel { MaxWidth = 530, Margin = new Thickness(28), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             status = new TextBlock { Text = "Opening Steel Shape…", FontSize = 16, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14) };
             fallback.Children.Add(status);
@@ -42,7 +45,7 @@ namespace EngineeringDashboard.SteelShape
                 try { Process.Start(new ProcessStartInfo(SteelShapeContent.WriteBrowserCopy()) { UseShellExecute = true }); }
                 catch (Exception error) { MessageBox.Show(this, error.Message, "Steel Shape", MessageBoxButton.OK, MessageBoxImage.Information); }
             };
-            fallback.Children.Add(open); grid.Children.Add(fallback);
+            fallback.Children.Add(open); Grid.SetRow(fallback,1);grid.Children.Add(fallback);
             Loaded += async (sender, e) => await InitializeBrowser();
             Closed += (sender, e) => { closed = true; initialized.TrySetResult(false); DisposeBrowser(); };
         }

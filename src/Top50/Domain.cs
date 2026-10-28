@@ -34,8 +34,9 @@ namespace EngineeringDashboard.Top50
         public string ReviewReason { get; private set; }="";
         public IReadOnlyList<string> Diagnostics { get; internal set; }=Array.Empty<string>();
         public IReadOnlyList<SourceCode> RawCodes { get; internal set; }=Array.Empty<SourceCode>();
+        public RevitWallRecord Revit {get;internal set;}
         public decimal LengthMm => LengthMicrometres/1000m;
-        public WallRow Snapshot()=>new WallRow{Id=Id,Handle=Handle,Layer=Layer,DimensionType=DimensionType,SourceUnits=SourceUnits,MmPerUnit=MmPerUnit,ProjectedRawMm=ProjectedRawMm,EndpointDistanceMm=EndpointDistanceMm,StoredMeasurementMm=StoredMeasurementMm,LabelScale=LabelScale,Text=Text,LengthMicrometres=LengthMicrometres,Status=Status,Included=Included,Acknowledged=Acknowledged,ReviewReason=ReviewReason,Diagnostics=Array.AsReadOnly(Diagnostics.ToArray()),RawCodes=Array.AsReadOnly(RawCodes.ToArray())};
+        public WallRow Snapshot()=>new WallRow{Id=Id,Handle=Handle,Layer=Layer,DimensionType=DimensionType,SourceUnits=SourceUnits,MmPerUnit=MmPerUnit,ProjectedRawMm=ProjectedRawMm,EndpointDistanceMm=EndpointDistanceMm,StoredMeasurementMm=StoredMeasurementMm,LabelScale=LabelScale,Text=Text,LengthMicrometres=LengthMicrometres,Status=Status,Included=Included,Acknowledged=Acknowledged,ReviewReason=ReviewReason,Diagnostics=Array.AsReadOnly(Diagnostics.ToArray()),RawCodes=Array.AsReadOnly(RawCodes.ToArray()),Revit=Revit?.Copy()};
         public void Review(decimal measuredMm, bool include, string reason)
         {
             if(string.IsNullOrWhiteSpace(reason)) throw new ArgumentException("Record the measurement review reason.");
@@ -54,6 +55,8 @@ namespace EngineeringDashboard.Top50
 
     public sealed class ImportSnapshot
     {
+        public string SourceKind {get;internal set;}="DXF";
+        public RevitWallSnapshot RevitSource {get;internal set;}
         public string SourcePath { get; internal set; }
         public string SourceSha256 { get; internal set; }
         public int InsUnits { get; internal set; }
@@ -62,7 +65,7 @@ namespace EngineeringDashboard.Top50
         public IReadOnlyList<WallRow> RemovedWalls { get; internal set; }=Array.Empty<WallRow>();
         public IEnumerable<WallRow> AllWalls=>Walls.Concat(RemovedWalls);
         public IReadOnlyList<WallRow> Walls { get; internal set; }
-        public string MeasurementPolicy => "Original V1 angle-projection compatibility audit; nearest micrometre, half up. Aligned endpoint distance retained separately; conflicts require review.";
+        public string MeasurementPolicy => RevitSource!=null?"Longer straight forming face; original centre and both face lengths retained; unequal faces require review.":"Original V1 angle-projection compatibility audit; nearest micrometre, half up. Aligned endpoint distance retained separately; conflicts require review.";
     }
 
     public sealed class DxfImportOptions

@@ -53,10 +53,10 @@
     <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#806500" VerticalAlignment="Center"/>
    </Grid></Button>
    <Border x:Name="BetaSection" Style="{StaticResource Step}" Margin="0,16,0,12"><TextBlock Text="Beta" FontWeight="SemiBold"/></Border>
-   <Button x:Name="BtnDomeCalculator" Style="{StaticResource Choice}" AutomationProperties.Name="Dome calculator — Beta" Click="BtnDomeCalculator_Click"><Grid>
+   <Button x:Name="BtnDomeCalculator" IsEnabled="False" ToolTip="Dome Beta is currently locked." Style="{StaticResource Choice}" AutomationProperties.Name="Dome calculator — Beta — Locked" Click="BtnDomeCalculator_Click"><Grid>
     <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
     <Border Background="#FFF2BF" Width="48" Height="48"><Canvas Width="40" Height="40"><Path Data="M4,25 C4,3 36,3 36,25 M4,25 L36,25 M10,25 L10,35 M20,25 L20,35 M30,25 L30,35" Stroke="#647B8D" StrokeThickness="2"/><Path Data="M4,27 L36,27" Stroke="#9BA5AE" StrokeThickness="3"/></Canvas></Border>
-    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><WrapPanel><TextBlock Text="Dome" FontSize="17" FontWeight="SemiBold"/><Border Background="#F2CD24" BorderBrush="#D4AA00" BorderThickness="1" Padding="6,2" Margin="10,0,0,0"><TextBlock Text="BETA" FontSize="11" FontWeight="SemiBold" Foreground="#202A33"/></Border></WrapPanel><TextBlock Text="Formwork loads, recommended spacings and beam diagrams." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
+    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center"><WrapPanel><TextBlock Text="Dome" FontSize="17" FontWeight="SemiBold"/><Border Background="#F2CD24" BorderBrush="#D4AA00" BorderThickness="1" Padding="6,2" Margin="10,0,0,0"><TextBlock Text="BETA" FontSize="11" FontWeight="SemiBold" Foreground="#202A33"/></Border></WrapPanel><TextBlock Text="Currently locked · Beta." Style="{StaticResource Hint}" Margin="0,4,0,0"/></StackPanel>
     <TextBlock Grid.Column="2" Text="›" FontSize="26" Foreground="#202A33" VerticalAlignment="Center"/>
    </Grid></Button>
   </StackPanel></ScrollViewer>

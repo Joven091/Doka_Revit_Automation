@@ -28,10 +28,8 @@
       <RowDefinition/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
-    <StackPanel Margin="0,0,0,16">
-      <TextBlock Text="Beam calculator" FontSize="22" FontWeight="SemiBold"/>
-      <TextBlock Style="{StaticResource Hint}" Text="Set the geometry and supports, then review the calculated spacing."/>
-    </StackPanel>
+    <ContentControl x:Name="CalculatorToolbarHost"/>
+
     <Grid x:Name="CalculatorWorkspace" Grid.Row="1" Visibility="{Binding HasSelectedSupportSystem, Converter={StaticResource BoolToVis}}">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="1.2*"/>
@@ -487,11 +485,8 @@
           <Button Content="Close" MinWidth="80" Click="BtnClose_Click" Margin="0,0,10,0"/>
           <Border IsEnabled="{Binding HasSelectedSupportSystem}"><Button x:Name="ImportButton" IsEnabled="{Binding CanImport}" Style="{StaticResource PrimaryAction}" Content="Select helper lines" Click="BtnApplyToBeams_Click" ToolTip="Drag a selection window in Revit to select beam helper lines matching this beam width and depth. Press Esc to cancel."/></Border>
         </StackPanel>
-        <WrapPanel VerticalAlignment="Center">
-          <Button IsEnabled="{Binding HasSelectedSupportSystem}" Content="Save calculation" Click="SaveCalculation_Click" Margin="0,0,6,0"/>
-          <Button Content="Load calculation" Click="LoadCalculation_Click" Margin="0,0,6,0"/>
-          <Button IsEnabled="{Binding HasSelectedSupportSystem}" Content="Export report" Click="ExportReport_Click"/>
-        </WrapPanel>
+
+
       </DockPanel>
     </Border>
   </Grid></Border>
