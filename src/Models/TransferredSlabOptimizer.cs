@@ -310,6 +310,33 @@ namespace EngineeringDashboard
         {
             internal Geometry[] Fixed;
             private readonly ConcurrentDictionary<string,Lazy<Geometry[]>> items = new ConcurrentDictionary<string,Lazy<Geometry[]>>();
+            private sealed class EngineerEntry
+            {
+                internal int Limit;
+                internal Geometry[] All=Array.Empty<Geometry>();
+                internal readonly Dictionary<int,Geometry[]> Ranges=new Dictionary<int,Geometry[]>();
+            }
+            private readonly ConcurrentDictionary<string,EngineerEntry> engineer=new ConcurrentDictionary<string,EngineerEntry>();
+            internal Geometry[] GetEngineer(string key,int limit,Func<int,Geometry[]> build,out bool hit,out int reused)
+            {
+                if(Fixed!=null){hit=true;reused=Fixed.Length;return Fixed;}
+                var entry=engineer.GetOrAdd(key,_=>new EngineerEntry());
+                lock(entry)
+                {
+                    if(entry.Ranges.TryGetValue(limit,out var saved)){hit=true;reused=saved.Length;return saved;}
+                    if(limit<=entry.Limit)
+                    {
+                        hit=true;var subset=entry.All.Where(g=>g.Positions.Length<=limit).ToArray();
+                        entry.Ranges[limit]=subset;reused=subset.Length;return subset;
+                    }
+                    int previous=entry.Limit;
+                    var added=build(previous).Where(g=>g.Positions.Length>previous && g.Positions.Length<=limit).ToArray();
+                    reused=entry.All.Length;hit=false;
+                    var all=entry.All.Concat(added).ToArray();
+                    // Publish only a completed extension; cancellation leaves earlier ranges intact.
+                    entry.All=all;entry.Limit=limit;entry.Ranges[limit]=all;return all;
+                }
+            }
             internal Geometry[] Get(string key,Func<Geometry[]> build,out bool hit)
             {
                 if(Fixed!=null){hit=true;return Fixed;}
@@ -499,15 +526,15 @@ namespace EngineeringDashboard
         }
         internal sealed class UniformShapeKey : IEquatable<UniformShapeKey>
         {
-            private readonly double length,ei;private readonly int denominator,hash;private readonly double[] supports;
-            internal UniformShapeKey(double length,double[] supports,double ei,int denominator)
+            private readonly double length,ei,start,end;private readonly int denominator,hash;private readonly double[] supports;
+            internal UniformShapeKey(double length,double[] supports,double ei,int denominator,double start=0,double? end=null)
             {
-                this.length=length;this.supports=supports;this.ei=ei;this.denominator=denominator;
-                unchecked{int h=(length.GetHashCode()*31+ei.GetHashCode())*31+denominator;foreach(double x in supports)h=h*31+x.GetHashCode();hash=h;}
+                this.length=length;this.supports=supports;this.ei=ei;this.denominator=denominator;this.start=start;this.end=end??length;
+                unchecked{int h=(((length.GetHashCode()*31+ei.GetHashCode())*31+denominator)*31+this.start.GetHashCode())*31+this.end.GetHashCode();foreach(double x in supports)h=h*31+x.GetHashCode();hash=h;}
             }
             public override int GetHashCode()=>hash;
             public override bool Equals(object other)=>Equals(other as UniformShapeKey);
-            public bool Equals(UniformShapeKey other)=>other!=null && hash==other.hash && length==other.length && ei==other.ei && denominator==other.denominator && supports.SequenceEqual(other.supports);
+            public bool Equals(UniformShapeKey other)=>other!=null && hash==other.hash && length==other.length && ei==other.ei && start==other.start && end==other.end && denominator==other.denominator && supports.SequenceEqual(other.supports);
         }
         internal sealed class PrimaryCheck { public LoadedBeamAnalysis Analysis; public bool Passed; public BeamPointLoad[] Points; public BeamDistributedLoad[] Uniform; }
         internal sealed class PrimaryKey : IEquatable<PrimaryKey>
@@ -593,7 +620,7 @@ namespace EngineeringDashboard
             internal readonly ResponseCache<PreparedPrimaryKey,PreparedPrimaryCheck> PreparedPrimaryChecks=new ResponseCache<PreparedPrimaryKey,PreparedPrimaryCheck>(16384);
             internal readonly LoadedBeamAnalysis.MatrixCache Matrix=new LoadedBeamAnalysis.MatrixCache(2048,true);
             private readonly ResponseCache<PrimaryKey,PrimaryCheck> responses=new ResponseCache<PrimaryKey,PrimaryCheck>(4096);
-            internal readonly ResponseCache<UniformShapeKey,LoadedBeamAnalysis> UniformShapes=new ResponseCache<UniformShapeKey,LoadedBeamAnalysis>(2048);
+            internal readonly ResponseCache<UniformShapeKey,LoadedBeamAnalysis> UniformShapes=new ResponseCache<UniformShapeKey,LoadedBeamAnalysis>(8192);
             internal PrimaryCheck Get(PrimaryKey key)=>responses.TryGetValue(key,out var check) ? check : null;
             internal void Store(PrimaryKey key,PrimaryCheck check)=>responses.Store(key,check);
         }
@@ -757,18 +784,7 @@ namespace EngineeringDashboard
                         else input.Trace?.Increment(BeamSearchCounter.CrossCacheHits);
                         if (crosses.Length == 0) continue;
                         input.Trace?.Work("Transfer tower/support geometry");
-                        string geometryKey = (input.EngineerSearch ? "E"+input.EngineerStationLimit+":"+(input.EngineerPlan?.InitialLegs??0)+":" : "")+(rotated ? "R:" : "N:") + Values(cover);
-                        input.Trace?.CheckCancellation();
-                        Func<Geometry[]> buildGeometry=()=>
-                        {
-                            Geometry[] generated;
-                            using(input.Trace?.Measure(BeamSearchStage.Geometry))generated=Geometries(cover,rotated,input).ToArray();
-                            input.Trace?.Increment(BeamSearchCounter.GeometryBuilds);
-                            return generated;
-                        };
-                        bool hit=false;
-                        var geometries=geometryCache==null ? buildGeometry() : geometryCache.Get(geometryKey,buildGeometry,out hit);
-                        if(hit)input.Trace?.Increment(BeamSearchCounter.GeometryCacheHits);
+                        var geometries=SearchGeometries(input,geometryCache,cover,rotated);
                         if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
                         foreach (var geometry in geometries)
                         {
@@ -951,18 +967,7 @@ namespace EngineeringDashboard
                             if(crosses.Length==0)continue;
                         }
                         input.Trace?.Work("Transfer tower/support geometry");
-                        string geometryKey = (input.EngineerSearch ? "E"+input.EngineerStationLimit+":"+(input.EngineerPlan?.InitialLegs??0)+":" : "")+(rotated ? "R:" : "N:") + Values(cover);
-                        input.Trace?.CheckCancellation();
-                        Func<Geometry[]> buildGeometry=()=>
-                        {
-                            Geometry[] generated;
-                            using(input.Trace?.Measure(BeamSearchStage.Geometry))generated=Geometries(cover,rotated,input).ToArray();
-                            input.Trace?.Increment(BeamSearchCounter.GeometryBuilds);
-                            return generated;
-                        };
-                        bool hit=false;
-                        var geometries=geometryCache==null ? buildGeometry() : geometryCache.Get(geometryKey,buildGeometry,out hit);
-                        if(hit)input.Trace?.Increment(BeamSearchCounter.GeometryCacheHits);
+                        var geometries=SearchGeometries(input,geometryCache,cover,rotated);
                         if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
                         foreach (var geometry in geometries)
                         {
@@ -1185,7 +1190,31 @@ namespace EngineeringDashboard
             var covers=catalogue.Concat(custom).GroupBy(x=>string.Join(";",x)).Select(g=>g.First()).OrderBy(x=>x.Length).ThenBy(x=>x.Sum()).ToArray();
             input.Trace?.Increment(BeamSearchCounter.CoveragePlans,covers.Length);return covers;
         }
-        private static IEnumerable<Geometry> Geometries(double[] stock,bool rotated,TowerInput input)
+        internal static Geometry[] SearchGeometries(TowerInput input,GeometryCache cache,double[] cover,bool rotated)
+        {
+            input.Trace?.CheckCancellation();
+            Func<int,Geometry[]> build=after=>
+            {
+                Geometry[] generated;
+                using(input.Trace?.Measure(BeamSearchStage.Geometry))generated=Geometries(cover,rotated,input,after).ToArray();
+                input.Trace?.Increment(BeamSearchCounter.GeometryBuilds);return generated;
+            };
+            if(cache==null)return build(0);
+            bool hit;Geometry[] result;
+            if(input.EngineerSearch)
+            {
+                // Generator settings stay exact; loads and response criteria do not
+                // affect these stock/support patterns. Work ordering later sorts by
+                // station tier, preserving the original order within each tier.
+                string key=System.FormattableString.Invariant($"{input.EngineerPlan?.InitialLegs??0}|{input.EngineerPlan?.HasCrossings??false}|{input.StockEndSetbackMm:R}|{input.Exclude600Standalone}|{input.TransferredSlab?.IsNetwork??false}|{input.PrimaryMaterial}|")
+                    +Values(input.PrimaryStockLengthsMm)+"|"+(rotated ? "R:" : "N:")+Values(cover);
+                result=cache.GetEngineer(key,input.EngineerStationLimit,build,out hit,out int reused);
+                if(reused>0)input.Trace?.Increment(BeamSearchCounter.ExtendedGeometryPatternsReused,reused);
+            }
+            else result=cache.Get((rotated ? "R:" : "N:")+Values(cover),()=>build(0),out hit);
+            if(hit)input.Trace?.Increment(BeamSearchCounter.GeometryCacheHits);return result;
+        }
+        private static IEnumerable<Geometry> Geometries(double[] stock,bool rotated,TowerInput input,int afterStations=0)
         {
             var states=new List<Geometry> {new Geometry {Stock=new TowerStockPiece[0],Positions=new double[0],Joined=new bool[0]}};
             foreach (double length in stock)
@@ -1222,8 +1251,8 @@ namespace EngineeringDashboard
             }
             // Keep fully mirrored regular groups even when the inset-based beam-search cap drops them.
             var symmetric=SymmetricGeometries(stock,rotated,input).GroupBy(g=>g.Positions.Length).SelectMany(g=>g.Take(24));
-            if(input.EngineerSearch)states=(rotated ? Enumerable.Empty<Geometry>() : EngineerTowerSearch.StockRunGeometries(stock,input)).Concat(EngineerTowerSearch.Geometries(stock,rotated,input)).Concat(states.Where(g=>g.Positions.Length<=input.EngineerStationLimit)).ToList();
-            states=states.Concat(symmetric).GroupBy(g=>new GeometryKey(g.Positions,g.Joined)).Select(g=>g.First()).ToList();
+            if(input.EngineerSearch)states=(rotated ? Enumerable.Empty<Geometry>() : EngineerTowerSearch.StockRunGeometries(stock,input,afterStations)).Concat(EngineerTowerSearch.Geometries(stock,rotated,input,afterStations)).Concat(states.Where(g=>g.Positions.Length<=input.EngineerStationLimit && g.Positions.Length>afterStations)).ToList();
+            states=states.Concat(symmetric).Where(g=>g.Positions.Length>afterStations).GroupBy(g=>new GeometryKey(g.Positions,g.Joined)).Select(g=>g.First()).ToList();
             if(input.TransferredSlab?.IsNetwork==true)states=states.SelectMany(g=>SiteGeometries(g,input.StockEndSetbackMm)).GroupBy(g=>new GeometryKey(g.Positions,g.Joined)).Select(g=>g.First()).ToList();
             foreach(var geometry in states)geometry.MemberSupports=geometry.Stock.Select(s=>geometry.Positions.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(x=>x-s.StartMm).ToArray()).ToArray();
             return states;
@@ -1524,13 +1553,13 @@ namespace EngineeringDashboard
             {
             bool reject=input.StagePrimaryChecks && !input.Primary.IsWS10 && !input.DeferCrossingChecks;
             LoadedBeamAnalysis analysis=null;long before=matrices?.Hits??0;
-            if(input.OptimizePrimaryResponses && shared!=null && points.Length==0 && uniform.Length==1 && uniform[0].StartMm==0 && uniform[0].EndMm==length && uniform[0].KnPerM>=0)
+            if(input.OptimizePrimaryResponses && shared!=null && points.Length==0 && uniform.Length==1 && uniform[0].StartMm>=0 && uniform[0].EndMm<=length && uniform[0].KnPerM>=0)
             {
-                var shape=new UniformShapeKey(length,supports,input.Primary.EI,input.DeflectionDenominator);
+                var shape=new UniformShapeKey(length,supports,input.Primary.EI,input.DeflectionDenominator,uniform[0].StartMm,uniform[0].EndMm);
                 if(!shared.UniformShapes.TryGetValue(shape,out var unit))
                 {
                     input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
-                    unit=LoadedBeamAnalysis.AnalyzeCombinedCached(length,supports,new[] {new BeamDistributedLoad {StartMm=0,EndMm=length,KnPerM=1}},points,input.Primary.EI,input.DeflectionDenominator,matrices);
+                    unit=LoadedBeamAnalysis.AnalyzeCombinedCached(length,supports,new[] {new BeamDistributedLoad {StartMm=uniform[0].StartMm,EndMm=uniform[0].EndMm,KnPerM=1}},points,input.Primary.EI,input.DeflectionDenominator,matrices);
                     shared.UniformShapes.Store(shape,unit);
                 }
                 else input.Trace?.Increment(BeamSearchCounter.UniformPrimaryCacheHits);

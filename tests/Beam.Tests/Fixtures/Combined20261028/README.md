@@ -8,3 +8,7 @@ reproduction. These are regression inputs, not site-approved designs.
 Optional `--seconds N` cancels a benchmark explicitly; it does not change production
 search limits. `--profile` enables sampled timings; `--workers N` controls benchmark
 parallelism. `--first` is a diagnostic feasibility comparison only.
+
+`--area-workers 2 --workers 4` benchmarks two areas with two numerical workers
+each. This is an experiment in the test harness; production keeps its current
+area scheduling until a reproducible benefit and identical designs are verified.

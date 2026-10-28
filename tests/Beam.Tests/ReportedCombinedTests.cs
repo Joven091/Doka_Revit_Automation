@@ -50,13 +50,29 @@ internal static class ReportedCombinedTests
         Boundaries();if(args.Contains("--combined-boundaries"))return;
         var areas=Option(args,"--areas","1,2,3,4,5").Split(',').Select(int.Parse).ToArray();
         int seconds=int.Parse(Option(args,"--seconds","0"));string output=Option(args,"--output","artifacts/combined-reported");Directory.CreateDirectory(output);
-        double total=0;
-        foreach(int area in areas)
+        int workers=int.Parse(Option(args,"--workers","4"));
+        int areaWorkers=Math.Max(1,Math.Min(Math.Min(workers,areas.Length),int.Parse(Option(args,"--area-workers","1"))));
+        int perAreaWorkers=Math.Max(1,workers/areaWorkers);
+        var wall=Stopwatch.StartNew();
+        if(areaWorkers==1)foreach(int area in areas)SolveArea(args,area,seconds,output,perAreaWorkers);
+        else
+        {
+            var pending=new System.Collections.Concurrent.ConcurrentQueue<int>(areas);
+            // Coordinators only wait/report; keep them outside the numerical
+            // thread pool and start the requested area order without partitioning.
+            var tasks=Enumerable.Range(0,areaWorkers).Select(_=>Task.Factory.StartNew(()=>
+            {while(pending.TryDequeue(out int area))SolveArea(args,area,seconds,output,perAreaWorkers);},CancellationToken.None,TaskCreationOptions.LongRunning,TaskScheduler.Default)).ToArray();
+            Task.WaitAll(tasks);
+        }
+        Console.WriteLine("TOTAL seconds="+wall.Elapsed.TotalSeconds.ToString("0.000",CultureInfo.InvariantCulture)+" areaWorkers="+areaWorkers+" workersPerArea="+perAreaWorkers);
+    }
+    static void SolveArea(string[] args,int area,int seconds,string output,int workers)
+    {
         using(var cancel=new CancellationTokenSource())
         {
             if(seconds>0)cancel.CancelAfter(TimeSpan.FromSeconds(seconds));
             var input=Input(area);input.Trace=new BeamSearchTrace("Detached reported area "+area,cancel.Token){EnableHotProfiling=args.Contains("--profile")};
-            input.NetworkSearchWorkers=int.Parse(Option(args,"--workers","4"));
+            input.NetworkSearchWorkers=workers;
             if(args.Contains("--first"))input.FirstCompleteNetworkOnly=true;
             var timer=Stopwatch.StartNew();TransferNetworkResult result=null;Exception failure=null;
             try
@@ -69,10 +85,8 @@ internal static class ReportedCombinedTests
                 Console.WriteLine("RESULT area="+area+" seconds="+timer.Elapsed.TotalSeconds.ToString("0.000",CultureInfo.InvariantCulture)+" legs="+result.LegCount+" H20="+result.H20Count+" separate="+result.SeparateSlabCount+" maxLeg="+result.Beams.Max(b=>b.MaxLegKn).ToString("0.###",CultureInfo.InvariantCulture));
             }
             catch(Exception e){failure=e;input.Trace.Complete(e is OperationCanceledException?"Cancelled benchmark":"Failed",e.ToString());Console.WriteLine("RESULT area="+area+" seconds="+timer.Elapsed.TotalSeconds.ToString("0.000",CultureInfo.InvariantCulture)+" failure="+e.GetType().Name+" "+e.Message);}
-            total+=timer.Elapsed.TotalSeconds;
             File.WriteAllText(Path.Combine(output,"area"+area+".txt"),input.Trace.Snapshot()+"\n"+(result==null?(failure as TowerOptimizationException)?.Details:result.Summary+"\n"+result.Schedule+"\n"+ControlledPerformanceTests.Fingerprint(result)));
             if(failure!=null)throw failure;
         }
-        Console.WriteLine("TOTAL seconds="+total.ToString("0.000",CultureInfo.InvariantCulture));
     }
 }

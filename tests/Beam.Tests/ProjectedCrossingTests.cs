@@ -16,13 +16,14 @@ internal static class ProjectedCrossingTests
     }
     internal static void Run()
     {
-        int passed=0,failed=0,checks=0;
+        int passed=0,failed=0,checks=0,finerRescues=0;
         foreach(var material in new[] {PrimaryBeamMaterial.DoubleH20,PrimaryBeamMaterial.WS10})
         foreach(bool custom in new[] {false,true})
         foreach(double width in new[] {1000.0,1500,1524,2000})
-        foreach(int example in Enumerable.Range(0,4))
+        foreach(int example in Enumerable.Range(0,5))
         {
-            var r=PrimaryBearingTests.Fixture();r.Input.Bays[0].WidthMm=example==0 ? 3950 : 4203.3922668457035;r.BeamCentresMm[1]=r.Input.Beams[0].WidthMm/2+r.Input.Bays[0].WidthMm+r.Input.Beams[1].WidthMm/2;
+            var r=PrimaryBearingTests.Fixture();r.Input.Bays[0].WidthMm=example==4 ? 2900 : example==0 ? 3950 : 4203.3922668457035;r.BeamCentresMm[1]=r.Input.Beams[0].WidthMm/2+r.Input.Bays[0].WidthMm+r.Input.Beams[1].WidthMm/2;
+            if(example==4){r.Input.CrossingBeams[0].DepthMm=2400;r.Input.CrossingBeams[0].BottomElevationMm=-2400;}
             var input=new TowerInput {EngineerSearch=true,FullLoadingOnly=true,PrimaryMaterial=material,LengthMm=6900,StockEndSetbackMm=150,MaximumConcreteEndOverhangMm=150,
                 DeflectionDenominator=270,LegCapacityKn=example==1 ? 5 : 70,IgnoreUplift=example%2==0,AllowCustomH20Lengths=custom,CustomH20Scope=CustomH20LengthScope.BeamSupports};
             double offset=example==2 ? -75 : 0,shift=example==3 ? 400 : 0;
@@ -33,12 +34,14 @@ internal static class ProjectedCrossingTests
                 r.Bays[0]=new UpperTransferPlan {StockLengthMm=3300,EdgeMm=(r.Input.Bays[0].WidthMm-3300)/2,NearFootMm=1100,FarFootMm=1100};r.SlabCoveredLengthMm=6900;
             }
             var work=new CrossBeamSupportOptimizer.ProjectedJunctionWork(obstacles);
+            bool coarserFailed=false;
             foreach(double spacing in new[] {350.0,305,244})
             {
             input.ReuseSearchWork=false;var reference=Solve(input,r,width,offset,shift,obstacles,spacing,work);
             input.ReuseSearchWork=true;var actual=Solve(input,r,width,offset,shift,obstacles,spacing,work);
             if((reference==null)!=(actual==null))throw new Exception("Projected crossing feasibility changed: "+material+" "+custom+" "+width+" "+example);
-            if(actual==null){failed++;continue;}
+            if(actual==null){failed++;coarserFailed=true;continue;}
+            if(coarserFailed)finerRescues++;
             passed++;var a=Demands(reference);var b=Demands(actual);
             if(a.Length!=b.Length || !a.Zip(b,(x,y)=>Math.Abs(x-y)<=1e-12*Math.Max(1,Math.Abs(x))).All(x=>x))throw new Exception("Projected crossing unrounded member demands changed");
             if(!reference.SecondaryStationsMm.SequenceEqual(actual.SecondaryStationsMm) || !reference.Towers.PositionsMm.SequenceEqual(actual.Towers.PositionsMm))throw new Exception("Projected crossing selected geometry changed");
@@ -51,6 +54,7 @@ internal static class ProjectedCrossingTests
             }
         }
         if(passed==0 || failed==0)throw new Exception("Projected parity cases did not exercise both passing and rejected designs: "+passed+" / "+failed);
-        Console.WriteLine("PASS projected crossing optimized/reference parity: "+passed+" passing, "+failed+" rejected, "+checks+" checked members; both materials and catalogue/custom scopes");
+        if(finerRescues==0)throw new Exception("Projected cases did not test a finer pitch repairing a row-capacity failure");
+        Console.WriteLine("PASS projected crossing optimized/reference parity: "+passed+" passing, "+failed+" rejected, "+checks+" checked members, "+finerRescues+" finer-pitch recoveries; both materials and catalogue/custom scopes");
     }
 }

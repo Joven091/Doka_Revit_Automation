@@ -14,7 +14,7 @@ Original project identity, element IDs and global coordinates are omitted.
 All searches finish their existing bounded traversal, without a production time
 limit or a first-result cutoff.
 
-| Area | Early corrected replay, seconds | Final replay, seconds |
+| Area | Early corrected replay, seconds | First optimization pass, seconds |
 | --- | ---: | ---: |
 | 1 | 98.920 | 36.003 |
 | 2 | 55.811 | 23.748 |
@@ -76,3 +76,43 @@ No production deadline, reduced candidate cap, capacity relaxation, stock-policy
 change or change to the two-zone primary load model is introduced. The solver's
 existing bounded search is not a global optimality proof. No installer or company
 publication is part of this performance change.
+
+
+## Second optimization pass
+
+The next pass retains complete failed crossing poses only when all permitted
+secondary reactions have failed their primary, or all primary starts clash
+independently of secondary pitch. Row-dependent failures do not establish that
+proof. Immutable secondary choices are prepared once per junction/width/offset.
+
+The geometry cache now extends completed station tiers instead of regenerating
+their patterns. It preserves within-tier order, keeps generation constraints in
+the key and publishes an extension only after completion. Cancelled builds leave
+the completed prefix usable. Reference tests compare exact patterns, stock/support
+mapping and ordering for ascending, descending and concurrent station limits.
+
+Complete receiver checks persist across the same calculation's spacing and
+fallback passes. An engineer-search winner checked under a wider leg ceiling can
+be reused under a tighter ceiling only when it still fits. Width alternatives
+outside that ceiling are omitted; negative results retain exact-ceiling identity.
+Changed load, geometry, stock permissions or criteria still change the local key.
+
+Single-band primary response reuse now includes exact UDL interval endpoints.
+A unit response can be scaled for another positive intensity at unchanged
+geometry; the existing near-capacity fallback retains original arithmetic.
+The response cache has a bounded 8,192-entry capacity, not a design-space limit.
+
+The second-pass local five-area replay took 40.294 seconds with all complete
+fingerprints identical to the first pass. A two-area experiment sharing four
+numerical workers took 39.196 seconds, a marginal difference. Production area
+scheduling remains unchanged. The Windows workflow uses the same harness against
+frozen first-pass commit `1a4582073eaec93b19537b9b37fc93c6bae94739` and the
+candidate on one runner in baseline/candidate/candidate/baseline order. A separate
+bounded-worker experiment follows. These timings and all per-area evidence are
+retained as workflow artifacts; the 30-second target is not claimed from local
+measurements.
+
+Additional checks cover 240 optimized/reference crossing cases (including eight
+finer-pitch recoveries after a coarse-pitch capacity failure), 160 complete
+single-band response/diagram comparisons with exact acceptance-boundary fallback,
+receiver-ceiling reuse, and geometry extension/cancellation/concurrent limits.
