@@ -26,15 +26,20 @@ TOP50 PLANNER — STANDALONE TESTER $version
 2. Open Top50Planner.exe. Keep all supplied DLLs and the .config file beside it.
 3. Choose File > Open project for an existing .top50 file. Or use Import > Import DXF
    to read Wall_Length dimensions, or Add manual wall for reviewed dimensions.
-4. Review Settings, then choose Optimize. Fewer panels take priority.
-5. Use Reports to export Excel. Use Tools > Diagnose to copy/save a report for review.
+4. Review Settings, then choose Optimize. Search is always thorough; fewer panels take priority.
+5. Use Undo / Redo / Delete for edits (Ctrl+Z / Ctrl+Y / Delete).
+6. Use the Casting groups dropdown to inspect arrangements.
+7. Use Tools > Diagnose to copy/save a report for review. Excel export is unavailable.
+
+Panel Qty covers BOTH wall faces. Offered length is LM PER FACE.
+Connector Qty covers ONE LEVEL on BOTH faces, reused between casting groups.
 
 No installer, Revit or AutoCAD is needed. This tester does not register an add-in
 or update the installed dashboard. It uses the same planner source as PR #172.
 Windows x64 and .NET Framework 4.8 are required. The native solver uses the
 Microsoft Visual C++ 2015–2022 x64 runtime, normally already present with Revit.
 
-Projects: older .top50 files can be opened. New saves use version 3 and require
+Projects: older .top50 files can be opened. New saves use version 4 and require
 the updated planner. Save a separate test copy to retain your earlier file.
 The tester starts with empty input; no sample proposal is supplied as a result.
 Unexpected startup error logs: %LOCALAPPDATA%\Doka\Top50StandaloneTester\Logs

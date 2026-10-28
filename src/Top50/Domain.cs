@@ -59,6 +59,8 @@ namespace EngineeringDashboard.Top50
         public int InsUnits { get; internal set; }
         public decimal? UnitOverride {get;internal set;}
         public string UnitOverrideReason {get;internal set;}="";
+        public IReadOnlyList<WallRow> RemovedWalls { get; internal set; }=Array.Empty<WallRow>();
+        public IEnumerable<WallRow> AllWalls=>Walls.Concat(RemovedWalls);
         public IReadOnlyList<WallRow> Walls { get; internal set; }
         public string MeasurementPolicy => "Original V1 angle-projection compatibility audit; nearest micrometre, half up. Aligned endpoint distance retained separately; conflicts require review.";
     }

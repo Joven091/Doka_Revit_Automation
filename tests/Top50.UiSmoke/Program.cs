@@ -27,19 +27,13 @@ internal static class Program
         string project=Path.Combine(output,"roundtrip.top50");vm.Save(project);
         var loaded=new Top50ViewModel();loaded.Open(project,Path.Combine(output,"source-cache"));
         Check(loaded.Input.Walls.Count==65&&loaded.Selected.Groups.Count==11&&loaded.Selected.StockMicrometres==96250000,"project source, selected stock and validated allocation round trip");
-        string workbook=Path.Combine(output,"selected.xlsx");loaded.Export(workbook);
-        using(var document=SpreadsheetDocument.Open(workbook,false))
-        {
-            Check(document.WorkbookPart.Workbook.Descendants<DocumentFormat.OpenXml.Spreadsheet.Sheet>().Count()==9,"nine native workbook sheets");
-            var issues=new OpenXmlValidator().Validate(document).ToArray();Check(issues.Length==0,"Open XML workbook schema validation: "+string.Join("; ",issues.Select(i=>i.Description)));
-            Check(document.WorkbookPart.WorksheetParts.Any(p=>p.Worksheet.InnerText.Contains("S3")),"selected alternative represented in workbook");
-        }
+        bool exportDisabled=false;try{loaded.Export(Path.Combine(output,"selected.xlsx"));}catch(NotSupportedException){exportDisabled=true;}Check(exportDisabled,"Excel export is disabled in the planner");
         loaded.SelectedGroupIndex=2;var window=new Top50Window(loaded);var root=(FrameworkElement)window.Content;
-        string[] names={"import","settings","results","casting-groups","reports"};
+        string[] names={"import","settings","results","casting-groups"};
         foreach(var scale in new[]{1d,1.25,1.5})
         {
             int width=scale==1?2536:1600,height=scale==1?1350:1000;
-            for(int page=0;page<5;page++)
+            for(int page=0;page<4;page++)
             {
                 window.ShowPage(page);root.Width=width/scale;root.Height=height/scale;root.Measure(new Size(width/scale,height/scale));root.Arrange(new Rect(0,0,width/scale,height/scale));root.UpdateLayout();
                 Check(!Find<TextBlock>(root).Any(t=>t.Text==Top50Window.Disclaimer),"no persistent review footer "+names[page]+" at "+(scale*100)+"%");
@@ -54,9 +48,9 @@ internal static class Program
         root.ClearValue(FrameworkElement.WidthProperty);root.ClearValue(FrameworkElement.HeightProperty);
         window.Show();Pump();SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(window.Dispatcher));
         Check(new System.Windows.Interop.WindowInteropHelper(window).Handle!=IntPtr.Zero,"native WPF HWND created");
-        for(int cycle=0;cycle<3;cycle++)for(int page=0;page<5;page++)
+        for(int cycle=0;cycle<3;cycle++)for(int page=0;page<4;page++)
         {
-            var nav=Find<Button>(root).Single(b=>(b.Content as string)?.StartsWith((page+1).ToString("00")+"   ")==true);
+            var nav=Find<Button>(root).Single(b=>System.Windows.Automation.AutomationProperties.GetAutomationId(b)=="Top50Page"+page);
             nav.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();Check(window.CurrentPage==page,"routed navigation cycle "+cycle+" page "+page);
         }
         foreach(var size in new[]{new Size(1000,680),new Size(1500,960),new Size(1900,1100)})

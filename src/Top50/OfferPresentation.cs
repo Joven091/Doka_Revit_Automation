@@ -28,57 +28,38 @@ namespace EngineeringDashboard.Top50
         }
         public int RankNumber(Proposal p)=>p.Rank>0?p.Rank:proposals.TakeWhile(other=>other.Id!=p.Id).Count()+1;
         public string Rank(Proposal p)=>Ordinal(RankNumber(p));
-        public string Reason(Proposal p)
+        public string Reason(Proposal proposal)
         {
-            if(stale)return "Inputs changed; optimize to refresh this rank";
-            var first=proposals.OrderBy(RankNumber).First();
-            if(p.Id==first.Id)
-            {
-                if(proposals.Count==1)return "Only lowest-panel-count option found";
-                var next=proposals.OrderBy(RankNumber).Skip(1).First();var leader=metrics[p.Id];var runnerUp=metrics[next.Id];string reference=Rank(next);
-                if(settings.Preset==(int)PlanningPreset.EconomicalOffer)
-                {
-                    if(leader.StockMetres<runnerUp.StockMetres)return Compare("Less stock",leader.StockMetres,runnerUp.StockMetres," m",reference);
-                    if(leader.Types<runnerUp.Types)return Compare("Fewer panel sizes",leader.Types,runnerUp.Types,"",reference);
-                    if(leader.Groups<runnerUp.Groups)return Compare("Fewer casting groups",leader.Groups,runnerUp.Groups,"",reference);
-                    return "Same stock, panel sizes and castings; fixed tie order";
-                }
-                if(settings.Preset==(int)PlanningPreset.FastestConstruction&&leader.Groups<runnerUp.Groups)return Compare("Fewer casting groups",leader.Groups,runnerUp.Groups,"",reference);
-                return "Best balance · "+CompareMeasures(leader,runnerUp,reference,true);
-            }
-            if(!p.Pareto&&first.Pareto)
-            {
-                var dominated=metrics[p.Id];var better=proposals.OrderBy(RankNumber).FirstOrDefault(other=>other.Id!=p.Id&&Enumerable.Range(0,8).All(i=>metrics[other.Id].Costs[i]<=dominated.Costs[i])&&Enumerable.Range(0,8).Any(i=>metrics[other.Id].Costs[i]<dominated.Costs[i]));
-                if(better!=null)return "Outperformed by "+Rank(better)+" · "+CompareMeasures(dominated,metrics[better.Id],Rank(better),false);
-                return "Another offer matches or improves every ranking measure";
-            }
-            var current=metrics[p.Id];var best=metrics[first.Id];
+            if(stale)return "The inputs have changed. Optimize again to update this result.";
+            if(proposals.Count==1)return "Only one valid option was found.";
+            var first=proposals.OrderBy(RankNumber).First();bool leader=proposal.Id==first.Id;
+            var other=leader?proposals.OrderBy(RankNumber).Skip(1).First():first;
+            var current=metrics[proposal.Id];var reference=metrics[other.Id];string rank=Rank(other)+" option";
             if(settings.Preset==(int)PlanningPreset.EconomicalOffer)
             {
-                if(current.StockMetres>best.StockMetres)return Compare("More stock",current.StockMetres,best.StockMetres," m");
-                if(current.Types>best.Types)return Compare("More panel sizes",current.Types,best.Types);
-                if(current.Groups>best.Groups)return Compare("More casting groups",current.Groups,best.Groups);
-                return "Same stock, panel sizes and castings; fixed tie order";
+                if(current.StockMetres!=reference.StockMetres)return LengthComparison(current.StockMetres,reference.StockMetres,rank);
+                if(current.Types!=reference.Types)return CountComparison("panel length",current.Types,reference.Types,rank);
+                if(current.Groups!=reference.Groups)return CountComparison("casting group",current.Groups,reference.Groups,rank);
             }
-            if(settings.Preset==(int)PlanningPreset.FastestConstruction&&current.Groups>best.Groups)return Compare("More casting groups",current.Groups,best.Groups);
-            return CompareMeasures(current,best,"1st",false);
-        }
-        private string CompareMeasures(RankingMetrics current,RankingMetrics other,string reference,bool better)
-        {
-            if(current.BalancedScore==other.BalancedScore)return "Equal overall balance; fixed tie order";
-            int driver=Enumerable.Range(1,7).OrderByDescending(i=>(better?other.Costs[i]-current.Costs[i]:current.Costs[i]-other.Costs[i])/scales.Values[i]).First();
+            if(settings.Preset==(int)PlanningPreset.FastestConstruction&&current.Groups!=reference.Groups)return CountComparison("casting group",current.Groups,reference.Groups,rank);
+            if(current.BalancedScore==reference.BalancedScore)return "This option has the same overall score as the "+rank+".";
+            int driver=Enumerable.Range(1,7).OrderByDescending(i=>(leader?reference.Costs[i]-current.Costs[i]:current.Costs[i]-reference.Costs[i])/scales.Values[i]).First();
             switch(driver)
             {
-                case 1:return Compare(better?"Less stock":"More stock",current.StockMetres,other.StockMetres," m",reference);
-                case 2:return Compare(better?"Fewer panel sizes":"More panel sizes",current.Types,other.Types,"",reference);
-                case 3:return Compare(better?"Fewer casting groups":"More casting groups",current.Groups,other.Groups,"",reference);
-                case 4:return Compare(better?"Higher average panel use":"Lower average panel use",(1-current.MeanIdleFraction)*100,(1-other.MeanIdleFraction)*100,"%",reference);
-                case 5:return Compare(better?"Fewer filler joints":"More filler joints",current.FillerLocations,other.FillerLocations,"",reference);
-                case 6:return Compare(better?"Higher minimum panel use":"Lower minimum panel use",(1-current.WorstIdleFraction)*100,(1-other.WorstIdleFraction)*100,"%",reference);
-                default:return Compare(better?"Closer to target stock length":"Further from target stock length",current.AbsoluteTargetDeviation,other.AbsoluteTargetDeviation," m",reference);
+                case 1:return LengthComparison(current.StockMetres,reference.StockMetres,rank);
+                case 2:return CountComparison("panel length",current.Types,reference.Types,rank);
+                case 3:return CountComparison("casting group",current.Groups,reference.Groups,rank);
+                case 4:return "This option leaves an average of "+Number(current.StockMetres*current.MeanIdleFraction)+" LM unused per casting group, compared with "+Number(reference.StockMetres*reference.MeanIdleFraction)+" LM in the "+rank+" (per face).";
+                case 5:return "This option uses "+(current.FillerLocations*Top50PlannerPolicy.WallFaces)+" filler joints across both faces, compared with "+(reference.FillerLocations*Top50PlannerPolicy.WallFaces)+" in the "+rank+".";
+                case 6:
+                    decimal unused=current.StockMetres*current.WorstIdleFraction,otherUnused=reference.StockMetres*reference.WorstIdleFraction;
+                    return (unused<otherUnused?"Less":"More")+" equipment is left unused in the least busy casting group: "+Number(unused)+" LM, compared with "+Number(otherUnused)+" LM in the "+rank+" (per face).";
+                default:return "The offered length differs from the target by "+Number(current.AbsoluteTargetDeviation)+" LM per face, compared with "+Number(reference.AbsoluteTargetDeviation)+" LM in the "+rank+".";
             }
         }
-        private static string Compare(string label,decimal value,decimal best,string unit="",string reference="1st")=>label+": "+value.ToString("0.##",CultureInfo.InvariantCulture)+unit+" ("+reference+": "+best.ToString("0.##",CultureInfo.InvariantCulture)+unit+")";
+        private static string Number(decimal value)=>value.ToString("0.##",CultureInfo.InvariantCulture);
+        private static string LengthComparison(decimal value,decimal other,string rank)=>"This option needs "+Number(value)+" LM per face, compared with "+Number(other)+" LM in the "+rank+".";
+        private static string CountComparison(string item,int value,int other,string rank)=>"This option "+(item=="casting group"?"needs ":"uses ")+value+" "+item+(value==1?"":"s")+", compared with "+other+" in the "+rank+".";
         public static string CastingGroup(int index)=>"C-"+(index+1).ToString("00",CultureInfo.InvariantCulture);
         public static string Ordinal(int number)
         {

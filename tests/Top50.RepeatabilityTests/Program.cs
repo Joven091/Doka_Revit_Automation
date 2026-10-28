@@ -36,7 +36,7 @@ internal static class Program
         {
             string output=Path.GetFullPath(args[0]);Directory.CreateDirectory(output);
             if(args.Contains("--signature")){Distribution(output,args.Contains("--reverse"));return 0;}
-            Ranking();FixedWork();Projects(output);AutomaticPanelCounts(output);
+            Ranking();FixedWork();Projects(output);AutomaticPanelCounts(output);EditingAndPolicy(output);
             File.WriteAllText(Path.Combine(output,"checks.txt"),checks+" quantity/work/project checks passed. Fresh-process native allocation checks run separately.");
             Console.WriteLine(checks+" quantity/work/project checks passed.");return 0;
         }
@@ -105,7 +105,7 @@ internal static class Program
         vm.Settings.CatalogMm=new[]{5000};vm.Settings.LongestCount=2;vm.Settings.SearchEffort=2;
         vm.OptimizeAsync().GetAwaiter().GetResult();Check(vm.Selected!=null&&vm.Selected.PanelCount==2,"fresh native search satisfies simultaneous longest walls with two panels");
         var path=Path.Combine(output,"current.top50");vm.Save(path);var document=NativeProjectStore.Load(path);
-        Check(document.Version==3&&document.SearchPolicyVersion==2&&document.SearchEffort==2,"V3 project persists repeatable effort and automatic-count search policy");
+        Check(document.Version==4&&document.SearchPolicyVersion==3&&document.SearchEffort==Top50PlannerPolicy.ThoroughSearchEffort,"V4 project persists the fixed thorough search policy");
         var reopened=new Top50ViewModel();reopened.Open(path,Path.Combine(output,"cache"));
         Check(!reopened.Dirty&&Top50Order.Stock(reopened.Selected.Stock)==Top50Order.Stock(vm.Selected.Stock)&&reopened.Selected.PanelCount==2,"current project reopens without changing the chosen inventory or dirty state");
         var before=Signature(new SearchRun{Proposals=vm.Proposals});reopened.OptimizeAsync().GetAwaiter().GetResult();
@@ -120,7 +120,7 @@ internal static class Program
         Check(bytes.SequenceEqual(File.ReadAllBytes(legacy)),"opening a legacy project leaves its original file intact");
         Check(reopened.Status.Contains("current repeatable search"),"legacy allocations are distinguished from a fresh repeatable solve");
         var migrated=Path.Combine(output,"migrated.top50");reopened.Save(migrated);
-        Check(NativeProjectStore.Load(migrated).Version==3,"saving migration writes V3 so old readers reject automatic-count projects");
+        Check(NativeProjectStore.Load(migrated).Version==4,"saving migration writes V4 so old readers reject changed planning policies");
         var invalid=new Proposal("too-many-castings",low.Stock.ToDictionary(p=>p.Key,p=>p.Value),low.Groups);
         Check(Top50Validation.Validate(vm.Input.Walls,invalid,new SearchLimits(1,350,1,2,2,50)).Contains("Casting group limit exceeded."),"a lower panel count cannot bypass the casting-group limit");
     }
@@ -157,11 +157,38 @@ internal static class Program
         var vm=new Top50ViewModel();vm.AddManual(6500,"Automatic component regression");vm.Settings.CatalogMm=new[]{500};vm.Settings.LongestCount=1;vm.Settings.SearchEffort=3;vm.OptimizeAsync().GetAwaiter().GetResult();
         Check(vm.Selected.PanelCount==13&&vm.Selected.Groups.Single().Walls.Single().Pattern.PanelsMm.Count==13,"shipping search and native allocation find the formerly blocked thirteen-panel wall");
         string path=Path.Combine(output,"automatic-count.top50");vm.Save(path);
-        string json=File.ReadAllText(path);Check(!json.Contains("MaxComponents")&&NativeProjectStore.Load(path).Version==3,"new projects omit the removed component limit and identify V3 semantics");
+        string json=File.ReadAllText(path);Check(!json.Contains("MaxComponents")&&NativeProjectStore.Load(path).Version==4,"new projects omit the removed component limit and identify V4 semantics");
         var legacy=NativeProjectStore.Load(path);legacy.Version=2;string legacyPath=Path.Combine(output,"legacy-component-limit.top50");NativeProjectStore.Save(legacy,legacyPath);
         json=File.ReadAllText(legacyPath);File.WriteAllText(legacyPath,"{\"MaxComponents\":1,"+json.Substring(1));var original=File.ReadAllBytes(legacyPath);
         var restored=new Top50ViewModel();restored.Open(legacyPath,Path.Combine(output,"automatic-cache"));restored.OptimizeAsync().GetAwaiter().GetResult();
         Check(restored.Selected.PanelCount==13&&original.SequenceEqual(File.ReadAllBytes(legacyPath)),"old project component limits are ignored without overwriting the original file");
+    }
+    private static void EditingAndPolicy(string output)
+    {
+        var vm=new Top50ViewModel();vm.AddManual(5000,"First wall");string first=vm.Input.Walls[0].Id;vm.AddManual(5000,"Second wall");string second=vm.Input.Walls[1].Id;
+        vm.Undo();Check(vm.Input.Walls.Count==1&&vm.CanRedo,"Undo reverses Add manual wall");vm.Redo();Check(vm.Input.Walls.Count==2,"Redo restores the same manual wall identity");
+        vm.ReviewWall(first,6000,true,"Corrected dimension");vm.Undo();Check(vm.Input.Walls.Single(w=>w.Id==first).LengthMm==5000,"Undo restores reviewed geometry");vm.Redo();Check(vm.Input.Walls.Single(w=>w.Id==first).LengthMm==6000,"Redo reapplies reviewed geometry");vm.Undo();
+        vm.EditSettings(settings=>{settings.CatalogMm=new[]{5000};settings.LongestCount=1;settings.SearchEffort=.001;settings.CandidateDisplayLimit=99;settings.ConnectionFaces=1;settings.ConnectionLevels=9;settings.ConnectionReviewed=true;settings.AdjustableOnDirect=false;});
+        Check(vm.Settings.SearchEffort==Top50PlannerPolicy.ThoroughSearchEffort&&vm.Settings.CandidateDisplayLimit==3,"fixed thorough search and three-option display override legacy tuning");
+        vm.Undo();Check(vm.Settings.CatalogMm.Length==Precision.CatalogMm.Length,"Undo restores catalogue and settings");vm.Redo();Check(vm.Settings.CatalogMm.SequenceEqual(new[]{5000}),"Redo restores catalogue and settings");
+        vm.OptimizeAsync().GetAwaiter().GetResult();Check(!vm.IsStale&&Top50PlannerPolicy.TotalPanels(vm.Selected)==2,"physical inventory provides one matching panel on each face");
+        string path=Path.Combine(output,"editing.top50");vm.Save(path);Check(!vm.Dirty,"saving records the current edit state");
+        string secondLabel=new Top50WallLabels(vm.Input.AllWalls)[second];vm.DeleteWalls(new[]{first});Check(vm.IsStale&&vm.Input.Walls.Count==1&&vm.Input.RemovedWalls.Count==1,"Delete retains source audit data and marks results stale");
+        Check(new Top50WallLabels(vm.Input.AllWalls)[second]==secondLabel,"remaining wall labels do not change after Delete");vm.Save(path);vm.Undo();Check(vm.Dirty&&vm.Input.Walls.Count==2&&!vm.IsStale,"Undo after Save restores matching results and marks unsaved changes");vm.Redo();Check(!vm.Dirty&&vm.Input.Walls.Count==1,"Redo to the saved state clears the dirty flag");
+        var restored=new Top50ViewModel();restored.Open(path,Path.Combine(output,"editing-cache"));Check(restored.Input.Walls.Count==1&&restored.Input.RemovedWalls.Count==1&&!restored.CanUndo&&!restored.CanRedo,"saved deletion survives reopen and history resets at Open");
+        restored.AddManual(2000,"New distinct wall");Check(restored.Input.Walls.Select(w=>w.Id).Distinct().Count()==2&&restored.Input.AllWalls.Select(w=>w.Id).Distinct().Count()==3,"manual IDs are never reused after deletion");
+        restored.Undo();restored.EditSettings(settings=>settings.MaxFillers=2);Check(!restored.CanRedo,"a new edit clears the redo branch");
+        var inFlight=vm.OptimizeAsync();bool editBlocked=false;try{vm.DeleteWalls(new[]{second});}catch(InvalidOperationException){editBlocked=true;}Check(editBlocked&&!vm.CanUndo&&!vm.CanRedo,"editing and history are blocked while optimization runs");vm.Cancel();inFlight.GetAwaiter().GetResult();
+        bool disabled=false;try{vm.Export(Path.Combine(output,"not-exported.xlsx"));}catch(NotSupportedException){disabled=true;}Check(disabled&&!File.Exists(Path.Combine(output,"not-exported.xlsx")),"disabled Excel export creates no file");
+        var source=new ImportSnapshot{Walls=new[]{Wall("a",20000000),Wall("b",40000000),Wall("c",20000000),Wall("d",40000000)}};
+        Func<string,WallArrangement> arranged=id=>new WallArrangement(id,new PanelPattern(Enumerable.Repeat(5000,(int)(source.Walls.Single(w=>w.Id==id).LengthMm/5000)),Enumerable.Repeat(0L,(int)(source.Walls.Single(w=>w.Id==id).LengthMm/5000)-1)));
+        var stock=new Dictionary<int,int>{{5000,20}};
+        var better=new Proposal("balanced",stock,new[]{new CastingGroup(new[]{arranged("a"),arranged("b")}),new CastingGroup(new[]{arranged("c"),arranged("d")})}){Rank=1};
+        var worse=new Proposal("uneven",stock,new[]{new CastingGroup(new[]{arranged("b"),arranged("d")}),new CastingGroup(new[]{arranged("a"),arranged("c")})}){Rank=2};
+        var presentation=new Top50OfferPresentation(source,new NativeTop50Project{CatalogMm=new[]{5000},LongestCount=1},new[]{better,worse});
+        Check(presentation.Reason(better).Contains("Less equipment is left unused")&&presentation.Reason(better).Contains("40 LM, compared with 60 LM")&&presentation.Reason(better).Contains("2nd option"),"Status compares actual unused LM using complete conversational sentences");
+        Check(presentation.Reason(worse).Contains("More equipment is left unused")&&presentation.Reason(worse).Contains("60 LM, compared with 40 LM"),"lower-ranked Status uses the correct reverse comparison");
+        Check(Top50PlannerPolicy.Inventory(better).Sum(row=>row.Quantity)==40&&Top50PlannerPolicy.OfferedLmPerFace(better)==100,"both-face quantities never double the offered per-face LM");
     }
     private static void Distribution(string output,bool reverse)
     {
@@ -170,7 +197,7 @@ internal static class Program
         var sizes=new[]{1600000L,2810000,7200000,9200000,19200000,19204608};var counts=new[]{9,2,10,10,21,11};var rows=new List<WallRow>();
         for(int i=0;i<sizes.Length;i++)for(int n=0;n<counts[i];n++)rows.Add(Wall("wall-"+(rows.Count+1).ToString("D3",CultureInfo.InvariantCulture),sizes[i]));
         var catalog=Precision.CatalogMm.ToArray();if(reverse){rows.Reverse();Array.Reverse(catalog);CultureInfo.CurrentCulture=new CultureInfo("de-DE");}
-        var limits=Limits(5,20);var clock=Stopwatch.StartNew();
+        var limits=Limits(5,Top50PlannerPolicy.ThoroughSearchEffort);var clock=Stopwatch.StartNew();
         var run=new Top50Search().Run(rows,catalog,limits,PlanningPreset.BalancedOptimization,4,CancellationToken.None);clock.Stop();
         Check(run.Proposals.Count>0,"fresh native search finds a complete offer for the recorded distribution");
         Check(run.Proposals.All(p=>p.PanelCount==run.Proposals[0].PanelCount&&p.PanelCount<=27),"recorded distribution excludes the 60-panel offer and shows only the passing minimum-count tier");

@@ -3,6 +3,11 @@ on:
   push:
     branches: [codex/top50-fewest-panels-repeatable]
   workflow_dispatch:
+    inputs:
+      build_installer:
+        description: Build an installer only after explicit release approval
+        type: boolean
+        default: false
 concurrency:
   group: top50-repeatability-${{ github.ref }}
   cancel-in-progress: true
@@ -46,15 +51,19 @@ jobs:
       - name: Dashboard Dome Beta entry and retained D3 slab lock
         run: dotnet run --project tests/D3Slab.UiSmoke -c Release -- --release-availability
       - name: Build Revit review installer
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         shell: pwsh
         run: ./scripts/Build-Top50Installer.ps1 -Compiler "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" -OutputDirectory artifacts/top50-repeatable-installer -NoRestore
       - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         with:
           ref: bb37debee36f9d6a9dbce79bc41f3d47bdb35b6b
           path: artifacts/beam-baseline
       - name: Build retained beam upgrade fixture
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         run: dotnet build artifacts/beam-baseline/src/MyRevitAddin.csproj -c Release --warnaserror
       - name: Verify installed planner, upgrade backups and installer guards
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         shell: pwsh
         run: |
           $installer=(Get-ChildItem artifacts/top50-repeatable-installer/DokaEngineeringDashboard_Top50_Setup_*.exe).FullName
@@ -68,7 +77,7 @@ jobs:
           }|ConvertTo-Json|Set-Content artifacts/top50-repeatable-installer/release-info.json
           Copy-Item docs/top50-quantity-repeatability.md artifacts/top50-repeatable-installer/README.md
       - uses: actions/upload-artifact@v4
-        if: success()
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         with:
           name: top50-quantity-repeatable-test-installer
           path: artifacts/top50-repeatable-installer/

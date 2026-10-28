@@ -41,8 +41,8 @@ internal static class Program
         Check(recorded.Groups.Select(g=>g.InstalledPanelMicrometres/1000000m).SequenceEqual(new[]{96.250m,34.250m,79.750m,65.250m,65.250m,78.750m,34.250m,96.250m,92.250m,96.250m,46.250m}),"every recorded group installed total matches");
         Check(ConnectorAllocation.Calculate(recorded,new NativeTop50Project()).AssumedSingleLevel,"default connector quantities use the agreed one-level, per-face assumption");
         var connectionSettings=new NativeTop50Project{ConnectionLevels=2,ConnectionFaces=2,ConnectionReviewed=true,AdjustableOnDirect=true};var connector=ConnectorAllocation.Calculate(recorded,connectionSettings);
-        Check(connector.Determined&&connector.AdjustableStock==40&&connector.StandardStock==44,"reviewed connector stock uses peak simultaneous total and permits spare adjustable on direct joints");
-        connectionSettings.AdjustableOnDirect=false;Check(ConnectorAllocation.Calculate(recorded,connectionSettings).StandardStock==60,"direct substitution assumption affects only compatible reviewed connector units");
+        Check(connector.Determined&&connector.AdjustableStock==20&&connector.StandardStock==22,"connector stock covers one level and both faces with reuse");
+        connectionSettings.AdjustableOnDirect=false;Check(ConnectorAllocation.Calculate(recorded,connectionSettings).StandardStock==22,"legacy reuse settings cannot override the agreed enabled default");
         Check(goldenStock.Sum(p=>p.Key*p.Value)==96250&&goldenStock.Sum(p=>p.Value)==27,"observed stock arithmetic is fixture only");
         var g03Ids=new[]{"4054B7D","4054B8C","4054BA5","4054BBE","4054BD7","4054BF0","4054C09"};
         var g03=new List<WallArrangement>();

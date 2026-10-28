@@ -46,6 +46,9 @@ jobs:
             $expected="$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
             if(!(Get-Content "$package/SHA256SUMS").Contains($expected)){throw "Package changed: $($_.Name)"}
           }
+      - name: Emit compact UI review previews
+        if: success()
+        run: ./scripts/emit-ui-previews.ps1 -Directory artifacts/top50-standalone-checks -Names results-typical.png,casting-typical.png,results-alternatives.png
       - uses: actions/upload-artifact@v4
         if: success()
         with:

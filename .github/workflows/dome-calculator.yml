@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      build_installer:
+        description: Build an installer only after explicit release approval
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,6 +25,7 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet build src/MyRevitAddin.csproj -c Release --warnaserror
       - name: Compile calculator installer
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         shell: pwsh
         run: |
           $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
@@ -68,6 +74,7 @@ jobs:
             src/bin/Release/net48/access-settings.json
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
         with:
           name: revit2024-calculator-installer
           path: artifacts/installer/Install_DokaRevitAutomation.exe

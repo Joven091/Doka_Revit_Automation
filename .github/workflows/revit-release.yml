@@ -6,11 +6,17 @@ on:
     branches: [main]
     paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
   workflow_dispatch:
+    inputs:
+      build_installer:
+        description: Build an installer only after explicit release approval
+        type: boolean
+        default: false
 concurrency:
   group: revit-release-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   installer:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_installer == true
     runs-on: windows-latest
     timeout-minutes: 20
     steps:

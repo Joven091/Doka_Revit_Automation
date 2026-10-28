@@ -6,24 +6,21 @@ namespace EngineeringDashboard.Top50
     public sealed class ConnectorAllocation
     {
         public bool Determined {get;private set;}
-        public bool AssumedSingleLevel {get;private set;}
-        public int Levels {get;private set;}
-        public int Faces {get;private set;}
+        public bool AssumedSingleLevel=>true;
+        public int Levels=>1;
+        public int Faces=>Top50PlannerPolicy.WallFaces;
         public decimal StandardStock {get;private set;}
         public decimal AdjustableStock {get;private set;}
         public decimal[] DirectUnits {get;private set;}=Array.Empty<decimal>();
         public decimal[] FillerUnits {get;private set;}=Array.Empty<decimal>();
-        public string Description=>Determined?StandardStock+" "+ConnectorEquipment.DirectName+" ("+ConnectorEquipment.DirectArticle+"), "+AdjustableStock+" "+ConnectorEquipment.FillerName+" ("+ConnectorEquipment.FillerArticle+"), reused between casting groups. "+(AssumedSingleLevel?"Basis: one connector per joint, per wall face.":"Basis: "+Levels+" connectors per joint × "+Faces+" wall faces."):"No proposal selected.";
-        public static ConnectorAllocation Calculate(Proposal proposal,NativeTop50Project settings)
+        public string Description=>Determined?StandardStock+" "+ConnectorEquipment.DirectName+" ("+ConnectorEquipment.DirectArticle+"), "+AdjustableStock+" "+ConnectorEquipment.FillerName+" ("+ConnectorEquipment.FillerArticle+"). Connectors per level — both faces; one connector per joint per face. Stock is reused between casting groups; spare adjustable waling extensions may serve direct joints.":"No proposal selected.";
+        public static ConnectorAllocation Calculate(Proposal proposal,NativeTop50Project settings=null)
         {
-            var result=new ConnectorAllocation();
-            if(proposal==null)return result;
-            bool reviewed=settings.ConnectionReviewed&&settings.ConnectionLevels.HasValue&&settings.ConnectionFaces.HasValue&&settings.ConnectionLevels>0&&settings.ConnectionFaces>0;
-            result.AssumedSingleLevel=!reviewed;result.Levels=reviewed?settings.ConnectionLevels.Value:1;result.Faces=reviewed?settings.ConnectionFaces.Value:1;
-            decimal factor=(decimal)result.Levels*result.Faces;
-            result.DirectUnits=proposal.Groups.Select(g=>g.Walls.Sum(a=>a.Pattern.DirectLocations)*factor).ToArray();result.FillerUnits=proposal.Groups.Select(g=>g.Walls.Sum(a=>a.Pattern.FillerLocations)*factor).ToArray();
+            var result=new ConnectorAllocation();if(proposal==null)return result;
+            result.DirectUnits=proposal.Groups.Select(g=>g.Walls.Sum(a=>a.Pattern.DirectLocations)*(decimal)Top50PlannerPolicy.WallFaces).ToArray();
+            result.FillerUnits=proposal.Groups.Select(g=>g.Walls.Sum(a=>a.Pattern.FillerLocations)*(decimal)Top50PlannerPolicy.WallFaces).ToArray();
             result.AdjustableStock=result.FillerUnits.DefaultIfEmpty(0).Max();
-            result.StandardStock=settings.AdjustableOnDirect?Math.Max(0,result.DirectUnits.Select((d,i)=>d+result.FillerUnits[i]).DefaultIfEmpty(0).Max()-result.AdjustableStock):result.DirectUnits.DefaultIfEmpty(0).Max();
+            result.StandardStock=Math.Max(0,result.DirectUnits.Select((d,i)=>d+result.FillerUnits[i]).DefaultIfEmpty(0).Max()-result.AdjustableStock);
             result.Determined=true;return result;
         }
     }

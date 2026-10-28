@@ -60,7 +60,7 @@ internal static class Program
         Check(!vm.IsBusy&&!vm.IsStale&&vm.BuildDiagnosticReport().Contains("MaxFillers: -1"),"successful retry retains earlier failed-attempt evidence");
         var project=Path.Combine(output,"planner.top50");vm.Save(project);var restored=new Top50ViewModel();restored.Open(project,Path.Combine(output,"cache"));
         Check(restored.BuildDiagnosticReport().Contains("No optimization executed in this session")&&restored.Selected!=null,"reopened proposals are identified separately from current-session searches");
-        restored.Export(Path.Combine(output,"planner.xlsx"));Check(File.Exists(Path.Combine(output,"planner.xlsx")),"existing workbook export still operates");
+        Fails(()=>restored.Export(Path.Combine(output,"planner.xlsx")),"Disabled workbook export");Check(!File.Exists(Path.Combine(output,"planner.xlsx")),"disabled export produces no workbook");
 
         var dxf=Path.Combine(output,"controlled-wall-dimensions.dxf");File.WriteAllText(dxf,SyntheticDxf());
         var imported=new Top50ViewModel();imported.Import(dxf);
@@ -83,7 +83,7 @@ internal static class Program
         var window=new Top50Window(restored);var root=(FrameworkElement)window.Content;
         Check(window.Title.StartsWith("Top50 Planner"),"planner window terminology consistent");
         Check(!app.Windows.OfType<Top50DiagnosticWindow>().Any(),"diagnosis does not open automatically");
-        for(int page=0;page<5;page++)
+        for(int page=0;page<4;page++)
         {
             window.ShowPage(page);var diagnose=Command(root,"Top50Diagnose");
             Check(diagnose.IsEnabled,"diagnose available on page "+page);

@@ -93,6 +93,8 @@ namespace EngineeringDashboard
                 text.AppendLine("DXF INSUNITS: "+input.InsUnits+"; mm-per-unit override: "+Value(input.UnitOverride)+"; override reason: "+Value(input.UnitOverrideReason));
                 text.AppendLine("Measurement policy: "+input.MeasurementPolicy);AppendWalls(text,input.Walls);
             }
+            text.AppendLine("--- Removed walls retained for audit ---");if(input!=null)AppendWalls(text,input.RemovedWalls);
+            text.AppendLine("Equipment quantities: both wall faces. Offered LM: per face. Connector stock: one level, both faces, with adjustable reuse enabled.");
             text.AppendLine("--- Operations in this session ---");
             if(diagnosticOperations.Count==0)text.AppendLine("None");
             foreach(var operation in diagnosticOperations)
@@ -122,7 +124,8 @@ namespace EngineeringDashboard
                 text.AppendLine("Stock length mm: "+Value(proposal.StockMicrometres/1000m)+"; panels: "+proposal.PanelCount+"; casting groups: "+proposal.Groups.Count+"; identical kits: "+proposal.IdenticalKitCount);
                 text.AppendLine("Mean utilization: "+Value(proposal.MeanUtilization)+"; minimum utilization: "+Value(proposal.MinimumUtilization)+"; fillers: "+proposal.FillerLocations+"; panel changes: "+proposal.PanelChanges);
                 text.AppendLine("Retained model status: "+Value(proposal.RetainedModelStatus)+"; objective: "+Value(proposal.RetainedObjective)+"; bound: "+Value(proposal.RetainedBound));
-                text.AppendLine("Stock (size mm x quantity): "+string.Join(", ",proposal.Stock.OrderBy(p=>p.Key).Select(p=>p.Key+" x "+p.Value)));
+                text.AppendLine("Total panels (both faces): "+Top50PlannerPolicy.TotalPanels(proposal));
+                text.AppendLine("Stock (per face; size mm x quantity): "+string.Join(", ",proposal.Stock.OrderBy(p=>p.Key).Select(p=>p.Key+" x "+p.Value)));
                 for(int index=0;index<proposal.Groups.Count;index++)
                 {
                     text.AppendLine("Casting Group "+Top50OfferPresentation.CastingGroup(index)+"; installed panel length mm: "+Value(proposal.Groups[index].InstalledPanelMicrometres/1000m));
@@ -141,10 +144,10 @@ namespace EngineeringDashboard
             text.AppendLine("Diagnosis reads in-memory state only; it does not optimize, reimport, change proposals, or read account credentials.");
             text.AppendLine("=== END TOP50 PLANNER DIAGNOSTIC REPORT ===");return text.ToString();
         }
-        private static void AppendWalls(StringBuilder text,IReadOnlyList<WallRow> walls)
+        private void AppendWalls(StringBuilder text,IReadOnlyList<WallRow> walls)
         {
             text.AppendLine("Walls: "+walls.Count+"; included: "+walls.Count(w=>w.Included)+"; needing review: "+walls.Count(w=>w.Status==WallReviewStatus.NeedsReview)+"; included length mm: "+Value(walls.Where(w=>w.Included).Sum(w=>w.LengthMm)));
-            var labels=new Top50WallLabels(walls);
+            var labels=new Top50WallLabels(input==null?walls:input.AllWalls);
             foreach(var wall in walls)
             {
                 text.AppendLine("Wall "+labels[wall.Id]+" | source ID: "+wall.Id+" | handle: "+Value(wall.Handle)+" | layer: "+Value(wall.Layer)+" | length mm: "+Value(wall.LengthMm)+" | included: "+wall.Included+" | status: "+wall.Status+" | acknowledged: "+wall.Acknowledged);
