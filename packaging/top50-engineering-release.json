@@ -1,0 +1,17 @@
+{
+  "status": "approved",
+  "target": "Revit2024 Dashboard",
+  "version": "1.1.27",
+  "validatedCommit": "1e0c81e3a00dab3ae9ddc0211c58a0a3973bab22",
+  "validatedTree": "45cfaa3fe49d51fd7dc8b41ea0f6322edc9f2061",
+  "approvalDateUtc": "2026-10-28",
+  "approvedBy": "Project supervisor, under the user's delegated review and release instruction",
+  "qaReport": "docs/top50-engineering-review/final-qa.md",
+  "siteReport": "docs/top50-engineering-review/site-acceptance.md",
+  "supervisorReport": "docs/top50-engineering-review/final-validation.md",
+  "validationRun": 40759276277,
+  "validationArtifact": 12847278138,
+  "validationArtifactSha256": "e937c5a44dd954ff5c9f09918520f5744b10f93b265c1b66aa75774045595b92",
+  "scope": "Build and isolate-test the integrated Dashboard installer after repeating unchanged-source validation. No GitHub merge, company publication or user-machine installation.",
+  "remainingAcceptance": "Installed-package checks follow this approval. Actual Revit2024 host and clean-machine prerequisite checks remain unverified."
+}
