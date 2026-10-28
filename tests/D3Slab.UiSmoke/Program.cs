@@ -25,11 +25,9 @@ static class Program
   using var approvedSession=new ApprovedLauncherSession(typeof(LauncherWindow).Assembly);
   var launcher=new LauncherWindow();launcher.Show();
   var dome=(Button)launcher.FindName("BtnDomeCalculator");
-  Check(dome.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(dome).Contains("Beta"),"Dome is available and labelled Beta");
+  Check(!dome.IsEnabled && System.Windows.Automation.AutomationProperties.GetName(dome).Contains("Locked"),"Dome Beta is visibly locked");
   dome.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
-  var beta=Application.Current.Windows.OfType<EngineeringDashboard.Dome.MainWindow>().Single(w=>w.IsVisible);
-  Check(!launcher.IsVisible && beta.Owner==launcher && beta.Title.Contains("Beta"),"Dome Beta opens modeless with its dashboard owner and Beta title");
-  beta.Close();Pump();Check(launcher.IsVisible,"closing Dome Beta returns to the dashboard");
+  Check(!Application.Current.Windows.OfType<EngineeringDashboard.Dome.MainWindow>().Any(w=>w.IsVisible)&&launcher.IsVisible,"Dome lock blocks opening even if its click event is raised");
   ((Button)launcher.FindName("BtnFlexCalculator")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
   var choice=Application.Current.Windows.OfType<SlabSystemWindow>().Single(w=>w.IsVisible);Check(choice.Owner==launcher,"slab choices owned by launcher");
   var towers=(Button)choice.FindName("PickTowersButton");

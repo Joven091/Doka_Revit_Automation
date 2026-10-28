@@ -29,6 +29,7 @@ namespace EngineeringDashboard.Top50
         public int Version {get;set;}=Top50PlannerPolicy.ProjectVersion;
         public string Name {get;set;}="Top50 project";
         public string SourceName {get;set;}
+        public string SourceKind {get;set;}
         public string SourceBase64 {get;set;}
         public string SourceSha256 {get;set;}
         public ProjectWallDto[] Walls {get;set;}
@@ -66,9 +67,9 @@ namespace EngineeringDashboard.Top50
     {
         public static NativeTop50Project Capture(ImportSnapshot input,IEnumerable<Proposal> proposals,string selectedId)
         {
-            var bytes=string.IsNullOrEmpty(input.SourcePath)?Array.Empty<byte>():File.ReadAllBytes(input.SourcePath);string hash=Hash(bytes);
+            var bytes=input.RevitSource!=null?Top50RevitSource.Encode(input.RevitSource):string.IsNullOrEmpty(input.SourcePath)?Array.Empty<byte>():File.ReadAllBytes(input.SourcePath);string hash=Hash(bytes);
             if(hash!=input.SourceSha256)throw new InvalidDataException("The original source file changed. Reimport or use the preserved project source.");
-            return new NativeTop50Project{SourceName=Path.GetFileName(input.SourcePath??""),SourceBase64=Convert.ToBase64String(bytes),SourceSha256=hash,UnitOverride=input.UnitOverride,UnitOverrideReason=input.UnitOverrideReason,Walls=input.Walls.Select(WallDto).ToArray(),RemovedWalls=input.RemovedWalls.Select(WallDto).ToArray(),Proposals=proposals.Select(ToDto).ToArray(),SelectedId=selectedId};
+            return new NativeTop50Project{SourceKind=input.SourceKind,SourceName=Path.GetFileName(input.SourcePath??""),SourceBase64=Convert.ToBase64String(bytes),SourceSha256=hash,UnitOverride=input.UnitOverride,UnitOverrideReason=input.UnitOverrideReason,Walls=input.Walls.Select(WallDto).ToArray(),RemovedWalls=input.RemovedWalls.Select(WallDto).ToArray(),Proposals=proposals.Select(ToDto).ToArray(),SelectedId=selectedId};
         }
         public static void Save(NativeTop50Project project,string path)
         {
@@ -85,7 +86,8 @@ namespace EngineeringDashboard.Top50
         {
             NativeTop50Project project;using(var stream=File.OpenRead(path))project=(NativeTop50Project)new DataContractJsonSerializer(typeof(NativeTop50Project)).ReadObject(stream);
             if(project==null||project.Kind!="Doka.Top50.Native"||(project.Version<1||project.Version>Top50PlannerPolicy.ProjectVersion)||project.Walls==null)throw new InvalidDataException("Unsupported Top50 project kind or version.");
-            if(Hash(Convert.FromBase64String(project.SourceBase64))!=project.SourceSha256)throw new InvalidDataException("Embedded DXF checksum mismatch.");
+            if(project.SourceKind=="Revit"&&project.Version<5)throw new InvalidDataException("Revit source projects require V5 or later.");
+            if(Hash(Convert.FromBase64String(project.SourceBase64))!=project.SourceSha256)throw new InvalidDataException("Embedded source checksum mismatch.");
             return project;
         }
         public static ImportSnapshot RestoreInput(NativeTop50Project project,string sourceCacheDirectory)
@@ -93,7 +95,8 @@ namespace EngineeringDashboard.Top50
             Directory.CreateDirectory(sourceCacheDirectory);string path=Path.Combine(sourceCacheDirectory,project.SourceSha256+".dxf");
             var bytes=Convert.FromBase64String(project.SourceBase64);if(Hash(bytes)!=project.SourceSha256)throw new InvalidDataException("Embedded source changed.");
             ImportSnapshot input;
-            if(bytes.Length==0)input=new ImportSnapshot{SourcePath="",SourceSha256=Hash(bytes),InsUnits=4,Walls=Array.Empty<WallRow>()};
+            if(project.SourceKind=="Revit")input=Top50RevitSource.Create(Top50RevitSource.Decode(bytes));
+            else if(bytes.Length==0)input=new ImportSnapshot{SourcePath="",SourceSha256=Hash(bytes),InsUnits=4,Walls=Array.Empty<WallRow>()};
             else
             {
                 if(!File.Exists(path))File.WriteAllBytes(path,bytes);else if(Hash(File.ReadAllBytes(path))!=project.SourceSha256)throw new InvalidDataException("Cached source checksum mismatch.");

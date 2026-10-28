@@ -42,7 +42,7 @@ internal static class Program
             Check(buttons.Single(b => b.Name == "BtnSteelShape").IsEnabled, "Steel Shape dashboard card is enabled");
             Check(AutomationProperties.GetName(buttons.Single(b => b.Name == "BtnSteelShape")) == "Steel Shape", "dashboard card has an accessible Steel Shape label");
             Check(buttons.Single(b => b.Name == "BtnTop50").IsEnabled, "Top50 remains available as a planner");
-            Check(buttons.Single(b => b.Name == "BtnDomeCalculator").IsEnabled && AutomationProperties.GetName(buttons.Single(b => b.Name == "BtnDomeCalculator")).Contains("Beta"), "approved Dome Beta remains available");
+            Check(!buttons.Single(b => b.Name == "BtnDomeCalculator").IsEnabled && AutomationProperties.GetName(buttons.Single(b => b.Name == "BtnDomeCalculator")).Contains("Beta"), "Dome Beta remains locked");
             var showTool=typeof(LauncherWindow).GetMethod("ShowTool",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
             var modeless=new Window {Title="Controlled modeless tool",Width=300,Height=200};
             showTool.Invoke(launcher,new object[]{modeless,null});Pump();

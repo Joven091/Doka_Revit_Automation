@@ -105,7 +105,7 @@ internal static class Program
         vm.Settings.CatalogMm=new[]{5000};vm.Settings.LongestCount=2;vm.Settings.SearchEffort=2;
         vm.OptimizeAsync().GetAwaiter().GetResult();Check(vm.Selected!=null&&vm.Selected.PanelCount==2,"fresh native search satisfies simultaneous longest walls with two panels");
         var path=Path.Combine(output,"current.top50");vm.Save(path);var document=NativeProjectStore.Load(path);
-        Check(document.Version==4&&document.SearchPolicyVersion==3&&document.SearchEffort==Top50PlannerPolicy.ThoroughSearchEffort,"V4 project persists the fixed thorough search policy");
+        Check(document.Version==5&&document.SearchPolicyVersion==3&&document.SearchEffort==Top50PlannerPolicy.ThoroughSearchEffort,"V5 project persists the fixed thorough search policy");
         var reopened=new Top50ViewModel();reopened.Open(path,Path.Combine(output,"cache"));
         Check(!reopened.Dirty&&Top50Order.Stock(reopened.Selected.Stock)==Top50Order.Stock(vm.Selected.Stock)&&reopened.Selected.PanelCount==2,"current project reopens without changing the chosen inventory or dirty state");
         var before=Signature(new SearchRun{Proposals=vm.Proposals});reopened.OptimizeAsync().GetAwaiter().GetResult();
@@ -120,7 +120,7 @@ internal static class Program
         Check(bytes.SequenceEqual(File.ReadAllBytes(legacy)),"opening a legacy project leaves its original file intact");
         Check(reopened.Status.Contains("current repeatable search"),"legacy allocations are distinguished from a fresh repeatable solve");
         var migrated=Path.Combine(output,"migrated.top50");reopened.Save(migrated);
-        Check(NativeProjectStore.Load(migrated).Version==4,"saving migration writes V4 so old readers reject changed planning policies");
+        Check(NativeProjectStore.Load(migrated).Version==5,"saving migration writes V5 so old readers reject changed planning policies");
         var invalid=new Proposal("too-many-castings",low.Stock.ToDictionary(p=>p.Key,p=>p.Value),low.Groups);
         Check(Top50Validation.Validate(vm.Input.Walls,invalid,new SearchLimits(1,350,1,2,2,50)).Contains("Casting group limit exceeded."),"a lower panel count cannot bypass the casting-group limit");
     }
@@ -157,7 +157,7 @@ internal static class Program
         var vm=new Top50ViewModel();vm.AddManual(6500,"Automatic component regression");vm.Settings.CatalogMm=new[]{500};vm.Settings.LongestCount=1;vm.Settings.SearchEffort=3;vm.OptimizeAsync().GetAwaiter().GetResult();
         Check(vm.Selected.PanelCount==13&&vm.Selected.Groups.Single().Walls.Single().Pattern.PanelsMm.Count==13,"shipping search and native allocation find the formerly blocked thirteen-panel wall");
         string path=Path.Combine(output,"automatic-count.top50");vm.Save(path);
-        string json=File.ReadAllText(path);Check(!json.Contains("MaxComponents")&&NativeProjectStore.Load(path).Version==4,"new projects omit the removed component limit and identify V4 semantics");
+        string json=File.ReadAllText(path);Check(!json.Contains("MaxComponents")&&NativeProjectStore.Load(path).Version==5,"new projects omit the removed component limit and identify V5 semantics");
         var legacy=NativeProjectStore.Load(path);legacy.Version=2;string legacyPath=Path.Combine(output,"legacy-component-limit.top50");NativeProjectStore.Save(legacy,legacyPath);
         json=File.ReadAllText(legacyPath);File.WriteAllText(legacyPath,"{\"MaxComponents\":1,"+json.Substring(1));var original=File.ReadAllBytes(legacyPath);
         var restored=new Top50ViewModel();restored.Open(legacyPath,Path.Combine(output,"automatic-cache"));restored.OptimizeAsync().GetAwaiter().GetResult();

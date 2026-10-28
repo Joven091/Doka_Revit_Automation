@@ -86,6 +86,8 @@ namespace EngineeringDashboard
         private void InitializeUi()
         {
             ClassicCalculatorContent=Content;
+            var toolbar=new DashboardToolbar(this,"Beam calculator",()=>LoadCalculation_Click(null,null),()=>SaveCalculation_Click(null,null),()=>DiagnoseBeam_Click(null,null));
+            toolbar.SaveItem.SetBinding(IsEnabledProperty,new System.Windows.Data.Binding("HasSelectedSupportSystem"));CalculatorToolbarHost.Content=toolbar;
             // Keep calculator controls synchronized while the drawing occupies Content.
             ((FrameworkElement)ClassicCalculatorContent).SetBinding(FrameworkElement.DataContextProperty,new System.Windows.Data.Binding("DataContext") {Source=this});
             Loaded+=(s,e)=>DrawingWorkspace_Click(null,null);

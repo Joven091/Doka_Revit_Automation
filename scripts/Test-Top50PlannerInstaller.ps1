@@ -37,6 +37,13 @@ if(Test-Path $steelSmoke){
     Check ($LASTEXITCODE -eq 0) 'actual installed Steel Shape opens, calculates, selects weld edges and recovers browser failure without binding redirects'
 }
 
+$dashboardSmoke=Join-Path $repo 'tests/Dashboard.ReleaseSmoke/bin/Release/net48/Dashboard.ReleaseSmoke.exe'
+if(Test-Path $dashboardSmoke){
+    Copy-Item $dashboardSmoke (Join-Path $fresh 'Dashboard.ReleaseSmoke.exe')
+    & (Join-Path $fresh 'Dashboard.ReleaseSmoke.exe') (Join-Path $evidence 'installed-dashboard') *> (Join-Path $evidence 'installed-dashboard.log')
+    Check ($LASTEXITCODE -eq 0) 'installed File/Tools headers, edit icons, Dome lock and Top50 Revit source interactions'
+}
+
 $upgrade=Join-Path $root 'upgrade';New-Item -ItemType Directory -Path $upgrade | Out-Null
 Get-ChildItem $OldPayload -File | Copy-Item -Destination $upgrade
 Copy-Item (Join-Path $repo 'MyRevitAddin.addin') (Join-Path $upgrade 'MyRevitAddin.addin')

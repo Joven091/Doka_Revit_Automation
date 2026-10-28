@@ -52,7 +52,7 @@ namespace EngineeringDashboard
         private readonly List<StringEditor> stringEditors=new List<StringEditor>();
         private readonly List<Action> syncControls=new List<Action>();
         private readonly Stack<State> undo=new Stack<State>(),redo=new Stack<State>();
-        private readonly Action save,load,export,refreshInputs,checkForUpdates;
+        private readonly Action save,load,refreshInputs,checkForUpdates;
         private readonly Func<RevitSelectionSnapshot> readRevitSelection;
         private readonly Func<System.Threading.Tasks.Task<RevitSelectionSnapshot>> requestRevitSelection;
         internal Func<bool> ConfirmNewSession {get;set;}
@@ -91,7 +91,7 @@ namespace EngineeringDashboard
             this.readRevitSelection=readRevitSelection;
             this.requestRevitSelection=requestRevitSelection;
             this.checkForUpdates=checkForUpdates;
-            Model=model;save=saveInputs;load=loadInputs;export=exportReport;refreshInputs=refreshCalculatorInputs;
+            Model=model;save=saveInputs;load=loadInputs;refreshInputs=refreshCalculatorInputs;
             ConfirmNewSession=()=>MessageBox.Show(DialogOwner,"Start a new beam formwork session? Current inputs, results and undo history will be cleared. Saved files are unchanged.","New session",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes;
             if(Model.IsTransferMode && !Model.UseBeamNetwork)Model.UseBeamNetwork=true;
             Drawing=new BeamFormworkCanvas(model);Waiting=new BeamSearchWaitingView {DataContext=model};SectionViewport=new FormworkDrawingViewport(Section);
@@ -142,7 +142,7 @@ namespace EngineeringDashboard
         }
         private Button Button(string name,string text,Action action)
         {
-            var b=new Button {Content=text,Name="Workspace"+name,Padding=new Thickness(10,5,10,5),Margin=new Thickness(3),MinHeight=30};b.Click+=(s,e)=>action();Buttons[name]=b;return b;
+            var b=new Button {Content=text,Name="Workspace"+name,Padding=new Thickness(10,5,10,5),Margin=new Thickness(3),MinHeight=30};b.Click+=(s,e)=>action();Buttons[name]=b;if(name=="Undo"||name=="Redo"||name=="Delete")DashboardToolbar.Icon(b,name);return b;
         }
         private MenuItem MenuAction(string name,string text,Action action)
         {var item=new MenuItem {Header=text,Name="Workspace"+name};item.Click+=(s,e)=>action();Buttons[name]=item;return item;}
@@ -609,7 +609,7 @@ namespace EngineeringDashboard
             Buttons["Delete"].IsEnabled=!sectionMode && !Drawing.Formwork && !Model.IsOptimizing && !readingRevit && PlanRemoval().Allowed;
             Buttons["Delete"].ToolTip=RemovalPreview;
             Buttons["Undo"].IsEnabled=undo.Count>0 && !Model.IsOptimizing && !readingRevit;Buttons["Redo"].IsEnabled=redo.Count>0 && !Model.IsOptimizing && !readingRevit;
-            Buttons["Save"].IsEnabled=valid && !Model.IsOptimizing && !readingRevit;Buttons["Export"].IsEnabled=Model.IsCalculationValid && !pending;Buttons["Load"].IsEnabled=!Model.IsOptimizing && !readingRevit;
+            Buttons["Save"].IsEnabled=valid && !Model.IsOptimizing && !readingRevit;Buttons["Load"].IsEnabled=!Model.IsOptimizing && !readingRevit;
             UpdateViewButtons();
             foreach(string name in new[] {"Geometry","Formwork","Section"})Buttons[name].Background=Buttons[name].FontWeight==FontWeights.Bold ? new SolidColorBrush(Color.FromRgb(255,242,191)) : Brushes.White;
             if(!Model.IsCalculationValid || pending) {ClearDiagrams();Section.SetResult(null);if(sectionMode)Geometry();}

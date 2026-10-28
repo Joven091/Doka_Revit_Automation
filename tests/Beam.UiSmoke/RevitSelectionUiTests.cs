@@ -29,7 +29,7 @@ internal static class RevitSelectionUiTests
         var toolbar=(Panel)w.Buttons["FromRevit"].Parent;
         var menu=toolbar.Children.OfType<Menu>().Single();
         Check(menu.Items.OfType<MenuItem>().Select(x=>(string)x.Header).Skip(1).SequenceEqual(new[]{"_File","_Tools","+ _Add"}),"File, Tools and Add order");
-        Check(toolbar.Children.OfType<Button>().Select(x=>(string)x.Content).SequenceEqual(new[]{"Use Revit selection","Undo","Redo","Delete"}),"selection, Undo, Redo and Delete order");
+        Check(toolbar.Children.OfType<Button>().Select(x=>x.Content as string??System.Windows.Automation.AutomationProperties.GetName(x)).SequenceEqual(new[]{"Use Revit selection","Undo","Redo","Delete"}),"selection, Undo, Redo and Delete order");
         Click(w,"FromRevit");Pump();
         Check(reads==1 && w.LastRevitImportReport.Contains("Outcome: Imported") && w.LastRevitImportReport.Contains("no review dialog"),"one click reads and imports without another page");
         Click(w,"Diagnose");Pump();

@@ -48,7 +48,6 @@ namespace EngineeringDashboard
             file.Items.Add(MenuAction("NewSession","New session",StartNewSession));file.Items.Add(new Separator());
             file.Items.Add(MenuAction("Load","Open inputs…",()=> {if(!CommitFields())return;var old=Capture();load?.Invoke();if(closed)return;if(!Same(old,Capture())){undo.Push(old);redo.Clear();}BuildProperties();Refresh();Drawing.Fit();}));
             file.Items.Add(MenuAction("Save","Save inputs…",()=> {if(CommitFields())save?.Invoke();}));
-            file.Items.Add(new Separator());file.Items.Add(MenuAction("Export","Export report…",()=> {if(CommitFields())export?.Invoke();}));
             if(checkForUpdates!=null){file.Items.Add(new Separator());file.Items.Add(MenuAction("CheckUpdates","Check for updates…",checkForUpdates));}
             var tools=new MenuItem {Header="_Tools",Padding=new Thickness(10,6,10,6)};tools.Items.Add(MenuAction("Diagnose","Diagnose…",ShowDiagnostics));menus.Items.Add(tools);
             addMenu=new MenuItem {Header="+ _Add",Padding=new Thickness(10,6,10,6)};menus.Items.Add(addMenu);

@@ -60,7 +60,14 @@ namespace EngineeringDashboard
         {
             if(!MyRevitAddin.Access.AccessWindow.Require(this))return;
             if(_top50ViewModel==null)_top50ViewModel=new Top50ViewModel();
-            ShowTool(new Top50Window(_top50ViewModel));
+            Top50Window planner=null;
+            var connection=new Top50.Top50RevitConnection
+            {
+                ReadSelection=()=>Command.Request(app=>{if(planner?.IsLoaded!=true)throw new System.ObjectDisposedException("Top50 Planner");return Top50RevitSelection.ReadSelected(app);}),
+                Refresh=request=>Command.Request(app=>{if(planner?.IsLoaded!=true)throw new System.ObjectDisposedException("Top50 Planner");return Top50RevitSelection.Refresh(app,request);}),
+                Highlight=request=>Command.Request(app=>{if(planner?.IsLoaded!=true)throw new System.ObjectDisposedException("Top50 Planner");return Top50RevitSelection.Highlight(app,request);})
+            };
+            planner=new Top50Window(_top50ViewModel,connection);ShowTool(planner);
         }
         private void BtnFlexCalculator_Click(object sender,RoutedEventArgs e)
         {if(MyRevitAddin.Access.AccessWindow.Require(this))OpenSlabChoice();}

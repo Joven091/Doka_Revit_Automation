@@ -10,9 +10,12 @@
   <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
   <Style x:Key="Step" TargetType="Border"><Setter Property="Background" Value="#FFF2BF"/><Setter Property="BorderBrush" Value="#D4AA00"/><Setter Property="BorderThickness" Value="5,0,0,0"/><Setter Property="Padding" Value="10,7"/><Setter Property="Margin" Value="0,0,0,10"/></Style>
  </Window.Resources>
- <DockPanel Margin="12">
+ <DockPanel x:Name="CalculatorRoot" Margin="12">
+  <ContentControl x:Name="CalculatorToolbarHost" DockPanel.Dock="Top"/>
+
   <StackPanel DockPanel.Dock="Bottom">
-   <WrapPanel><Button x:Name="NewCalculation" Content="New calculation" Click="NewCalculation_Click"/><Button Content="Save calculation" Click="SaveCalculation_Click"/><Button Content="Load calculation" Click="LoadCalculation_Click"/><Button Content="Export report" Click="ExportReport_Click"/></WrapPanel>
+   <WrapPanel><Button x:Name="NewCalculation" Content="New calculation" Click="NewCalculation_Click"/></WrapPanel>
+
    <TextBlock x:Name="ErrorText" Foreground="#B42318" Margin="0,6" AutomationProperties.LiveSetting="Polite"/>
    <DockPanel><Button Content="Close" Click="Close_Click" DockPanel.Dock="Right"/><Button x:Name="CalculateButton" Content="Calculate spacing" Background="#F2CD24" FontWeight="Bold" Click="Calculate_Click" DockPanel.Dock="Right"/><TextBlock x:Name="ResultState" VerticalAlignment="Center"/></DockPanel>
   </StackPanel>

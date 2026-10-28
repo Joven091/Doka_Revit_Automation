@@ -29,4 +29,4 @@
   <Target Name="ValidatePortableNativePayload" AfterTargets="Build">
     <Error Condition="!Exists('$(TargetDir)google-ortools-native.dll') Or !Exists('$(TargetDir)ortools.dll')" Text="The standalone Top50 tester requires the win-x64 native OR-Tools payload beside Top50Planner.exe." />
   </Target>
-</Project>
+<ItemGroup><Compile Include="../../src/Views/Top50Window.Revit.cs" Link="Views/Top50Window.Revit.cs"/><Compile Include="../../src/Views/DashboardToolbar.cs" Link="Views/DashboardToolbar.cs"/></ItemGroup></Project>

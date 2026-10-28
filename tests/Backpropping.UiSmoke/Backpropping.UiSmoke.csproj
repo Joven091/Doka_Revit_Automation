@@ -6,4 +6,4 @@
   <Compile Include="../../src/Views/BackproppingWindow.xaml.cs" Link="BackproppingWindow.xaml.cs"/>
   <Page Include="../../src/Views/BackproppingWindow.xaml" Link="BackproppingWindow.xaml"/>
  </ItemGroup>
-<ItemGroup><Compile Include="../../src/Models/CalculationFiles.cs" Link="CalculationFiles.cs"/></ItemGroup></Project>
+<ItemGroup><Compile Include="../../src/Models/CalculationFiles.cs" Link="CalculationFiles.cs"/></ItemGroup><ItemGroup><Compile Include="../../src/Views/DashboardToolbar.cs" Link="Views/DashboardToolbar.cs"/><Page Include="../../src/Views/CalculatorStyles.xaml" Link="Views/CalculatorStyles.xaml"/></ItemGroup></Project>
