@@ -1,10 +1,10 @@
 name: Revit 2024 team installer
 on:
   pull_request:
-    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'tests/Dashboard.ReleaseSmoke/**', 'tests/Top50.RevitSource.Tests/**', 'tests/Top50.PlannerSmoke/**', 'tests/Dome.Tests/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
+    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'tests/Dashboard.ReleaseSmoke/**', 'tests/Top50.RevitSource.Tests/**', 'tests/Top50.PlannerSmoke/**', 'tests/Dome.Tests/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'tools/BeamSolver.Worker/**', 'scripts/Build-BeamSolverWorker.ps1', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
   push:
     branches: [main, codex/dashboard-modeless-selection]
-    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'tests/Dashboard.ReleaseSmoke/**', 'tests/Top50.RevitSource.Tests/**', 'tests/Top50.PlannerSmoke/**', 'tests/Dome.Tests/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
+    paths: ['Directory.Build.props', 'MyRevitAddin.addin', 'installer.iss', 'installer-top50.iss', 'packaging/**', 'tests/SteelShape*/**', 'tests/Dashboard.ReleaseSmoke/**', 'tests/Top50.RevitSource.Tests/**', 'tests/Top50.PlannerSmoke/**', 'tests/Dome.Tests/**', 'scripts/*Top50*.ps1', 'scripts/Ensure-SteelShapeTestBrowser.ps1', 'src/**', 'tools/RevitUpdater/**', 'tools/BeamSolver.Worker/**', 'scripts/Build-BeamSolverWorker.ps1', 'scripts/*RevitUpdate.ps1', '.github/workflows/revit-release.yml']
   workflow_dispatch:
     inputs:
       build_installer:

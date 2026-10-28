@@ -120,18 +120,22 @@ namespace EngineeringDashboard
         {
             var definitions=RevitDrawings;int revision=towerRevision;
             Dictionary<string,BeamCalculatorViewModel> models=null;
+            BeamSolverSession solverSession=null;bool ownsSolverSession=SharedSolverSession==null;
             var cancellation=towerCancellation=new CancellationTokenSource();
             var trace=beamSearchTrace=new BeamSearchTrace(CaptureDiagnosticInputs(),cancellation.Token,null);
             IsOptimizing=true;IsCalculationValid=false;TowerResult=null;NetworkResult=null;TowerFailureDetails="";WarningMessage="Searching all imported areas…";NotifyTower();
             try
             {
                 CaptureActiveRevitDrawing();models=definitions.ToDictionary(d=>d.Key,d=> {var model=DrawingModel(d);CopyProjectInputs(model);return model;});
+                solverSession=SharedSolverSession??new BeamSolverSession();
                 foreach(var definition in definitions)
                 {
                     cancellation.Token.ThrowIfCancellationRequested();runningRevitDrawing=models[definition.Key];
                     if(revision!=towerRevision){trace.Complete("Discarded: inputs changed during search");return;}
                     combinedSearchProgress=definition.Label+" ("+(Array.IndexOf(definitions,definition)+1)+"/"+definitions.Length+")";NotifyTower();
-                    await runningRevitDrawing.OptimizeTowersAsync(useTimeLimit);
+                    runningRevitDrawing.SharedSolverSession=solverSession;
+                    try {await runningRevitDrawing.OptimizeTowersAsync(useTimeLimit);}
+                    finally {runningRevitDrawing.SharedSolverSession=null;}
                     cancellation.Token.ThrowIfCancellationRequested();
                 }
                 if(revision!=towerRevision)return;
@@ -150,7 +154,7 @@ namespace EngineeringDashboard
             }
             catch(OperationCanceledException) {WarningMessage="Combined drawing calculation cancelled.";trace.Complete("Cancelled");}
             catch(Exception ex) {WarningMessage="Combined drawing calculation failed. Select Diagnose.";TowerFailureDetails=ex.ToString();trace.Complete("Unexpected error",ex.ToString());}
-            finally {runningRevitDrawing=null;combinedSearchProgress="";IsOptimizing=false;towerCancellation=null;cancellation.Dispose();trace.Finish();lastCompletedFullSearch=trace;NotifyTower();}
+            finally {if(ownsSolverSession && solverSession!=null)await Task.Run(()=>solverSession.Dispose());runningRevitDrawing=null;combinedSearchProgress="";IsOptimizing=false;towerCancellation=null;cancellation.Dispose();trace.Finish();lastCompletedFullSearch=trace;NotifyTower();}
         }
         internal string CombinedRevitDiagnostics()=>!HasCombinedRevitDrawing ? "" : "\n--- Combined Revit drawing calculations ---\n"+string.Join("\n",RevitDrawings.Select(d=>
             d.Label+" | "+d.Key+"\n"+revitDrawingModels[d.Key].BuildDiagnosticReport("Combined drawing component",d.Label)));

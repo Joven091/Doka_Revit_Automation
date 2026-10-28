@@ -101,6 +101,7 @@ namespace EngineeringDashboard
         {
             int index=(int)counter;long value=Interlocked.Read(ref counters[index]);
             foreach(var pending in pendingCounters.Values)value+=Interlocked.Read(ref pending[index]);
+            var external=Volatile.Read(ref workerCounters);if(external!=null)value+=external[index];
             return value;
         }
         private void FlushCounters()
@@ -149,10 +150,18 @@ namespace EngineeringDashboard
         {
             get {long end=Interlocked.Read(ref ended);return ((end==0 ? timestamp() : end)-started)/(double)Stopwatch.Frequency;}
         }
+        private string workerProgress="",workerDiagnostics="",workerRuntime="";
+        private long[] workerCounters;
+        internal long[] ExportWorkerCounters()=>Enum.GetValues(typeof(BeamSearchCounter)).Cast<BeamSearchCounter>().Select(Count).ToArray();
+        internal void ImportWorkerCounters(long[] values)
+        {if(values==null || values.Length!=counters.Length || values.Any(v=>v<0))throw new InvalidOperationException("Invalid worker diagnostic counters.");Volatile.Write(ref workerCounters,(long[])values.Clone());}
+        internal void WorkerStatus(string progress,string diagnostics=null,bool runtime=false)
+        {if(runtime){Volatile.Write(ref workerRuntime,progress??"");Volatile.Write(ref workerProgress,"");}else Volatile.Write(ref workerProgress,progress??"");if(diagnostics!=null)Volatile.Write(ref workerDiagnostics,diagnostics);}
         internal string ProgressText
         {
             get
             {
+                string external=Volatile.Read(ref workerProgress);if(!string.IsNullOrEmpty(external))return external;
                 string current=Volatile.Read(ref work);
                 if(current.IndexOf("cross",StringComparison.OrdinalIgnoreCase)>=0)return "Checking crossing supports";
                 if(current.IndexOf("Separate slab",StringComparison.OrdinalIgnoreCase)>=0)return "Checking separate slab support options";
@@ -204,7 +213,10 @@ namespace EngineeringDashboard
             text.AppendLine("Derived solver inputs:\n"+Volatile.Read(ref derivedInputs));
             text.AppendLine("Search result summary:\n"+Volatile.Read(ref result));
             text.AppendLine("Most recent rejected pass (may precede a successful fallback):\n"+Volatile.Read(ref rejectedPass));
-            text.AppendLine("Search error/failure details:\n"+Volatile.Read(ref error));return text.ToString();
+            text.AppendLine("Search error/failure details:\n"+Volatile.Read(ref error));
+            if(!string.IsNullOrEmpty(Volatile.Read(ref workerRuntime)))text.AppendLine("Solver runtime: "+Volatile.Read(ref workerRuntime));
+            if(!string.IsNullOrEmpty(Volatile.Read(ref workerDiagnostics)))text.AppendLine("--- .NET 10 worker diagnostics ---\n"+Volatile.Read(ref workerDiagnostics));
+            return text.ToString();
         }
     }
 }

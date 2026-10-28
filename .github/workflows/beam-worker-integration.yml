@@ -1,0 +1,40 @@
+name: Beam modern worker integration
+on:
+  pull_request:
+    paths: ['src/BeamSolver/**', 'src/Models/**', 'src/ViewModels/BeamCalculatorViewModel*', 'tools/BeamSolver.Worker/**', 'tests/Beam.Worker.Tests/**', 'scripts/Build-BeamSolverWorker.ps1', '.github/workflows/beam-worker-integration.yml']
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  net48-to-net10:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build original-framework host and self-contained worker
+        shell: pwsh
+        run: |
+          dotnet build tests/Beam.Worker.Tests/Beam.Worker.Tests.csproj -c Release -f net48 --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/Build-BeamSolverWorker.ps1 -OutputDirectory artifacts/beam-worker
+      - name: Exact round trips, fallback and cancellation on Windows
+        shell: pwsh
+        run: |
+          tests/Beam.Worker.Tests/bin/Release/net48/Beam.Worker.Tests.exe artifacts/beam-worker/Doka.BeamSolver.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Full five-area original-framework versus integrated worker
+        shell: pwsh
+        run: |
+          foreach ($repeat in 1..2) {
+            & tests/Beam.Worker.Tests/bin/Release/net48/Beam.Worker.Tests.exe artifacts/beam-worker/Doka.BeamSolver.exe --full 2>&1 | Tee-Object "beam-worker-full-$repeat.txt"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beam-worker-integration-evidence
+          path: beam-worker-full-*.txt

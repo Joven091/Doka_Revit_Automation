@@ -177,3 +177,7 @@ Artifact: `combined-beam-net48-evidence` (ID `12826901484`), SHA-256
 `af2c9a0598623ffa6834b68a4caff699f733ae381347eb222858dcd1380e4293`.
 Local production/net48 and both harness builds have zero warnings/errors; fourteen
 targeted suites pass, including the six new exact leg-capacity boundaries.
+
+Subsequent worker integration and Top50 audit fixes are recorded in
+[beam-worker-20261028.md](beam-worker-20261028.md). The console-only runtime
+measurements above remain the historical baseline for that integration.

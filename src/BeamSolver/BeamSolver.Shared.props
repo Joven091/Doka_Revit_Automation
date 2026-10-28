@@ -1,0 +1,45 @@
+<Project>
+  <ItemGroup>
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../ViewModels/BeamCalculatorViewModel.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/BeamPropOption.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/PropDataHelper.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/TowerBeamAnalysis.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/TowerOptimizer.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../ViewModels/BeamCalculatorViewModel.Towers.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/TowerStockPlanner.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/TransferredSlabOptimizer.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../ViewModels/BeamCalculatorViewModel.Transfer.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/LoadedBeamAnalysis.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/TransferBeamNetwork.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../ViewModels/BeamCalculatorViewModel.Network.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/BeamSearchTrace.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../ViewModels/BeamCalculatorViewModel.Diagnostics.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/CrossBeamSupport.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/FormworkObstacleIndex.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/SecondarySettingOut.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/PlywoodSpacing.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../ViewModels/BeamCalculatorViewModel.Plywood.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/EquivalentTransferredLoading.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/CrossingSlabSupports.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/EngineerDesignWorkflow.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/CrossBeamSupport.PrimaryBearings.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/RevitStructureImport.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/RevitImportDiagnostics.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../ViewModels/BeamCalculatorViewModel.Revit.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/RevitStructureImport.Perimeter.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)BeamWire.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)BeamSolverClient.cs" />
+  </ItemGroup>
+  <Target Name="BeamSolverSourceIdentity" BeforeTargets="AssignTargetPaths">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <GetFileHash Files="@(BeamSolverSource)" Algorithm="SHA256"><Output TaskParameter="Items" ItemName="_BeamSourceHash" /></GetFileHash>
+    <WriteLinesToFile File="$(IntermediateOutputPath)beam-source-hashes.txt" Lines="@(_BeamSourceHash->'%(FileHash)')" Overwrite="true" Encoding="UTF-8" />
+    <ItemGroup><EmbeddedResource Include="$(IntermediateOutputPath)beam-source-hashes.txt" LogicalName="EngineeringDashboard.BeamSolver.SourceHashes" /></ItemGroup>
+  </Target>
+  <Target Name="ExportBeamSolverSourceIdentity" AfterTargets="Build">
+    <Copy SourceFiles="$(IntermediateOutputPath)beam-source-hashes.txt" DestinationFiles="$(TargetDir)BeamSolver.SourceHashes" />
+  </Target>
+  <Target Name="ExportPublishedBeamSolverSourceIdentity" AfterTargets="Publish">
+    <Copy SourceFiles="$(IntermediateOutputPath)beam-source-hashes.txt" DestinationFiles="$(PublishDir)BeamSolver.SourceHashes" />
+  </Target>
+</Project>

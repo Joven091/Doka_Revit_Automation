@@ -57,6 +57,7 @@ SetupLogging=yes
 [Files]
 Source: "{#BuildOutput}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildOutput}\Doka.RevitUpdater.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildOutput}\BeamSolver\*"; DestDir: "{app}\BeamSolver"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#BuildOutput}\access-settings.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#BuildOutput}\update-settings.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#RepoRoot}MyRevitAddin.addin"; DestDir: "{app}"; Flags: ignoreversion
@@ -185,6 +186,23 @@ begin
       Result := 'A newer Dashboard is already installed. Downgrade refused.';
 end;
 
+procedure BackupWorkerTree(const SourceDirectory, DestinationDirectory: String);
+var Find: TFindRec; SourceName, DestinationName: String;
+begin
+  if not DirExists(SourceDirectory) then Exit;
+  if not ForceDirectories(DestinationDirectory) then RaiseException('Unable to back up the previous beam solver.');
+  if FindFirst(AddBackslash(SourceDirectory)+'*',Find) then try
+    repeat
+      if (Find.Name<>'.') and (Find.Name<>'..') then begin
+        SourceName := AddBackslash(SourceDirectory)+Find.Name;
+        DestinationName := AddBackslash(DestinationDirectory)+Find.Name;
+        if (Find.Attributes and FILE_ATTRIBUTE_DIRECTORY)<>0 then BackupWorkerTree(SourceName,DestinationName)
+        else if not FileCopy(SourceName,DestinationName,False) then RaiseException('Unable to back up beam solver file '+Find.Name);
+      end;
+    until not FindNext(Find);
+  finally FindClose(Find); end;
+end;
+
 procedure BackupOne(const Name: String);
 var Source: String;
 begin
@@ -219,6 +237,7 @@ begin
       finally FindClose(Find); end;
       BackupOne('MyRevitAddin.addin'); BackupOne('Doka.RevitUpdater.exe');
       BackupOne('access-settings.json'); BackupOne('update-settings.json');
+      BackupWorkerTree(ExpandConstant('{app}\BeamSolver'),AddBackslash(BackupDirectory)+'BeamSolver');
       SaveStringToFile(AddBackslash(BackupDirectory)+'RESTORE.txt','Previous Dashboard files from '+ExpandConstant('{app}')+#13#10+'Close Revit, uninstall the review release, then reinstall your previously trusted installer. Keep these files/settings for a reviewed restoration if that installer is unavailable. Do not mix dependency versions.'+#13#10,False);
       Log('PREVIOUS_DASHBOARD_BACKUP='+BackupDirectory);
     end;
