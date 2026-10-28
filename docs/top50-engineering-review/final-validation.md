@@ -117,3 +117,30 @@ Actual Revit 2024 host acceptance and a completely clean-machine prerequisite
 test remain unperformed. WPF tests and API stand-ins do not substitute for them.
 No company share publication, real user-machine installation or GitHub merge is
 authorized by this record.
+
+## Package-test path correction and renewed packaging approval
+
+Run `40760797897` repeated all application validation successfully and opened the
+approval gate. Its installer job `123073219968` compiled the installer, then the
+first isolated installation was correctly refused before payload writes. The
+test harness had been moved to `Temp\Doka Top50 Installer Tests`, whereas the
+installer deliberately permits isolated mode only beneath
+`Temp\DokaTop50InstallerTests\`. The failed `fresh.log` ends with
+`InitializeSetup returned False`; it is not an application/runtime failure or a
+successful installation.
+
+The supervisor corrected one test-script line to use
+`Temp\DokaTop50InstallerTests\<GUID>\path with spaces`. This preserves the exact
+allowlisted root, unique disposable directories and spaces coverage. No
+application, installer definition or build configuration changed. Independent QA
+reviewed the actual guard, failed log and correction and approved this bounded
+harness fix. See the final QA addendum.
+
+Corrected harness commit: `c2cbba8454a1e3bfe901393376051be2d71c0849`, tree
+`a4f001c3b888e8089bd02ca18f32402e2b11c985`; corresponding local commit `02448e5`.
+Application acceptance remains tied to the identical application sources from
+`1e0c81e3a00dab3ae9ddc0211c58a0a3973bab22`. The supervisor renews packaging
+approval against the corrected harness revision. The workflow must repeat all
+native/application validation successfully before it rebuilds the installer and
+runs the full installation/upgrade/restart/uninstall checks. No failed package is
+approved for distribution. The source/test/build diff gate remains unchanged.
