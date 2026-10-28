@@ -147,6 +147,33 @@ both primary materials alongside the existing 240 crossing parity cases.
 Two additional experiments were excluded: cached stock-pattern prefixes did not
 improve the five-area replay, and prepared primary placement windows changed the
 local Area 1 ABBA mean from 18.146 to 17.984 seconds (under 1%, within run-to-run
-variation). Their extra implementation is not retained. Full Windows results for
-this third pass are pending the controlled workflow; local development timings
-are not a claim that the installed Revit tool meets 30 seconds.
+variation). Their extra implementation is not retained.
+
+Controlled Windows results, identical reported inputs and four workers:
+
+| Source/runtime | First run (s) | Second run (s) | Mean (s) |
+| --- | ---: | ---: | ---: |
+| Second-pass baseline / .NET Framework 4.8 | 82.058 | 87.913 | 84.9855 |
+| Third-pass candidate / .NET Framework 4.8 | 46.366 | 44.609 | 45.4875 |
+| Third-pass candidate / .NET 10 | 29.940 | 29.865 | 29.9025 |
+
+The source change reduces the net48 mean by **46.476%**. The modern runtime
+reduces the same candidate's mean by a further **34.262%**. All same-runtime
+fingerprints match exactly. Modern-runtime round-trip number strings have
+formatting differences, but every parsed unrounded number agrees exactly:
+maximum numeric difference **0** in both runs. All six runs pass independent
+engineering validation, with unchanged selected stock/supports, UDLs, reactions,
+68/20/24/24/24 area leg counts and the existing Area 2 separate-slab outcome.
+
+The modern console benchmark only just clears 30 seconds. It excludes Revit UI,
+model extraction and any future worker communication/startup cost; it does not
+establish a 30-second installed Revit experience. The current Revit/net48 path is
+still about 45.5 seconds. A separate modern-runtime worker must be implemented and
+measured before the runtime benefit reaches the dashboard. No worker integration,
+installer, version change, merge or company publication is included here.
+
+Evidence: https://github.com/Joven091/Doka_Revit_Automation/actions/runs/40711220375
+Artifact: `combined-beam-net48-evidence` (ID `12826901484`), SHA-256
+`af2c9a0598623ffa6834b68a4caff699f733ae381347eb222858dcd1380e4293`.
+Local production/net48 and both harness builds have zero warnings/errors; fourteen
+targeted suites pass, including the six new exact leg-capacity boundaries.
