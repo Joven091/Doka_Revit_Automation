@@ -105,7 +105,7 @@ internal static class Program
         vm.Settings.CatalogMm=new[]{5000};vm.Settings.LongestCount=2;vm.Settings.SearchEffort=2;
         vm.OptimizeAsync().GetAwaiter().GetResult();Check(vm.Selected!=null&&vm.Selected.PanelCount==2,"fresh native search satisfies simultaneous longest walls with two panels");
         var path=Path.Combine(output,"current.top50");vm.Save(path);var document=NativeProjectStore.Load(path);
-        Check(document.Version==5&&document.SearchPolicyVersion==3&&document.SearchEffort==Top50PlannerPolicy.ThoroughSearchEffort,"V5 project persists the fixed thorough search policy");
+        Check(document.Version==5&&document.SearchPolicyVersion==Top50PlannerPolicy.SearchPolicyVersion&&document.SearchEffort==Top50PlannerPolicy.ThoroughSearchEffort,"V5 project persists the current fixed thorough search policy");
         var reopened=new Top50ViewModel();reopened.Open(path,Path.Combine(output,"cache"));
         Check(!reopened.Dirty&&Top50Order.Stock(reopened.Selected.Stock)==Top50Order.Stock(vm.Selected.Stock)&&reopened.Selected.PanelCount==2,"current project reopens without changing the chosen inventory or dirty state");
         var before=Signature(new SearchRun{Proposals=vm.Proposals});reopened.OptimizeAsync().GetAwaiter().GetResult();
@@ -178,6 +178,13 @@ internal static class Program
         var restored=new Top50ViewModel();restored.Open(path,Path.Combine(output,"editing-cache"));Check(restored.Input.Walls.Count==1&&restored.Input.RemovedWalls.Count==1&&!restored.CanUndo&&!restored.CanRedo,"saved deletion survives reopen and history resets at Open");
         restored.AddManual(2000,"New distinct wall");Check(restored.Input.Walls.Select(w=>w.Id).Distinct().Count()==2&&restored.Input.AllWalls.Select(w=>w.Id).Distinct().Count()==3,"manual IDs are never reused after deletion");
         restored.Undo();restored.EditSettings(settings=>settings.MaxFillers=2);Check(!restored.CanRedo,"a new edit clears the redo branch");
+        restored.Undo();bool canRedo=restored.CanRedo,wasDirty=restored.Dirty;int oldFillers=restored.Settings.MaxFillers;
+        Fails(()=>restored.EditSettings(settings=>settings.MaxFillers=Top50PlannerPolicy.WholeNumber(2.9m,"Maximum internal fillers per wall",0)),"fractional count is rejected before conversion");
+        Check(restored.Settings.MaxFillers==oldFillers&&restored.CanRedo==canRedo&&restored.Dirty==wasDirty,"invalid fractional edit preserves settings and history");
+        Fails(()=>restored.EditSettings(settings=>settings.CatalogMm=Array.Empty<int>()),"empty catalog is rejected transactionally");
+        Check(restored.Settings.CatalogMm.Length>0&&restored.CanRedo==canRedo,"catalog rejection retains permitted lengths and redo branch");
+        restored.EditSettings(settings=>{settings.OfferingMode=1;settings.Percentage=45.5m;settings.BandPoints=10.25m;});
+        Check(restored.Settings.Percentage==45.5m&&restored.Settings.BandPoints==10.25m,"percentage target and range retain decimal values");
         var inFlight=vm.OptimizeAsync();bool editBlocked=false;try{vm.DeleteWalls(new[]{second});}catch(InvalidOperationException){editBlocked=true;}Check(editBlocked&&!vm.CanUndo&&!vm.CanRedo,"editing and history are blocked while optimization runs");vm.Cancel();inFlight.GetAwaiter().GetResult();
         bool disabled=false;try{vm.Export(Path.Combine(output,"not-exported.xlsx"));}catch(NotSupportedException){disabled=true;}Check(disabled&&!File.Exists(Path.Combine(output,"not-exported.xlsx")),"disabled Excel export creates no file");
         var source=new ImportSnapshot{Walls=new[]{Wall("a",20000000),Wall("b",40000000),Wall("c",20000000),Wall("d",40000000)}};

@@ -52,6 +52,14 @@ internal static class Program
         finally{Directory.Delete(directory,true);}
         app.ActiveUIDocument.Document.Elements.Remove(first);var missing=Top50RevitSelection.Refresh(app,request);model.RefreshRevit(missing);Check(!model.Input.Walls.Single(w=>w.Id==firstId).Included&&model.Input.Walls.Single(w=>w.Id==firstId).Diagnostics.Any(n=>n.Contains("missing")),"deleted native walls retain their identity and are excluded after refresh");
         var previous=model.Input;Reject(()=>model.ImportRevit(unsupported.RevitSource),"No supported");Check(ReferenceEquals(previous,model.Input)&&model.BuildDiagnosticReport().Contains("Curved"),"invalid import preserves the current offer and records source errors");
+        var fastModel=new Top50ViewModel();for(int i=0;i<4;i++)fastModel.AddManual(1000,"Fast outcome regression");
+        fastModel.EditSettings(s=>{s.CatalogMm=new[]{1000};s.OfferingMode=1;s.Percentage=45;s.BandPoints=1;});
+        System.ComponentModel.PropertyChangedEventHandler cancelBusy=null;
+        cancelBusy=(sender,change)=>{if(change.PropertyName==nameof(Top50ViewModel.IsBusy)&&fastModel.IsBusy){fastModel.PropertyChanged-=cancelBusy;fastModel.Cancel();}};
+        fastModel.PropertyChanged+=cancelBusy;fastModel.OptimizeAsync().GetAwaiter().GetResult();
+        Check(!fastModel.IsBusy&&fastModel.Selected==null&&fastModel.Status.Contains("cancelled"),"active first cancellation has a terminal outcome before returning idle");
+        string cancelled=fastModel.Status;fastModel.Cancel();Check(fastModel.Status==cancelled,"idle Cancel preserves the completed cancellation outcome");
+        fastModel.OptimizeAsync().GetAwaiter().GetResult();string completed=fastModel.Status;fastModel.Cancel();Check(completed.Contains("No complete proposal found")&&fastModel.Status==completed,"late Cancel preserves a fast no-result outcome");
         Console.WriteLine(checks+" Top50 Revit source, reader, refresh, highlight and persistence checks passed (test-only Revit API stand-ins).");
     }
 }

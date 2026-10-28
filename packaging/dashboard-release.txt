@@ -1,8 +1,10 @@
-Doka Revit Automation 1.1.26 — Engineering Dashboard
+Doka Revit Automation 1.1.27 — Engineering Dashboard
 
 Includes Beam Formwork, Steel Shape, Top50 Planner and a visible but locked Dome Beta entry. D3 slab remains Coming soon. Steel Shape retains sixteen section weight tools, schematics and interactive weld allowance, with an offline browser fallback when WebView2 is unavailable.
 
 Top50 includes Undo, Redo, Delete and shortcuts, repeatable quantity-first search, compact equipment results, a casting-group selector and Diagnose. Panel quantities cover both wall faces. Offered length is LM per face. Connector quantities cover one level on both faces, with reuse enabled. The user determines the required connection levels.
+
+This release corrects actual identical-set allocations, switching to percentage offering and validation of saved offers against project settings. Search outcomes remain visible; compact context explains sequential stock reuse and the presets. Allocation groups are equipment planning groups, not an approved pour sequence. The three presets and two offering methods remain available.
 
 New Top50 project saves use format V5. Older projects remain readable; save a separate test copy when retaining compatibility with an older version. Search is best-found and does not establish a global optimum.
 

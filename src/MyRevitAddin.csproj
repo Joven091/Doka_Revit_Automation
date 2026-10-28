@@ -19,11 +19,11 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
 
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2024.*">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2024.3.60">
       <PrivateAssets>all</PrivateAssets>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2024.*">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2024.3.60">
       <PrivateAssets>all</PrivateAssets>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
