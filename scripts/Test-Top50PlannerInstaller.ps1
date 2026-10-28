@@ -41,7 +41,9 @@ $dashboardSmoke=Join-Path $repo 'tests/Dashboard.ReleaseSmoke/bin/Release/net48/
 if(Test-Path $dashboardSmoke){
     Copy-Item $dashboardSmoke (Join-Path $fresh 'Dashboard.ReleaseSmoke.exe')
     & (Join-Path $fresh 'Dashboard.ReleaseSmoke.exe') (Join-Path $evidence 'installed-dashboard') *> (Join-Path $evidence 'installed-dashboard.log')
-    Check ($LASTEXITCODE -eq 0) 'installed File/Tools headers, edit icons, Dome lock and Top50 Revit source interactions'
+    $dashboardExit=$LASTEXITCODE
+    if($dashboardExit -ne 0){Get-Content -LiteralPath (Join-Path $evidence 'installed-dashboard.log') | Write-Output}
+    Check ($dashboardExit -eq 0) 'installed File/Tools headers, edit icons, Dome lock and Top50 Revit source interactions'
 }
 
 $upgrade=Join-Path $root 'upgrade';New-Item -ItemType Directory -Path $upgrade | Out-Null
