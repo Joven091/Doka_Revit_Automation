@@ -38,7 +38,7 @@ internal static class Program
         Check(vm.Proposals.Count>0&&vm.Proposals.All(p=>Top50Validation.Validate(vm.Input.Walls,p,vm.Limits).Count==0),"fresh native solver proposals independently validate");
         var selected=vm.Selected;var proposals=vm.Proposals;var original=vm.Input.Walls.Select(w=>w.LengthMicrometres).ToArray();bool dirty=vm.Dirty;
         var report=vm.BuildDiagnosticReport();
-        foreach(var expected in new[]{typeof(Top50ViewModel).Assembly.GetName().Version.ToString(),"MVID:","CatalogMm: 5000","Attempted inventories:","Outcome: Accepted","Retained model status:","Stock (size mm x quantity):","Casting Group C-01","MANUAL-001","total mm: 5000","Validation against CURRENT inputs/settings: passed"})Check(report.Contains(expected),"report contains "+expected);
+        foreach(var expected in new[]{typeof(Top50ViewModel).Assembly.GetName().Version.ToString(),"MVID:","CatalogMm: 5000","Attempted inventories:","Outcome: Accepted","Retained model status:","Stock (per face; size mm x quantity):","Casting Group C-01","MANUAL-001","total mm: 5000","Validation against CURRENT inputs/settings: passed"})Check(report.Contains(expected),"report contains "+expected);
         Check(ReferenceEquals(selected,vm.Selected)&&ReferenceEquals(proposals,vm.Proposals)&&vm.Dirty==dirty&&vm.Input.Walls.Select(w=>w.LengthMicrometres).SequenceEqual(original),"diagnosis leaves input, selected proposal, allocations and dirty state unchanged");
         File.WriteAllText(Path.Combine(output,"validated-planner-diagnosis.txt"),report);
         var culture=CultureInfo.CurrentCulture;CultureInfo.CurrentCulture=new CultureInfo("de-DE");

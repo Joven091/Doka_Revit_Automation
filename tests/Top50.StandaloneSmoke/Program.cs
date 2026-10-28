@@ -80,7 +80,7 @@ internal static class Program
                 {
                     Check(!Find<DataGrid>(root).Any(),"casting-group table is removed");var selector=Find<ComboBox>(root).Single(c=>AutomationProperties.GetAutomationId(c)=="Top50CastingGroupSelector");
                     Check(selector.Items.Count==loaded.Selected.Groups.Count&&selector.SelectedItem.ToString()!=null,"dropdown contains every casting group");
-                    selector.SelectedIndex=selector.Items.Count-1;var diagram=Find<Top50Diagram>(root).Single();Check(loaded.SelectedGroupIndex==selector.SelectedIndex&&AutomationProperties.GetName(diagram).Contains("W-")&&AutomationProperties.GetName(diagram).Contains("both faces"),"group selection updates the schematic with readable wall names and face basis");
+                    selector.SelectedIndex=selector.Items.Count-1;Render(root,1280,800,Path.Combine(output,"casting-selected.png"));var diagram=Find<Top50Diagram>(root).Single();Check(loaded.SelectedGroupIndex==selector.SelectedIndex&&AutomationProperties.GetName(diagram).Contains("W-")&&AutomationProperties.GetName(diagram).Contains("both faces"),"group selection updates the schematic with readable wall names and face basis");
                 }
             }
             window.Show();Pump();window.ShowPage(0);Pump();root=(FrameworkElement)window.Content;
