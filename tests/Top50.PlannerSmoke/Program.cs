@@ -114,7 +114,7 @@ internal static class Program
             var first=box.Text;Find<Button>(dialog).Single(b=>(string)b.Content=="Refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(box.Text.Contains("MANUAL-001")&&box.Text.Length>=first.Length-10,"refresh retains complete active planner evidence");
             dialog.Close();
         }));
-        Command(root,"Top50Diagnose").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Command(root,"Top50Diagnose").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));Pump();
         Check(sawDialog&&ReferenceEquals(captureBefore,restored.Selected)&&!restored.Dirty,"opening, refreshing and closing diagnosis preserve the project");
         var busy=restored.OptimizeAsync();Check(Command(root,"Top50Diagnose").IsEnabled,"diagnosis stays enabled while optimize runs");restored.Cancel();Wait(busy);
         restored.Save(project);window.Close();launcher.Close();
