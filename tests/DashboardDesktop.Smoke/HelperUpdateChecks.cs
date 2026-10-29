@@ -49,7 +49,13 @@ internal static class HelperUpdateChecks
                 var captured=Map(Parse(checkpoint)["Backpropping"]);
                 Check((string)Items(captured["Draft"]).First()=="QA helper update – unsaved"&&(string)Items(captured["Draft"]).ElementAt(1)=="4e"&&(string)Items(captured["Draft"]).ElementAt(3)=="0"&&(string)captured["ProjectMaximum"]=="12.","actual update checkpoint contains the edited unsaved draft verbatim");
                 string helperExe=Path.Combine(installed,"Doka.DashboardUpdater.exe");
-                Wait(()=>{helper=Process.GetProcessesByName("Doka.DashboardUpdater").FirstOrDefault(p=>SameExecutable(p,helperExe));return helper!=null;},"actual production update helper process");
+                Wait(()=>
+                {
+                    helper=Process.GetProcessesByName("Doka.DashboardUpdater").FirstOrDefault(p=>SameExecutable(p,helperExe));
+                    if(helper==null)return false;
+                    _=helper.Handle; // Retain the Windows process handle for ExitCode after exit.
+                    return true;
+                },"actual production update helper process");
                 string ready=Path.Combine(Path.GetDirectoryName(planPath),"helper-ready.json");
                 Wait(()=>File.Exists(ready)||helper.HasExited,"actual helper completes payload validation and publishes readiness",30);
                 Check(!helper.HasExited&&File.Exists(ready)&&Parse(ready).TryGetValue("Ready",out object marker)&&marker is bool confirmed&&confirmed,"actual helper validates its plan and publishes Ready=true");
@@ -64,6 +70,7 @@ internal static class HelperUpdateChecks
                     return false;
                 },"actual candidate starts, restores work and writes its receipt",180);
                 updated=Process.GetProcessById(Convert.ToInt32(receipt["ProcessId"]));
+                _=updated.Handle; // GetProcessById alone does not retain an exit-query handle.
                 var active=Parse(Path.Combine(root,"active.json"));string selected=Path.Combine(root,((string)active["RelativeDirectory"]).Replace('/',Path.DirectorySeparatorChar),"Doka.EngineeringDashboard.exe");
                 Check(VersionNumber((string)active["Version"])==VersionNumber(candidate.Version)&&(string)active["Generation"]!=generation,"real helper atomically activates the candidate version");
                 Check(SameExecutable(updated,selected)&&updated.StartTime.ToUniversalTime().Ticks==Convert.ToInt64(receipt["StartedUtcTicks"]),"candidate receipt identifies the actual selected new production process");

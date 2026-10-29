@@ -30,10 +30,9 @@ On failure, callback exceptions are written to stdout before owned-child cleanup
 `update.log` / `helper-startup.log` files. UIA collection is bounded and never
 inspects unrelated PIDs.
 
-Windows has executed **351 update-contract checks** and **80 native desktop
-checks** successfully. The actual helper integration test has reached capture of
-live unsaved inputs; helper readiness is still under investigation. A successful
-complete helper update and actual Revit host acceptance have not been established.
+Both workflow paths must pass: the standard native desktop checks and the actual
+helper update checks. Their CI logs and captured evidence record the execution
+results; passing pure contracts or cross-building does not establish either path.
 
 The harness loads the **desktop variant from that exact production payload** for
 WPF session tests, and separately launches **that exact production EXE** for
