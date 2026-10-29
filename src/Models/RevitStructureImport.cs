@@ -8,13 +8,6 @@ using System.Xml.Serialization;
 namespace EngineeringDashboard
 {
     // Revit is read on its command thread. Everything below operates on detached mm data.
-    public sealed class ImportPoint
-    {
-        public double X {get;set;}
-        public double Y {get;set;}
-        public ImportPoint() {}
-        public ImportPoint(double x,double y) {X=x;Y=y;}
-    }
     public sealed class RevitReferenceShape
     {
         public string SourceId {get;set;}
@@ -50,54 +43,6 @@ namespace EngineeringDashboard
             if(Sources.Any(s=>s==null || (s.CanvasLabel?.Length??0)>32 || (s.SourceId?.Length??0)>64 || (s.SourceLabel?.Length??0)>256))
                 throw new ArgumentException("Invalid Revit element reference.");
         }
-    }
-    internal sealed class RevitSelectedBeam
-    {
-        public string SourceId {get;set;}
-        public string Label {get;set;}
-        public ImportPoint Start {get;set;}
-        public ImportPoint End {get;set;}
-        public double LengthMm=>Start==null || End==null ? 0 : Math.Sqrt(Math.Pow(End.X-Start.X,2)+Math.Pow(End.Y-Start.Y,2));
-        public double WidthMm {get;set;}
-        public double DepthMm {get;set;}
-        public double BottomMm {get;set;}
-        public string Problem {get;set;}
-    }
-    internal sealed class RevitSelectedSlab
-    {
-        public string SourceId {get;set;}
-        public string Label {get;set;}
-        public ImportPoint[] Outline {get;set;}
-        public double ThicknessMm {get;set;}
-        public double TopMm {get;set;}
-        public string Problem {get;set;}
-    }
-    internal sealed class RevitSelectedBoundary
-    {
-        public string SourceId {get;set;}
-        public string Label {get;set;}
-        public string Kind {get;set;}
-        public ImportPoint[] Outline {get;set;}
-        public double BottomMm {get;set;}
-        public double TopMm {get;set;}
-        public string Problem {get;set;}
-    }
-    internal sealed class RevitSelectionSnapshot
-    {
-        internal string DocumentTitle="";
-        internal string RevitVersion="",RevitBuild="",ActiveView="",ReadException="";
-        internal int SelectedCount=-1;
-        internal string[] SelectedIds=new string[0];
-        internal RevitSelectionElement[] Elements=new RevitSelectionElement[0];
-        internal RevitSelectedBeam[] Beams=new RevitSelectedBeam[0];
-        internal RevitSelectedSlab[] Slabs=new RevitSelectedSlab[0];
-        internal RevitSelectedBoundary[] Boundaries=new RevitSelectedBoundary[0];
-        internal string[] Problems=new string[0];
-        internal string[] Notes=new string[0];
-    }
-    internal sealed class RevitSelectionElement
-    {
-        internal string SourceId="",Label="",Category="",FamilyType="",ElementClass="",Status="",Details="",Exception="";
     }
     internal sealed class RevitStructureImportResult
     {
@@ -219,22 +164,7 @@ namespace EngineeringDashboard
             return true;
         }
         internal static bool BoundaryMatches(ImportPoint[] outline,ImportPoint[] mesh,double projectedArea,double tolerance)
-        {
-            if(!Convex(outline,tolerance) || mesh==null || mesh.Length==0 || !TowerBeamAnalysis.Finite(projectedArea) || projectedArea<=0)return false;
-            // The area allowance follows the same linear edge tolerance. Every
-            // projected mesh vertex must also match the real face perimeter;
-            // an enlarged base, remote component or genuine recess cannot be
-            // accepted merely by increasing an area-equality threshold.
-            if(Math.Abs(Area(outline)-projectedArea)>Perimeter(outline)*tolerance+Math.PI*tolerance*tolerance)return false;
-            double sign=Math.Sign(SignedArea(outline));
-            foreach(var v in mesh)
-            {
-                if(v==null || !TowerBeamAnalysis.Finite(v.X) || !TowerBeamAnalysis.Finite(v.Y))return false;
-                for(int i=0;i<outline.Length;i++)
-                    if(sign*Cross(outline[i],outline[(i+1)%outline.Length],v)/Distance(outline[i],outline[(i+1)%outline.Length])< -tolerance)return false;
-            }
-            return true;
-        }
+            =>RevitSelectionGeometry.BoundaryMatches(outline,mesh,projectedArea,tolerance);
         internal static ImportPoint[] ClipConvex(ImportPoint[] subject,ImportPoint[] boundary,double inset)
         {
             var points=subject.ToList();double sign=Math.Sign(SignedArea(boundary));

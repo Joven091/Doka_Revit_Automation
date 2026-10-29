@@ -13,6 +13,19 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(DashboardDesktopBuild)' == 'true'">
+    <DefineConstants>$(DefineConstants);DASHBOARD_DESKTOP</DefineConstants>
+    <OutputPath>bin/$(Configuration)/dashboard/</OutputPath>
+    <IntermediateOutputPath>obj/$(Configuration)/dashboard/</IntermediateOutputPath>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(DashboardDesktopBuild)' == 'true'">
+    <Compile Remove="App.cs;Commands/**/*.cs;Revit/**/*.cs;Updates/UpdateWindow.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
       <PrivateAssets>all</PrivateAssets>

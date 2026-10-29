@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><TargetFrameworks>net48;net10.0</TargetFrameworks><LangVersion>latest</LangVersion><AssemblyName>Doka.DashboardPackage</AssemblyName></PropertyGroup>
+ <ItemGroup Condition="'$(TargetFramework)'=='net48'">
+  <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all"/>
+  <Reference Include="System.Runtime.Serialization"/><Reference Include="System.IO.Compression"/><Reference Include="System.IO.Compression.FileSystem"/>
+ </ItemGroup>
+ <ItemGroup>
+  <Compile Include="../../src/DashboardHost/BridgeProtocol.cs" Link="BridgeProtocol.cs"/>
+  <Compile Include="../../src/DashboardHost/DashboardPackages.cs" Link="DashboardPackages.cs"/>
+ </ItemGroup>
+</Project>

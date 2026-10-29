@@ -17,6 +17,9 @@ namespace EngineeringDashboard
         public LauncherWindow()
         {
             InitializeComponent();
+#if DASHBOARD_DESKTOP
+            DesktopHost.DashboardSessionController.Register(this);
+#endif
             Closing+=(s,e)=>closing=true;
         }
         internal void ActivateCurrentTool()
@@ -44,7 +47,14 @@ namespace EngineeringDashboard
             catch {currentTool=null;ShowDashboard();throw;}
         }
         private void BtnAccount_Click(object sender,RoutedEventArgs e)=>MyRevitAddin.Access.AccessWindow.Manage(this);
-        private void BtnUpdates_Click(object sender,RoutedEventArgs e)=>ShowTool(new MyRevitAddin.Updates.UpdateWindow());
+        private void BtnUpdates_Click(object sender,RoutedEventArgs e)
+        {
+#if DASHBOARD_DESKTOP
+            DesktopHost.DashboardUpdateEntry.Open(this);
+#else
+            ShowTool(new MyRevitAddin.Updates.UpdateWindow());
+#endif
+        }
         private void BtnClose_Click(object sender,RoutedEventArgs e)=>Close();
         private void BtnDomeCalculator_Click(object sender,RoutedEventArgs e)
         {
@@ -63,9 +73,15 @@ namespace EngineeringDashboard
             Top50Window planner=null;
             var connection=new Top50.Top50RevitConnection
             {
+#if DASHBOARD_DESKTOP
+                ReadSelection=()=>DesktopHost.DesktopRuntime.ReadTop50SelectionAsync(()=>planner?.IsLoaded==true),
+                Refresh=request=>DesktopHost.DesktopRuntime.RefreshTop50Async(request,()=>planner?.IsLoaded==true),
+                Highlight=request=>DesktopHost.DesktopRuntime.HighlightTop50Async(request,()=>planner?.IsLoaded==true)
+#else
                 ReadSelection=()=>Command.Request(app=>{if(planner?.IsLoaded!=true)throw new System.ObjectDisposedException("Top50 Planner");return Top50RevitSelection.ReadSelected(app);}),
                 Refresh=request=>Command.Request(app=>{if(planner?.IsLoaded!=true)throw new System.ObjectDisposedException("Top50 Planner");return Top50RevitSelection.Refresh(app,request);}),
                 Highlight=request=>Command.Request(app=>{if(planner?.IsLoaded!=true)throw new System.ObjectDisposedException("Top50 Planner");return Top50RevitSelection.Highlight(app,request);})
+#endif
             };
             planner=new Top50Window(_top50ViewModel,connection);ShowTool(planner);
         }
@@ -98,10 +114,18 @@ namespace EngineeringDashboard
             var beam=new BeamCalculatorWindow{DataContext=_beamViewModel};
             beam.CheckForUpdates=()=>
             {
+#if DASHBOARD_DESKTOP
+                DesktopHost.DashboardUpdateEntry.Open(beam);
+#else
                 var update=new MyRevitAddin.Updates.UpdateWindow{Owner=beam};
                 update.Show();
+#endif
             };
+#if DASHBOARD_DESKTOP
+            beam.RequestRevitSelection=DesktopHost.DesktopRuntime.ReadBeamSelectionAsync;
+#else
             beam.RequestRevitSelection=()=>Command.Request(RevitStructureSelection.Read);
+#endif
             ShowTool(beam);
         }
     }

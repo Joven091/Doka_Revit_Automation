@@ -15,6 +15,11 @@ namespace MyRevitAddin.Access
         // Process memory only: restarting Revit always requires a fresh approval.
         // AccessWindow entry points and callbacks run on the UI thread.
         private static bool approvedForRevitSession;
+        internal static bool IsSessionApproved=>System.Threading.Volatile.Read(ref approvedForRevitSession);
+        // The desktop process delegates approval to the authenticated Revit
+        // session. The original in-process entry points retain their policy.
+        internal static Func<Window,bool> ExternalRequire {get;set;}
+        internal static Action<Window> ExternalManage {get;set;}
         private readonly AccessClient client;
         private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
         private readonly StackPanel controls = new StackPanel();
@@ -26,11 +31,13 @@ namespace MyRevitAddin.Access
 
         internal static bool Require(Window owner = null)
         {
+            if(ExternalRequire!=null)return ExternalRequire(owner);
             if (approvedForRevitSession) return true;
             approvedForRevitSession = Open(owner, true);
             return approvedForRevitSession;
         }
-        internal static void Manage(Window owner) => Open(owner, false);
+        internal static void Manage(Window owner)
+        {if(ExternalManage!=null)ExternalManage(owner);else Open(owner,false);}
 
         private static bool Open(Window owner, bool checkExisting)
         {

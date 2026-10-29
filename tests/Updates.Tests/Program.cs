@@ -54,6 +54,29 @@ internal static class Program
         Check(copied==release.SizeBytes && File.Exists(Path.Combine(stage,"Doka.RevitUpdater.exe")),"installer and helper staged locally");
         string path=Path.Combine(stage,"update-plan.json");Check(UpdateFiles.ReadPlan(path,cache,install).Release.Version=="1.1.1","valid plan accepted");
         Reject(()=>UpdateFiles.ReadPlan(path,source,install),"plan outside cache accepted");Reject(()=>UpdateFiles.ReadPlan(path,cache,source),"foreign installation accepted");
+        // Old serialized plans omit the optional assembly name and still target the original add-in.
+        var legacy=UpdateFiles.ReadPlan(path,cache,install);
+        Check(legacy.InstalledAssemblyFile==null&&!File.ReadAllText(path).Contains("InstalledAssemblyFile"),"legacy plan contract unexpectedly gained a required target assembly");
+        Check(UpdateFiles.InstalledAssembly(legacy)==Path.Combine(install,"MyRevitAddin.dll"),"old plan no longer targets MyRevitAddin.dll");
+        plan.InstalledAssemblyFile="Doka.RevitBridge.dll";
+        string bridgePath=Path.Combine(stage,"bridge-update-plan.json");UpdateFiles.WriteJson(bridgePath,plan);
+        var bridge=UpdateFiles.ReadPlan(bridgePath,cache,install);
+        Check(bridge.InstalledAssemblyFile=="Doka.RevitBridge.dll"&&UpdateFiles.InstalledAssembly(bridge)==Path.Combine(install,"Doka.RevitBridge.dll"),"bridge update target lost in serialized/read contract");
+        Check(bridge.Release.Sha256==legacy.Release.Sha256&&bridge.HostProcessId==legacy.HostProcessId&&bridge.HostStartedUtcTicks==legacy.HostStartedUtcTicks&&bridge.InstallerPath==legacy.InstallerPath,"selecting bridge changed installer or originating-host identity");
+        plan.InstalledAssemblyFile="MyRevitAddin.dll";
+        string explicitLegacyPath=Path.Combine(stage,"explicit-legacy-plan.json");UpdateFiles.WriteJson(explicitLegacyPath,plan);
+        Check(UpdateFiles.ReadPlan(explicitLegacyPath,cache,install).InstalledAssemblyFile=="MyRevitAddin.dll","explicit legacy assembly contract rejected");
+        plan.InstalledAssemblyFile="";
+        Check(UpdateFiles.InstalledAssembly(plan)==Path.Combine(install,"MyRevitAddin.dll"),"empty optional assembly name no longer retains legacy behavior");
+        int targetIndex=0;
+        foreach(string target in new[]{"Other.dll","../Doka.RevitBridge.dll","folder/Doka.RevitBridge.dll","folder\\Doka.RevitBridge.dll","C:Doka.RevitBridge.dll","C:\\other\\Doka.RevitBridge.dll","/other/Doka.RevitBridge.dll","Doka.RevitBridge.dll --flag"," Doka.RevitBridge.dll","Doka.RevitBridge.dll/../MyRevitAddin.dll"})
+        {
+            plan.InstalledAssemblyFile=target;
+            Reject(()=>UpdateFiles.InstalledAssembly(plan),"arbitrary or traversing assembly target accepted: "+target);
+            string unsafePlan=Path.Combine(stage,"unsafe-assembly-"+(targetIndex++)+".json");UpdateFiles.WriteJson(unsafePlan,plan);
+            Reject(()=>UpdateFiles.ReadPlan(unsafePlan,cache,install),"serialized unsafe assembly target accepted: "+target);
+        }
+        plan.InstalledAssemblyFile=null;
         var fake=new Fake();DeferredUpdate.Apply(plan,fake,CancellationToken.None,null,TimeSpan.Zero);
         Check(fake.Polls>=3 && fake.Installs==1,"waits for host and file locks before installing");
         fake=new Fake {ExitCode=5};try{DeferredUpdate.Apply(plan,fake,CancellationToken.None,null,TimeSpan.Zero);throw new Exception("failed installer accepted");}catch(IOException){checks++;}

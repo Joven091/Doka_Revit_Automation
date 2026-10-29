@@ -24,6 +24,8 @@
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/EngineerDesignWorkflow.cs" />
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/CrossBeamSupport.PrimaryBearings.cs" />
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/RevitStructureImport.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/RevitSelectionContracts.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/RevitSelectionGeometry.cs" />
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/RevitImportDiagnostics.cs" />
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../ViewModels/BeamCalculatorViewModel.Revit.cs" />
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/RevitStructureImport.Perimeter.cs" />

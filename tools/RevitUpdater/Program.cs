@@ -31,7 +31,7 @@ internal sealed class WindowsUpdateEnvironment : IUpdateEnvironment
     }
     public bool FilesAreAvailable(UpdatePlan plan)
     {
-        foreach(string name in new[] {"MyRevitAddin.dll","OxyPlot.dll","OxyPlot.Wpf.dll","OxyPlot.Wpf.Shared.dll"})
+        foreach(string name in new[] {Path.GetFileName(UpdateFiles.InstalledAssembly(plan)),"MyRevitAddin.dll","OxyPlot.dll","OxyPlot.Wpf.dll","OxyPlot.Wpf.Shared.dll"}.Distinct())
         {
             string path=Path.Combine(plan.InstallDirectory,name);if(!File.Exists(path))continue;
             try{using(var stream=new FileStream(path,FileMode.Open,FileAccess.ReadWrite,FileShare.None)){} }
@@ -51,7 +51,7 @@ internal sealed class WindowsUpdateEnvironment : IUpdateEnvironment
         using(var installer=Process.Start(start)){installer.WaitForExit();return installer.ExitCode;}
     }
     public Version InstalledVersion(UpdatePlan plan)
-        =>UpdateFiles.ParseVersion(FileVersionInfo.GetVersionInfo(Path.Combine(plan.InstallDirectory,"MyRevitAddin.dll")).FileVersion);
+        =>UpdateFiles.ParseVersion(FileVersionInfo.GetVersionInfo(UpdateFiles.InstalledAssembly(plan)).FileVersion);
 }
 
 internal static class Program
