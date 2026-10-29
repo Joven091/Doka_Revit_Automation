@@ -25,7 +25,8 @@ if((Get-FileHash (Join-Path $source 'BeamSolver.SourceHashes')).Hash -ne (Get-Fi
 Copy-Item (Join-Path $source 'BeamSolver.SourceHashes') $payload
 # Only versioned executable payload belongs in the ZIP. Host registration lives outside it.
 foreach($name in @('RevitAPI.dll','RevitAPIUI.dll','Doka.RevitBridge.dll')){if(Test-Path (Join-Path $payload $name)){throw "Host-only file in desktop payload: $name"}}
-$expected=[version]$Version
+$requested=[version]$Version
+$expected=[version]::new($requested.Major,$requested.Minor,$requested.Build,[Math]::Max(0,$requested.Revision))
 foreach($name in @('Doka.EngineeringDashboard.exe','MyRevitAddin.dll')){
     if([version][Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $payload $name)).FileVersion -ne $expected){throw "Mismatched Dashboard version: $name"}
 }
@@ -40,5 +41,18 @@ Copy-Item (Join-Path $repo 'scripts/Initialize-DashboardLiveUpdate.ps1') $bootst
 Copy-Item (Join-Path $repo 'src/access-settings.json') $bootstrap
 Copy-Item (Join-Path $repo 'src/update-settings.json') $bootstrap
 Copy-Item (Join-Path $repo 'docs/dashboard-live-update/README.md') $output
+Copy-Item (Join-Path $repo 'scripts/Publish-DashboardUpdate.ps1') $output
+@'
+@echo off
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Publish-DashboardUpdate.ps1" -FeedDirectory "%~dp0feed"
+if errorlevel 1 goto failed
+echo Dashboard update published. The legacy Revit installer feed was not changed.
+pause
+exit /b 0
+:failed
+echo Publication failed. Read the error above; no incomplete feed is advertised.
+pause
+exit /b 1
+'@ | Set-Content (Join-Path $output 'Publish-to-company.cmd') -Encoding ascii
 @{schemaVersion=1;dashboardVersion=$Version;bridgeProtocol=1;bridgeFileVersion=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $bootstrap 'Doka.RevitBridge.dll')).FileVersion;sourceCommit=(& git -C $repo rev-parse HEAD).Trim();bootstrapRequiresRevitRestart=$true;installerCreated=$false;companyPublished=$false} | ConvertTo-Json | Set-Content (Join-Path $output 'build-info.json') -Encoding utf8
 Write-Output "Built verified Dashboard payload and review-only migration files in $output. No installer, installation or company publication was performed."

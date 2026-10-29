@@ -1,6 +1,7 @@
 [CmdletBinding(SupportsShouldProcess)]
 param([Parameter(Mandatory)][string]$FeedDirectory,[string]$Destination='\\DOKAAREDUBA\ApplDat\MEA\ENG\Joven\BeamCalculator\Updates')
 $ErrorActionPreference='Stop'
+function NormalVersion([string]$text){$v=[version]$text;return [version]::new($v.Major,$v.Minor,$v.Build,[Math]::Max(0,$v.Revision))}
 function Invoke-ManifestReplace([string]$Source, [string]$Target) {
     [IO.File]::Replace($Source, $Target, [NullString]::Value)
 }
@@ -55,7 +56,7 @@ function Publish-Manifest([string]$Source, [string]$Target) {
 $source=[IO.Path]::GetFullPath($FeedDirectory)
 $manifest=Join-Path $source 'dashboard-latest.json'
 $feed=Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
-if($feed.schemaVersion -ne 1 -or $feed.productId -cne 'Doka.EngineeringDashboard.Desktop' -or $feed.revitVersion -ne 2024 -or $feed.bridgeProtocol -ne 1 -or $feed.version -notmatch '^\d+\.\d+\.\d+$' -or $feed.archiveFile -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.zip$' -or $feed.sha256 -notmatch '^[0-9a-f]{64}$'){throw 'Invalid Dashboard update feed. Do not use legacy latest.json or an installer EXE here.'}
+if($feed.schemaVersion -ne 1 -or $feed.productId -cne 'Doka.EngineeringDashboard.Desktop' -or $feed.revitVersion -ne 2024 -or $feed.bridgeProtocol -ne 1 -or $feed.version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$' -or $feed.archiveFile -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.zip$' -or $feed.sha256 -notmatch '^[0-9a-f]{64}$'){throw 'Invalid Dashboard update feed. Do not use legacy latest.json or an installer EXE here.'}
 $archive=Join-Path $source $feed.archiveFile
 if((Get-Item -LiteralPath $archive).Length -ne $feed.sizeBytes -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $feed.sha256){throw 'The Dashboard ZIP does not match its manifest.'}
 if(!$PSCmdlet.ShouldProcess($Destination,"Publish Dashboard $($feed.version) ZIP, then dashboard-latest.json")){return}
@@ -66,8 +67,8 @@ $latest=Join-Path $Destination 'dashboard-latest.json'
 if(Test-Path -LiteralPath $latest){
     $existing=Get-Content -LiteralPath $latest -Raw | ConvertFrom-Json
     if($existing.productId -cne 'Doka.EngineeringDashboard.Desktop' -or $existing.revitVersion -ne 2024){throw 'Existing Dashboard feed belongs to a different product.'}
-    if([version]$existing.version -gt [version]$feed.version){throw 'A newer Dashboard is already published.'}
-    if([version]$existing.version -eq [version]$feed.version -and ($existing.sha256 -cne $feed.sha256 -or $existing.archiveFile -cne $feed.archiveFile)){throw 'This version was already published with different contents.'}
+    if((NormalVersion $existing.version) -gt (NormalVersion $feed.version)){throw 'A newer Dashboard is already published.'}
+    if((NormalVersion $existing.version) -eq (NormalVersion $feed.version) -and ($existing.sha256 -cne $feed.sha256 -or $existing.archiveFile -cne $feed.archiveFile)){throw 'This version was already published with different contents.'}
 }
 $target=Join-Path $Destination $feed.archiveFile
 if(Test-Path -LiteralPath $target){if((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ine $feed.sha256){throw 'The immutable Dashboard ZIP name already has different contents.'}}

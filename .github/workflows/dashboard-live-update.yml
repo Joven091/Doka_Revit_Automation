@@ -86,5 +86,7 @@ jobs:
             artifacts/initial/bootstrap/
             artifacts/initial/feed/
             artifacts/initial/build-info.json
+            artifacts/initial/Publish-DashboardUpdate.ps1
+            artifacts/initial/Publish-to-company.cmd
             artifacts/initial/README.md
           if-no-files-found: error

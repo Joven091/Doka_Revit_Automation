@@ -29,7 +29,7 @@ internal static class Program
     }
     static void Pack(string payload,string output,string version)
     {
-        version=DashboardPackages.ParseVersion(version).ToString(3);payload=Path.GetFullPath(payload);output=Path.GetFullPath(output);
+        var normalized=DashboardPackages.ParseVersion(version);version=normalized.Revision==0?normalized.ToString(3):normalized.ToString(4);payload=Path.GetFullPath(payload);output=Path.GetFullPath(output);
         if(!Directory.Exists(payload))throw new DirectoryNotFoundException("Build the Dashboard payload first.");
         if(Directory.Exists(output)||File.Exists(output))throw new IOException("Use a new output directory; published packages are immutable.");
         if(File.Exists(Path.Combine(payload,DashboardPackages.ManifestFile)))throw new IOException("The payload already has a package manifest. Build into a clean directory.");
