@@ -1,0 +1,94 @@
+name: Repair company update publication bundle
+on:
+  pull_request:
+    paths: ['.github/workflows/revit-update-publish-kit.yml', 'scripts/New-RevitUpdatePublishKit.ps1', 'tests/UpdateFeedKit.Tests/**', 'docs/revit-updates.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package-existing-installer:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Retrieve the accepted installer without rebuilding
+        uses: actions/download-artifact@v4
+        with:
+          name: top50-dashboard-1.1.27-release
+          run-id: 40762298379
+          github-token: ${{ github.token }}
+          path: artifacts/accepted-release
+      - name: Add the missing publisher and launcher
+        shell: pwsh
+        run: |
+          ./scripts/New-RevitUpdatePublishKit.ps1 -ReleaseDirectory artifacts/accepted-release -OutputDirectory artifacts/revit2024-team-release-1.1.27
+          $files='artifacts/revit2024-update-publishing-files-1.1.27'
+          New-Item -ItemType Directory -Path $files | Out-Null
+          Copy-Item artifacts/revit2024-team-release-1.1.27/Publish-RevitUpdate.ps1,artifacts/revit2024-team-release-1.1.27/Publish-to-company.cmd,artifacts/revit2024-team-release-1.1.27/README.txt $files
+      - name: Publish only to a disposable local test folder and verify real client discovery
+        shell: pwsh
+        run: |
+          $kit=(Resolve-Path artifacts/revit2024-team-release-1.1.27).Path
+          $feed=Join-Path $env:RUNNER_TEMP 'Doka update feed with spaces'
+          foreach($attempt in 1..2){
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$kit/Publish-RevitUpdate.ps1" -Installer "$kit/Install_DokaRevitAutomation.exe" -Version 1.1.27 -ReleaseNotes 'Top50 1.1.27 tested release.' -Destination $feed
+            if($LASTEXITCODE -ne 0){throw 'Local publication or identical retry failed'}
+          }
+          foreach($framework in @('net48','net10.0')){
+            dotnet build tests/UpdateFeedKit.Tests -c Release -f $framework --warnaserror
+            if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          }
+          & tests/UpdateFeedKit.Tests/bin/Release/net48/UpdateFeedKit.Tests.exe $feed 1.1.27
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          dotnet tests/UpdateFeedKit.Tests/bin/Release/net10.0/UpdateFeedKit.Tests.dll $feed 1.1.27
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          $original=(Get-FileHash artifacts/accepted-release/Install_DokaRevitAutomation.exe).Hash
+          if((Get-FileHash "$feed/DokaRevitAutomation-1.1.27.exe").Hash -ne $original){throw 'Published binary changed'}
+          $manifest=Get-Content "$kit/SHA256SUMS" | Where-Object {$_ -match '  Publish-to-company.cmd$'}
+          if(!$manifest){throw 'Launcher missing from kit manifest'}
+          Write-Output "PASS unchanged installer SHA-256 $($original.ToLowerInvariant()); no company share accessed"
+      - name: Create and verify the requested latest.json for the original installer filename
+        shell: pwsh
+        run: |
+          $feed=Join-Path $env:RUNNER_TEMP 'Doka manual manifest test'
+          New-Item -ItemType Directory -Path $feed | Out-Null
+          $installer=Get-Item artifacts/accepted-release/Install_DokaRevitAutomation.exe
+          Copy-Item $installer.FullName $feed
+          $manifest=[ordered]@{
+            schemaVersion=1; productId='Doka.RevitAutomation'; revitVersion=2024; version='1.1.27'
+            installerFile='Install_DokaRevitAutomation.exe'
+            sha256=(Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            sizeBytes=$installer.Length
+            releaseNotes='Engineering Dashboard 1.1.27: reviewed Top50 planning fixes and retained dashboard tools.'
+            publishedUtc=[DateTime]::UtcNow.ToString('O')
+          }
+          $path=Join-Path $feed 'latest.json'
+          [IO.File]::WriteAllText($path,($manifest | ConvertTo-Json),[Text.UTF8Encoding]::new($false))
+          & tests/UpdateFeedKit.Tests/bin/Release/net48/UpdateFeedKit.Tests.exe $feed 1.1.27 Install_DokaRevitAutomation.exe
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          dotnet tests/UpdateFeedKit.Tests/bin/Release/net10.0/UpdateFeedKit.Tests.dll $feed 1.1.27 Install_DokaRevitAutomation.exe
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          New-Item -ItemType Directory -Path artifacts/manual-update-manifest | Out-Null
+          Copy-Item $path artifacts/manual-update-manifest/latest.json
+          Get-Content $path
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latest-json-1.1.27
+          path: artifacts/manual-update-manifest/latest.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revit2024-update-publishing-files-1.1.27
+          path: artifacts/revit2024-update-publishing-files-1.1.27/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revit2024-team-release-1.1.27
+          path: artifacts/revit2024-team-release-1.1.27/
+          if-no-files-found: error

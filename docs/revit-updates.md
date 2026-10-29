@@ -2,6 +2,47 @@
 
 This feature updates the **Revit add-in only**. Standalone previews keep their existing distribution process. No GitHub account or stored GitHub token is needed on the team's computers.
 
+## Publishing the Top50 Dashboard 1.1.27 release
+
+The original `top50-dashboard-1.1.27-release` bundle omitted the publisher and its
+launcher. Copying its EXE or ZIP into Updates does not update the feed:
+**Check for updates reads `latest.json`, not the installers present in a folder.**
+
+Use the repaired `revit2024-team-release-1.1.27` bundle, extract it locally and run
+`Publish-to-company.cmd` while connected to the company network. It contains the
+same previously tested installer; no calculator rebuild is needed. Alternatively,
+extract the smaller `revit2024-update-publishing-files-1.1.27` download beside the
+original `Install_DokaRevitAutomation.exe` and run its launcher.
+
+The publisher verifies/copies `DokaRevitAutomation-1.1.27.exe` and replaces
+`latest.json` last in the configured company Updates folder. A user running an
+older add-in will then receive an offer. A user already running 1.1.27 is correctly
+reported as up to date. Release owners need Modify access; users need read access.
+
+The **Repair company update publication bundle** workflow repackages the accepted
+installer and tests publication in a disposable local folder with the production
+feed reader on net48 and .NET10. It never publishes to the company share, installs
+the application or compiles a new installer. For future reviewed release bundles,
+`scripts/New-RevitUpdatePublishKit.ps1` adds/verifies the required publishing files
+from an existing `release-info.json` and checksum manifest before distribution.
+
+Repair verification: Windows run
+[40817191105](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/40817191105)
+downloaded the accepted release, checked its metadata/manifest and repackaged the
+unchanged installer (SHA-256
+`0178d34fba6465dc2d2458ac4e1664303fe6cc3ef403a15d93c5bac49c3b03c4`).
+Publication and identical retry passed under Windows PowerShell 5.1 in a local
+folder containing spaces. The production feed reader passed seven checks each on
+net48 and .NET 10, including discovery from 1.1.26, checksum verification and the
+correct up-to-date response for 1.1.27. The company share was not accessed.
+
+- [Small publishing-files repair](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/40817191105/artifacts/12873395484):
+  ZIP SHA-256 `17155242f43b312d15f80ceb78aca4e9f6351ac10d309cc60343fd6be5ee5f1b`,
+  locally verified along with the publisher content and launcher contents.
+- [Complete repaired release](https://github.com/Joven091/Doka_Revit_Automation/actions/runs/40817191105/artifacts/12872683896):
+  ZIP SHA-256 `172f8d231533165b55daf86d6839929fae307e07306ccc3370b643ba31afb5b3`,
+  reported by GitHub/upload logs; contains the same tested installer and reports.
+
 The first release shows **D3 slab** and **Dome Calculator** as disabled, grey **Coming soon** choices. Dokaflex slab, beam (including D3 beam shoring), and backpropping remain available.
 
 ## First installation
