@@ -35,7 +35,9 @@ jobs:
           Copy-Item tests/Beam.Tests/ReportedCoordinationFixture.cs,tests/Beam.Tests/CombinedCoordinationTests.cs baseline/tests/Beam.Tests/
           $entry='baseline/tests/Beam.Tests/Program.cs'
           $source=[IO.File]::ReadAllText($entry)
-          $source=$source.Replace('try{','try{if(args.Contains("--combined-coordination")){CombinedCoordinationTests.Run(true,true);return 0;}')
+          $start=$source.IndexOf('try{',[StringComparison]::Ordinal)
+          if($start -lt 0){throw 'Baseline entry point was not found'}
+          $source=$source.Insert($start+4,'if(args.Contains("--combined-coordination")){CombinedCoordinationTests.Run(true,true);return 0;}')
           [IO.File]::WriteAllText($entry,$source)
           dotnet build baseline/tests/Beam.Net48 -c Release --warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
