@@ -81,7 +81,15 @@ jobs:
         if: always()
         with:
           name: dashboard-live-update-evidence
-          path: artifacts/evidence/
+          path: |
+            artifacts/evidence/**/*.log
+            artifacts/evidence/**/acceptance.txt
+            artifacts/evidence/**/failure.txt
+            artifacts/evidence/**/*-evidence.txt
+            artifacts/evidence/**/startup.json
+            artifacts/evidence/**/update-plan.json
+            artifacts/evidence/**/helper-ready.json
+            artifacts/evidence/**/Sessions/*.json
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: success()

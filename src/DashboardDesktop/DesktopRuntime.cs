@@ -1,6 +1,7 @@
 #if DASHBOARD_DESKTOP
 using System;
 using System.Threading;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -61,6 +62,7 @@ namespace EngineeringDashboard.DesktopHost
         internal static async Task<RevitHighlightResult> HighlightTop50Async(RevitWallRequest request,Func<bool> alive)
         {RequireOpen(alive);var result=await Client.CallAsync<RevitWallRequest,RevitHighlightResult>("top50.highlight",request);RequireOpen(alive);return result;}
         static void RequireOpen(Func<bool> alive){if(alive==null||!alive())throw new ObjectDisposedException("Top50 Planner");}
+        [DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int processId);
         internal static async Task ApplyHelpersAsync(Window owner,HelperApplyRequest request)
         {
             if(owner==null||!owner.IsLoaded)throw new ObjectDisposedException("Calculator");
@@ -73,6 +75,9 @@ namespace EngineeringDashboard.DesktopHost
                     cancelled.Token.ThrowIfCancellationRequested();if(!owner.IsLoaded)throw new ObjectDisposedException("Calculator");
                     request.DocumentKey=context?.DocumentKey;request.Validate();
                     bool visible=owner.IsVisible;
+                    // The foreground desktop process explicitly permits its Revit
+                    // session to foreground the native selection prompt.
+                    AllowSetForegroundWindow(Client.HostProcessId);
                     if(visible)owner.Hide();
                     HelperApplyResult result;
                     try

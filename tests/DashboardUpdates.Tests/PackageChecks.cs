@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Diagnostics;
+using System.Runtime.Serialization;
 using System.Threading;
+using System.Threading.Tasks;
 using EngineeringDashboard.DesktopHost;
 
 internal static class PackageChecks
@@ -16,6 +19,7 @@ internal static class PackageChecks
     }
     internal static void Run(string root,Action<bool,string> check,Action<Action,string> reject)
     {
+        AtomicJsonPublication(root,check,reject);
         foreach(string version in new[]{"1.2.0","1.2.0.0","1.2.0.4"})check(DashboardPackages.ParseVersion(version)==new Version(version.Count(c=>c=='.')==2?version+".0":version),"numeric Dashboard version normalized: "+version);
         foreach(string version in new[]{"1.2","1.2.0-beta"," 1.2.0","1.2.0 ","-1.2.0","1.2.0.0.0"})reject(()=>DashboardPackages.ParseVersion(version),"invalid version rejected: "+version);
         var fixture=Make(root,"valid");
@@ -101,6 +105,54 @@ internal static class PackageChecks
         foreach(string invalid in new[]{"../escape","/absolute","C:/outside","dir\\file","a//b","a/./b","a/../b","a/", "a.","a ","CON","con.txt","COM1.dll","nul","assets/a:b","assets/a?b","assets/a*b","assets/a|b","assets/a<b","assets/\u0001bad"})
             reject(()=>DashboardPackages.SafeRelativePath(invalid),"unsafe relative path rejected: "+invalid);
         foreach(string valid in new[]{IndependentFixtures.Entry,"BeamSolver/Doka.BeamSolver.exe","assets/shape.svg","assets/strings.de-DE.json","assets/العربية.txt"})check(DashboardPackages.SafeRelativePath(valid)==valid,"safe relative path retained: "+valid);
+    }
+    [DataContract]
+    sealed class FailingJsonPayload
+    {
+        [DataMember] public string Value {get{throw new InvalidOperationException("independent JSON serialization failure");}set{}}
+    }
+    static void AtomicJsonPublication(string root,Action<bool,string> check,Action<Action,string> reject)
+    {
+        string directory=Path.Combine(root,"json-publication");Directory.CreateDirectory(directory);
+        string payload=new string('a',2*1024*1024);byte[] expected=IndependentFixtures.B("\""+payload+"\"");
+        for(int attempt=0;attempt<3;attempt++)
+        {
+            string trial=Path.Combine(directory,"concurrent-"+attempt);Directory.CreateDirectory(trial);string path=Path.Combine(trial,"startup.json");
+            using(var start=new ManualResetEventSlim(false))
+            {
+                var writer=Task.Run(()=>{start.Wait();DashboardPackages.WriteJson(path,payload);});
+                byte[] firstVisible=null;Exception firstReadError=null;var clock=Stopwatch.StartNew();start.Set();
+                while(!File.Exists(path))
+                {
+                    if(writer.IsCompleted)writer.GetAwaiter().GetResult();
+                    if(clock.Elapsed>TimeSpan.FromSeconds(15))throw new TimeoutException("Independent JSON writer did not publish its target.");
+                    Thread.Yield();
+                }
+                // Exactly one attempt: do not retry a sharing violation or hide
+                // empty/partial content after the writer exposes its final name.
+                try{firstVisible=File.ReadAllBytes(path);}catch(IOException error){firstReadError=error;}
+                writer.GetAwaiter().GetResult();
+                check(firstReadError==null,"first-visible JSON is immediately readable without retries: "+attempt+(firstReadError==null?"":" ("+firstReadError.GetType().Name+")"));
+                check(firstVisible!=null&&firstVisible.SequenceEqual(expected),"first-visible JSON already contains the entire independently specified 2 MiB document: "+attempt);
+                check(Directory.GetFiles(trial).SequenceEqual(new[]{path}),"successful JSON publication leaves only its final file: "+attempt);
+            }
+        }
+        string existingDirectory=Path.Combine(directory,"existing-target");Directory.CreateDirectory(existingDirectory);string existing=Path.Combine(existingDirectory,"receipt.json");
+        byte[] original=IndependentFixtures.B("independent existing receipt bytes");File.WriteAllBytes(existing,original);
+        reject(()=>DashboardPackages.WriteJson(existing,payload),"JSON publication retains create-new semantics for an existing target");
+        check(File.ReadAllBytes(existing).SequenceEqual(original),"failed JSON publication never overwrites an existing receipt");
+        check(Directory.GetFiles(existingDirectory).SequenceEqual(new[]{existing}),"existing-target publication failure removes its own temporary file");
+        string failureDirectory=Path.Combine(directory,"serialization-failure");Directory.CreateDirectory(failureDirectory);string failed=Path.Combine(failureDirectory,"receipt.json");
+        bool serializationFailed=false;
+        try{DashboardPackages.WriteJson(failed,new FailingJsonPayload());}
+        catch(Exception error)when(error.GetBaseException() is InvalidOperationException&&error.GetBaseException().Message=="independent JSON serialization failure"){serializationFailed=true;}
+        check(serializationFailed,"independently forced JSON serialization failure is surfaced");
+        check(!File.Exists(failed)&&Directory.GetFiles(failureDirectory).Length==0,"serialization failure leaves neither final JSON nor an abandoned temporary file");
+        string blockedDirectory=Path.Combine(directory,"blocked-publication");Directory.CreateDirectory(blockedDirectory);string blocked=Path.Combine(blockedDirectory,"receipt.json");Directory.CreateDirectory(blocked);
+        bool blockedFailed=false;
+        try{DashboardPackages.WriteJson(blocked,payload);}catch(Exception error)when(error is IOException||error is UnauthorizedAccessException){blockedFailed=true;}
+        check(blockedFailed&&Directory.Exists(blocked),"blocked final-path publication reports failure without removing the obstruction");
+        check(Directory.GetFiles(blockedDirectory).Length==0,"blocked final-path publication cleans its own completed temporary JSON");
     }
     static void InvalidArchiveCases(string root,Action<bool,string> check,Action<Action,string> reject)
     {

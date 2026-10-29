@@ -206,6 +206,18 @@ namespace EngineeringDashboard.DesktopHost
         public static T ReadJson<T>(string path,int limit){using(var s=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read|FileShare.Delete))return ReadJson<T>(s,limit);}
         static T ReadJson<T>(Stream input,int limit)
         {using(var s=new MemoryStream()){byte[] b=new byte[4096];int n;while((n=input.Read(b,0,b.Length))>0){if(s.Length+n>limit)throw new InvalidDataException("Dashboard metadata exceeds its size limit.");s.Write(b,0,n);}return BridgeProtocol.Decode<T>(s.ToArray());}}
-        public static void WriteJson<T>(string path,T value){using(var s=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None)){byte[] bytes=BridgeProtocol.Encode(value);s.Write(bytes,0,bytes.Length);s.Flush(true);}}
+        public static void WriteJson<T>(string path,T value)
+        {
+            // Existence is the cross-process readiness signal. Publish only after
+            // the complete JSON has been flushed and its exclusive writer closed.
+            string temporary=path+".writing-"+Guid.NewGuid().ToString("N");
+            try
+            {
+                byte[] bytes=BridgeProtocol.Encode(value);
+                using(var stream=new FileStream(temporary,FileMode.CreateNew,FileAccess.Write,FileShare.None)){stream.Write(bytes,0,bytes.Length);stream.Flush(true);}
+                File.Move(temporary,path); // Create-new semantics: never replace an existing receipt.
+            }
+            finally{if(File.Exists(temporary))File.Delete(temporary);}
+        }
     }
 }
