@@ -2,6 +2,30 @@
 
 This feature updates the **Revit add-in only**. Standalone previews keep their existing distribution process. No GitHub account or stored GitHub token is needed on the team's computers.
 
+## Publishing the Top50 Dashboard 1.1.27 release
+
+The original `top50-dashboard-1.1.27-release` bundle omitted the publisher and its
+launcher. Copying its EXE or ZIP into Updates does not update the feed:
+**Check for updates reads `latest.json`, not the installers present in a folder.**
+
+Use the repaired `revit2024-team-release-1.1.27` bundle, extract it locally and run
+`Publish-to-company.cmd` while connected to the company network. It contains the
+same previously tested installer; no calculator rebuild is needed. Alternatively,
+extract the smaller `revit2024-update-publishing-files-1.1.27` download beside the
+original `Install_DokaRevitAutomation.exe` and run its launcher.
+
+The publisher verifies/copies `DokaRevitAutomation-1.1.27.exe` and replaces
+`latest.json` last in the configured company Updates folder. A user running an
+older add-in will then receive an offer. A user already running 1.1.27 is correctly
+reported as up to date. Release owners need Modify access; users need read access.
+
+The **Repair company update publication bundle** workflow repackages the accepted
+installer and tests publication in a disposable local folder with the production
+feed reader on net48 and .NET10. It never publishes to the company share, installs
+the application or compiles a new installer. For future reviewed release bundles,
+`scripts/New-RevitUpdatePublishKit.ps1` adds/verifies the required publishing files
+from an existing `release-info.json` and checksum manifest before distribution.
+
 The first release shows **D3 slab** and **Dome Calculator** as disabled, grey **Coming soon** choices. Dokaflex slab, beam (including D3 beam shoring), and backpropping remain available.
 
 ## First installation
