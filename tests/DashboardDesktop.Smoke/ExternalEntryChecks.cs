@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Automation;
@@ -108,7 +111,31 @@ internal static class ExternalEntryChecks
         }
     }
     static string Quote(string value)=>"\""+value.Replace("\"","\\\"")+"\"";
-    internal static AutomationElement[] Windows(int pid)=>AutomationElement.RootElement.FindAll(TreeScope.Children,new AndCondition(new PropertyCondition(AutomationElement.ProcessIdProperty,pid),new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Window))).Cast<AutomationElement>().Where(w=>!w.Current.IsOffscreen).ToArray();
+    internal static AutomationElement[] Windows(int pid)
+    {
+        var result=new List<AutomationElement>();
+        // Owned WPF windows remain top-level HWNDs, but UIA may nest them below
+        // a visible owner. Discover HWNDs first, then inspect only this child PID.
+        if(!EnumWindows((handle,state)=>
+        {
+            uint owner;GetWindowThreadProcessId(handle,out owner);
+            if(owner!=(uint)pid||!IsWindowVisible(handle))return true;
+            try
+            {
+                var element=AutomationElement.FromHandle(handle);
+                var current=element.Current;
+                if(current.ProcessId==pid&&current.ControlType==ControlType.Window)result.Add(element);
+            }
+            catch(Exception error)when(error is ElementNotAvailableException||error is InvalidOperationException||error is ArgumentException||error is COMException)
+            { /* A window may close between HWND discovery and its UIA lookup. */ }
+            return true;
+        },IntPtr.Zero))throw new Win32Exception(Marshal.GetLastWin32Error(),"Cannot enumerate owned Dashboard windows.");
+        return result.ToArray();
+    }
+    [return:MarshalAs(UnmanagedType.Bool)] delegate bool EnumerateWindow(IntPtr handle,IntPtr state);
+    [DllImport("user32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool EnumWindows(EnumerateWindow callback,IntPtr state);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr handle,out uint processId);
+    [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] static extern bool IsWindowVisible(IntPtr handle);
     internal static AutomationElement WaitWindow(int pid,Func<AutomationElement,bool> matches)
     {AutomationElement found=null;Wait(()=>{found=Windows(pid).FirstOrDefault(matches);return found!=null;},"production window opens");return found;}
     static AutomationElement Find(AutomationElement root,Condition condition,string description)
