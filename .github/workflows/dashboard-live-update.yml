@@ -49,6 +49,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build tests/Updates.Net48 -c Release --warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Use the actual production binding policy for reflection-based checks
+        shell: pwsh
+        run: Copy-Item artifacts/initial/payload/Doka.EngineeringDashboard.exe.config tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe.config -Force
       - name: Independent native update-core and existing installer contract checks
         shell: pwsh
         run: |
@@ -57,12 +60,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Get-Content artifacts/evidence/update-core.log; throw 'Native updater core checks failed' }
           & tests/Updates.Net48/bin/Release/net48/Updates.Net48.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Actual production entry, pipe peer and WPF recovery
-        shell: pwsh
-        run: |
-          Copy-Item artifacts/initial/payload/Doka.EngineeringDashboard.exe.config tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe.config -Force
-          & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe (Resolve-Path artifacts/initial/payload/Doka.EngineeringDashboard.exe) artifacts/evidence/desktop
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build a second actual production version
         shell: pwsh
         run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/candidate -Version 1.2.1
@@ -70,6 +67,11 @@ jobs:
         shell: pwsh
         run: |
           & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe --helper-update (Resolve-Path artifacts/initial/payload) (Resolve-Path artifacts/candidate/payload) artifacts/evidence/helper
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Actual production entry, pipe peer and WPF recovery
+        shell: pwsh
+        run: |
+          & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe (Resolve-Path artifacts/initial/payload/Doka.EngineeringDashboard.exe) artifacts/evidence/desktop
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publisher and one-time migration guard checks in isolated user folders
         if: always() && steps.payload-build.outcome == 'success'

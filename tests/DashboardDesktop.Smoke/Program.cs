@@ -22,9 +22,9 @@ internal static class Program
         try
         {
             string payload=Path.GetDirectoryName(executable);AppDomain.CurrentDomain.AssemblyResolve+=(sender,eventArgs)=>{string path=Path.Combine(payload,new AssemblyName(eventArgs.Name).Name+".dll");return File.Exists(path)?Assembly.LoadFrom(path):null;};
-            Product=Assembly.LoadFrom(Path.Combine(payload,"MyRevitAddin.dll"));Application.ResourceAssembly=Product;
-            // Application construction initializes WPF's resource assembly. Select
-            // the exact production resource DLL before any WPF app/resource use.
+            Product=Assembly.LoadFrom(Path.Combine(payload,"MyRevitAddin.dll"));
+            // Product pack URIs explicitly name MyRevitAddin;component, matching
+            // the other native hosts without overriding WPF's resource assembly.
             app=new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};
             SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;
             Check(Product.GetType("EngineeringDashboard.DesktopHost.DashboardSessionController")!=null,"tests use the production desktop-variant assembly");

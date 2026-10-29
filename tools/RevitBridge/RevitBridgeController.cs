@@ -80,7 +80,7 @@ namespace EngineeringDashboard
                         uint id;if(!GetNamedPipeClientProcessId(pipe.SafePipeHandle,out id))throw new IOException("Cannot verify the Dashboard process.");
                         long started;using(var p=Process.GetProcessById((int)id))
                         {started=p.StartTime.ToUniversalTime().Ticks;ValidatePeer(p.MainModule.FileName);}
-                        lock(gate){peerPid=(int)id;peerStarted=started;connected=pipe;listening=null;}
+                        lock(gate){if(disposed)throw new OperationCanceledException();connected=pipe;listening=null;}
                         Serve(pipe,(int)id,started);
                     }
                 }
@@ -103,7 +103,7 @@ namespace EngineeringDashboard
         {
             using(var disconnected=CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
             {
-                var writeGate=new object();int pending=0;var connectionToken=disconnected.Token;
+                var writeGate=new object();int pending=0;var connectionToken=disconnected.Token;bool authenticated=false;
                 try
                 {
                     // Read remains active while an ExternalEvent is queued. EOF cancels
@@ -111,6 +111,18 @@ namespace EngineeringDashboard
                     while(!disconnected.IsCancellationRequested)
                     {
                         var request=BridgeProtocol.Decode<BridgeRequest>(BridgeProtocol.ReadFrame(pipe));BridgeProtocol.ValidateRequest(request,session,token);
+                        if(!authenticated)
+                        {
+                            lock(gate)
+                            {
+                                if(disposed)throw new OperationCanceledException();RequirePeer(connectionToken,id,started);
+                                // Remember the authenticated peer beyond this pipe. An RPC
+                                // error must not make the ribbon spawn a duplicate live UI.
+                                var current=Process.GetProcessById(id);
+                                if(current.HasExited||current.StartTime.ToUniversalTime().Ticks!=started){current.Dispose();throw new OperationCanceledException();}
+                                launched?.Dispose();launched=current;peerPid=id;peerStarted=started;authenticated=true;
+                            }
+                        }
                         if(Interlocked.CompareExchange(ref pending,1,0)!=0)throw new IOException("Only one Revit request may be outstanding.");
                         Task.Run(async()=>
                         {
