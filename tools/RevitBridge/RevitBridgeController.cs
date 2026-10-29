@@ -79,7 +79,7 @@ namespace EngineeringDashboard
                         pipe.WaitForConnection();lifetime.Token.ThrowIfCancellationRequested();
                         uint id;if(!GetNamedPipeClientProcessId(pipe.SafePipeHandle,out id))throw new IOException("Cannot verify the Dashboard process.");
                         long started;using(var p=Process.GetProcessById((int)id))
-                        {started=p.StartTime.ToUniversalTime().Ticks;ValidatePeer(p.MainModule.FileName);}
+                        {started=p.StartTime.ToUniversalTime().Ticks;string executable=p.MainModule?.FileName;if(string.IsNullOrWhiteSpace(executable))throw new InvalidOperationException("The connecting Dashboard process has closed or is not ready.");ValidatePeer(executable);}
                         lock(gate){if(disposed)throw new OperationCanceledException();connected=pipe;listening=null;}
                         Serve(pipe,(int)id,started);
                     }

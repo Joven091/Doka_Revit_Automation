@@ -113,5 +113,14 @@ internal static class HelperUpdateChecks
     static Version VersionNumber(string raw){var version=new Version(raw);return new Version(version.Major,version.Minor,version.Build,Math.Max(0,version.Revision));}
     static void Write(string path,object data)=>File.WriteAllText(path,Json.Serialize(data));
     static bool SameExecutable(Process process,string path)
-    {try{return !process.HasExited&&string.Equals(Path.GetFullPath(process.MainModule.FileName),Path.GetFullPath(path),StringComparison.OrdinalIgnoreCase);}catch(InvalidOperationException){return false;}catch(System.ComponentModel.Win32Exception){return false;}}
+    {
+        try
+        {
+            if(process==null||process.HasExited)return false;
+            string executable=process.MainModule?.FileName;
+            return !string.IsNullOrWhiteSpace(executable)&&string.Equals(Path.GetFullPath(executable),Path.GetFullPath(path),StringComparison.OrdinalIgnoreCase);
+        }
+        catch(InvalidOperationException){return false;}
+        catch(System.ComponentModel.Win32Exception){return false;}
+    }
 }

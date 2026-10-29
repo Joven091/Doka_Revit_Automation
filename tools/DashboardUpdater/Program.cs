@@ -16,12 +16,15 @@ internal sealed class WindowsDashboardUpdateEnvironment : IDashboardUpdateEnviro
     public bool IsAbortRequested=>AbortFile!=null&&File.Exists(AbortFile);
     public static bool IsProcess(int pid,long started,string executable=null)
     {
-        try {using(var p=Process.GetProcessById(pid)){return !p.HasExited&&p.StartTime.ToUniversalTime().Ticks==started&&(executable==null||DashboardUpdatePlan.SamePath(p.MainModule.FileName,executable));}}
-        catch(Exception error)when(error is ArgumentException||error is InvalidOperationException){return false;}
+        try {using(var p=Process.GetProcessById(pid)){return !p.HasExited&&p.StartTime.ToUniversalTime().Ticks==started&&(executable==null||DashboardUpdatePlan.SamePath(p.MainModule?.FileName,executable));}}
+        catch(Exception error)when(error is ArgumentException||error is InvalidOperationException||error is System.ComponentModel.Win32Exception){return false;}
     }
     public bool IsDashboardRunning(DashboardUpdatePlan plan)=>IsProcess(plan.ParentProcessId,plan.ParentStartedUtcTicks,plan.ParentExecutable);
     public bool IsRevitRunning(DashboardUpdatePlan plan)=>IsProcess(plan.RevitProcessId,plan.RevitStartedUtcTicks);
-    public bool HasOwnedLiveDashboard=>children.Any(p=>IsProcess(p.Key,p.Value.Item1,p.Value.Item2));
+    // These exact children were launched here from the validated executable.
+    // Module metadata can be unavailable while Windows initializes the process;
+    // its recorded PID/start time already identifies the owned process safely.
+    public bool HasOwnedLiveDashboard=>children.Any(p=>IsProcess(p.Key,p.Value.Item1));
     public DashboardStartedProcess StartDashboard(string executable,string checkpointPath,string acknowledgementPath,string nonce)
     {
         var start=new ProcessStartInfo(executable,"--restore-session \""+checkpointPath+"\""){UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(executable)};
@@ -31,7 +34,7 @@ internal sealed class WindowsDashboardUpdateEnvironment : IDashboardUpdateEnviro
         {var result=new DashboardStartedProcess{ProcessId=process.Id,StartedUtcTicks=process.StartTime.ToUniversalTime().Ticks};children[result.ProcessId]=Tuple.Create(result.StartedUtcTicks,executable);return result;}
     }
     public bool IsStartedDashboardRunning(DashboardStartedProcess process)
-    {Tuple<long,string> expected;return process!=null&&children.TryGetValue(process.ProcessId,out expected)&&expected.Item1==process.StartedUtcTicks&&IsProcess(process.ProcessId,process.StartedUtcTicks,expected.Item2);}
+    {Tuple<long,string> expected;return process!=null&&children.TryGetValue(process.ProcessId,out expected)&&expected.Item1==process.StartedUtcTicks&&IsProcess(process.ProcessId,process.StartedUtcTicks);}
     public bool RequestCloseFailedStartup(DashboardStartedProcess process)
     {
         if(!IsStartedDashboardRunning(process))return true;
