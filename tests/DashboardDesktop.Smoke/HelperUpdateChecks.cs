@@ -50,7 +50,9 @@ internal static class HelperUpdateChecks
                 Check((string)Items(captured["Draft"]).First()=="QA helper update – unsaved"&&(string)Items(captured["Draft"]).ElementAt(1)=="4e"&&(string)Items(captured["Draft"]).ElementAt(3)=="0"&&(string)captured["ProjectMaximum"]=="12.","actual update checkpoint contains the edited unsaved draft verbatim");
                 string helperExe=Path.Combine(installed,"Doka.DashboardUpdater.exe");
                 Wait(()=>{helper=Process.GetProcessesByName("Doka.DashboardUpdater").FirstOrDefault(p=>SameExecutable(p,helperExe));return helper!=null;},"actual production update helper process");
-                Check(File.Exists(Path.Combine(Path.GetDirectoryName(planPath),"helper-ready.json")),"actual helper validates its plan and acknowledges readiness");
+                string ready=Path.Combine(Path.GetDirectoryName(planPath),"helper-ready.json");
+                Wait(()=>File.Exists(ready)||helper.HasExited,"actual helper completes payload validation and publishes readiness",30);
+                Check(!helper.HasExited&&File.Exists(ready),"actual helper validates its plan and acknowledges readiness");
                 Wait(()=>old.HasExited,"old Dashboard closes without closing the local Revit peer",180);
                 IDictionary<string,object> receipt=null;string receiptPath=null;
                 Wait(()=>

@@ -103,10 +103,17 @@ internal static class ExternalEntryChecks
         var closing=Stopwatch.StartNew();
         while(!process.HasExited&&closing.Elapsed<TimeSpan.FromSeconds(15))
         {
+            // A modal discard prompt belongs to the tool whose close we already
+            // requested. Closing the prompt window itself means Cancel, not OK.
+            DismissDiscardPrompts(process.Id);
             // Closing a tool reveals the retained Launcher. Discover again rather
             // than assuming the first set of visible windows is the whole app.
             foreach(var visible in Windows(process.Id).ToArray())
-            {if(process.HasExited)break;try{Close(visible,process.Id);}catch(ElementNotAvailableException){}}
+            {
+                if(process.HasExited)break;
+                try{if(visible.Current.Name=="Top50 project"){DismissDiscardPrompts(process.Id);continue;}Close(visible,process.Id);}
+                catch(ElementNotAvailableException){}
+            }
             Pump();if(!process.HasExited)Thread.Sleep(50);
         }
     }
@@ -136,6 +143,7 @@ internal static class ExternalEntryChecks
     [DllImport("user32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool EnumWindows(EnumerateWindow callback,IntPtr state);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr handle,out uint processId);
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] static extern bool IsWindowVisible(IntPtr handle);
+    [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] static extern bool IsWindow(IntPtr handle);
     internal static AutomationElement WaitWindow(int pid,Func<AutomationElement,bool> matches)
     {AutomationElement found=null;Wait(()=>{found=Windows(pid).FirstOrDefault(matches);return found!=null;},"production window opens");return found;}
     static AutomationElement Find(AutomationElement root,Condition condition,string description)
@@ -147,15 +155,31 @@ internal static class ExternalEntryChecks
     internal static void SetValue(AutomationElement element,string value)=>((ValuePattern)element.GetCurrentPattern(ValuePattern.Pattern)).SetValue(value);
     internal static void Close(AutomationElement window,int pid)
     {
+        if(window.Current.Name=="Top50 project"){DismissDiscardPrompts(pid);return;}
+        var handle=new IntPtr(window.Current.NativeWindowHandle);
         Task close=Task.Run(()=>{try{((WindowPattern)window.GetCurrentPattern(WindowPattern.Pattern)).Close();}catch(ElementNotAvailableException){}});
         Wait(()=>
         {
-            foreach(var dialog in Windows(pid).Where(w=>w.Current.Name=="Top50 project"))
-            {
-                var ok=dialog.FindFirst(TreeScope.Descendants,new AndCondition(new PropertyCondition(AutomationElement.NameProperty,"OK"),new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button)));
-                if(ok!=null)Invoke(ok);
-            }
-            return close.IsCompleted;
+            DismissDiscardPrompts(pid);
+            if(close.IsFaulted)close.GetAwaiter().GetResult();
+            uint owner;
+            bool targetRemains=IsWindow(handle)&&GetWindowThreadProcessId(handle,out owner)!=0&&owner==(uint)pid&&IsWindowVisible(handle);
+            // UIA Close may return before WPF displays an asynchronous close
+            // confirmation. Its completion alone does not mean the window closed.
+            return close.IsCompleted&&!targetRemains;
         },"close test-owned Dashboard window");close.GetAwaiter().GetResult();Pump();
+    }
+    static void DismissDiscardPrompts(int pid)
+    {
+        foreach(var dialog in Windows(pid))
+        {
+            try
+            {
+                if(dialog.Current.Name!="Top50 project")continue;
+                var ok=dialog.FindFirst(TreeScope.Descendants,new AndCondition(new PropertyCondition(AutomationElement.NameProperty,"OK"),new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button)));
+                if(ok!=null&&ok.Current.IsEnabled)Invoke(ok);
+            }
+            catch(ElementNotAvailableException){}
+        }
     }
 }
