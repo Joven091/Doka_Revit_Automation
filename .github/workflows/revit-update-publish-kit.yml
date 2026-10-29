@@ -53,6 +53,35 @@ jobs:
           $manifest=Get-Content "$kit/SHA256SUMS" | Where-Object {$_ -match '  Publish-to-company.cmd$'}
           if(!$manifest){throw 'Launcher missing from kit manifest'}
           Write-Output "PASS unchanged installer SHA-256 $($original.ToLowerInvariant()); no company share accessed"
+      - name: Create and verify the requested latest.json for the original installer filename
+        shell: pwsh
+        run: |
+          $feed=Join-Path $env:RUNNER_TEMP 'Doka manual manifest test'
+          New-Item -ItemType Directory -Path $feed | Out-Null
+          $installer=Get-Item artifacts/accepted-release/Install_DokaRevitAutomation.exe
+          Copy-Item $installer.FullName $feed
+          $manifest=[ordered]@{
+            schemaVersion=1; productId='Doka.RevitAutomation'; revitVersion=2024; version='1.1.27'
+            installerFile='Install_DokaRevitAutomation.exe'
+            sha256=(Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            sizeBytes=$installer.Length
+            releaseNotes='Engineering Dashboard 1.1.27: reviewed Top50 planning fixes and retained dashboard tools.'
+            publishedUtc=[DateTime]::UtcNow.ToString('O')
+          }
+          $path=Join-Path $feed 'latest.json'
+          [IO.File]::WriteAllText($path,($manifest | ConvertTo-Json),[Text.UTF8Encoding]::new($false))
+          & tests/UpdateFeedKit.Tests/bin/Release/net48/UpdateFeedKit.Tests.exe $feed 1.1.27 Install_DokaRevitAutomation.exe
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          dotnet tests/UpdateFeedKit.Tests/bin/Release/net10.0/UpdateFeedKit.Tests.dll $feed 1.1.27 Install_DokaRevitAutomation.exe
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          New-Item -ItemType Directory -Path artifacts/manual-update-manifest | Out-Null
+          Copy-Item $path artifacts/manual-update-manifest/latest.json
+          Get-Content $path
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latest-json-1.1.27
+          path: artifacts/manual-update-manifest/latest.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: revit2024-update-publishing-files-1.1.27

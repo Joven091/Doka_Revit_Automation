@@ -13,7 +13,8 @@ internal static class Program
             string feed=Path.GetFullPath(args[0]);var expected=UpdateFiles.ParseVersion(args[1]);
             var release=UpdateFiles.Check(feed,new Version(1,1,26,0));
             Check(release!=null && UpdateFiles.ParseVersion(release.Version)==expected,"the production updater discovers the published 1.1.27 release from 1.1.26");
-            Check(release.InstallerFile=="DokaRevitAutomation-"+args[1]+".exe","the feed names the versioned executable");
+            string expectedName=args.Length>2?args[2]:"DokaRevitAutomation-"+args[1]+".exe";
+            Check(release.InstallerFile==expectedName,"the feed names the expected executable");
             string installer=Path.Combine(feed,release.InstallerFile);
             Check(new FileInfo(installer).Length==release.SizeBytes,"published installer size matches latest.json");
             Check(UpdateFiles.Hash(installer)==release.Sha256,"published installer SHA-256 matches latest.json");
