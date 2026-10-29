@@ -28,11 +28,17 @@ An actual Revit 2024 session, model interaction and deployment to the company
 share remain separate manual acceptance. No pure test or API stand-in establishes
 that acceptance. No installer/publication or source mutation is authorized to QA.
 
-The current independent pure suite passes **335 checks on .NET10/Linux** against
+The current independent pure suite passes **351 checks on .NET10/Linux** against
 the implementation APIs, with inert archive payloads and a simulated process
 environment. It includes real filesystem staging/activation/rollback, independent
 archive/metadata corruption, frame fragmentation, rejected concatenated JSON,
 generation races, recovery-checkpoint validation and startup/receipt failures.
+It also races a single reader against first publication of a 2 MiB JSON document
+and checks create-new preservation plus failure cleanup. The reader never retries
+sharing violations or partial content. It uses `Read | Delete` file sharing,
+matching the protocol reader and permitting Windows' atomic rename handle to
+finish. An isolated build of the original direct
+writer fails this regression with a sharing violation; the atomic writer passes.
 This does not establish actual process startup, Windows execution or Revit API
 behavior. Native Windows and external production-EXE smoke evidence remain later
 gates. The native smoke project is now implemented and cross-builds cleanly;

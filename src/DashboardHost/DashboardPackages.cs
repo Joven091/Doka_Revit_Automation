@@ -210,14 +210,20 @@ namespace EngineeringDashboard.DesktopHost
         {
             // Existence is the cross-process readiness signal. Publish only after
             // the complete JSON has been flushed and its exclusive writer closed.
-            string temporary=path+".writing-"+Guid.NewGuid().ToString("N");
+            string full=Path.GetFullPath(path),leaf=Path.GetFileName(full);
+            if(leaf.Length==0)throw new ArgumentException("JSON metadata must name a file.",nameof(path));
+            string temporary;
+            // Never lengthen an otherwise valid Framework/Windows file path.
+            do{temporary=Path.Combine(Path.GetDirectoryName(full),Guid.NewGuid().ToString("N").Substring(0,Math.Min(32,leaf.Length)));}
+            while(string.Equals(temporary,full,StringComparison.OrdinalIgnoreCase));
+            bool owned=false;
             try
             {
                 byte[] bytes=BridgeProtocol.Encode(value);
-                using(var stream=new FileStream(temporary,FileMode.CreateNew,FileAccess.Write,FileShare.None)){stream.Write(bytes,0,bytes.Length);stream.Flush(true);}
-                File.Move(temporary,path); // Create-new semantics: never replace an existing receipt.
+                using(var stream=new FileStream(temporary,FileMode.CreateNew,FileAccess.Write,FileShare.None)){owned=true;stream.Write(bytes,0,bytes.Length);stream.Flush(true);}
+                File.Move(temporary,full); // Create-new semantics: never replace an existing receipt.
             }
-            finally{if(File.Exists(temporary))File.Delete(temporary);}
+            finally{if(owned&&File.Exists(temporary))File.Delete(temporary);}
         }
     }
 }
