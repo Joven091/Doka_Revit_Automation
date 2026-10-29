@@ -133,6 +133,18 @@ namespace EngineeringDashboard.Top50
                 if(found.Count>0)break;
             }
             var scales=new RankingScales(totalMicrometres/1000000m,catalog.Distinct().Count(),limits.MaximumGroups,included.Length*limits.MaxInternalFillers,percentage.HasValue?totalMicrometres/1000000m*percentage.Value/100:(decimal?)null);
+            bool hasInBand=!percentage.HasValue || found.Any(p=>Math.Abs(p.StockMicrometres/totalMicrometres*100-percentage.Value)<=bandPoints);
+            Func<Proposal,bool> eligible=p=>!percentage.HasValue || !hasInBand && allowExpansion || Math.Abs(p.StockMicrometres/totalMicrometres*100-percentage.Value)<=bandPoints;
+            var consolidationLimits=new SearchLimits(limits.MaxInternalFillers,limits.MaxFillerMm,limits.MaximumGroups,percentage.HasValue?1:limits.LongestSimultaneous,limits.SearchEffort,limits.Seed,limits.PatternsPerLength,workPerInventory,identicalKits);
+            foreach(var original in found.ToArray())
+                found.AddRange(PanelSizeConsolidation.Improve(original,walls,catalog,consolidationLimits,preset,scales,eligible,cancellation,new SearchProgress(message=>{log.Add(message);progress?.Report(message);})));
+            // An expanded offer can consolidate back into the requested band.
+            // In-band offers retain their precedence over all expanded alternatives.
+            if(percentage.HasValue && found.Any(p=>Math.Abs(p.StockMicrometres/totalMicrometres*100-percentage.Value)<=bandPoints))
+                found=found.Where(p=>Math.Abs(p.StockMicrometres/totalMicrometres*100-percentage.Value)<=bandPoints).ToList();
+            // Equivalent inventory/arrangement pairs reached from different seeds
+            // must not occupy several places in the three-result shortlist.
+            found=found.GroupBy(p=>Top50Order.Stock(p.Stock)+"/"+string.Join("|",p.Groups.Select(Top50Order.Group)),StringComparer.Ordinal).Select(g=>g.First()).ToList();
             var ranked=ProposalRanking.Rank(found.Select(p=>RankingMetrics.From(p,percentage.HasValue?p.StockMicrometres/1000000m-totalMicrometres/1000000m*percentage.Value/100:0)),preset,displayLimit,scales);
             var shown=ranked.Select(r=>found.Single(p=>p.Id==r.Id)).ToArray();
             for(int i=0;i<shown.Length;i++){shown[i].Rank=i+1;shown[i].Pareto=ranked[i].Pareto;}
