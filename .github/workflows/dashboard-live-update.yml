@@ -39,6 +39,7 @@ jobs:
         shell: pwsh
         run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
       - name: Build the actual production Dashboard and update payload
+        id: payload-build
         shell: pwsh
         run: |
           ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/initial -Version 1.2.0
@@ -59,6 +60,7 @@ jobs:
       - name: Actual production entry, pipe peer and WPF recovery
         shell: pwsh
         run: |
+          Copy-Item artifacts/initial/payload/Doka.EngineeringDashboard.exe.config tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe.config -Force
           & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe (Resolve-Path artifacts/initial/payload/Doka.EngineeringDashboard.exe) artifacts/evidence/desktop
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build a second actual production version
@@ -70,6 +72,7 @@ jobs:
           & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe --helper-update (Resolve-Path artifacts/initial/payload) (Resolve-Path artifacts/candidate/payload) artifacts/evidence/helper
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publisher and one-time migration guard checks in isolated user folders
+        if: always() && steps.payload-build.outcome == 'success'
         shell: pwsh
         run: ./scripts/Test-DashboardLiveUpdate.ps1 -BuildDirectory artifacts/initial -EvidenceDirectory artifacts/evidence/migration
       - uses: actions/upload-artifact@v4
