@@ -79,7 +79,7 @@ internal static class ExternalEntryChecks
                 Check(!Process.GetCurrentProcess().HasExited,"local bridge peer stays alive while Dashboard process is replaced");
                 var window=WaitWindow(process.Id,w=>w.Current.Name!="Engineering Dashboard"||checkpoint==null);
                 inspect(process,window);
-                foreach(var visible in Windows(process.Id).ToArray())Close(visible,process.Id);
+                CloseAll(process);
                 Wait(()=>process.HasExited,"test-owned Dashboard closes normally",15);Check(process.ExitCode==0,"production external entry exits cleanly");complete=true;
             }
             finally
@@ -88,6 +88,18 @@ internal static class ExternalEntryChecks
                 if(!complete&&!process.HasExited){process.Kill();process.WaitForExit(5000);}
             }
             }
+        }
+    }
+    internal static void CloseAll(Process process)
+    {
+        var closing=Stopwatch.StartNew();
+        while(!process.HasExited&&closing.Elapsed<TimeSpan.FromSeconds(15))
+        {
+            // Closing a tool reveals the retained Launcher. Discover again rather
+            // than assuming the first set of visible windows is the whole app.
+            foreach(var visible in Windows(process.Id).ToArray())
+            {if(process.HasExited)break;try{Close(visible,process.Id);}catch(ElementNotAvailableException){}}
+            Pump();if(!process.HasExited)Thread.Sleep(50);
         }
     }
     static string Quote(string value)=>"\""+value.Replace("\"","\\\"")+"\"";

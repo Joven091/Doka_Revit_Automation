@@ -73,8 +73,7 @@ internal static class HelperUpdateChecks
                 var helperWindow=WaitWindow(helper.Id,w=>w.Current.Name=="Engineering Dashboard update");
                 Wait(()=>helperWindow.FindFirst(TreeScope.Descendants,new PropertyCondition(AutomationElement.NameProperty,"Dashboard updated. Revit stayed open and your work was restored."))!=null,"actual helper confirms restored startup");
                 Invoke(ByName(helperWindow,"Close"));Wait(()=>helper.HasExited,"production helper closes cooperatively");Check(helper.ExitCode==0,"actual helper exits successfully");
-                foreach(var window in Windows(updated.Id).ToArray())Close(window,updated.Id);
-                foreach(var window in Windows(updated.Id).ToArray())Close(window,updated.Id);
+                CloseAll(updated);
                 Wait(()=>updated.HasExited,"updated test-owned Dashboard closes normally");Check(updated.ExitCode==0,"updated Dashboard closes normally after helper integration check");
                 File.WriteAllText(Path.Combine(Output,"helper-update-evidence.txt"),"Initial version: "+initial.Version+"\nCandidate version: "+candidate.Version+"\nOriginal peer PID: "+originalPeerPid+"\nOld Dashboard PID: "+old.Id+"\nNew Dashboard PID: "+updated.Id+"\nHelper PID: "+helper.Id+"\nActive pointer: "+Path.Combine(root,"active.json")+"\nActual handoff: "+planPath+"\nActual restore receipt: "+receiptPath+"\nRecovery checkpoint: "+checkpoint+"\nActual Revit host acceptance remains unrun.\n");
             },90);
