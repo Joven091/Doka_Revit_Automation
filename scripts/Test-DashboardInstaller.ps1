@@ -12,7 +12,9 @@ $build=(Resolve-Path -LiteralPath $BuildDirectory).Path
 $evidence=[IO.Path]::GetFullPath($EvidenceDirectory)
 $repo=Split-Path $PSScriptRoot -Parent
 $prefix=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Temp/DokaDashboardInstallerTests'))
-$root=Join-Path $prefix ([guid]::NewGuid().ToString('N'))
+# Keep the disposable fixture beneath legacy net48 MAX_PATH while retaining
+# the real safety prefix and the separate path-with-spaces installation case.
+$root=Join-Path $prefix ([guid]::NewGuid().ToString('N').Substring(0,12))
 if(!$root.StartsWith($prefix+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Unsafe isolated installer test root.'}
 New-Item -ItemType Directory -Path $root,$evidence -Force | Out-Null
 $script:checks=[Collections.Generic.List[string]]::new()
