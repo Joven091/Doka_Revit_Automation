@@ -1,7 +1,7 @@
 name: Dashboard restart-only updates
 on:
   pull_request:
-    paths: ['src/DashboardHost/**', 'src/DashboardDesktop/**', 'tools/Dashboard*/**', 'tools/RevitBridge/**', 'tests/DashboardUpdates.Tests/**', 'tests/DashboardDesktop.Smoke/**', 'scripts/*Dashboard*.ps1', 'packaging/dashboard-live-update/**', '.github/workflows/dashboard-live-update.yml']
+    paths: ['src/BeamSolver/**', 'src/Models/**', 'src/ViewModels/BeamCalculatorViewModel*', 'tests/Beam.Tests/Combined*', 'src/DashboardHost/**', 'src/DashboardDesktop/**', 'tools/Dashboard*/**', 'tools/RevitBridge/**', 'tests/DashboardUpdates.Tests/**', 'tests/DashboardDesktop.Smoke/**', 'scripts/*Dashboard*.ps1', 'packaging/dashboard-live-update/**', '.github/workflows/dashboard-live-update.yml']
   push:
     branches: [codex/dashboard-live-update-20261029]
   workflow_dispatch:
@@ -114,4 +114,16 @@ jobs:
             artifacts/initial/Publish-DashboardUpdate.ps1
             artifacts/initial/Publish-to-company.cmd
             artifacts/initial/README.md
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: dashboard-update-files-1.2.1
+          path: artifacts/candidate/feed/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: dashboard-update-json-1.2.1
+          path: artifacts/candidate/feed/dashboard-latest.json
           if-no-files-found: error

@@ -17,7 +17,7 @@ foreach($project in @('DashboardDesktop/Doka.DashboardDesktop.csproj','Dashboard
 Copy-Item (Join-Path $repo 'tools/DashboardDesktop/bin/Release/net48/*') $payload -Recurse
 Copy-Item (Join-Path $repo 'tools/DashboardUpdater/bin/Release/net48/Doka.DashboardUpdater.exe') $payload
 if(Test-Path (Join-Path $repo 'tools/DashboardUpdater/bin/Release/net48/Doka.DashboardUpdater.exe.config')){Copy-Item (Join-Path $repo 'tools/DashboardUpdater/bin/Release/net48/Doka.DashboardUpdater.exe.config') $payload}
-# The worker is the same existing self-contained .NET10 solver; no engine changes.
+# Publish the matching self-contained .NET10 solver; host and worker must share the exact search sources.
 & dotnet publish (Join-Path $repo 'tools/BeamSolver.Worker/BeamSolver.Worker.csproj') -c Release -r win-x64 --self-contained true -p:PublishTrimmed=false -p:PublishSingleFile=false "-p:Version=$Version" --output (Join-Path $payload 'BeamSolver') --warnaserror
 if($LASTEXITCODE -ne 0){throw 'Worker publication failed'}
 $source=Join-Path $repo 'src/bin/Release/dashboard/net48'

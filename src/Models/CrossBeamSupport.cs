@@ -324,6 +324,30 @@ namespace EngineeringDashboard
             foreach(double station in layout.PositionsMm)foreach(int side in new[] {-1,1})
                 yield return new FormworkSolid {Name=owner+" tower leg",TowerOwner=owner,X0=originX+side*layout.WidthMm/2-40,X1=originX+side*layout.WidthMm/2+40,Y0=originY+station-40,Y1=originY+station+40,Z0=-1e6,Z1=head,IsLeg=true};
         }
+        internal static IEnumerable<FormworkSolid> LayoutSolids(TowerLayout layout,double centre,double bottom,double originX=0,string owner="B1")
+        {
+            foreach(var piece in layout.StockPlan.Pieces)foreach(int side in new[] {-1,1})
+                foreach(var solid in PrimarySolids("primary",piece.StartMm+originX,centre+layout.TransverseOffsetMm+side*layout.WidthMm/2,piece.StockLengthMm,true,bottom-200,layout.Primary))yield return solid;
+            foreach(double station in layout.PositionsMm)foreach(int side in new[] {-1,1})
+                yield return new FormworkSolid {Name="tower leg",TowerOwner=owner,IsLeg=true,X0=station+originX-40,X1=station+originX+40,
+                    Y0=centre+layout.TransverseOffsetMm+side*layout.WidthMm/2-40,Y1=centre+layout.TransverseOffsetMm+side*layout.WidthMm/2+40,Z0=-1e6,Z1=bottom-200-layout.Primary.DepthMm};
+            foreach(var frame in TowerEnvelopes(layout,owner,originX,centre+layout.TransverseOffsetMm,true,bottom-200-layout.Primary.DepthMm))yield return frame;
+            var transfer=layout.Transfer;
+            if(transfer!=null)for(int row=0;row<transfer.PhysicalRowCount;row++)
+                yield return Timber("receiving secondary",transfer.PhysicalRowPosition(row)+originX,centre+transfer.LowerStockStartMm,transfer.LowerStockLengthMm,false,bottom);
+        }
+        internal static bool ExternalLayoutFits(TowerInput input,TowerLayout layout)
+        {
+            if(input.ExternalObstacles.Length==0)return true;
+            var index=input.ExternalObstacleIndex??(input.ExternalObstacleIndex=new FormworkObstacleIndex(input.ExternalObstacles));
+            return LayoutSolids(layout,input.ObstacleCentreYmm,input.ObstacleBottomMm,input.ObstacleOriginXmm).All(s=>index.FirstConflict(s)==null);
+        }
+        internal static bool ExternalNetworkFits(TowerInput input,TransferNetworkResult result)
+        {
+            if(input.ExternalObstacles.Length==0)return true;
+            var index=input.ExternalObstacleIndex??(input.ExternalObstacleIndex=new FormworkObstacleIndex(input.ExternalObstacles));
+            return NetworkSolids(result).Concat(result.CrossSupports.SelectMany(c=>c.Solids)).All(s=>index.FirstConflict(s)==null);
+        }
         internal static IEnumerable<FormworkSolid> NetworkSolids(TransferNetworkResult r)
         {
             for(int b=0;b<r.Beams.Length;b++)
@@ -1132,6 +1156,11 @@ namespace EngineeringDashboard
         }
         internal static bool Complete(TowerInput common,TransferNetworkResult r,bool partial=false)
         {
+            if(!ExternalNetworkFits(common,r))return false;
+            return CompleteCore(common,r,partial) && ExternalNetworkFits(common,r);
+        }
+        private static bool CompleteCore(TowerInput common,TransferNetworkResult r,bool partial)
+        {
             for(int bay=0;bay<r.Bays.Length;bay++)if(r.Bays[bay]!=null && r.Input.Bays[bay].Outline!=null)
             {
                 var p=r.Bays[bay];
@@ -1147,7 +1176,7 @@ namespace EngineeringDashboard
                 }
             }
             if(!Modern(r.Input))return true;
-            var original=r.Beams;var existing=NetworkSolids(r).ToArray();var concrete=Concrete(r).ToArray();
+            var original=r.Beams;var existing=NetworkSolids(r).ToArray();var concrete=Concrete(r).Concat(common.ExternalObstacles).ToArray();
             string baselineClash=Clash(existing,concrete);
             if(baselineClash!=null)
             {

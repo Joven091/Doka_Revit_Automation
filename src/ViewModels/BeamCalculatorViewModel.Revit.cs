@@ -25,6 +25,7 @@ namespace EngineeringDashboard
         private Dictionary<string,BeamCalculatorViewModel> revitDrawingModels=new Dictionary<string,BeamCalculatorViewModel>();
         private BeamCalculatorViewModel runningRevitDrawing;
         private string combinedSearchProgress="";
+        private string combinedCoordinationDiagnostics="";
         internal bool HasCombinedRevitDrawing=>RevitDrawings.Length>1;
         internal string CombinedRevitSummary=>!HasCombinedRevitDrawing ? "" : RevitDrawings.Length+" drawing parts · "+CombinedLegCount+" tower legs · "+CombinedH20Count+" H20s"+(CombinedWS10Count>0 ? " · "+CombinedWS10Count+" WS10s" : "");
         internal int CombinedLegCount=>RevitSceneModels().Sum(p=>(p.Item2.NetworkResult?.LegCount??p.Item2.TowerResult?.LegCount??0)+p.Item2.IndependentBeamResults.Sum(b=>b.LegCount));
@@ -126,7 +127,7 @@ namespace EngineeringDashboard
             IsOptimizing=true;IsCalculationValid=false;TowerResult=null;NetworkResult=null;TowerFailureDetails="";WarningMessage="Searching all imported areas…";NotifyTower();
             try
             {
-                CaptureActiveRevitDrawing();models=definitions.ToDictionary(d=>d.Key,d=> {var model=DrawingModel(d);CopyProjectInputs(model);return model;});
+                combinedCoordinationDiagnostics="";CaptureActiveRevitDrawing();models=definitions.ToDictionary(d=>d.Key,d=> {var model=DrawingModel(d);CopyProjectInputs(model);return model;});
                 solverSession=SharedSolverSession??new BeamSolverSession();
                 foreach(var definition in definitions)
                 {
@@ -147,6 +148,8 @@ namespace EngineeringDashboard
                 }
                 else
                 {
+                    await CoordinateRevitPartsAsync(models,solverSession,useTimeLimit,revision,cancellation.Token);
+                    if(revision!=towerRevision)return;
                     string clash=CombinedRevitClash();
                     if(clash!=null){TowerFailureDetails=clash;WarningMessage="Combined drawing has a formwork clash. Open failure details.";trace.Complete("No coordinated solution",clash);}
                     else {CopyRevitResult(models[ActiveRevitDrawingKey]);trace.Complete("Succeeded",summary:CombinedRevitSummary);}
@@ -157,15 +160,19 @@ namespace EngineeringDashboard
             finally {if(ownsSolverSession && solverSession!=null)await Task.Run(()=>solverSession.Dispose());runningRevitDrawing=null;combinedSearchProgress="";IsOptimizing=false;towerCancellation=null;cancellation.Dispose();trace.Finish();lastCompletedFullSearch=trace;NotifyTower();}
         }
         internal string CombinedRevitDiagnostics()=>!HasCombinedRevitDrawing ? "" : "\n--- Combined Revit drawing calculations ---\n"+string.Join("\n",RevitDrawings.Select(d=>
-            d.Label+" | "+d.Key+"\n"+revitDrawingModels[d.Key].BuildDiagnosticReport("Combined drawing component",d.Label)));
-        internal string CombinedRevitClash()
+            d.Label+" | "+d.Key+"\n"+revitDrawingModels[d.Key].BuildDiagnosticReport("Combined drawing component",d.Label)))+"\n--- Combined support coordination ---\n"+combinedCoordinationDiagnostics;
+        private sealed class RevitPartGeometry
         {
-            if(!HasCombinedRevitDrawing)return null;
+            internal RevitDrawingDefinition Definition;
+            internal BeamCalculatorViewModel Model;
+            internal FormworkSolid[] Solids,Concrete;
+        }
+        private RevitPartGeometry[] CombinedPartGeometry()
+        {
             var frame=revitDrawingModels[RevitDrawings[0].Key].RevitContext;
-            var previous=new List<FormworkSolid>();var previousConcrete=new List<FormworkSolid>();
-            foreach(var definition in RevitDrawings)
+            return RevitDrawings.Select(definition=>
             {
-                var model=definition.Key==ActiveRevitDrawingKey && IsCalculationValid ? this : revitDrawingModels[definition.Key];if(!model.IsCalculationValid)return null;
+                var model=definition.Key==ActiveRevitDrawingKey && IsCalculationValid ? this : revitDrawingModels[definition.Key];
                 var concrete=new List<FormworkSolid>();var solids=new List<FormworkSolid>();
                 if(model.NetworkResult!=null)
                 {
@@ -174,29 +181,88 @@ namespace EngineeringDashboard
                 }
                 else
                 {
-                    var layout=model.TowerResult;double centre=model.PlanOriginYmm,bottom=model.NetworkBeams[0].BottomElevationMm;
+                    double centre=model.PlanOriginYmm,bottom=model.NetworkBeams[0].BottomElevationMm;
                     concrete.Add(new FormworkSolid {Name="beam concrete",X0=model.BeamSpanStart(0),X1=model.BeamSpanEnd(0),Y0=centre-model.Width/2,Y1=centre+model.Width/2,Z0=bottom,Z1=bottom+model.Depth});
-                    foreach(var piece in layout.StockPlan.Pieces)foreach(int side in new[] {-1,1})solids.AddRange(CrossBeamSupportOptimizer.PrimarySolids("primary",piece.StartMm,centre+layout.TransverseOffsetMm+side*layout.WidthMm/2,piece.StockLengthMm,true,bottom-200,layout.Primary));
-                    foreach(double station in layout.PositionsMm)foreach(int side in new[] {-1,1})solids.Add(new FormworkSolid {Name="tower leg",TowerOwner="B1",IsLeg=true,X0=station-40,X1=station+40,Y0=centre+layout.TransverseOffsetMm+side*layout.WidthMm/2-40,Y1=centre+layout.TransverseOffsetMm+side*layout.WidthMm/2+40,Z0=-1e6,Z1=bottom-200-layout.Primary.DepthMm});
-                    solids.AddRange(CrossBeamSupportOptimizer.TowerEnvelopes(layout,"B1",0,centre+layout.TransverseOffsetMm,true,bottom-200-layout.Primary.DepthMm));
+                    solids.AddRange(CrossBeamSupportOptimizer.LayoutSolids(model.TowerResult,centre,bottom));
                 }
-                var mapped=solids.Select(s=>Place(s,model,definition.Label)).ToArray();var blocks=concrete.Select(s=>Place(s,model,definition.Label)).ToArray();
-                var obstacles=new FormworkObstacleIndex(previous.Concat(previousConcrete).ToArray());
-                foreach(var solid in mapped){var hit=obstacles.FirstConflict(solid);if(hit!=null)return solid.Name+" clashes with "+hit.Name+".";}
-                var old=new FormworkObstacleIndex(previous.ToArray());foreach(var block in blocks){var hit=old.FirstConflict(block);if(hit!=null)return hit.Name+" clashes with "+block.Name+".";}
-                previous.AddRange(mapped);previousConcrete.AddRange(blocks);
+                double origin=model.NetworkResult!=null ? model.PlanOriginYmm : 0;
+                Func<FormworkSolid,FormworkSolid> place=solid=>MapRevitSolid(solid,model.RevitContext,origin,frame,0,definition.Label);
+                return new RevitPartGeometry {Definition=definition,Model=model,Solids=solids.Select(place).ToArray(),Concrete=concrete.Select(place).ToArray()};
+            }).ToArray();
+        }
+        private static FormworkSolid MapRevitSolid(FormworkSolid solid,RevitImportContext from,double fromY,RevitImportContext to,double toY,string label=null)
+        {
+            var points=new List<ImportPoint>();
+            foreach(double x in new[] {solid.X0,solid.X1})foreach(double rawY in new[] {solid.Y0,solid.Y1})
+            {
+                double y=rawY+fromY,wx=from.OriginXmm+x*from.DirectionX-y*from.DirectionY,wy=from.OriginYmm+x*from.DirectionY+y*from.DirectionX;
+                points.Add(new ImportPoint((wx-to.OriginXmm)*to.DirectionX+(wy-to.OriginYmm)*to.DirectionY,-(wx-to.OriginXmm)*to.DirectionY+(wy-to.OriginYmm)*to.DirectionX-toY));
+            }
+            return new FormworkSolid {Name=label==null ? solid.Name : label+" / "+solid.Name,TowerOwner=label==null ? solid.TowerOwner : label+" / "+solid.TowerOwner,
+                IsLeg=solid.IsLeg,IsTowerEnvelope=solid.IsTowerEnvelope,IsSideShutter=solid.IsSideShutter,X0=points.Min(p=>p.X),X1=points.Max(p=>p.X),Y0=points.Min(p=>p.Y),Y1=points.Max(p=>p.Y),
+                Z0=solid.Z0+from.TopElevationMm-to.TopElevationMm,Z1=solid.Z1+from.TopElevationMm-to.TopElevationMm};
+        }
+        private static Tuple<int,int,string> FirstCombinedClash(RevitPartGeometry[] parts)
+        {
+            var previous=new List<FormworkSolid>();var previousConcrete=new List<FormworkSolid>();var owners=new Dictionary<FormworkSolid,int>();
+            for(int i=0;i<parts.Length;i++)
+            {
+                var part=parts[i];var obstacles=new FormworkObstacleIndex(previous.Concat(previousConcrete).ToArray());
+                foreach(var solid in part.Solids){var hit=obstacles.FirstConflict(solid);if(hit!=null)return Tuple.Create(i,owners[hit],solid.Name+" clashes with "+hit.Name+".");}
+                var old=new FormworkObstacleIndex(previous.ToArray());
+                foreach(var block in part.Concrete){var hit=old.FirstConflict(block);if(hit!=null)return Tuple.Create(i,owners[hit],hit.Name+" clashes with "+block.Name+".");}
+                foreach(var solid in part.Solids.Concat(part.Concrete))owners[solid]=i;
+                previous.AddRange(part.Solids);previousConcrete.AddRange(part.Concrete);
             }
             return null;
-            FormworkSolid Place(FormworkSolid solid,BeamCalculatorViewModel model,string label)
+        }
+        internal string CombinedRevitClash()
+        {
+            if(!HasCombinedRevitDrawing || RevitDrawings.Any(d=>!(d.Key==ActiveRevitDrawingKey && IsCalculationValid ? this : revitDrawingModels[d.Key]).IsCalculationValid))return null;
+            return FirstCombinedClash(CombinedPartGeometry())?.Item3;
+        }
+        private async Task CoordinateRevitPartsAsync(Dictionary<string,BeamCalculatorViewModel> models,BeamSolverSession session,bool useTimeLimit,int revision,CancellationToken cancellation)
+        {
+            var repaired=new HashSet<string>();
+            while(true)
             {
-                var context=model.RevitContext;var points=new List<ImportPoint>();
-                foreach(double x in new[] {solid.X0,solid.X1})foreach(double rawY in new[] {solid.Y0,solid.Y1})
+                cancellation.ThrowIfCancellationRequested();var parts=CombinedPartGeometry();var clash=FirstCombinedClash(parts);
+                if(clash==null)
                 {
-                    double y=rawY+(model.NetworkResult!=null ? model.PlanOriginYmm : 0),wx=context.OriginXmm+x*context.DirectionX-y*context.DirectionY,wy=context.OriginYmm+x*context.DirectionY+y*context.DirectionX;
-                    points.Add(new ImportPoint((wx-frame.OriginXmm)*frame.DirectionX+(wy-frame.OriginYmm)*frame.DirectionY,-(wx-frame.OriginXmm)*frame.DirectionY+(wy-frame.OriginYmm)*frame.DirectionX));
+                    if(repaired.Count==0)combinedCoordinationDiagnostics="No inter-part clashes; no retries needed.";
+                    else combinedCoordinationDiagnostics+="All physical inter-part checks pass. Retained "+(parts.Length-repaired.Count)+" original part solutions.\n";
+                    return;
                 }
-                return new FormworkSolid {Name=label+" / "+solid.Name,TowerOwner=label+" / "+solid.TowerOwner,IsLeg=solid.IsLeg,IsTowerEnvelope=solid.IsTowerEnvelope,IsSideShutter=solid.IsSideShutter,
-                    X0=points.Min(p=>p.X),X1=points.Max(p=>p.X),Y0=points.Min(p=>p.Y),Y1=points.Max(p=>p.Y),Z0=solid.Z0+context.TopElevationMm-frame.TopElevationMm,Z1=solid.Z1+context.TopElevationMm-frame.TopElevationMm};
+                combinedCoordinationDiagnostics+="Detected: "+clash.Item3+"\n";
+                // Try the cheaper isolated beam first. Each accepted replacement clears
+                // every fixed neighbor, so repairs cannot introduce a new collision.
+                var order=new[] {clash.Item1,clash.Item2}.OrderBy(i=>parts[i].Model.NetworkResult==null ? 0 : 1).ThenBy(i=>i).ToArray();
+                bool accepted=false;
+                foreach(int index in order)
+                {
+                    var part=parts[index];if(repaired.Contains(part.Definition.Key))continue;
+                    var candidate=DrawingModel(part.Definition);CopyProjectInputs(candidate);
+                    var frame=parts[0].Model.RevitContext;
+                    candidate.combinedObstacles=parts.Where((p,i)=>i!=index).SelectMany(p=>p.Solids.Concat(p.Concrete))
+                        .Select(s=>MapRevitSolid(s,frame,0,candidate.RevitContext,candidate.IsNetworkMode ? candidate.PlanOriginYmm : 0)).ToArray();
+                    var clock=System.Diagnostics.Stopwatch.StartNew();
+                    runningRevitDrawing=candidate;combinedSearchProgress="Coordinating "+part.Definition.Label+"; retaining other parts";NotifyTower();
+                    candidate.SharedSolverSession=session;
+                    try {await candidate.OptimizeTowersAsync(useTimeLimit);}
+                    finally {candidate.SharedSolverSession=null;candidate.combinedObstacles=Array.Empty<FormworkSolid>();}
+                    cancellation.ThrowIfCancellationRequested();if(revision!=towerRevision)return;
+                    clock.Stop();combinedCoordinationDiagnostics+=part.Definition.Label+": retry "+clock.Elapsed.TotalSeconds.ToString("0.000",CultureInfo.InvariantCulture)+" s; ";
+                    if(!candidate.IsCalculationValid)
+                    {combinedCoordinationDiagnostics+="no checked alternative in this search. "+candidate.WarningMessage+"\n";continue;}
+                    models[part.Definition.Key]=candidate;
+                    // Independent final geometry check includes concrete in both directions.
+                    var replacement=CombinedPartGeometry()[index];
+                    bool clear=parts.Where((p,i)=>i!=index).All(p=>
+                        !replacement.Solids.Any(s=>p.Solids.Concat(p.Concrete).Any(s.Conflicts)) && !replacement.Concrete.Any(s=>p.Solids.Any(s.Conflicts)));
+                    if(!clear){models[part.Definition.Key]=part.Model;combinedCoordinationDiagnostics+="rejected by final inter-part checks.\n";continue;}
+                    repaired.Add(part.Definition.Key);combinedCoordinationDiagnostics+="accepted; members, reactions and physical clearance rechecked.\n";accepted=true;break;
+                }
+                if(!accepted){combinedCoordinationDiagnostics+="No coordinated alternative found for this pair in the bounded search; this is not proof that all arrangements are impossible.\n";return;}
             }
         }
         internal void ValidateCombinedRevitResult()

@@ -566,6 +566,7 @@ namespace EngineeringDashboard
             {
                 var result=OptimizeNetwork(common,input);
                 CrossBeamSupportOptimizer.BalanceSettingOut(common,result);
+                if(!CrossBeamSupportOptimizer.ExternalNetworkFits(common,result))throw new ArgumentException("The coordinated network still intersects a neighboring part.");
                 CalculateMovement(result,common.Trace);
                 return result;
             }
@@ -1466,8 +1467,11 @@ namespace EngineeringDashboard
                 if(plan.UseDesignZones || plan.HasCrossings)input.EngineerPlan=plan;
                 if(plan.HasCrossings){t.EngineerNetwork=network;t.EngineerBeam=beam;}
             }
+            input.ExternalObstacles=common.ExternalObstacles;
+            input.ObstacleBottomMm=b.BottomElevationMm;
+            for(int i=0;i<beam;i++)input.ObstacleCentreYmm+=network.Beams[i].WidthMm/2+network.Bays[i].WidthMm+network.Beams[i+1].WidthMm/2;
             input.CoordinateCrossingLayouts=common.CoordinateCrossingLayouts;
-            var receiverCache=fixedLayout==null && common.ReuseReceiverSearches && common.ReuseSearchWork ? common.NetworkReceiverWork : null;
+            var receiverCache=fixedLayout==null && common.ExternalObstacles.Length==0 && common.ReuseReceiverSearches && common.ReuseSearchWork ? common.NetworkReceiverWork : null;
             var receiverKey=receiverCache==null ? null : new ReceiverSolveKey(input,network,beam,alternatives!=null,shareLegCeilings:common.EngineerSearch && common.LocalNetworkSearch);
             input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace,ignoreUplift:input.IgnoreUplift) {LazyLocations=input.LazySearchDiagnostics};
             if(common.CoordinateCrossingLayouts)
@@ -1492,6 +1496,11 @@ namespace EngineeringDashboard
                 }
                 input.TransferLayoutAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout)) && CrossBeamSupportOptimizer.CheckJunctionReceiver(input,network,beam,layout);
                 if(common.EngineerSearch)input.TransferLowerAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout,true)) && CrossBeamSupportOptimizer.CheckJunctionLowerReceiver(input,network,beam,layout);
+            }
+            if(input.ExternalObstacles.Length>0)
+            {
+                var existingAcceptance=input.TransferLayoutAcceptance;
+                input.TransferLayoutAcceptance=layout=>CrossBeamSupportOptimizer.ExternalLayoutFits(input,layout) && (existingAcceptance==null || existingAcceptance(layout));
             }
             TowerLayout result=null;
             ReceiverSolveKey identityInput=null;

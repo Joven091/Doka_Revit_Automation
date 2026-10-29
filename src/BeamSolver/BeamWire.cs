@@ -33,7 +33,7 @@ namespace EngineeringDashboard
         const int MaximumItems=2000000,MaximumDepth=256;
         static readonly HashSet<string> skipped=new HashSet<string>(StringComparer.Ordinal)
         {
-            "TowerInput.Diagnostics","TowerInput.DedicatedCrossCache","TowerInput.CrossingGeometryWork","TowerInput.CrossLowerCases",
+            "TowerInput.ExternalObstacleIndex","TowerInput.Diagnostics","TowerInput.DedicatedCrossCache","TowerInput.CrossingGeometryWork","TowerInput.CrossLowerCases",
             "TowerInput.NetworkSeedCompletion","TowerInput.NetworkReceiverWork","TowerInput.NetworkPrefixWork","TowerInput.NetworkWarmStart",
             "TowerInput.ReceiverAlternatives","TowerInput.Trace","TowerInput.NetworkNumerics","TowerInput.NetworkGeometryWork","TowerInput.NetworkNumericalWork",
             "TowerLayout.ReceiverIdentity","TransferredSlabInput.SharedGeometryCache","TransferredSlabInput.SharedSearchWork",
