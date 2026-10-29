@@ -7,5 +7,6 @@
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
     <Reference Include="System.Runtime.Serialization" Condition="'$(TargetFramework)' == 'net48'" />
     <Compile Include="../../src/Top50/*.cs" Link="Core/%(Filename)%(Extension)" />
+    <Compile Include="../Shared/Top50PanelConsolidationReport.cs" Link="Top50PanelConsolidationReport.cs" />
   </ItemGroup>
 </Project>

@@ -11,7 +11,7 @@ namespace EngineeringDashboard.Top50
         public const int WallFaces=2;
         public const int DisplayLimit=3;
         public const double ThoroughSearchEffort=100;
-        public const int SearchPolicyVersion=4;
+        public const int SearchPolicyVersion=5;
         public const int ProjectVersion=5;
         public static void Apply(NativeTop50Project settings)
         {

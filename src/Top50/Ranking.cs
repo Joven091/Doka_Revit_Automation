@@ -27,9 +27,11 @@ namespace EngineeringDashboard.Top50
     public sealed class RankingScales
     {
         internal decimal[] Values {get;}
+        internal decimal? TargetMetres {get;}
         public RankingScales(decimal totalWallMetres,int catalogTypes,int maximumGroups,int maximumFillerLocations,decimal? targetMetres=null)
         {
             if(totalWallMetres<=0 || catalogTypes<1 || maximumGroups<1 || maximumFillerLocations<0)throw new ArgumentOutOfRangeException(nameof(totalWallMetres));
+            TargetMetres=targetMetres;
             Values=new[]{1m,totalWallMetres,(decimal)catalogTypes,maximumGroups,1m,Math.Max(1,maximumFillerLocations),1m,Math.Max(1,targetMetres??totalWallMetres)};
         }
     }

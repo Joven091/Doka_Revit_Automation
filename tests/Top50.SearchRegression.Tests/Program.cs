@@ -146,7 +146,7 @@ internal static class Program
     }
     static int Main()
     {
-        try{PatternReuse();Cancellation();IdenticalKitAllocation();Console.WriteLine("PASS "+checks+" Top50 search regression checks");return 0;}
+        try{ConsolidationTests.Run();PatternReuse();Cancellation();IdenticalKitAllocation();Console.WriteLine("PASS "+checks+" Top50 search regression checks");return 0;}
         catch(Exception e){Console.Error.WriteLine(e);return 1;}
     }
 }
