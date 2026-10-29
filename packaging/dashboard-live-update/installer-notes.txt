@@ -1,0 +1,7 @@
+Doka Engineering Dashboard for Autodesk Revit 2024
+
+Save your models and close all Revit and Engineering Dashboard windows before installing.
+
+This installer keeps your existing project files, access settings and update-folder settings. It backs up the integration files it replaces and registers the Dashboard for your current Windows account. Administrator elevation is not required.
+
+After installation, open Revit 2024 and launch Engineering Dashboard as usual. Compatible future Dashboard updates close and reopen only the Dashboard, preserving working inputs while Revit stays open. Updates to the Revit integration itself can still require a Revit restart.

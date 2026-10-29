@@ -34,4 +34,8 @@ All Revit API work runs through the stable module's ExternalEvent. Reads return 
 
 ## Acceptance limits
 
+An approved migration installer is built separately with `Build-DashboardInstaller.ps1`, using the complete verified output of `Build-DashboardLiveUpdate.ps1` from the same source commit. It uses the existing checked migration and preserves the normal per-user application identity. `Test-DashboardInstaller.ps1` exercises the actual EXE and uninstaller in guarded temporary folders, including upgrades, preserved data, process guards and rejected paths. The installer workflow requires an explicit build request; ordinary development changes do not authorize installers.
+
+The checked runtime migration finishes before Setup records its uninstall entry. If that final Setup phase fails, the verified runtime and upgrade backups remain in place, and Setup instructs the user to rerun the same installer to repair its registration. A successful runtime migration is not silently reversed.
+
 Pure transaction tests and cross-compilation do not prove actual Revit operation. The independent native smoke uses the actual production EXE with a test-owned pipe peer, not Autodesk Revit. Actual Revit2024 modelling coexistence, selection/highlighting/helper transactions, document switches, first migration on a company machine and company-share publication require host acceptance before team release. This branch does not merge prior draft PRs or publish to the company folder.

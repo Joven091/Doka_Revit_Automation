@@ -1,0 +1,92 @@
+name: Dashboard migration installer
+on:
+  pull_request:
+    paths: ['installer-dashboard-live-update.iss', 'scripts/*DashboardInstaller.ps1', 'packaging/dashboard-live-update/**', '.github/workflows/dashboard-live-installer.yml']
+  workflow_dispatch:
+    inputs:
+      build_installer:
+        description: Build the migration installer after user approval
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: dashboard-installer-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  requested:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.request.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - id: request
+        shell: bash
+        env:
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' && inputs.build_installer == true }}
+        run: |
+          message=$(git log -1 --pretty=%B)
+          if [[ "$MANUAL" == 'true' || "$message" == *'[build-dashboard-installer]'* ]]; then
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+          fi
+  installer:
+    needs: requested
+    if: needs.requested.outputs.build == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Native desktop prerequisites on disposable runner
+        shell: pwsh
+        run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
+      - name: Build verified production payload and migration installer
+        shell: pwsh
+        run: |
+          ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/live -Version 1.2.0
+          $compiler=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
+          ./scripts/Build-DashboardInstaller.ps1 -Compiler $compiler -BuildDirectory artifacts/live -OutputDirectory artifacts/dashboard-installer
+      - name: Actual isolated fresh installation, upgrade, guards and uninstall
+        shell: pwsh
+        run: |
+          $installer=(Get-ChildItem artifacts/dashboard-installer/Install_DokaRevitAutomation_*.exe).FullName
+          ./scripts/Test-DashboardInstaller.ps1 -Installer $installer -BuildDirectory artifacts/live -EvidenceDirectory artifacts/evidence/installer
+      - name: Verify native contracts and the actual installed Dashboard
+        shell: pwsh
+        run: |
+          dotnet build tests/DashboardUpdates.Tests -c Release -f net48 --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & tests/DashboardUpdates.Tests/bin/Release/net48/DashboardUpdates.Tests.exe *> artifacts/evidence/update-core.log
+          if ($LASTEXITCODE -ne 0) { Get-Content artifacts/evidence/update-core.log; throw 'Native update contracts failed' }
+          dotnet build tests/DashboardDesktop.Smoke -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $result=Get-Content artifacts/evidence/installer/result.json -Raw | ConvertFrom-Json
+          Copy-Item ($result.freshEntry+'.config') tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe.config -Force
+          & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe $result.freshEntry artifacts/evidence/installed-desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: revit2024-dashboard-updater-installer
+          path: |
+            artifacts/dashboard-installer/*.exe
+            artifacts/dashboard-installer/README.txt
+            artifacts/dashboard-installer/SHA256SUMS
+            artifacts/dashboard-installer/release-info.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dashboard-installer-evidence
+          path: |
+            artifacts/dashboard-installer/installer-compile.log
+            artifacts/evidence/
+          if-no-files-found: warn
