@@ -217,6 +217,11 @@ namespace EngineeringDashboard
     }
     public sealed class TowerInput
     {
+        // Fixed neighboring parts for a coordinated retry, in this part's coordinates.
+        // Plain geometry travels to the modern worker; no UI delegates are transported.
+        internal FormworkSolid[] ExternalObstacles=Array.Empty<FormworkSolid>();
+        internal double ObstacleOriginXmm,ObstacleCentreYmm,ObstacleBottomMm;
+        internal FormworkObstacleIndex ExternalObstacleIndex;
         internal TowerSearchDiagnostics Diagnostics;
         internal Dictionary<string,DedicatedCrossSearch> DedicatedCrossCache;
         internal CrossGeometryCache CrossingGeometryWork;
@@ -476,7 +481,7 @@ namespace EngineeringDashboard
             Validate(input);
             if(input.LongitudinalStartMm!=0)
             {
-                var local=input.CopyForSearch();local.LongitudinalStartMm=0;var layout=Optimize(local);
+                var local=input.CopyForSearch();local.LongitudinalStartMm=0;local.ObstacleOriginXmm+=input.LongitudinalStartMm;var layout=Optimize(local);
                 layout.LongitudinalStartMm=input.LongitudinalStartMm;layout.PositionsMm=layout.PositionsMm.Select(x=>x+input.LongitudinalStartMm).ToArray();
                 foreach(var p in layout.StockPlan.Pieces)p.StartMm+=input.LongitudinalStartMm;
                 return layout;
@@ -506,7 +511,7 @@ namespace EngineeringDashboard
                     double overhang = (input.LengthMm - covered) / 2;
                     var candidateInput = new TowerInput { PrimaryMaterial = input.PrimaryMaterial, LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
                         TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator,
-                        Trace = input.Trace, IgnoreUplift = input.IgnoreUplift, AllowCustomH20Lengths = input.AllowCustomH20Lengths, CustomH20Scope = input.CustomH20Scope, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
+                        ExternalObstacles=input.ExternalObstacles,ExternalObstacleIndex=input.ExternalObstacleIndex,ObstacleOriginXmm=input.ObstacleOriginXmm+overhang,ObstacleCentreYmm=input.ObstacleCentreYmm,ObstacleBottomMm=input.ObstacleBottomMm,Trace = input.Trace, IgnoreUplift = input.IgnoreUplift, AllowCustomH20Lengths = input.AllowCustomH20Lengths, CustomH20Scope = input.CustomH20Scope, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
                     TowerLayout candidate;
                     try { candidate = OptimizeCovered(candidateInput); }
                     catch (TowerOptimizationException) {continue;}
@@ -542,7 +547,16 @@ namespace EngineeringDashboard
                 input.Trace?.CheckCancellation();var g=item.Item3;
                 if(best!=null && g.Positions.Length>best.PositionsMm.Length)continue;
                 double edge=(input.LengthMm-item.Item1.Sum())/2;
-                var worker=input.CopyForSearch();worker.EngineerSearch=false;worker.LengthMm=item.Item1.Sum();
+                if(input.ExternalObstacles.Length>0)
+                {
+                    var joins=RemoveRedundantJoins(g.Joined,g.Positions,input.Exclude600Standalone);
+                    if(joins==null)continue;
+                    double start=edge;
+                    var pieces=item.Item1.Select(length=> {var piece=new TowerStockPiece {StartMm=start,StockLengthMm=length};start+=length;return piece;}).ToArray();
+                    var proposed=new TowerLayout {PrimaryMaterial=input.PrimaryMaterial,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=joins,WidthMm=item.Item4,StockPlan=new TowerStockPlan {Pieces=pieces}};
+                    if(!CrossBeamSupportOptimizer.ExternalLayoutFits(input,proposed))continue;
+                }
+                var worker=input.CopyForSearch();worker.EngineerSearch=false;worker.LengthMm=item.Item1.Sum();worker.ObstacleOriginXmm+=edge;
                 // Reuse the existing exact member/stock checker at the proposed positions.
                 var candidate=Evaluate(worker,g.Positions,g.Joined,item.Item4,item.Item2);tested++;
                 if(candidate==null)continue;
@@ -680,10 +694,11 @@ namespace EngineeringDashboard
             if (!input.IgnoreUplift && response.Reactions.Min() < -1e-9 * maxLeg) return null;
             var utilization = new[] { maxLeg / input.LegCapacityKn, response.MomentKnM / input.Primary.MomentLimitKnM, response.ShearKn / input.Primary.ShearLimitKn, response.DeflectionUtilization, response.StrengthUtilization };
             if (utilization.Any(x => !TowerBeamAnalysis.Finite(x)) || utilization.Max() > 1 + 1e-10) return null;
-            return new TowerLayout { EngineerSearch=input.EngineerSearch, PrimaryMaterial=input.PrimaryMaterial, IgnoreUplift = input.IgnoreUplift, PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
+            var layout=new TowerLayout { EngineerSearch=input.EngineerSearch, PrimaryMaterial=input.PrimaryMaterial, IgnoreUplift = input.IgnoreUplift, PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
                 LeftLineLoad = left, RightLineLoad = right, LeftReactions = response.Reactions.Select((x,i) => x * (left+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm)) / (Math.Max(left,right)+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm))).ToArray(), RightReactions = response.Reactions.Select((x,i) => x * (right+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm)) / (Math.Max(left,right)+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm))).ToArray(),
                 MaxLegKn = maxLeg, LegCapacityKn = input.LegCapacityKn, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator, MomentKnM = response.MomentKnM, ShearKn = response.ShearKn, DeflectionMm = response.DeflectionMm,
                 Utilization = utilization.Max(), Governing = new[] { "Leg capacity", "Primary moment", "Primary shear", "Primary deflection", "Primary strength / M–V interaction" }[Array.IndexOf(utilization, utilization.Max())] };
+            return CrossBeamSupportOptimizer.ExternalLayoutFits(input,layout) ? layout : null;
         }
         // Maximize independent groups while retaining at least two frames per group.
         // When excluded, a 600 mm pair must remain joined to more frames or be rejected.

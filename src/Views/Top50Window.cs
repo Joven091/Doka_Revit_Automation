@@ -222,7 +222,14 @@ namespace EngineeringDashboard
         }
         private void ModelChanged(object sender,PropertyChangedEventArgs e){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>ModelChanged(sender,e)));return;}if(e.PropertyName==nameof(Top50ViewModel.Status))revitStatus="";if(e.PropertyName==nameof(Top50ViewModel.Status)||e.PropertyName==nameof(Top50ViewModel.IsBusy)||e.PropertyName==nameof(Top50ViewModel.CanUndo)||e.PropertyName==nameof(Top50ViewModel.CanRedo))UpdateBusy();if(e.PropertyName==nameof(Top50ViewModel.Input)||e.PropertyName==nameof(Top50ViewModel.Proposals)||e.PropertyName==nameof(Top50ViewModel.Selected)||e.PropertyName==nameof(Top50ViewModel.Settings)){if(renderQueued)return;renderQueued=true;Dispatcher.BeginInvoke(new Action(()=>{renderQueued=false;ShowPage(page);}));}}
         private void UpdateBusy(){bool busy=model.IsBusy||revitBusy;cancel.IsEnabled=model.IsBusy;cancel.Visibility=busy?Visibility.Visible:Visibility.Collapsed;optimize.IsEnabled=!busy;open.IsEnabled=!busy;save.IsEnabled=!busy;content.IsEnabled=!busy;undo.IsEnabled=!busy&&model.CanUndo;redo.IsEnabled=!busy&&model.CanRedo;delete.IsEnabled=!busy&&page==0&&importTable?.SelectedItems.Count>0;if(useRevit!=null)useRevit.IsEnabled=!busy&&!highlighting; if(refreshRevit!=null)refreshRevit.IsEnabled=!busy&&!highlighting&&model.Input?.RevitSource!=null; if(locateRevit!=null)locateRevit.IsEnabled=!busy&&!model.IsStale&&model.Input?.RevitSource!=null&&model.Selected!=null;progress.Text=string.IsNullOrEmpty(revitStatus)||model.IsBusy||model.IsStale?model.Status:revitStatus;progress.Visibility=string.IsNullOrEmpty(progress.Text)?Visibility.Collapsed:Visibility.Visible;}
-        private void OnClosing(object sender,CancelEventArgs e){if(model.IsBusy){model.Cancel();e.Cancel=true;return;}if(!ConfirmDiscard())e.Cancel=true;else model.PropertyChanged-=ModelChanged;}
+        private void OnClosing(object sender,CancelEventArgs e)
+        {
+            if(model.IsBusy){model.Cancel();e.Cancel=true;return;}
+#if DASHBOARD_DESKTOP
+            if(DesktopHost.DashboardSessionController.IsUpdateRestart){model.PropertyChanged-=ModelChanged;return;}
+#endif
+            if(!ConfirmDiscard())e.Cancel=true;else model.PropertyChanged-=ModelChanged;
+        }
         private void Error(Exception error){model.RecordDiagnosticError("Planner action",error);ShowError(error.Message);}
         private void Error(string message){model.RecordDiagnosticError("Edit planner settings",new ArgumentException(message));ShowError(message);}
         private void ShowError(string message)=>MessageBox.Show(this,message,"Top50 Planner",MessageBoxButton.OK,MessageBoxImage.Information);

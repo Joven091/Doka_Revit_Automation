@@ -11,7 +11,7 @@ using Microsoft.Web.WebView2.Wpf;
 
 namespace EngineeringDashboard.SteelShape
 {
-    public sealed class SteelShapeWindow : Window
+    public sealed partial class SteelShapeWindow : Window
     {
         private readonly WebView2 view = new WebView2();
         private readonly TaskCompletionSource<bool> initialized = new TaskCompletionSource<bool>();

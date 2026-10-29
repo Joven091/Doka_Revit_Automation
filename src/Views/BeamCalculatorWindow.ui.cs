@@ -195,11 +195,15 @@ namespace EngineeringDashboard
             var vm=DataContext as BeamCalculatorViewModel;
             if(requireResult){if(!TryGetValidCalculation(out vm))throw new ArgumentException("Correct the inputs before saving or exporting.");}
             else {RefreshInputValidity();if(vm==null || !vm.HasSelectedSupportSystem || !vm.UseTowers)throw new ArgumentException("Select D3 before saving drawing inputs.");vm.ValidateTowerInputs();}
+            return CaptureRestartInputs(vm);
+        }
+        internal static CalculationRecord CaptureRestartInputs(BeamCalculatorViewModel vm)
+        {
             var record = CalculationFiles.Capture("Beam", vm, FileInputs);
             foreach (var field in CalculationFiles.Capture("Beam", vm, "TransferSlabLoads,UpperSupportSpacingMm,LeftSlabBayMm,RightSlabBayMm").Inputs) record.Inputs.Add(field);
             record.Inputs.Add(CalculationFiles.Field("UseTowers", vm.UseTowers));
             record.Inputs.Add(CalculationFiles.Field("UseBeamNetwork",vm.UseBeamNetwork));
-            if(vm.NetworkBeams.Count>0 || vm.IndependentBeams.Count>0)record.Inputs.Add(CalculationFiles.Field("NetworkConfigurationXml",vm.NetworkConfigurationXml));
+            if(vm.NetworkBeams.Count>0 || vm.IndependentBeams.Count>0 || vm.RevitContext!=null || vm.HasCombinedRevitDrawing)record.Inputs.Add(CalculationFiles.Field("NetworkConfigurationXml",vm.NetworkConfigurationXml));
             record.Inputs.Add(CalculationFiles.Field("PlanOriginYmm",vm.PlanOriginYmm));
             record.Inputs.Add(CalculationFiles.Field("BeamLengthMm", vm.BeamLengthMm));
             record.Inputs.Add(CalculationFiles.Field("TowerLegCapacityKn", vm.TowerLegCapacityKn));

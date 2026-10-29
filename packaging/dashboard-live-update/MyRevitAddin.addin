@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='utf-8'?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>MyRevitAddinApplication</Name>
+    <Assembly>Doka.RevitBridge.dll</Assembly>
+    <FullClassName>MyRevitAddin.App</FullClassName>
+    <ClientId>a1b2c3d4-e5f6-4a5b-6c7d-8e9f0a1b2c3d</ClientId>
+    <VendorId>DOKA</VendorId>
+    <VendorDescription>Doka Designer</VendorDescription>
+  </AddIn>
+  <AddIn Type="Command">
+    <Text>Engineering Dashboard</Text>
+    <Description>Engineering Dashboard Command</Description>
+    <Assembly>Doka.RevitBridge.dll</Assembly>
+    <FullClassName>EngineeringDashboard.Command</FullClassName>
+    <ClientId>2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e</ClientId>
+    <VendorId>DOKA</VendorId>
+    <VendorDescription>Doka Designer</VendorDescription>
+  </AddIn>
+  <AddIn Type="Command">
+    <Text>Check for Doka updates</Text>
+    <Description>Check the company folder for a Revit 2024 add-in update</Description>
+    <Assembly>Doka.RevitBridge.dll</Assembly>
+    <FullClassName>MyRevitAddin.Updates.UpdateCommand</FullClassName>
+    <ClientId>c6dedce1-4571-4b7c-b781-1f338826be41</ClientId>
+    <VendorId>DOKA</VendorId>
+    <VendorDescription>Doka Designer</VendorDescription>
+  </AddIn>
+</RevitAddIns>

@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+#if !DASHBOARD_DESKTOP
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI.Selection;
+#endif
 
 namespace EngineeringDashboard
 {
@@ -11,6 +13,9 @@ namespace EngineeringDashboard
     {
         public BeamCalculatorWindow() { InitializeComponent(); InitializeUi(); }
 
+#if DASHBOARD_DESKTOP
+        private async void BtnApplyToBeams_Click(object sender,RoutedEventArgs e)=>await ApplyBeamFromDesktopAsync();
+#else
         private bool applyingToBeams;
         private async void BtnApplyToBeams_Click(object sender,RoutedEventArgs e)
         {
@@ -125,6 +130,7 @@ namespace EngineeringDashboard
             public bool AllowReference(Reference reference, XYZ position) => false;
         }
         private static bool IsLength(Parameter p) => p != null && p.StorageType == StorageType.Double && p.Definition.GetDataType() == SpecTypeId.Length;
+#endif
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
     }
 }

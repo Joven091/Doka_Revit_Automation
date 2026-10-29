@@ -1,0 +1,72 @@
+name: Beam combined support coordination
+on:
+  pull_request:
+    paths: ['src/BeamSolver/**', 'src/Models/**', 'src/ViewModels/BeamCalculatorViewModel*', 'tests/Beam.Tests/**', '.github/workflows/beam-combined-coordination.yml']
+  workflow_dispatch:
+concurrency:
+  group: beam-coordination-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  windows-reported-replay:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build original-framework host and matching worker
+        shell: pwsh
+        run: |
+          dotnet build tests/Beam.Net48 -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/Build-BeamSolverWorker.ps1 -OutputDirectory artifacts/fixed-worker
+          Copy-Item artifacts/fixed-worker tests/Beam.Net48/bin/Release/net48/BeamSolver -Recurse
+      - name: Check out the unchanged pre-fix source for the same-machine comparison
+        uses: actions/checkout@v4
+        with:
+          ref: 94825c52a99356c16cbe7e065eca30918a3114b9
+          path: baseline
+      - name: Build the baseline with the same captured geometry and timing harness
+        shell: pwsh
+        run: |
+          Copy-Item tests/Beam.Tests/ReportedCoordinationFixture.cs,tests/Beam.Tests/CombinedCoordinationTests.cs baseline/tests/Beam.Tests/
+          $entry='baseline/tests/Beam.Tests/Program.cs'
+          $source=[IO.File]::ReadAllText($entry)
+          $start=$source.IndexOf('try{',[StringComparison]::Ordinal)
+          if($start -lt 0){throw 'Baseline entry point was not found'}
+          $source=$source.Insert($start+4,'if(args.Contains("--combined-coordination")){CombinedCoordinationTests.Run(true,true);return 0;}')
+          [IO.File]::WriteAllText($entry,$source)
+          dotnet build baseline/tests/Beam.Net48 -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./baseline/scripts/Build-BeamSolverWorker.ps1 -OutputDirectory artifacts/baseline-worker
+          Copy-Item artifacts/baseline-worker baseline/tests/Beam.Net48/bin/Release/net48/BeamSolver -Recurse
+      - name: Replay the reported failure, then verify the fixed full drawing
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/evidence | Out-Null
+          foreach ($repeat in 1..2) {
+            & baseline/tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --combined-coordination --benchmark-only --require-worker 2>&1 | Tee-Object "artifacts/evidence/baseline-$repeat.txt"
+            if ($LASTEXITCODE -ne 0) { throw 'Baseline replay failed unexpectedly' }
+            if ((Get-Content "artifacts/evidence/baseline-$repeat.txt" -Raw) -notmatch 'valid=False.*Beam 523915') { throw 'Original reported clash was not reproduced' }
+            & tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --combined-coordination --require-worker 2>&1 | Tee-Object "artifacts/evidence/fixed-$repeat.txt"
+            if ($LASTEXITCODE -ne 0) { throw 'Coordinated eleven-part replay failed' }
+            $original=Get-Content "artifacts/evidence/baseline-$repeat.txt" | Where-Object { $_ -like 'NETWORK *' }
+            $updated=Get-Content "artifacts/evidence/fixed-$repeat.txt" | Where-Object { $_ -like 'NETWORK *' }
+            if (@(Compare-Object $original $updated).Count -ne 0) { throw 'Unchanged slab-area numerical results differ' }
+          }
+      - name: Constraint transport, coordinates, network retry and existing topology checks
+        shell: pwsh
+        run: |
+          foreach ($check in @('--combined-constraints','--combined-network-constraints','--revit-topology','--obstacle-index')) {
+            & tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe $check 2>&1 | Tee-Object -Append artifacts/evidence/regression.txt
+            if ($LASTEXITCODE -ne 0) { throw "Failed $check" }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beam-combined-coordination-evidence
+          path: artifacts/evidence/
+          if-no-files-found: warn

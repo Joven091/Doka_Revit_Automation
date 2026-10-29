@@ -1,0 +1,129 @@
+name: Dashboard restart-only updates
+on:
+  pull_request:
+    paths: ['src/BeamSolver/**', 'src/Models/**', 'src/ViewModels/BeamCalculatorViewModel*', 'tests/Beam.Tests/Combined*', 'src/DashboardHost/**', 'src/DashboardDesktop/**', 'tools/Dashboard*/**', 'tools/RevitBridge/**', 'tests/DashboardUpdates.Tests/**', 'tests/DashboardDesktop.Smoke/**', 'scripts/*Dashboard*.ps1', 'packaging/dashboard-live-update/**', '.github/workflows/dashboard-live-update.yml']
+  push:
+    branches: [codex/dashboard-live-update-20261029]
+  workflow_dispatch:
+concurrency:
+  group: dashboard-live-update-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project tests/DashboardUpdates.Tests -c Release -f net10.0
+      - run: dotnet run --project tests/Updates.Tests -c Release
+      - run: dotnet run --project tests/Beam.Tests -c Release -- --revit-selection
+      - run: dotnet run --project tests/Beam.Tests -c Release --no-build -- --revit-alignment
+      - run: dotnet run --project tests/Beam.Tests -c Release --no-build -- --revit-junctions
+      - run: dotnet run --project tests/Top50.RevitSource.Tests -c Release
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Native prerequisites on disposable runner only
+        shell: pwsh
+        run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
+      - name: Build the actual production Dashboard and update payload
+        id: payload-build
+        shell: pwsh
+        run: |
+          ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/initial -Version 1.2.0
+          dotnet build tests/DashboardUpdates.Tests -c Release -f net48 --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build tests/DashboardDesktop.Smoke -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build tests/Updates.Net48 -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Use the actual production binding policy for reflection-based checks
+        shell: pwsh
+        run: Copy-Item artifacts/initial/payload/Doka.EngineeringDashboard.exe.config tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe.config -Force
+      - name: Independent native update-core and existing installer contract checks
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/evidence | Out-Null
+          & tests/DashboardUpdates.Tests/bin/Release/net48/DashboardUpdates.Tests.exe *> artifacts/evidence/update-core.log
+          if ($LASTEXITCODE -ne 0) { Get-Content artifacts/evidence/update-core.log; throw 'Native updater core checks failed' }
+          & tests/Updates.Net48/bin/Release/net48/Updates.Net48.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build a second actual production version
+        shell: pwsh
+        run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/candidate -Version 1.2.1
+      - name: Actual helper restarts only Dashboard and restores checkpoint
+        id: helper-acceptance
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe --helper-update (Resolve-Path artifacts/initial/payload) (Resolve-Path artifacts/candidate/payload) artifacts/evidence/helper
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Actual production entry, pipe peer and WPF recovery
+        id: desktop-acceptance
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe (Resolve-Path artifacts/initial/payload/Doka.EngineeringDashboard.exe) artifacts/evidence/desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publisher and one-time migration guard checks in isolated user folders
+        if: always() && steps.payload-build.outcome == 'success'
+        shell: pwsh
+        run: ./scripts/Test-DashboardLiveUpdate.ps1 -BuildDirectory artifacts/initial -EvidenceDirectory artifacts/evidence/migration
+      - name: Require both independent native acceptance paths
+        if: always() && steps.payload-build.outcome == 'success'
+        shell: pwsh
+        run: |
+          if ('${{ steps.helper-acceptance.outcome }}' -ne 'success' -or '${{ steps.desktop-acceptance.outcome }}' -ne 'success') { throw 'A native Dashboard acceptance path failed; see its original step and evidence.' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dashboard-live-update-evidence
+          path: |
+            artifacts/evidence/**/*.log
+            artifacts/evidence/**/acceptance.txt
+            artifacts/evidence/**/failure.txt
+            artifacts/evidence/**/Logs/*.txt
+            artifacts/evidence/**/ui-diagnostics.txt
+            artifacts/evidence/**/failure-diagnostics/**/*.txt
+            artifacts/evidence/**/*-evidence.txt
+            artifacts/evidence/**/startup.json
+            artifacts/evidence/**/update-plan.json
+            artifacts/evidence/**/helper-ready.json
+            artifacts/evidence/**/Sessions/*.json
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: dashboard-live-update-development-kit
+          path: |
+            artifacts/initial/bootstrap/
+            artifacts/initial/feed/
+            artifacts/initial/build-info.json
+            artifacts/initial/Publish-DashboardUpdate.ps1
+            artifacts/initial/Publish-to-company.cmd
+            artifacts/initial/README.md
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: dashboard-update-files-1.2.1
+          path: artifacts/candidate/feed/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: dashboard-update-json-1.2.1
+          path: artifacts/candidate/feed/dashboard-latest.json
+          if-no-files-found: error
