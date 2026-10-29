@@ -130,9 +130,16 @@ internal static class PackageChecks
                 }
                 // Exactly one attempt: do not retry a sharing violation or hide
                 // empty/partial content after the writer exposes its final name.
-                try{firstVisible=File.ReadAllBytes(path);}catch(IOException error){firstReadError=error;}
+                try
+                {
+                    // Match the protocol reader: an atomic rename can retain a
+                    // transient DELETE handle after its final name is visible.
+                    using(var input=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read|FileShare.Delete))
+                    using(var bytes=new MemoryStream()){input.CopyTo(bytes);firstVisible=bytes.ToArray();}
+                }
+                catch(IOException error){firstReadError=error;}
+                check(firstReadError==null,"first-visible JSON is immediately readable without retries: "+attempt+(firstReadError==null?"":" ("+firstReadError.GetType().Name+" 0x"+firstReadError.HResult.ToString("X8")+": "+firstReadError.Message+")"));
                 writer.GetAwaiter().GetResult();
-                check(firstReadError==null,"first-visible JSON is immediately readable without retries: "+attempt+(firstReadError==null?"":" ("+firstReadError.GetType().Name+")"));
                 check(firstVisible!=null&&firstVisible.SequenceEqual(expected),"first-visible JSON already contains the entire independently specified 2 MiB document: "+attempt);
                 check(Directory.GetFiles(trial).SequenceEqual(new[]{path}),"successful JSON publication leaves only its final file: "+attempt);
             }

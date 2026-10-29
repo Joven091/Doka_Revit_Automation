@@ -64,11 +64,15 @@ jobs:
         shell: pwsh
         run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/candidate -Version 1.2.1
       - name: Actual helper restarts only Dashboard and restores checkpoint
+        id: helper-acceptance
+        continue-on-error: true
         shell: pwsh
         run: |
           & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe --helper-update (Resolve-Path artifacts/initial/payload) (Resolve-Path artifacts/candidate/payload) artifacts/evidence/helper
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Actual production entry, pipe peer and WPF recovery
+        id: desktop-acceptance
+        continue-on-error: true
         shell: pwsh
         run: |
           & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe (Resolve-Path artifacts/initial/payload/Doka.EngineeringDashboard.exe) artifacts/evidence/desktop
@@ -77,6 +81,11 @@ jobs:
         if: always() && steps.payload-build.outcome == 'success'
         shell: pwsh
         run: ./scripts/Test-DashboardLiveUpdate.ps1 -BuildDirectory artifacts/initial -EvidenceDirectory artifacts/evidence/migration
+      - name: Require both independent native acceptance paths
+        if: always() && steps.payload-build.outcome == 'success'
+        shell: pwsh
+        run: |
+          if ('${{ steps.helper-acceptance.outcome }}' -ne 'success' -or '${{ steps.desktop-acceptance.outcome }}' -ne 'success') { throw 'A native Dashboard acceptance path failed; see its original step and evidence.' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

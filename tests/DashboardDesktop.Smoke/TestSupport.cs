@@ -53,7 +53,13 @@ internal static class TestSupport
     }
     internal static void Click(Window owner,string name){((Button)owner.FindName(name)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();}
     internal static void Click(Button button){button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();}
-    internal static IDictionary<string,object> Parse(string path)=>(IDictionary<string,object>)Json.DeserializeObject(File.ReadAllText(path));
+    internal static IDictionary<string,object> Parse(string path)
+    {
+        // Match the production metadata reader, including atomic rename sharing.
+        // This remains a single read: no sharing/content errors are retried.
+        using(var stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read|FileShare.Delete))
+        using(var reader=new StreamReader(stream))return (IDictionary<string,object>)Json.DeserializeObject(reader.ReadToEnd());
+    }
     internal static IDictionary<string,object> Map(object value)=>(IDictionary<string,object>)value;
     internal static IEnumerable<object> Items(object value)=>((IEnumerable)value).Cast<object>();
     internal static IDictionary<string,string> Fields(object calculation)=>Items(Map(calculation)["Inputs"]).Select(Map).ToDictionary(row=>(string)row["Name"],row=>(string)row["Value"]);
