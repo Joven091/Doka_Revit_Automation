@@ -38,7 +38,15 @@ internal sealed class WindowsDashboardUpdateEnvironment : IDashboardUpdateEnviro
     public bool RequestCloseFailedStartup(DashboardStartedProcess process)
     {
         if(!IsStartedDashboardRunning(process))return true;
-        using(var child=Process.GetProcessById(process.ProcessId)){child.CloseMainWindow();child.WaitForExit(3000);}
+        try
+        {
+            using(var child=Process.GetProcessById(process.ProcessId))
+            {
+                if(child.HasExited||child.StartTime.ToUniversalTime().Ticks!=process.StartedUtcTicks)return true;
+                child.CloseMainWindow();child.WaitForExit(3000);
+            }
+        }
+        catch(Exception error)when(error is ArgumentException||error is InvalidOperationException){ /* The owned child exited during the close request. */ }
         return !IsStartedDashboardRunning(process);
     }
     public void Wait(TimeSpan duration,CancellationToken token){if(token.WaitHandle.WaitOne(duration))token.ThrowIfCancellationRequested();}
