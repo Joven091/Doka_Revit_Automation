@@ -88,6 +88,9 @@ internal sealed class DashboardInstallWindow : Window
 }
 internal static class Program
 {
+    static string startupLog;
+    static void StartupLog(string message)
+    {if(startupLog!=null)try{File.AppendAllText(startupLog,DateTime.UtcNow.ToString("O")+" "+message+Environment.NewLine);}catch(Exception error)when(error is IOException||error is UnauthorizedAccessException){}}
     [STAThread] static int Main(string[] args)
     {
         try
@@ -95,10 +98,12 @@ internal static class Program
             if(args.Length!=2||args[0]!="--plan")throw new InvalidDataException("A Dashboard update plan is required.");
             string path=Path.GetFullPath(args[1]),root=DashboardPaths.Root,handoffs=Path.Combine(root,"handoffs")+Path.DirectorySeparatorChar;
             if(!path.StartsWith(handoffs,StringComparison.OrdinalIgnoreCase)||Path.GetFileName(path)!="update-plan.json")throw new InvalidDataException("Run the Dashboard updater with its local handoff plan.");
-            var plan=DashboardPackages.ReadJson<DashboardUpdatePlan>(path,128*1024);plan.Validate(root);
+            startupLog=Path.Combine(Path.GetDirectoryName(path),"helper-startup.log");StartupLog("Reading the update handoff.");
+            var plan=DashboardPackages.ReadJson<DashboardUpdatePlan>(path,128*1024);StartupLog("Verifying the recovery checkpoint and staged payload.");plan.Validate(root);StartupLog("Staged payload verified.");
             string own=Process.GetCurrentProcess().MainModule.FileName;
             if(!DashboardUpdatePlan.SamePath(Path.GetDirectoryName(own),Path.GetDirectoryName(plan.ParentExecutable)))throw new InvalidDataException("The Dashboard helper does not match its running version.");
             var environment=new WindowsDashboardUpdateEnvironment();if(!environment.IsDashboardRunning(plan)||!environment.IsRevitRunning(plan))throw new InvalidDataException("The original Dashboard or Revit process has closed.");
+            StartupLog("Original Dashboard and Revit process identities verified.");
             string key=Path.GetFullPath(root).ToLowerInvariant();using(var sha=System.Security.Cryptography.SHA256.Create())key=BitConverter.ToString(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key))).Replace("-","");
             bool owned;using(var mutex=new Mutex(true,"Local\\DokaDashboardUpdate-"+key,out owned))
             {
@@ -106,11 +111,11 @@ internal static class Program
                 try
                 {
                     var app=new Application{ShutdownMode=ShutdownMode.OnMainWindowClose};var window=new DashboardInstallWindow(plan,Path.GetDirectoryName(path));
-                    DashboardPackages.WriteJson(Path.Combine(Path.GetDirectoryName(path),"helper-ready.json"),new{Ready=true});app.Run(window);return window.ExitCode;
+                    DashboardPackages.WriteJson(Path.Combine(Path.GetDirectoryName(path),"helper-ready.json"),new DashboardHelperReadiness{Ready=true});StartupLog("Helper ready; waiting for the Dashboard to close.");app.Run(window);return window.ExitCode;
                 }
                 finally{mutex.ReleaseMutex();}
             }
         }
-        catch(Exception error){MessageBox.Show(error.Message,"Dashboard update",MessageBoxButton.OK,MessageBoxImage.Warning);return 1;}
+        catch(Exception error){StartupLog(error.ToString());MessageBox.Show(error.Message,"Dashboard update",MessageBoxButton.OK,MessageBoxImage.Warning);return 1;}
     }
 }

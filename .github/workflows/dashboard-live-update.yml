@@ -96,6 +96,7 @@ jobs:
             artifacts/evidence/**/failure.txt
             artifacts/evidence/**/Logs/*.txt
             artifacts/evidence/**/ui-diagnostics.txt
+            artifacts/evidence/**/failure-diagnostics/**/*.txt
             artifacts/evidence/**/*-evidence.txt
             artifacts/evidence/**/startup.json
             artifacts/evidence/**/update-plan.json

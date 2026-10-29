@@ -31,6 +31,7 @@ namespace EngineeringDashboard.DesktopHost
         public static bool SamePath(string a,string b)=>a!=null&&b!=null&&string.Equals(Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar),Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar),StringComparison.OrdinalIgnoreCase);
     }
     public sealed class DashboardStartedProcess { public int ProcessId {get;set;} public long StartedUtcTicks {get;set;} }
+    public sealed class DashboardHelperReadiness { public bool Ready {get;set;} }
     public sealed class DashboardStartupReceipt
     {public string Nonce {get;set;} public string Version {get;set;} public int ProcessId {get;set;} public long StartedUtcTicks {get;set;}}
     public interface IDashboardUpdateEnvironment

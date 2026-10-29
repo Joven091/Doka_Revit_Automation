@@ -106,6 +106,7 @@ namespace EngineeringDashboard.DesktopHost
                 while(!File.Exists(ready))
                 {cancel.Token.ThrowIfCancellationRequested();if(helper.HasExited||clock.Elapsed>TimeSpan.FromSeconds(10))throw new InvalidOperationException("The update helper could not start. The Dashboard remains open and your work is retained.");await Task.Delay(100,cancel.Token);}
                 if(helper.HasExited)throw new InvalidOperationException("The Dashboard update helper stopped. Your work is retained.");
+                if(DashboardPackages.ReadJson<DashboardHelperReadiness>(ready,4096)?.Ready!=true)throw new InvalidDataException("The update helper did not confirm readiness. Your work is retained.");
                 DashboardSessionController.BeginUpdateRestart(checkpoint);
                 Application.Current.Shutdown();
             }

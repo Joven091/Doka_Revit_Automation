@@ -160,6 +160,19 @@ internal static class PackageChecks
         try{DashboardPackages.WriteJson(blocked,payload);}catch(Exception error)when(error is IOException||error is UnauthorizedAccessException){blockedFailed=true;}
         check(blockedFailed&&Directory.Exists(blocked),"blocked final-path publication reports failure without removing the obstruction");
         check(Directory.GetFiles(blockedDirectory).Length==0,"blocked final-path publication cleans its own completed temporary JSON");
+        var readiness=new DashboardHelperReadiness{Ready=true};byte[] expectedReadiness=IndependentFixtures.B("{\"Ready\":true}");
+        check(BridgeProtocol.Encode(readiness).SequenceEqual(expectedReadiness),"actual named helper readiness type encodes to independently specified boolean JSON");
+        check(BridgeProtocol.Decode<DashboardHelperReadiness>(expectedReadiness).Ready,"named readiness type reads independently authored Ready=true JSON");
+        string readinessFile=Path.Combine(directory,"helper-ready.json");DashboardPackages.WriteJson(readinessFile,readiness);byte[] written=File.ReadAllBytes(readinessFile);
+        check(written.SequenceEqual(expectedReadiness),"actual helper readiness WriteJson publishes the complete agreed wire document");
+        using(var input=new MemoryStream(written))
+        {
+            // An independently typed wire consumer: do not deserialize back into
+            // the production DTO to derive the expected Ready result.
+            var decoder=new System.Runtime.Serialization.Json.DataContractJsonSerializer(typeof(Dictionary<string,bool>),new System.Runtime.Serialization.Json.DataContractJsonSerializerSettings{UseSimpleDictionaryFormat=true});
+            var independent=(Dictionary<string,bool>)decoder.ReadObject(input);
+            check(independent.Count==1&&independent.ContainsKey("Ready")&&independent["Ready"],"independent boolean-map consumer decodes actual published helper readiness as true");
+        }
     }
     static void InvalidArchiveCases(string root,Action<bool,string> check,Action<Action,string> reject)
     {

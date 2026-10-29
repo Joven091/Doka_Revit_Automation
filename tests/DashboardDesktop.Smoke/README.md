@@ -27,7 +27,13 @@ records process IDs, versions and recovery/receipt paths.
 On failure, callback exceptions are written to stdout before owned-child cleanup.
 `failure-diagnostics` captures the owned processes' UI Automation window trees
 (names, IDs, classes, enabled/read-only state), product `Logs/*.txt` and handoff
-`update.log` files. UIA collection is bounded and never inspects unrelated PIDs.
+`update.log` / `helper-startup.log` files. UIA collection is bounded and never
+inspects unrelated PIDs.
+
+Windows has executed **351 update-contract checks** and **80 native desktop
+checks** successfully. The actual helper integration test has reached capture of
+live unsaved inputs; helper readiness is still under investigation. A successful
+complete helper update and actual Revit host acceptance have not been established.
 
 The harness loads the **desktop variant from that exact production payload** for
 WPF session tests, and separately launches **that exact production EXE** for

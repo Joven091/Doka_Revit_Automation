@@ -52,7 +52,7 @@ internal static class HelperUpdateChecks
                 Wait(()=>{helper=Process.GetProcessesByName("Doka.DashboardUpdater").FirstOrDefault(p=>SameExecutable(p,helperExe));return helper!=null;},"actual production update helper process");
                 string ready=Path.Combine(Path.GetDirectoryName(planPath),"helper-ready.json");
                 Wait(()=>File.Exists(ready)||helper.HasExited,"actual helper completes payload validation and publishes readiness",30);
-                Check(!helper.HasExited&&File.Exists(ready),"actual helper validates its plan and acknowledges readiness");
+                Check(!helper.HasExited&&File.Exists(ready)&&Parse(ready).TryGetValue("Ready",out object marker)&&marker is bool confirmed&&confirmed,"actual helper validates its plan and publishes Ready=true");
                 Wait(()=>old.HasExited,"old Dashboard closes without closing the local Revit peer",180);
                 IDictionary<string,object> receipt=null;string receiptPath=null;
                 Wait(()=>

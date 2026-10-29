@@ -40,7 +40,8 @@ internal static class FailureDiagnostics
     {
         string logs=Path.Combine(root,"Logs"),handoffs=Path.Combine(root,"handoffs");
         var files=(Directory.Exists(logs)?Directory.GetFiles(logs,"*.txt",SearchOption.AllDirectories):Array.Empty<string>())
-            .Concat(Directory.Exists(handoffs)?Directory.GetFiles(handoffs,"update.log",SearchOption.AllDirectories):Array.Empty<string>()).ToArray();
+            .Concat(Directory.Exists(handoffs)?Directory.GetFiles(handoffs,"update.log",SearchOption.AllDirectories):Array.Empty<string>())
+            .Concat(Directory.Exists(handoffs)?Directory.GetFiles(handoffs,"helper-startup.log",SearchOption.AllDirectories):Array.Empty<string>()).ToArray();
         foreach(string source in files)
         {
             try
