@@ -39,7 +39,7 @@ namespace EngineeringDashboard.DesktopHost
                 {
                     if(!activationName.StartsWith("Local\\DokaDashboardActivate-",StringComparison.Ordinal))throw new InvalidOperationException("Invalid Dashboard activation event.");
                     signal=EventWaitHandle.OpenExisting(activationName);
-                    activation=ThreadPool.RegisterWaitForSingleObject(signal,(state,timedOut)=>app.Dispatcher.BeginInvoke(new Action(()=>
+                    activation=ThreadPool.RegisterWaitForSingleObject(signal,(state,timedOut)=>DispatchActivation(app,"Dashboard",()=>
                     {
                         if(startupWindow is LauncherWindow launcher)launcher.ActivateCurrentTool();
                         else if(!DashboardSessionController.HasBusyWork&&MyRevitAddin.Access.AccessWindow.Require(startupWindow))
@@ -50,19 +50,20 @@ namespace EngineeringDashboard.DesktopHost
                             previous.Owner=dashboard;previous.Hide();dashboard.ActivateCurrentTool();
                         }
                         else{if(startupWindow.WindowState==WindowState.Minimized)startupWindow.WindowState=WindowState.Normal;startupWindow.Activate();}
-                    })),null,Timeout.Infinite,false);
+                    }),null,Timeout.Infinite,false);
                 }
                 string updateEventName=Environment.GetEnvironmentVariable("DOKA_DASHBOARD_UPDATE_EVENT");
                 if(!string.IsNullOrEmpty(updateEventName))
                 {
                     if(!updateEventName.StartsWith("Local\\DokaDashboardUpdates-",StringComparison.Ordinal))throw new InvalidOperationException("Invalid Dashboard update event.");
                     updateSignal=EventWaitHandle.OpenExisting(updateEventName);
-                    updateActivation=ThreadPool.RegisterWaitForSingleObject(updateSignal,(state,timedOut)=>app.Dispatcher.BeginInvoke(new Action(()=>
+                    updateActivation=ThreadPool.RegisterWaitForSingleObject(updateSignal,(state,timedOut)=>DispatchActivation(app,"Updates",()=>
                     {
                         Window owner=startupWindow is LauncherWindow dashboard?dashboard.CurrentTool??dashboard:startupWindow;
-                        DashboardUpdateEntry.Open(owner);
-                    })),null,Timeout.Infinite,false);
+                        var opened=DashboardUpdateEntry.Open(owner);TraceActivation("Update window visible="+opened.IsVisible+"; enabled="+opened.IsEnabled);
+                    }),null,Timeout.Infinite,false);
                 }
+                TraceActivation("Activation registrations ready.");
                 bool ready=false;
                 startupWindow.Loaded+=(sender,e)=>
                 {
@@ -78,6 +79,26 @@ namespace EngineeringDashboard.DesktopHost
             catch(Exception error)
             {Log(error);MessageBox.Show(error.Message,"Engineering Dashboard",MessageBoxButton.OK,MessageBoxImage.Error);return 1;}
             finally{activation?.Unregister(null);updateActivation?.Unregister(null);signal?.Dispose();updateSignal?.Dispose();client?.Dispose();}
+        }
+        static void DispatchActivation(Application app,string kind,Action action)
+        {
+            TraceActivation(kind+" signal received.");
+            try
+            {
+                if(app.Dispatcher.HasShutdownStarted||app.Dispatcher.HasShutdownFinished)return;
+                app.Dispatcher.BeginInvoke(new Action(()=>{TraceActivation(kind+" signal dispatched.");action();}));
+            }
+            catch(InvalidOperationException error){Log(error);}
+        }
+        static void TraceActivation(string message)
+        {
+            try
+            {
+                string directory=Path.Combine(DashboardPaths.Root,"Logs");Directory.CreateDirectory(directory);string path=Path.Combine(directory,"activation.log");
+                if(File.Exists(path)&&new FileInfo(path).Length>65536)File.Delete(path);
+                File.AppendAllText(path,DateTime.UtcNow.ToString("O")+" "+message+Environment.NewLine);
+            }
+            catch(IOException){}catch(UnauthorizedAccessException){}
         }
         static void Log(Exception error)
         {

@@ -30,7 +30,7 @@ internal static class HelperUpdateChecks
         Write(Path.Combine(root,"active.json"),new Dictionary<string,object>{{"Version",initial.Version},{"PackageId",id},{"RelativeDirectory",relative},{"ArchiveSha256",initial.Hash},{"BridgeProtocol",1},{"Generation",generation}});
         Write(Path.Combine(feed,"dashboard-latest.json"),new Dictionary<string,object>{{"schemaVersion",1},{"productId","Doka.EngineeringDashboard.Desktop"},{"revitVersion",2024},{"version",candidate.Version},{"bridgeProtocol",1},{"archiveFile",Path.GetFileName(candidate.Archive)},{"sha256",candidate.Hash},{"sizeBytes",new FileInfo(candidate.Archive).Length},{"releaseNotes","QA local production helper integration test"}});
         string sessions=Path.Combine(root,"Sessions");Directory.CreateDirectory(sessions);string seed=Path.Combine(sessions,Guid.NewGuid().ToString("N")+".json");
-        Write(seed,new Dictionary<string,object>{{"SchemaVersion",1},{"Version",initial.Version},{"Tool","backpropping"},{"Width",940},{"Height",860},{"Maximized",false},{"Backpropping",new Dictionary<string,object>{{"Slabs",new object[0]},{"Maximums",new Dictionary<string,object>()},{"Extensions",new Dictionary<string,object>()},{"ProjectMaximum","initial incomplete maximum"},{"Draft",new[]{"QA initial draft","3e","4000","initial age draft","",""}},{"Curve",0},{"Editing",-1},{"Dirty",true},{"HadResults",false}}}});
+        Write(seed,new Dictionary<string,object>{{"SchemaVersion",1},{"Version",initial.Version},{"Tool","backpropping"},{"Width",940},{"Height",860},{"Maximized",false},{"Backpropping",new Dictionary<string,object>{{"Slabs",new object[0]},{"Maximums",new Dictionary<string,object>()},{"Extensions",new Dictionary<string,object>()},{"ProjectMaximum","initial incomplete maximum"},{"Draft",new[]{"QA initial draft","3e","4000","0","",""}},{"Curve",0},{"Editing",-1},{"Dirty",true},{"HadResults",false}}}});
         int originalPeerPid=Process.GetCurrentProcess().Id;long originalPeerStart=Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks;
         Process updated=null,helper=null;bool finished=false;
         try
@@ -38,7 +38,7 @@ internal static class HelperUpdateChecks
             Launch(Path.Combine(installed,"Doka.EngineeringDashboard.exe"),peer,root,seed,(old,back)=>
             {
                 Check(back.Current.Name=="Backpropping Calculator","old production payload opens the seeded active calculator");
-                SetValue(ById(back,"FloorName"),"QA helper update – unsaved");SetValue(ById(back,"Age"),"still-being-entered");SetValue(ById(back,"ProjectMaximum"),"12.");
+                SetValue(ById(back,"FloorName"),"QA helper update – unsaved");SetValue(ById(back,"Thickness"),"4e");SetValue(ById(back,"ProjectMaximum"),"12.");
                 SignalUpdate();var updateWindow=WaitWindow(old.Id,w=>w.Current.Name=="Engineering Dashboard updates");
                 var apply=ByName(updateWindow,"Update Dashboard");Wait(()=>apply.Current.IsEnabled,"candidate feed available");Invoke(apply);
                 string planPath=null;
@@ -47,7 +47,7 @@ internal static class HelperUpdateChecks
                 var plan=Parse(planPath);string checkpoint=(string)plan["CheckpointPath"];
                 Check(checkpoint!=seed&&File.Exists(checkpoint)&&Hash(checkpoint)==(string)plan["CheckpointSha256"],"production update captures a fresh verified checkpoint from live edited inputs");
                 var captured=Map(Parse(checkpoint)["Backpropping"]);
-                Check((string)Items(captured["Draft"]).First()=="QA helper update – unsaved"&&(string)Items(captured["Draft"]).ElementAt(3)=="still-being-entered"&&(string)captured["ProjectMaximum"]=="12.","actual update checkpoint contains the edited unsaved draft verbatim");
+                Check((string)Items(captured["Draft"]).First()=="QA helper update – unsaved"&&(string)Items(captured["Draft"]).ElementAt(1)=="4e"&&(string)Items(captured["Draft"]).ElementAt(3)=="0"&&(string)captured["ProjectMaximum"]=="12.","actual update checkpoint contains the edited unsaved draft verbatim");
                 string helperExe=Path.Combine(installed,"Doka.DashboardUpdater.exe");
                 Wait(()=>{helper=Process.GetProcessesByName("Doka.DashboardUpdater").FirstOrDefault(p=>SameExecutable(p,helperExe));return helper!=null;},"actual production update helper process");
                 Check(File.Exists(Path.Combine(Path.GetDirectoryName(planPath),"helper-ready.json")),"actual helper validates its plan and acknowledges readiness");
@@ -67,7 +67,7 @@ internal static class HelperUpdateChecks
                 Check(SameExecutable(updated,selected)&&updated.StartTime.ToUniversalTime().Ticks==Convert.ToInt64(receipt["StartedUtcTicks"]),"candidate receipt identifies the actual selected new production process");
                 Check(FileVersionInfo.GetVersionInfo(updated.MainModule.FileName).FileVersion==FileVersionInfo.GetVersionInfo(Path.Combine(candidateFolder,"Doka.EngineeringDashboard.exe")).FileVersion,"running Dashboard has the actual candidate EXE version");
                 var restored=WaitWindow(updated.Id,w=>w.Current.Name=="Backpropping Calculator");
-                Check(Value(ById(restored,"FloorName"))=="QA helper update – unsaved"&&Value(ById(restored,"Age"))=="still-being-entered"&&Value(ById(restored,"ProjectMaximum"))=="12.","actual new Dashboard process restores live unsaved inputs after the real helper update");
+                Check(Value(ById(restored,"FloorName"))=="QA helper update – unsaved"&&Value(ById(restored,"Thickness"))=="4e"&&Value(ById(restored,"Age"))=="0"&&Value(ById(restored,"ProjectMaximum"))=="12.","actual new Dashboard process restores live unsaved inputs after the real helper update");
                 Check(Process.GetCurrentProcess().Id==originalPeerPid&&Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks==originalPeerStart&&peer.Count("hello")>=2,"the same original local Revit peer process stays alive and reconnects across the update");
                 Check(old.HasExited&&File.Exists(checkpoint)&&Directory.Exists(installed),"helper leaves no old Dashboard process and retains checkpoint and previous payload");
                 var helperWindow=WaitWindow(helper.Id,w=>w.Current.Name=="Engineering Dashboard update");
@@ -78,6 +78,11 @@ internal static class HelperUpdateChecks
                 File.WriteAllText(Path.Combine(Output,"helper-update-evidence.txt"),"Initial version: "+initial.Version+"\nCandidate version: "+candidate.Version+"\nOriginal peer PID: "+originalPeerPid+"\nOld Dashboard PID: "+old.Id+"\nNew Dashboard PID: "+updated.Id+"\nHelper PID: "+helper.Id+"\nActive pointer: "+Path.Combine(root,"active.json")+"\nActual handoff: "+planPath+"\nActual restore receipt: "+receiptPath+"\nRecovery checkpoint: "+checkpoint+"\nActual Revit host acceptance remains unrun.\n");
             },90);
             Check(peer.Failure==null,"real helper integration retained a valid authenticated contract connection");finished=true;
+        }
+        catch(Exception error)
+        {
+            Console.WriteLine("ACTUAL HELPER UPDATE FAILURE: "+error);
+            FailureDiagnostics.Capture("helper-update",root,helper,updated);throw;
         }
         finally
         {

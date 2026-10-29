@@ -24,6 +24,11 @@ Backpropping inputs while the same local bridge peer remains alive. It closes th
 helper and candidate cooperatively after success. `helper-update-evidence.txt`
 records process IDs, versions and recovery/receipt paths.
 
+On failure, callback exceptions are written to stdout before owned-child cleanup.
+`failure-diagnostics` captures the owned processes' UI Automation window trees
+(names, IDs, classes, enabled/read-only state), product `Logs/*.txt` and handoff
+`update.log` files. UIA collection is bounded and never inspects unrelated PIDs.
+
 The harness loads the **desktop variant from that exact production payload** for
 WPF session tests, and separately launches **that exact production EXE** for
 startup and UI Automation checks. It never substitutes an older standalone test

@@ -82,6 +82,11 @@ internal static class ExternalEntryChecks
                 CloseAll(process);
                 Wait(()=>process.HasExited,"test-owned Dashboard closes normally",15);Check(process.ExitCode==0,"production external entry exits cleanly");complete=true;
             }
+            catch(Exception error)
+            {
+                Console.WriteLine("EXTERNAL ENTRY/CALLBACK FAILURE (PID "+process.Id+"): "+error);
+                FailureDiagnostics.Capture("external-entry-"+process.Id,root,process);throw;
+            }
             finally
             {
                 // Test cleanup only. Product updater must never kill Revit or an unrelated Dashboard.
