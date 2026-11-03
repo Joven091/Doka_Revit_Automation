@@ -51,6 +51,7 @@ internal static class NativeSessionChecks
         string project=Path.Combine(Output,"working-project.top50");Call(top50,"Save",project);byte[] savedBytes=File.ReadAllBytes(project);
         Call(top50,"AddManual",1400m,"QA unsaved reviewed addition");Set(Get(top50,"Settings"),"LongestCount",2);Call(top50,"Changed",true);Set(top50,"IsStale",true);Call(planner,"ShowPage",1);Keyboard.ClearFocus();Pump();
         Check((bool)Get(top50,"Dirty")&&(string)Get(top50,"ProjectPath")==project,"fixture has unsaved Top50 inputs and an existing project path");
+        string pourId=(string)Call(top50,"AddPour");var importedWall=((IEnumerable)Get(Get(top50,"Input"),"Walls")).Cast<object>().First();string pourWall=(string)Get(importedWall,"Id");Call(top50,"AssignWalls",pourId,new[]{pourWall});
         Set(top50,"IsBusy",true);
         try{Check(!Prepare(out _,out string busy)&&busy.Contains("Finish"),"active optimizer state refuses update checkpoint");}finally{Set(top50,"IsBusy",false);}
         peer.ContextEntered.Reset();peer.ReleaseContext.Reset();
@@ -71,6 +72,7 @@ internal static class NativeSessionChecks
         Top50Checkpoint=Capture(launcher);var snapshot=Parse(Top50Checkpoint);var topSnapshot=Map(snapshot["Top50"]);
         Check((bool)topSnapshot["Dirty"]&&(string)topSnapshot["ProjectPath"]==project&&Convert.ToInt32(topSnapshot["Page"])==1,"Top50 snapshot preserves dirty flag, path and selected page");
         Check(Convert.ToInt32(Map(topSnapshot["Settings"])["LongestCount"])==2&&Items(Map(topSnapshot["Input"])["Walls"]).Count()==3,"Top50 snapshot includes unsaved settings and reviewed manual wall");
+        Check(Items(Map(topSnapshot["Settings"])["Pours"]).Count()==1&&Items(Map(Items(Map(topSnapshot["Settings"])["Pours"]).First())["WallIds"]).Cast<object>().Single().ToString()==pourWall,"Top50 update checkpoint retains user-defined pours and their wall membership");
         var beamFields=Fields(snapshot["Beam"]);Check(beamFields["NetworkConfigurationXml"]==geometry&&beamFields["TowerLegCapacityKn"]=="64"&&beamFields["AllowCustomH20Lengths"]=="True"&&beamFields["StockLengthsText"]=="1800; 2450; 3900","retained D3 drawing geometry and project-specific stock settings are checkpointed exactly");
         var slabFields=Fields(snapshot["Slab"]);Check(slabFields["SlabThickness"]=="310"&&slabFields["FloorHeight"]=="4200","inactive slab inputs are retained alongside active planner");
         Check((bool)Get(top50,"Dirty")&&(string)Get(top50,"ProjectPath")==project&&savedBytes.SequenceEqual(File.ReadAllBytes(project)),"checkpoint does not save, overwrite or mark Top50 project clean");
@@ -79,6 +81,7 @@ internal static class NativeSessionChecks
         Check(planner.Title=="Top50 Planner"&&(bool)Get(top50,"Dirty")&&(string)Get(top50,"ProjectPath")==project,"native restore reopens planner with original dirty state and project path");
         Check((bool)Get(top50,"IsStale")&&((IEnumerable)Get(top50,"Proposals")).Cast<object>().Count()==0&&((string)Get(top50,"Status")).Contains("Optimize"),"updated planner preserves inputs and requires a new equipment optimization");
         Check((string)Get(Get(Launcher,"_beamViewModel"),"NetworkConfigurationXml")==geometry&&(double)Get(Get(Launcher,"_flexViewModel"),"SlabThickness")==310d,"restore retains inactive D3 and slab inputs");
+        var restoredPour=((IEnumerable)Get(top50,"Pours")).Cast<object>().Single();Check((string)Get(restoredPour,"Id")==pourId&&((IEnumerable)Get(restoredPour,"WallIds")).Cast<string>().Single()==pourWall,"native Dashboard update restores pour identities and assignments");
         Set(top50,"Dirty",false);planner.Close();Pump();
 
         Click(launcher,"BtnBackpropping");var back=Active(launcher);

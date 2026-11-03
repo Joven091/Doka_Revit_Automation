@@ -39,9 +39,12 @@ internal static class ExternalEntryChecks
         {
             Check(window.Current.Name=="Top50 Planner","external entry restores the active Top50 planner");
             Check(Value(ById(window,"Top50NumberLongestwallsrequiredsimultaneously"))=="2","actual new process restores unsaved Top50 method settings");
-            Invoke(ById(window,"Top50Page0"));var table=ById(window,"Top50ImportWalls");
-            Check(table.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.DataItem)).Count==3,"actual new process retains imported and unsaved manual walls");
+            Invoke(ById(window,"Top50Page0"));
+            Check(ById(window,"Top50ImportSummary").Current.Name=="3 walls included","actual new process retains imported and unsaved manual walls");
+            Check(ById(window,"Top50AddWall").Current.IsEnabled&&ById(window,"Top50HighlightWalls").Current.IsEnabled,"simplified import exposes additive Revit import and visual checking");
             Check(ById(window,"Top50Outcome").Current.Name.Contains("Optimize"),"external restored planner clearly requires recalculation");
+            Invoke(ById(window,"Top50Page4"));
+            Check(ById(window,"Top50AddPour").Current.IsEnabled&&ById(window,"Top50PourWalls").FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.DataItem)).Count==1,"actual packaged Dashboard exposes Pour sequence and restores its assigned wall");
         });
         Launch(executable,peer,root,NativeSessionChecks.SteelCheckpoint,(process,window)=>
         {
