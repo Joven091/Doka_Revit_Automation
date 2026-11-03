@@ -1,11 +1,14 @@
 [CmdletBinding(SupportsShouldProcess)]
-param([Parameter(Mandatory)][string]$FeedDirectory,[string]$InstallDirectory=(Join-Path $env:APPDATA 'Autodesk/Revit/Addins/2024'),[string]$DashboardRoot=(Join-Path $env:LOCALAPPDATA 'DokaRevitAutomation/Dashboard'))
+param([Parameter(Mandatory)][string]$FeedDirectory,[ValidateSet(2024,2027)][int]$RevitVersion=2024,[string]$InstallDirectory,[string]$DashboardRoot)
 $ErrorActionPreference='Stop'
+if(!$InstallDirectory){$InstallDirectory=Join-Path $env:APPDATA "Autodesk/Revit/Addins/$RevitVersion"}
+$runtimeSuffix=if($RevitVersion -eq 2024){'DokaRevitAutomation/Dashboard'}else{'DokaRevitAutomation/Dashboard/Revit2027'}
+if(!$DashboardRoot){$DashboardRoot=Join-Path $env:LOCALAPPDATA $runtimeSuffix}
 # One-time migration only. Never execute from Check for updates while Revit is open.
 if(Get-Process Revit,'Doka.EngineeringDashboard' -ErrorAction SilentlyContinue){throw 'Close every Revit and Engineering Dashboard window before this one-time migration.'}
-$expected=[IO.Path]::GetFullPath((Join-Path $env:APPDATA 'Autodesk/Revit/Addins/2024'))
-if([IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\','/') -ine $expected.TrimEnd('\','/')){throw 'This migration supports only the current user Revit2024 add-in folder. Ask the administrator to migrate managed installations.'}
-$expectedRoot=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'DokaRevitAutomation/Dashboard'))
+$expected=[IO.Path]::GetFullPath((Join-Path $env:APPDATA "Autodesk/Revit/Addins/$RevitVersion"))
+if([IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\','/') -ine $expected.TrimEnd('\','/')){throw "This migration supports only the current user Revit $RevitVersion add-in folder. Ask the administrator to migrate managed installations."}
+$expectedRoot=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $runtimeSuffix))
 if([IO.Path]::GetFullPath($DashboardRoot).TrimEnd('\','/') -ine $expectedRoot.TrimEnd('\','/')){throw 'Use the standard current-user Dashboard runtime folder.'}
 $source=$PSScriptRoot
 foreach($name in @('Doka.RevitBridge.dll','Doka.RevitUpdater.exe','Doka.DashboardPackage.exe','MyRevitAddin.addin','access-settings.json','update-settings.json')){
@@ -13,11 +16,13 @@ foreach($name in @('Doka.RevitBridge.dll','Doka.RevitUpdater.exe','Doka.Dashboar
 }
 $feed=[IO.Path]::GetFullPath($FeedDirectory)
 if(!(Test-Path -LiteralPath (Join-Path $feed 'dashboard-latest.json'))){throw 'Supply the local verified Dashboard feed folder from the same release.'}
+$metadata=Get-Content (Join-Path $feed 'dashboard-latest.json') -Raw | ConvertFrom-Json
+if($metadata.revitVersion -ne $RevitVersion){throw 'The supplied feed targets a different Revit version.'}
 $expectedIds=@('a1b2c3d4-e5f6-4a5b-6c7d-8e9f0a1b2c3d','2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e','c6dedce1-4571-4b7c-b781-1f338826be41')
 $expectedClasses=@('MyRevitAddin.App','EngineeringDashboard.Command','MyRevitAddin.Updates.UpdateCommand')
 $manifest=Join-Path $InstallDirectory 'MyRevitAddin.addin'
 $seen=@{}
-foreach($folder in @($InstallDirectory,(Join-Path $env:PROGRAMDATA 'Autodesk/Revit/Addins/2024'))){
+foreach($folder in @($InstallDirectory,(Join-Path $env:PROGRAMDATA "Autodesk/Revit/Addins/$RevitVersion"))){
     if(!(Test-Path -LiteralPath $folder)){continue}
     foreach($file in Get-ChildItem -LiteralPath $folder -Filter '*.addin' -File -Recurse){
         [xml]$xml=Get-Content -LiteralPath $file.FullName -Raw
@@ -55,6 +60,8 @@ foreach($name in $changed){$path=Join-Path $InstallDirectory $name;if(Test-Path 
 # Credentials, access/update configuration and projects are never replaced.
 $settingsCreated=@()
 $receipt=Join-Path $backup 'runtime-activation.json'
+$savedRevitContext=$env:DOKA_DASHBOARD_REVIT_VERSION
+$env:DOKA_DASHBOARD_REVIT_VERSION=[string]$RevitVersion
 try{
     foreach($name in @('access-settings.json','update-settings.json')){
         $path=Join-Path $InstallDirectory $name
@@ -68,7 +75,7 @@ try{
         try{Copy-Item -LiteralPath (Join-Path $source $name) -Destination $temporary;Move-Item -LiteralPath $temporary -Destination (Join-Path $InstallDirectory $name) -Force}
         finally{if(Test-Path -LiteralPath $temporary){Remove-Item -LiteralPath $temporary}}
     }
-    Write-Output "Migration complete. Start Revit2024 and open Engineering Dashboard. Backup: $backup"
+    Write-Output "Migration complete. Start Revit $RevitVersion and open Engineering Dashboard. Backup: $backup"
     Write-Output 'Compatible future Dashboard updates restart only the Dashboard. Revit integration module updates still require a Revit restart.'
 }
 catch{
@@ -77,3 +84,5 @@ catch{
     if(Test-Path -LiteralPath $receipt){& (Join-Path $source 'Doka.DashboardPackage.exe') rollback $DashboardRoot $receipt;if($LASTEXITCODE -ne 0){Write-Warning 'Runtime pointer changed; the previous integration files are restored but the runtime pointer needs review.'}}
     throw
 }
+
+finally{$env:DOKA_DASHBOARD_REVIT_VERSION=$savedRevitContext}

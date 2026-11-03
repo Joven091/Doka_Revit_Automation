@@ -64,7 +64,7 @@ internal static class Program
         {
             if(at<0 || at+1>=args.Length)throw new InvalidDataException("A staged update plan is required.");
             string cache=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"DokaRevitAutomation","Updates");
-            string installation=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"Autodesk","Revit","Addins","2024");
+            string installation=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"Autodesk","Revit","Addins",UpdateTarget.Year.ToString(System.Globalization.CultureInfo.InvariantCulture));
             var plan=UpdateFiles.ReadPlan(Path.GetFullPath(args[at+1]),cache,installation);
             if(!UpdateFiles.SamePath(AppDomain.CurrentDomain.BaseDirectory,Path.GetDirectoryName(args[at+1])))throw new InvalidDataException("Run the staged updater beside its update plan.");
             string key;

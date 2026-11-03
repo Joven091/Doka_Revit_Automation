@@ -1,6 +1,9 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$OutputDirectory,[string]$Version='1.2.0')
+param([Parameter(Mandatory)][string]$OutputDirectory,[string]$Version='1.2.3',[ValidateSet(2024,2027)][int]$RevitVersion=2024)
 $ErrorActionPreference='Stop'
+$env:DOKA_DASHBOARD_REVIT_VERSION=[string]$RevitVersion
+$requested=[version]$Version
+$bridgeFileVersion=[version]::new($requested.Major,$requested.Minor,$requested.Build,[Math]::Max(0,$requested.Revision)).ToString()
 $repo=Split-Path $PSScriptRoot -Parent
 $output=[IO.Path]::GetFullPath($OutputDirectory)
 if(Test-Path -LiteralPath $output){throw 'Use a new output directory; do not rebuild over a reviewed release.'}
@@ -10,6 +13,7 @@ $bootstrap=Join-Path $output 'bootstrap'
 New-Item -ItemType Directory -Path $payload,$bootstrap | Out-Null
 foreach($project in @('DashboardDesktop/Doka.DashboardDesktop.csproj','DashboardUpdater/Doka.DashboardUpdater.csproj','RevitBridge/Doka.RevitBridge.csproj','DashboardPackage/Doka.DashboardPackage.csproj')){
     $buildArgs=@('build',(Join-Path $repo "tools/$project"),'-c','Release','--warnaserror',"-p:Version=$Version",'-p:UseSharedCompilation=false')
+    if($project -like 'RevitBridge/*'){$buildArgs+=@("-p:RevitYear=$RevitVersion","-p:FileVersion=$bridgeFileVersion")}
     if($project -like 'DashboardPackage/*'){$buildArgs+=@('-f','net48')}
     & dotnet @buildArgs
     if($LASTEXITCODE -ne 0){throw "Build failed: $project"}
@@ -33,13 +37,19 @@ foreach($name in @('Doka.EngineeringDashboard.exe','MyRevitAddin.dll')){
 $package=Join-Path $repo 'tools/DashboardPackage/bin/Release/net48/Doka.DashboardPackage.exe'
 & $package pack $payload (Join-Path $output 'feed') $Version
 if($LASTEXITCODE -ne 0){throw 'Dashboard ZIP verification failed'}
-Copy-Item (Join-Path $repo 'tools/RevitBridge/bin/Release/net48/Doka.RevitBridge.dll') $bootstrap
+$bridgeFramework=if($RevitVersion -eq 2024){'net48'}else{'net10.0-windows'}
+Copy-Item (Join-Path $repo "tools/RevitBridge/bin/Release/$bridgeFramework/Doka.RevitBridge.dll") $bootstrap
 Copy-Item (Join-Path $repo 'tools/RevitUpdater/bin/Release/net48/Doka.RevitUpdater.exe') $bootstrap
 Copy-Item $package $bootstrap
 Copy-Item (Join-Path $repo 'packaging/dashboard-live-update/MyRevitAddin.addin') $bootstrap
 Copy-Item (Join-Path $repo 'scripts/Initialize-DashboardLiveUpdate.ps1') $bootstrap
 Copy-Item (Join-Path $repo 'src/access-settings.json') $bootstrap
 Copy-Item (Join-Path $repo 'src/update-settings.json') $bootstrap
+if($RevitVersion -eq 2027){
+    $settings=Get-Content (Join-Path $bootstrap 'update-settings.json') -Raw | ConvertFrom-Json
+    $settings.sourceDirectory=Join-Path $settings.sourceDirectory 'Revit2027'
+    $settings | ConvertTo-Json | Set-Content (Join-Path $bootstrap 'update-settings.json') -Encoding utf8
+}
 Copy-Item (Join-Path $repo 'docs/dashboard-live-update/README.md') $output
 Copy-Item (Join-Path $repo 'scripts/Publish-DashboardUpdate.ps1') $output
 @'
@@ -54,5 +64,5 @@ echo Publication failed. Read the error above; no incomplete feed is advertised.
 pause
 exit /b 1
 '@ | Set-Content (Join-Path $output 'Publish-to-company.cmd') -Encoding ascii
-@{schemaVersion=1;dashboardVersion=$Version;bridgeProtocol=1;bridgeFileVersion=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $bootstrap 'Doka.RevitBridge.dll')).FileVersion;sourceCommit=(& git -C $repo rev-parse HEAD).Trim();bootstrapRequiresRevitRestart=$true;installerCreated=$false;companyPublished=$false} | ConvertTo-Json | Set-Content (Join-Path $output 'build-info.json') -Encoding utf8
+@{schemaVersion=1;revitVersion=$RevitVersion;dashboardVersion=$Version;bridgeProtocol=1;bridgeFileVersion=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $bootstrap 'Doka.RevitBridge.dll')).FileVersion;sourceCommit=(& git -C $repo rev-parse HEAD).Trim();bootstrapRequiresRevitRestart=$true;installerCreated=$false;companyPublished=$false} | ConvertTo-Json | Set-Content (Join-Path $output 'build-info.json') -Encoding utf8
 Write-Output "Built verified Dashboard payload and review-only migration files in $output. No installer, installation or company publication was performed."

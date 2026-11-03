@@ -11,6 +11,9 @@
 #ifndef BridgeSha256
   #error BridgeSha256 is required
 #endif
+#ifndef RevitYear
+  #error RevitYear is required
+#endif
 #define MyVersion GetVersionNumbersString(BuildRoot + "\bootstrap\Doka.RevitBridge.dll")
 
 [Setup]
@@ -20,7 +23,7 @@ AppVersion={#MyVersion}
 AppVerName=Doka Engineering Dashboard {#MyVersion}
 AppPublisher=Joven091
 VersionInfoVersion={#MyVersion}
-VersionInfoDescription=Revit 2024 Engineering Dashboard with Dashboard-only updates
+VersionInfoDescription=Revit {#RevitYear} Engineering Dashboard with Dashboard-only updates
 DefaultDirName={code:InstallDirectory}
 UsePreviousAppDir=no
 UsePreviousLanguage=no
@@ -36,7 +39,7 @@ RestartApplications=no
 CreateUninstallRegKey=not IsIsolatedTest
 UninstallDisplayName=Doka Engineering Dashboard {#MyVersion}
 UninstallFilesDir={app}
-OutputBaseFilename=Install_DokaRevitAutomation_{#MyVersion}
+OutputBaseFilename=Install_DokaRevitAutomation_Revit{#RevitYear}_{#MyVersion}
 Compression=lzma2
 SolidCompression=yes
 InfoBeforeFile={#RepoRoot}packaging\dashboard-live-update\installer-notes.txt
@@ -56,7 +59,7 @@ Type: files; Name: "{app}\MyRevitAddin.addin"
 Type: files; Name: "{app}\.doka-isolated-install"
 
 [Messages]
-FinishedLabel=Engineering Dashboard is installed. Open Revit 2024 and launch Engineering Dashboard. Compatible future updates restart only the Dashboard.
+FinishedLabel=Engineering Dashboard is installed. Open Revit {#RevitYear} and launch Engineering Dashboard. Compatible future updates restart only the Dashboard.
 
 [Code]
 var MigrationComplete, SetupComplete: Boolean; MigrationLogPath: String;
@@ -92,13 +95,14 @@ end;
 function InstallerAppId(Param: String): String;
 begin
   if IsIsolatedTest then Result := 'Doka Dashboard Live Update Isolated Test'
-  else Result := 'Doka Revit Automation';
+  else if '{#RevitYear}'='2024' then Result := 'Doka Revit Automation'
+  else Result := 'Doka Revit Automation Revit {#RevitYear}';
 end;
 
 function InstallDirectory(Param: String): String;
 begin
-  if IsIsolatedTest then Result := AddBackslash(ExpandFileName(ExpandConstant('{param:ISOLATEDROOT|}')))+'roaming\Autodesk\Revit\Addins\2024'
-  else Result := ExpandConstant('{userappdata}\Autodesk\Revit\Addins\2024');
+  if IsIsolatedTest then Result := AddBackslash(ExpandFileName(ExpandConstant('{param:ISOLATEDROOT|}')))+'roaming\Autodesk\Revit\Addins\{#RevitYear}'
+  else Result := ExpandConstant('{userappdata}\Autodesk\Revit\Addins\{#RevitYear}');
 end;
 
 function ApplicationIsOpen: Boolean;
@@ -123,12 +127,12 @@ var Arguments, Root, LogDirectory, LogPath: String; ExitCode: Integer;
 begin
   Result := '';
   Root := ExpandFileName(InstallDirectory(''));
-  if CompareText(ExpandFileName(ExpandConstant('{app}')),Root)<>0 then begin Result := 'Directory overrides are refused. Use the supported current-user Revit 2024 location.'; Exit; end;
+  if CompareText(ExpandFileName(ExpandConstant('{app}')),Root)<>0 then begin Result := 'Directory overrides are refused. Use the supported current-user Revit {#RevitYear} location.'; Exit; end;
   try
     if ApplicationIsOpen then begin Result := 'Save your models and close every Revit and Engineering Dashboard window, then run this installer again.'; Exit; end;
   except Result := 'Unable to verify that Revit and the Dashboard are closed. Installation was not started.'; Exit; end;
-  if not IsIsolatedTest and not FileExists(ExpandConstant('{autopf64}\Autodesk\Revit 2024\Revit.exe')) and not RegKeyExists(HKLM64,'SOFTWARE\Autodesk\Revit\2024') then begin
-    Result := 'Autodesk Revit 2024 is required. This installer does not install Revit.'; Exit;
+  if not IsIsolatedTest and not FileExists(ExpandConstant('{autopf64}\Autodesk\Revit {#RevitYear}\Revit.exe')) and not RegKeyExists(HKLM64,'SOFTWARE\Autodesk\Revit\{#RevitYear}') then begin
+    Result := 'Autodesk Revit {#RevitYear} is required. This installer does not install Revit.'; Exit;
   end;
   if IsIsolatedTest then LogDirectory := AddBackslash(ExpandFileName(ExpandConstant('{param:ISOLATEDROOT|}')))+'local\DokaRevitAutomation\InstallerLogs'
   else LogDirectory := ExpandConstant('{localappdata}\DokaRevitAutomation\InstallerLogs');
@@ -145,7 +149,7 @@ begin
   ExtractTemporaryFile('Invoke-DashboardInstaller.ps1');
   ExtractTemporaryFile('dashboard-latest.json');
   ExtractTemporaryFile('{#ArchiveName}');
-  Arguments := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+ExpandConstant('{tmp}\Invoke-DashboardInstaller.ps1')+'" -FeedDirectory "'+ExpandConstant('{tmp}')+'" -LogPath "'+LogPath+'"';
+  Arguments := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+ExpandConstant('{tmp}\Invoke-DashboardInstaller.ps1')+'" -FeedDirectory "'+ExpandConstant('{tmp}')+'" -LogPath "'+LogPath+'" -RevitVersion {#RevitYear}';
   if IsIsolatedTest then Arguments := Arguments+' -IsolatedRoot "'+ExpandFileName(ExpandConstant('{param:ISOLATEDROOT|}'))+'"';
   WizardForm.StatusLabel.Caption := 'Verifying the Dashboard and preserving your existing installation...';
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),Arguments,ExpandConstant('{tmp}'),SW_HIDE,ewWaitUntilTerminated,ExitCode) then begin
@@ -177,9 +181,9 @@ begin
   Result := False; Root := ExpandFileName(ExpandConstant('{app}'));
   if LoadStringFromFile(AddBackslash(Root)+'.doka-isolated-install',Marker) then begin
     if not IsValidTestRoot(String(Marker)) then begin SuppressibleMsgBox('The isolated installation path is invalid.',mbError,MB_OK,IDOK); Exit; end;
-    Expected := AddBackslash(ExpandFileName(String(Marker)))+'roaming\Autodesk\Revit\Addins\2024';
+    Expected := AddBackslash(ExpandFileName(String(Marker)))+'roaming\Autodesk\Revit\Addins\{#RevitYear}';
   end
-  else Expected := ExpandConstant('{userappdata}\Autodesk\Revit\Addins\2024');
+  else Expected := ExpandConstant('{userappdata}\Autodesk\Revit\Addins\{#RevitYear}');
   if (CompareText(Root,ExpandFileName(Expected))<>0) or not HasNoLinks(Root) then begin SuppressibleMsgBox('This uninstaller does not own this location.',mbError,MB_OK,IDOK); Exit; end;
   try
     if ApplicationIsOpen then begin SuppressibleMsgBox('Close every Revit and Engineering Dashboard window before uninstalling.',mbError,MB_OK,IDOK); Exit; end;

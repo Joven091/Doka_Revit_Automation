@@ -11,6 +11,9 @@ $installerPath=(Resolve-Path -LiteralPath $Installer).Path
 $build=(Resolve-Path -LiteralPath $BuildDirectory).Path
 $evidence=[IO.Path]::GetFullPath($EvidenceDirectory)
 $repo=Split-Path $PSScriptRoot -Parent
+$targetYear=[int](Get-Content (Join-Path $build 'build-info.json') -Raw | ConvertFrom-Json).revitVersion
+if($targetYear -notin @(2024,2027)){throw 'Unsupported installer test target.'}
+$runtimeSuffix=if($targetYear -eq 2024){'DokaRevitAutomation/Dashboard'}else{'DokaRevitAutomation/Dashboard/Revit2027'}
 $prefix=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Temp/DokaDashboardInstallerTests'))
 # Keep the disposable fixture beneath legacy net48 MAX_PATH while retaining
 # the real safety prefix and the separate path-with-spaces installation case.
@@ -23,7 +26,7 @@ function Check([bool]$Condition,[string]$Label){if(!$Condition){throw "FAIL: $La
 function Hash([string]$Path){return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()}
 function Quote([string]$Value){if($Value.Contains('"')){throw 'Unexpected quotation mark in an installer test path.'};return '"'+$Value+'"'}
 function Write-Text([string]$Path,[string]$Text){New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($Path)) -Force | Out-Null;[IO.File]::WriteAllText($Path,$Text,[Text.UTF8Encoding]::new($false))}
-function Paths([string]$Case){return @{Case=$Case;App=(Join-Path $Case 'roaming/Autodesk/Revit/Addins/2024');Runtime=(Join-Path $Case 'local/DokaRevitAutomation/Dashboard');Backups=(Join-Path $Case 'local/DokaRevitAutomation/UpgradeBackups');Machine=(Join-Path $Case 'machine/Autodesk/Revit/Addins/2024')}}
+function Paths([string]$Case){return @{Case=$Case;App=(Join-Path $Case "roaming/Autodesk/Revit/Addins/$targetYear");Runtime=(Join-Path $Case ('local/'+$runtimeSuffix));Backups=(Join-Path $Case 'local/DokaRevitAutomation/UpgradeBackups');Machine=(Join-Path $Case "machine/Autodesk/Revit/Addins/$targetYear")}}
 function Version-Number([string]$Value){$v=[version]$Value;return [version]::new($v.Major,$v.Minor,$v.Build,[Math]::Max(0,$v.Revision))}
 function Tree-Fingerprint([string]$Directory){
     if(!(Test-Path -LiteralPath $Directory)){return 'ABSENT'}
@@ -49,7 +52,7 @@ function Case-Fingerprint([string]$Case){
 }
 function Production-Fingerprint {
     $rows=[Collections.Generic.List[string]]::new()
-    foreach($directory in @((Join-Path $env:APPDATA 'Autodesk/Revit/Addins/2024'),(Join-Path $env:PROGRAMDATA 'Autodesk/Revit/Addins/2024'),(Join-Path $env:LOCALAPPDATA 'DokaRevitAutomation/Dashboard'),(Join-Path $env:LOCALAPPDATA 'DokaRevitAutomation/UpgradeBackups'))){$rows.Add("$directory`n$(Tree-Fingerprint $directory)")}
+    foreach($directory in @((Join-Path $env:APPDATA 'Autodesk/Revit/Addins/2024'),(Join-Path $env:PROGRAMDATA 'Autodesk/Revit/Addins/2024'),(Join-Path $env:APPDATA 'Autodesk/Revit/Addins/2027'),(Join-Path $env:PROGRAMDATA 'Autodesk/Revit/Addins/2027'),(Join-Path $env:LOCALAPPDATA 'DokaRevitAutomation/Dashboard'),(Join-Path $env:LOCALAPPDATA 'DokaRevitAutomation/UpgradeBackups'))){$rows.Add("$directory`n$(Tree-Fingerprint $directory)")}
     $session=Join-Path $env:LOCALAPPDATA 'DokaRevitAutomation/access-session.bin'
     $rows.Add("access-session.bin=$(if(Test-Path -LiteralPath $session){Hash $session}else{'ABSENT'})")
     foreach($hive in @([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryHive]::LocalMachine)){
@@ -168,7 +171,15 @@ try{
     foreach($scriptName in @('Invoke-DashboardInstaller.ps1','Build-DashboardInstaller.ps1','Initialize-DashboardLiveUpdate.ps1')){$tokens=$null;$errors=$null;[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $scriptName),[ref]$tokens,[ref]$errors) | Out-Null;Check ($errors.Count -eq 0) "$scriptName parses"}
     $feed=Get-Content -LiteralPath (Join-Path $build 'feed/dashboard-latest.json') -Raw | ConvertFrom-Json
     Check ((Version-Number ([Diagnostics.FileVersionInfo]::GetVersionInfo($installerPath).FileVersion)) -eq (Version-Number $feed.version)) 'actual installer version matches verified Dashboard feed'
-    $fresh=Join-Path $root 'fresh with spaces';Install $fresh 'fresh' | Out-Null;$freshInstalled=Assert-Installed $fresh 'fresh'
+    $fresh=Join-Path $root 'fresh with spaces'
+    $otherYear=if($targetYear -eq 2024){2027}else{2024}
+    $otherRegistration=Join-Path $fresh "roaming/Autodesk/Revit/Addins/$otherYear/MyRevitAddin.addin"
+    Write-Text $otherRegistration 'independent other-Revit registration sentinel'
+    $otherRuntime=Join-Path $fresh $(if($otherYear -eq 2024){'local/DokaRevitAutomation/Dashboard/other-host-project.top50'}else{'local/DokaRevitAutomation/Dashboard/Revit2027/other-host-project.top50'})
+    Write-Text $otherRuntime 'independent other-Revit saved project sentinel'
+    $otherHashes=@{Registration=(Hash $otherRegistration);Project=(Hash $otherRuntime)}
+    Install $fresh 'fresh' | Out-Null;$freshInstalled=Assert-Installed $fresh 'fresh'
+    Check ((Hash $otherRegistration) -ceq $otherHashes.Registration -and (Hash $otherRuntime) -ceq $otherHashes.Project) 'installation preserves the other Revit registration and saved project'
     Check ((Production-Fingerprint) -ceq $beforeProduction) 'fresh isolated installation suppresses production uninstall registration and leaves real user directories unchanged'
     foreach($name in @('access-settings.json','update-settings.json')){Check ((Hash (Join-Path $freshInstalled.Paths.App $name)) -ceq (Hash (Join-Path $build ('bootstrap/'+$name)))) "fresh installs original default $name"}
     $freshSaved=Preserve $fresh
