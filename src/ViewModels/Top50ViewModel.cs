@@ -20,7 +20,7 @@ namespace EngineeringDashboard
         public ImportSnapshot Input=>input;
         public IReadOnlyList<Proposal> Proposals {get;private set;}=Array.Empty<Proposal>();
         public IReadOnlyList<string> SearchLog {get;private set;}=Array.Empty<string>();
-        public Proposal Selected {get=>selected;set{if(selected==value)return;selected=value;NewToken();RememberEdit();Notify();Notify(nameof(Dirty));}}
+        public Proposal Selected {get=>selected;set{if(selected==value)return;selected=value;ClearPourChecks();NewToken();RememberEdit();Notify();Notify(nameof(Dirty));}}
         public int CurrentPage {get;set;}
         public int SelectedGroupIndex {get;set;}
         public bool IsBusy {get;private set;}
@@ -36,12 +36,14 @@ namespace EngineeringDashboard
             {
             if(IsBusy)throw new InvalidOperationException("Cancel the current optimization first.");
             input=new Top50DxfImporter().Import(path,options??new DxfImportOptions());Proposals=Array.Empty<Proposal>();selected=null;IsStale=false;Dirty=true;revision++;
+            Settings.Pours=Array.Empty<PourDefinition>();Settings.SelectedPourId=null;ClearPourChecks();
             Status="Imported "+input.Walls.Count+" dimension rows; review flagged measurements individually.";ResetEdits(false);Refresh();
             });
         }
         public void Changed(bool affectsCalculation=true)
         {
             RequireEditable();Top50PlannerPolicy.Apply(Settings);undo.Push(checkpoint);redo.Clear();
+            ClearPourChecks();
             if(affectsCalculation){revision++;IsStale=Proposals.Count>0;}NewToken();
             Status=IsStale?"Inputs changed. Optimize again to update the results.":"Inputs updated.";RememberEdit();
             foreach(var name in new[]{nameof(Dirty),nameof(IsStale),nameof(Status)})Notify(name);
@@ -101,6 +103,7 @@ namespace EngineeringDashboard
             Top50PlannerPolicy.ValidateSettings(Settings);
             foreach(var p in run.Proposals)if(Top50Validation.Validate(input.Walls,p,Limits).Count>0||Top50PlannerPolicy.ValidateProposal(input.Walls,p,Settings).Count>0)throw new InvalidOperationException("Only proposals validated against the current geometry and project settings can enter the UI.");
             Proposals=QuantityShortlist(run.Proposals,input,Settings);SearchLog=run.Log;selected=Proposals.FirstOrDefault();Settings.SearchPolicyVersion=Top50PlannerPolicy.SearchPolicyVersion;IsStale=false;NewToken();RememberEdit();Status="Validated "+Proposals.Count+" displayed proposal(s); fewest panel count found: "+(selected==null?"none":Top50PlannerPolicy.TotalPanels(selected).ToString()+" (both faces)")+". Global optimum not established.";Refresh();
+            ClearPourChecks();
         }
         public void Save(string path)
         {
@@ -114,6 +117,7 @@ namespace EngineeringDashboard
             document.LongestCount=Settings.LongestCount;document.CatalogMm=Settings.CatalogMm.ToArray();document.Preset=Settings.Preset;document.MaxFillers=Settings.MaxFillers;document.MaxFillerMm=Settings.MaxFillerMm;document.MaxGroups=Settings.MaxGroups;document.CandidateDisplayLimit=Settings.CandidateDisplayLimit;document.Seconds=Settings.Seconds;document.Seed=Settings.Seed;document.OfferingMode=Settings.OfferingMode;document.Percentage=Settings.Percentage;document.BandPoints=Settings.BandPoints;document.AllowExpansion=Settings.AllowExpansion;document.RequireIdenticalKits=Settings.RequireIdenticalKits;document.SearchLog=SearchLog.ToArray();
             document.ConnectionLevels=Settings.ConnectionLevels;document.ConnectionFaces=Settings.ConnectionFaces;document.ConnectionReviewed=Settings.ConnectionReviewed;document.AdjustableOnDirect=Settings.AdjustableOnDirect;
             document.SearchPolicyVersion=Settings.SearchPolicyVersion;
+            document.Pours=PourPlan.Copy(Settings.Pours);document.SelectedPourId=Settings.SelectedPourId;PourPlan.Validate(document.Pours,input.AllWalls);
             NativeProjectStore.Save(document,path);Settings.Version=Top50PlannerPolicy.ProjectVersion;ProjectPath=path;savedStateToken=stateToken;Dirty=false;RememberEdit();Status=IsStale?"Saved inputs. Optimize again to update the results.":"Project saved.";Refresh();
             });
         }
@@ -123,6 +127,7 @@ namespace EngineeringDashboard
             {
             if(IsBusy)throw new InvalidOperationException("Cancel optimization before opening another project.");
             var document=NativeProjectStore.Load(path);Top50PlannerPolicy.Apply(document);Top50PlannerPolicy.ValidateSettings(document);var restored=NativeProjectStore.RestoreInput(document,cache);
+            PourPlan.Validate(document.Pours,restored.AllWalls);
             var restoredLimits=new SearchLimits(document.MaxFillers,document.MaxFillerMm,document.MaxGroups,document.OfferingMode==1?1:document.LongestCount,document.Seconds,document.Seed);
             var proposals=document.Proposals.Select(NativeProjectStore.FromDto).ToArray();
             foreach(var p in proposals)if(Top50Validation.ValidateGeometry(restored.Walls,p,restoredLimits).Count>0)throw new InvalidOperationException("Saved proposal geometry validation failed; original project remains unchanged.");
@@ -130,6 +135,7 @@ namespace EngineeringDashboard
             var eligible=policyIssues.Length>0?Array.Empty<Proposal>():QuantityShortlist(proposals,restored,document);
             bool shortlistChanged=!proposals.Select(p=>p.Id).SequenceEqual(eligible.Select(p=>p.Id));
             input=restored;Settings=document;Proposals=eligible;selected=eligible.FirstOrDefault(p=>p.Id==document.SelectedId)??eligible.FirstOrDefault();SearchLog=(document.SearchLog??Array.Empty<string>()).Concat(policyIssues.Select(issue=>"Discarded cached results: "+issue)).ToArray();ProjectPath=path;IsStale=policyIssues.Length>0;Dirty=shortlistChanged||document.Version<Top50PlannerPolicy.ProjectVersion;revision++;
+            ClearPourChecks();
             Status=policyIssues.Length>0?"Project inputs opened; cached results do not match the current settings and were discarded. Optimize to update the offer.":eligible.Count==0?"Project inputs opened. Optimize reviewed walls to prepare an equipment offer.":document.SearchPolicyVersion<Top50PlannerPolicy.SearchPolicyVersion?"Saved proposals revalidated and quantity-first shortlist applied. Optimize to run the current panel-size consolidation search.":"Project opened and cached proposals independently revalidated.";ResetEdits(!Dirty);Refresh();
             });
         }
@@ -144,7 +150,7 @@ namespace EngineeringDashboard
             return Array.AsReadOnly(shown);
         }
         public void Export(string path)=>TrackOperation("Export workbook",path,()=>{throw new NotSupportedException("Excel export is not available in this version.");});
-        private void Refresh(){foreach(var name in new[]{nameof(Input),nameof(Proposals),nameof(Selected),nameof(IsBusy),nameof(IsStale),nameof(Dirty),nameof(Status),nameof(Settings),nameof(CanUndo),nameof(CanRedo)})Notify(name);}
+        private void Refresh(){foreach(var name in new[]{nameof(Input),nameof(Proposals),nameof(Selected),nameof(IsBusy),nameof(IsStale),nameof(Dirty),nameof(Status),nameof(Settings),nameof(CanUndo),nameof(CanRedo),nameof(Pours),nameof(PourChecks),nameof(UnassignedWallCount)})Notify(name);}
         private void Notify([CallerMemberName]string name=null)=>PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(name));
     }
 }

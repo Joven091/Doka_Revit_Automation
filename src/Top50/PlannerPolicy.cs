@@ -12,10 +12,11 @@ namespace EngineeringDashboard.Top50
         public const int DisplayLimit=3;
         public const double ThoroughSearchEffort=100;
         public const int SearchPolicyVersion=5;
-        public const int ProjectVersion=5;
+        public const int ProjectVersion=6;
         public static void Apply(NativeTop50Project settings)
         {
             settings.Seed=50;settings.SearchEffort=ThoroughSearchEffort;settings.CandidateDisplayLimit=DisplayLimit;
+            if(settings.Pours==null)settings.Pours=Array.Empty<PourDefinition>();
             settings.ConnectionLevels=1;settings.ConnectionFaces=WallFaces;settings.ConnectionReviewed=false;settings.AdjustableOnDirect=true;
         }
         public static bool EffectiveIdenticalKits(NativeTop50Project settings)=>settings.OfferingMode==0&&settings.RequireIdenticalKits;

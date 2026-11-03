@@ -19,7 +19,7 @@ if((Get-FileHash $archive).Hash -ine $feed.sha256 -or (Get-Item $archive).Length
 Copy-Item $installer.FullName $destination
 Copy-Item $archive $destination
 Copy-Item (Join-Path $build 'feed/dashboard-latest.json') $destination
-@{schemaVersion=1;productId='Doka.RevitAutomation';revitVersion=$year;version=$info.version;installerFile=$installer.Name;sha256=$info.installerSha256;sizeBytes=$installer.Length;publishedUtc=[DateTime]::UtcNow.ToString('O');releaseNotes='Engineering Dashboard update, including checked Top50 panel-size consolidation. Save your work and close Revit for this integration installer.'} | ConvertTo-Json | Set-Content (Join-Path $destination 'latest.json') -Encoding utf8
+@{schemaVersion=1;productId='Doka.RevitAutomation';revitVersion=$year;version=$info.version;installerFile=$installer.Name;sha256=$info.installerSha256;sizeBytes=$installer.Length;publishedUtc=[DateTime]::UtcNow.ToString('O');releaseNotes='Engineering Dashboard update, including Top50 pour sequence and simplified wall import. Save your work and close Revit for this integration installer.'} | ConvertTo-Json | Set-Content (Join-Path $destination 'latest.json') -Encoding utf8
 $subfolder=if($year -eq 2024){''}else{'\Revit2027'}
 @"
 Revit $year - Engineering Dashboard $($info.version)
@@ -37,7 +37,7 @@ Revit integration updates: open Check for updates, then click Revit integration 
 First installation, or a 2024 user still on 1.1.x: run the Revit-specific EXE directly with Revit closed. This one-time migration is not supported by the old in-process update helper.
 
 Revit2027 uses the published 2027 API and .NET 10. The calculator desktop and numerical policies are shared with the 2024 release. Your project/settings files are retained. Runtime folders, registration and update feeds are separated by Revit version.
-Pour-sequence planning remains a design preview and is not included. Autodesk Revit host acceptance must be performed on your own test workstation; isolated Windows installer and desktop checks do not run Revit.
+Top50 includes Pour sequence: define pours and their wall assignments, set their order, then check the selected equipment offer. Panel and connector shortages apply to the shown arrangements. Equipment is reused only after stripping the previous pour; dates and concrete-curing durations are not calculated. Autodesk Revit host acceptance must be performed on your own test workstation; isolated Windows installer and desktop checks do not run Revit.
 No company publication, production installation or GitHub merge was performed.
 "@ | Set-Content (Join-Path $destination 'READ-ME-FIRST.txt') -Encoding utf8
 Copy-Item (Join-Path $InstallerDirectory 'release-info.json') (Join-Path $destination 'release-info.json')

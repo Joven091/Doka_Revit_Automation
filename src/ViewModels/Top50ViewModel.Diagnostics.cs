@@ -96,6 +96,16 @@ namespace EngineeringDashboard
             }
             text.AppendLine("--- Removed walls retained for audit ---");if(input!=null)AppendWalls(text,input.RemovedWalls);
             text.AppendLine("Equipment quantities: both wall faces. Offered LM: per face. Connector stock: one level, both faces, with adjustable reuse enabled.");
+            text.AppendLine("--- User-defined pour sequence ---");
+            text.AppendLine("Equipment checks keep wall memberships and pour order fixed. Stock is reused only after the previous pour is stripped. No dates, curing durations or construction dependencies are inferred.");
+            text.AppendLine("Unassigned included walls: "+UnassignedWallCount);
+            for(int i=0;i<Settings.Pours.Length;i++)
+            {
+                var pour=Settings.Pours[i];var check=PourChecks.FirstOrDefault(c=>c.PourId==pour.Id);
+                text.AppendLine((i+1)+" | "+pour.Id+" | "+pour.Name+" | walls: "+string.Join(", ",pour.WallIds));
+                text.AppendLine("Check: "+(check?.Status??"Not checked")+"; "+check?.Detail);
+                if(check?.Group!=null){text.AppendLine("Additional panels per face: "+string.Join(", ",check.AdditionalPanels.Select(p=>p.Key+" mm × "+p.Value)));text.AppendLine("Additional connectors, one level both faces: "+check.AdditionalStandard+" standard; "+check.AdditionalAdjustable+" adjustable");foreach(var wall in check.Group.Walls)text.AppendLine(wall.WallId+" | panels mm: "+string.Join(", ",wall.Pattern.PanelsMm)+" | internal gaps micrometres: "+string.Join(", ",wall.Pattern.InternalGapsMicrometres));}
+            }
             text.AppendLine("--- Last Revit operation ---\n"+LastRevitReport);text.AppendLine("--- Operations in this session ---");
             if(diagnosticOperations.Count==0)text.AppendLine("None");
             foreach(var operation in diagnosticOperations)

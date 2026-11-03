@@ -30,9 +30,10 @@ namespace EngineeringDashboard
         }
         internal static Top50ViewModel RestoreRestartState(Top50RestartState state)
         {
-            if(state==null||state.Settings==null||state.Page<0||state.Page>3||state.Group<0)throw new InvalidDataException("Invalid Top50 restart state.");
+            if(state==null||state.Settings==null||state.Page<0||state.Page>4||state.Group<0)throw new InvalidDataException("Invalid Top50 restart state.");
             var settings=CopySettings(state.Settings);Top50PlannerPolicy.Apply(settings);Top50PlannerPolicy.ValidateSettings(settings);
             var restored=state.Input==null?null:NativeProjectStore.RestoreInput(state.Input,Path.Combine(DashboardPaths.Root,"Top50Sources"));
+            PourPlan.Validate(settings.Pours,restored?.AllWalls??Array.Empty<WallRow>());
             var vm=new Top50ViewModel{Settings=settings,input=restored,ProjectPath=state.ProjectPath,CurrentPage=state.Page,SelectedGroupIndex=state.Group,IsStale=state.HadResults,SearchLog=state.SearchLog??Array.Empty<string>()};
             vm.stateToken=1;vm.nextStateToken=1;vm.savedStateToken=state.Dirty?0:1;vm.Dirty=state.Dirty;
             vm.Status="Inputs restored after the Dashboard update. Optimize to calculate a new equipment offer.";

@@ -28,11 +28,31 @@ jobs:
         run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
       - name: Build the Revit-specific bridge and matching Dashboard
         shell: pwsh
-        run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/live -Version 1.2.3 -RevitVersion ${{ matrix.revit }}
+        run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/live -Version 1.2.4 -RevitVersion ${{ matrix.revit }}
       - name: Verify host isolation and actual bridge API/runtime metadata
         shell: pwsh
         run: |
           dotnet run --project tests/DashboardHostVersions.Tests -c Release -- artifacts/live/bootstrap/Doka.RevitBridge.dll ${{ matrix.revit }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify pours, additive imports and retained planner behavior on both runtimes
+        shell: pwsh
+        run: |
+          foreach ($framework in @('net48','net10.0')) {
+            dotnet build tests/Top50.PourSequence.Tests -c Release -f $framework --warnaserror
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if ($framework -eq 'net48') { & tests/Top50.PourSequence.Tests/bin/Release/net48/Top50.PourSequence.Tests.exe } else { dotnet tests/Top50.PourSequence.Tests/bin/Release/net10.0/Top50.PourSequence.Tests.dll }
+            if ($LASTEXITCODE -ne 0) { throw 'Pour sequence regression failed' }
+          }
+          dotnet run --project tests/Top50.IndependentValidation -c Release -f net10.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet run --project tests/Top50.RepeatabilityTests -c Release -- artifacts/evidence/repeatability
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise actual Import and Pour sequence controls and render screenshots
+        shell: pwsh
+        run: |
+          dotnet build tests/Top50.PourUi.Tests -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & tests/Top50.PourUi.Tests/bin/Release/net48/Top50.PourUi.Tests.exe artifacts/evidence/pour-ui
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build installer and perform isolated install, upgrade, guards and uninstall
         shell: pwsh
@@ -65,13 +85,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: Revit${{ matrix.revit }}-1.2.3-installer-and-update-files
+          name: Revit${{ matrix.revit }}-1.2.4-installer-and-update-files
           path: artifacts/company-files/
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Revit${{ matrix.revit }}-1.2.3-validation
+          name: Revit${{ matrix.revit }}-1.2.4-validation
           path: |
             artifacts/evidence/
             artifacts/installer/installer-compile.log

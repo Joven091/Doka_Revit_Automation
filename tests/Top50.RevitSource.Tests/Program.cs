@@ -44,7 +44,7 @@ internal static class Program
         var directory=Path.Combine(Path.GetTempPath(),"Top50-Revit-tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
         try
         {
-            var path=Path.Combine(directory,"source.top50");model.Save(path);Check(NativeProjectStore.Load(path).Version==5,"Revit projects declare V5");
+            var path=Path.Combine(directory,"source.top50");model.Save(path);Check(NativeProjectStore.Load(path).Version==Top50PlannerPolicy.ProjectVersion,"Revit projects declare the current project format");
             var opened=new Top50ViewModel();opened.Open(path,Path.Combine(directory,"cache"));Check(opened.Input.Walls.Count==2&&opened.Input.RemovedWalls.Count==1&&opened.Input.Walls.Any(w=>w.Layer=="Manual"),"project reopen preserves Revit walls, manual rows and deletions without the RVT file");
             Check(opened.Input.Walls.Single(w=>w.Id==firstId).Revit.UniqueId==first.UniqueId&&opened.BuildDiagnosticReport().Contains("exterior mm=6250"),"saved native identities and both face measurements survive reopen");
             var stored=NativeProjectStore.Load(path);stored.SourceBase64=Convert.ToBase64String(new byte[]{1,2,3});NativeProjectStore.Save(stored,path);Reject(()=>NativeProjectStore.Load(path),"checksum");
