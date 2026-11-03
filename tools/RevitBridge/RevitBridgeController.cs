@@ -50,6 +50,7 @@ namespace EngineeringDashboard
                 DashboardPackages.ValidateInstalled(root,active);permitted.Add(active);
                 var start=new ProcessStartInfo(DashboardPackages.EntryPath(root,active)){UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(DashboardPackages.EntryPath(root,active)),Arguments=updateOnly?"--updates":""};
                 Set(start,"DOKA_DASHBOARD_ROOT",root);Set(start,"DOKA_DASHBOARD_SETTINGS_ROOT",Path.GetDirectoryName(typeof(RevitBridgeController).Assembly.Location));
+                Set(start,"DOKA_DASHBOARD_REVIT_VERSION",DashboardPaths.RevitVersion.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 Set(start,"DOKA_DASHBOARD_BRIDGE_PIPE",pipeName);Set(start,"DOKA_DASHBOARD_BRIDGE_TOKEN",token);Set(start,"DOKA_DASHBOARD_BRIDGE_SESSION",session);
                 Set(start,"DOKA_DASHBOARD_BRIDGE_HOST_PID",hostPid.ToString(System.Globalization.CultureInfo.InvariantCulture));Set(start,"DOKA_DASHBOARD_BRIDGE_HOST_START_TICKS",hostStarted.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 Set(start,"DOKA_DASHBOARD_ACTIVATE_EVENT","Local\\DokaDashboardActivate-"+session);Set(start,"DOKA_DASHBOARD_UPDATE_EVENT","Local\\DokaDashboardUpdates-"+session);
@@ -65,7 +66,11 @@ namespace EngineeringDashboard
             var security=new PipeSecurity();security.SetAccessRuleProtection(true,false);security.SetOwner(user);
             security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.NetworkSid,null),PipeAccessRights.FullControl,AccessControlType.Deny));
             security.AddAccessRule(new PipeAccessRule(user,PipeAccessRights.FullControl,AccessControlType.Allow));
+#if NET10_0_OR_GREATER
+            return NamedPipeServerStreamAcl.Create(pipeName,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,65536,65536,security);
+#else
             return new NamedPipeServerStream(pipeName,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,65536,65536,security);
+#endif
         }
         void AcceptLoop()
         {

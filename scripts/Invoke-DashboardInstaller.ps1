@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$FeedDirectory,[Parameter(Mandatory)][string]$LogPath,[string]$IsolatedRoot)
+param([Parameter(Mandatory)][string]$FeedDirectory,[Parameter(Mandatory)][string]$LogPath,[string]$IsolatedRoot,[ValidateSet(2024,2027)][int]$RevitVersion=2024)
 $ErrorActionPreference='Stop'
 $saved=@{APPDATA=$env:APPDATA;LOCALAPPDATA=$env:LOCALAPPDATA;PROGRAMDATA=$env:PROGRAMDATA}
 try {
@@ -31,14 +31,15 @@ try {
     "$(Get-Date -Format o) Starting Dashboard installation." | Out-File -LiteralPath $log -Encoding utf8 -Append
     function NormalVersion([string]$value){$v=[version]$value;return [version]::new($v.Major,$v.Minor,$v.Build,[Math]::Max(0,$v.Revision))}
     $feed=Get-Content -LiteralPath (Join-Path $FeedDirectory 'dashboard-latest.json') -Raw | ConvertFrom-Json
-    $activePath=Join-Path $env:LOCALAPPDATA 'DokaRevitAutomation/Dashboard/active.json'
+    $runtimeSuffix=if($RevitVersion -eq 2024){'DokaRevitAutomation/Dashboard'}else{'DokaRevitAutomation/Dashboard/Revit2027'}
+    $activePath=Join-Path $env:LOCALAPPDATA ($runtimeSuffix+'/active.json')
     if(Test-Path -LiteralPath $activePath){
         $active=Get-Content -LiteralPath $activePath -Raw | ConvertFrom-Json
         if((NormalVersion $active.Version) -gt (NormalVersion $feed.version)){throw 'A newer Dashboard is already active. This installer will not downgrade it.'}
         if((NormalVersion $active.Version) -eq (NormalVersion $feed.version) -and $active.ArchiveSha256 -ine $feed.sha256){throw 'The same Dashboard version has different contents. Installation was not started.'}
     }
-    & (Join-Path $PSScriptRoot 'Initialize-DashboardLiveUpdate.ps1') -FeedDirectory $FeedDirectory *>&1 | Out-File -LiteralPath $log -Encoding utf8 -Append
-    "$(Get-Date -Format o) Installation completed. Open Revit 2024 and Engineering Dashboard." | Out-File -LiteralPath $log -Encoding utf8 -Append
+    & (Join-Path $PSScriptRoot 'Initialize-DashboardLiveUpdate.ps1') -FeedDirectory $FeedDirectory -RevitVersion $RevitVersion *>&1 | Out-File -LiteralPath $log -Encoding utf8 -Append
+    "$(Get-Date -Format o) Installation completed. Open Revit $RevitVersion and Engineering Dashboard." | Out-File -LiteralPath $log -Encoding utf8 -Append
     exit 0
 }
 catch {

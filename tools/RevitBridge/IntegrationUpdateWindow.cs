@@ -41,7 +41,7 @@ namespace EngineeringDashboard
 
             var body=new StackPanel {Margin=new Thickness(24)};
             body.Children.Add(new TextBlock {Text="Revit integration updates",FontSize=22,FontWeight=FontWeights.SemiBold});
-            body.Children.Add(new TextBlock {Text="Revit 2024 · installed version "+UpdateFiles.DisplayVersion(installed),Foreground=Brushes.SlateGray,Margin=new Thickness(0,6,0,0)});
+            body.Children.Add(new TextBlock {Text="Revit "+UpdateTarget.Year+" · installed version "+UpdateFiles.DisplayVersion(installed),Foreground=Brushes.SlateGray,Margin=new Thickness(0,6,0,0)});
             body.Children.Add(status);body.Children.Add(new ScrollViewer {Content=notes,MaxHeight=220,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});body.Children.Add(progress);
             var buttons=new WrapPanel {HorizontalAlignment=HorizontalAlignment.Right};
             var close=new Button {Content="Close",IsCancel=true};close.Click+=(s,e)=>Close();
@@ -76,7 +76,7 @@ namespace EngineeringDashboard
             status.Text="Preparing the update locally…";
             try
             {
-                string expected=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"Autodesk","Revit","Addins","2024");
+                string expected=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"Autodesk","Revit","Addins",UpdateTarget.Year.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 if(!UpdateFiles.SamePath(installation,expected))throw new InvalidOperationException("This installation is managed in a different folder. Ask your administrator to update it.");
                 using(var host=Process.GetCurrentProcess())
                 {
@@ -86,7 +86,9 @@ namespace EngineeringDashboard
                     string stage=await Task.Run(()=>UpdateFiles.Stage(settings.SourceDirectory,cache,Path.Combine(installation,"Doka.RevitUpdater.exe"),plan,cancellation.Token,
                         (done,total)=>((IProgress<double>)reporter).Report(100.0*done/total)));
                     cancellation.Token.ThrowIfCancellationRequested();
-                    using(var helper=Process.Start(new ProcessStartInfo(Path.Combine(stage,"Doka.RevitUpdater.exe")) {UseShellExecute=false,Arguments="--plan \""+Path.Combine(stage,"update-plan.json")+"\""})){}
+                    var start=new ProcessStartInfo(Path.Combine(stage,"Doka.RevitUpdater.exe")) {UseShellExecute=false,Arguments="--plan \""+Path.Combine(stage,"update-plan.json")+"\""};
+                    start.EnvironmentVariables["DOKA_DASHBOARD_REVIT_VERSION"]=UpdateTarget.Year.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    using(var helper=Process.Start(start)){}
                     status.Text="Update prepared. The updater will install it after you close Revit.";install.Visibility=Visibility.Collapsed;check.Visibility=Visibility.Collapsed;
                 }
             }

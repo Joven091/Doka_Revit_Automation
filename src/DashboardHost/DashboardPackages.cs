@@ -15,7 +15,7 @@ namespace EngineeringDashboard.DesktopHost
     {
         [DataMember(Name="schemaVersion",IsRequired=true)] public int SchemaVersion=1;
         [DataMember(Name="productId",IsRequired=true)] public string ProductId=DashboardPackages.Product;
-        [DataMember(Name="revitVersion",IsRequired=true)] public int RevitVersion=2024;
+        [DataMember(Name="revitVersion",IsRequired=true)] public int RevitVersion=DashboardPaths.RevitVersion;
         [DataMember(Name="version",IsRequired=true)] public string Version;
         [DataMember(Name="bridgeProtocol",IsRequired=true)] public int BridgeProtocol=1;
         [DataMember(Name="archiveFile",IsRequired=true)] public string ArchiveFile;
@@ -46,12 +46,27 @@ namespace EngineeringDashboard.DesktopHost
     public sealed class ActivationResult { public ActiveDashboard Current {get;set;} public ActiveDashboard Previous {get;set;} public bool Changed {get;set;} }
     public static class DashboardPaths
     {
+        public static int RevitVersion
+        {
+            get
+            {
+#if REVIT2027
+                const int defaultYear=2027;
+#else
+                const int defaultYear=2024;
+#endif
+                string value=Environment.GetEnvironmentVariable("DOKA_DASHBOARD_REVIT_VERSION");
+                if(string.IsNullOrEmpty(value))return defaultYear;
+                if(value=="2024")return 2024;if(value=="2027")return 2027;
+                throw new InvalidDataException("Unsupported Revit version in the Dashboard launch context.");
+            }
+        }
         public static string Root
         {
-            get {string configured=Environment.GetEnvironmentVariable("DOKA_DASHBOARD_ROOT");return Path.GetFullPath(string.IsNullOrEmpty(configured)?Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"DokaRevitAutomation","Dashboard"):configured);}
+            get {string configured=Environment.GetEnvironmentVariable("DOKA_DASHBOARD_ROOT");string standard=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"DokaRevitAutomation","Dashboard");if(RevitVersion!=2024)standard=Path.Combine(standard,"Revit"+RevitVersion);return Path.GetFullPath(string.IsNullOrEmpty(configured)?standard:configured);}
         }
         public static string CheckpointsDirectory=>Path.Combine(Root,"Sessions");
-        public static string SettingsRoot=>Environment.GetEnvironmentVariable("DOKA_DASHBOARD_SETTINGS_ROOT")??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"Autodesk","Revit","Addins","2024");
+        public static string SettingsRoot=>Environment.GetEnvironmentVariable("DOKA_DASHBOARD_SETTINGS_ROOT")??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"Autodesk","Revit","Addins",RevitVersion.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
     public static class DashboardPackages
     {
@@ -67,7 +82,7 @@ namespace EngineeringDashboard.DesktopHost
         public static DashboardFeed ReadFeed(string sourceDirectory,Version installed,int bridgeProtocol)
         {
             var feed=ReadJson<DashboardFeed>(Path.Combine(sourceDirectory,"dashboard-latest.json"),32768);
-            if(feed==null||feed.SchemaVersion!=1||feed.ProductId!=Product||feed.RevitVersion!=2024||!IsHash(feed.Sha256)||feed.SizeBytes<=0||feed.SizeBytes>MaxArchiveBytes
+            if(feed==null||feed.SchemaVersion!=1||feed.ProductId!=Product||feed.RevitVersion!=DashboardPaths.RevitVersion||!IsHash(feed.Sha256)||feed.SizeBytes<=0||feed.SizeBytes>MaxArchiveBytes
                 ||feed.ArchiveFile==null||!Regex.IsMatch(feed.ArchiveFile,@"\A[A-Za-z0-9][A-Za-z0-9._-]*\.zip\z")||(feed.ReleaseNotes??"").Length>4000)throw new InvalidDataException("Invalid Dashboard update metadata.");
             var version=ParseVersion(feed.Version);if(version<=installed)return null;
             if(feed.BridgeProtocol!=bridgeProtocol)throw new InvalidDataException("This release needs a newer Revit integration module. Update that module and restart Revit before using this Dashboard release.");
@@ -75,7 +90,7 @@ namespace EngineeringDashboard.DesktopHost
         }
         public static StagedDashboard Stage(string sourceDirectory,string root,DashboardFeed feed,CancellationToken token)
         {
-            if(feed==null||feed.SchemaVersion!=1||feed.ProductId!=Product||feed.RevitVersion!=2024||feed.BridgeProtocol!=BridgeProtocol.Version||!IsHash(feed.Sha256)||feed.SizeBytes<=0||feed.SizeBytes>MaxArchiveBytes
+            if(feed==null||feed.SchemaVersion!=1||feed.ProductId!=Product||feed.RevitVersion!=DashboardPaths.RevitVersion||feed.BridgeProtocol!=BridgeProtocol.Version||!IsHash(feed.Sha256)||feed.SizeBytes<=0||feed.SizeBytes>MaxArchiveBytes
                 ||feed.ArchiveFile==null||!Regex.IsMatch(feed.ArchiveFile,@"\A[A-Za-z0-9][A-Za-z0-9._-]*\.zip\z"))throw new InvalidDataException("Invalid Dashboard package request.");
             ParseVersion(feed.Version);root=Path.GetFullPath(root);Directory.CreateDirectory(root);NoReparse(root);
             string staging=Path.Combine(root,"staging",Guid.NewGuid().ToString("N")),payload=Path.Combine(staging,"payload"),archive=Path.Combine(staging,"package.zip");
