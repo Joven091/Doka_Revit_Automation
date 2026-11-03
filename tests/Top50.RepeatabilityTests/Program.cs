@@ -118,7 +118,7 @@ internal static class Program
         reopened.Open(legacy,Path.Combine(output,"cache"));
         Check(reopened.Proposals.Count==1&&reopened.Selected.Id==low.Id&&reopened.Dirty,"legacy higher-count selection is replaced by the validated lower-count shortlist");
         Check(bytes.SequenceEqual(File.ReadAllBytes(legacy)),"opening a legacy project leaves its original file intact");
-        Check(reopened.Status.Contains("current repeatable search"),"legacy allocations are distinguished from a fresh repeatable solve");
+        Check(reopened.Status.Contains("Optimize")&&reopened.Settings.SearchPolicyVersion<Top50PlannerPolicy.SearchPolicyVersion,"legacy allocations are distinguished from a fresh repeatable solve");
         var migrated=Path.Combine(output,"migrated.top50");reopened.Save(migrated);
         Check(NativeProjectStore.Load(migrated).Version==Top50PlannerPolicy.ProjectVersion,"saving migration writes the current format so old readers reject changed planning policies");
         var invalid=new Proposal("too-many-castings",low.Stock.ToDictionary(p=>p.Key,p=>p.Value),low.Groups);

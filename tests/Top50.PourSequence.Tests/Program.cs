@@ -58,10 +58,19 @@ internal static class Program
             var noLayout=PourSequencePlanner.Check(one.Input.Walls,one.Pours,oneOffer,new SearchLimits(1,350,1,1,100,50),new[]{750},CancellationToken.None);
             Check(noLayout.Single().Group==null,"A single short panel cannot be closed using an invented end filler");
             RevitAdditions(root);
+            ConnectorAlternatives();
             Console.WriteLine("PASS "+checks+" pour sequence, import and persistence checks.");return 0;
         }
         catch(Exception error){Console.Error.WriteLine(error);return 1;}
         finally{Directory.Delete(root,true);}
+    }
+    static void ConnectorAlternatives()
+    {
+        var vm=new Top50ViewModel();vm.AddManual(1500,"A");vm.AddManual(2000,"B");vm.AddManual(1250,"C");vm.EditSettings(s=>{s.LongestCount=1;s.CatalogMm=new[]{500,1000,1250};});
+        var a=vm.Input.Walls[0].Id;var b=vm.Input.Walls[1].Id;var c=vm.Input.Walls[2].Id;
+        var offer=new Proposal("direct",new Dictionary<int,int>{{1000,2},{500,1},{1250,1}},new[]{new CastingGroup(new[]{new WallArrangement(b,new PanelPattern(new[]{1000,1000},new long[]{0}))}),new CastingGroup(new[]{new WallArrangement(a,new PanelPattern(new[]{1000,500},new long[]{0}))}),new CastingGroup(new[]{new WallArrangement(c,new PanelPattern(new[]{1250},Array.Empty<long>()))})});
+        vm.AcceptValidatedRun(new SearchRun{Proposals=new[]{offer}});string pour=vm.AddPour();vm.AssignWalls(pour,new[]{b});vm.CheckPoursAsync().GetAwaiter().GetResult();
+        Check(vm.PourChecks.Single().WithinStock&&vm.PourChecks.Single().Group.Walls.Single().Pattern.FillerLocations==0,"The solver checks available connector stock before choosing a layout; it avoids an unnecessary filler connector shortage");
     }
     static void RevitAdditions(string root)
     {

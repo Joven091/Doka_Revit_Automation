@@ -79,7 +79,7 @@ namespace EngineeringDashboard.Top50
                 }
                 catch(TimeoutException){result.Detail="Pattern search limit reached; no conclusion";continue;}
                 if(options.Any(o=>o.Length==0)){result.Detail="No layout found with permitted panels and fillers";continue;}
-                var group=Solve(lengths,options,offer,local,false,cancellation)??Solve(lengths,options,offer,local,true,cancellation);
+                var group=Solve(lengths,options,offer,connectors,local,false,cancellation)??Solve(lengths,options,offer,connectors,local,true,cancellation);
                 if(group==null){result.Detail="No layout found within checked patterns";continue;}
                 // Restore the engineer's wall ordering. No wall may move to another pour.
                 var byId=group.Walls.ToDictionary(a=>a.WallId,StringComparer.Ordinal);group=new CastingGroup(pour.WallIds.Select(id=>byId[id]));
@@ -97,7 +97,7 @@ namespace EngineeringDashboard.Top50
             }
             return results.AsReadOnly();
         }
-        static CastingGroup Solve(WallRow[][] lengths,PanelPattern[][] options,Proposal offer,SearchLimits limits,bool addStock,CancellationToken cancellation)
+        static CastingGroup Solve(WallRow[][] lengths,PanelPattern[][] options,Proposal offer,ConnectorAllocation connectors,SearchLimits limits,bool addStock,CancellationToken cancellation)
         {
             cancellation.ThrowIfCancellationRequested();var model=new CpModel();var variables=new List<IntVar>();var entries=new List<Tuple<int,int>>();
             for(int t=0;t<lengths.Length;t++)
@@ -115,6 +115,13 @@ namespace EngineeringDashboard.Top50
                 if(addStock){var extra=model.NewIntVar(0,maximum,"extra-"+size);extras.Add(extra);model.Add(demand<=have+extra);}else model.Add(demand<=have);
             }
             var total=LinearExpr.WeightedSum(variables,entries.Select(e=>(long)options[e.Item1][e.Item2].PanelsMm.Count));
+            if(!addStock)
+            {
+                var fillerJoints=LinearExpr.WeightedSum(variables,entries.Select(e=>(long)options[e.Item1][e.Item2].FillerLocations*Top50PlannerPolicy.WallFaces));
+                var allJoints=LinearExpr.WeightedSum(variables,entries.Select(e=>(long)(options[e.Item1][e.Item2].DirectLocations+options[e.Item1][e.Item2].FillerLocations)*Top50PlannerPolicy.WallFaces));
+                model.Add(fillerJoints<=(long)connectors.AdjustableStock);
+                model.Add(allJoints<=(long)(connectors.StandardStock+connectors.AdjustableStock));
+            }
             model.Minimize(addStock?LinearExpr.Sum(extras)*(maximum+1)+total:total);
             var solver=new CpSolver{StringParameters="max_deterministic_time:"+limits.SolverDeterministicWork.ToString("R",CultureInfo.InvariantCulture)+" num_search_workers:1 randomize_search:false random_seed:"+limits.Seed};
             var status=CancellableSearch.Run(()=>solver.Solve(model),solver.StopSearch,solver,cancellation);cancellation.ThrowIfCancellationRequested();

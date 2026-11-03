@@ -74,7 +74,7 @@ namespace EngineeringDashboard
             }
             catch(OperationCanceledException){Status="Pour check cancelled. Your wall assignments and order were retained.";EndOperation(operation,Status);}
             catch(Exception error){FailOperation(operation,error);Status="Pour check failed: "+error.Message;throw;}
-            finally{IsBusy=false;cancellation.Dispose();cancellation=null;Refresh();}
+            finally{if(operation.Clock.IsRunning)EndOperation(operation);IsBusy=false;cancellation.Dispose();cancellation=null;Refresh();}
         }
     }
 }
