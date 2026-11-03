@@ -55,6 +55,7 @@ namespace EngineeringDashboard
             var choices=new[]{new PourChoice{Id=null,Name="Unassigned"}}.Concat(pours.Select(p=>new PourChoice{Id=p.Id,Name=p.Name})).ToArray();
             var factory=new FrameworkElementFactory(typeof(ComboBox));factory.SetValue(ComboBox.ItemsSourceProperty,choices);factory.SetValue(ComboBox.DisplayMemberPathProperty,"Name");factory.SetValue(ComboBox.SelectedValuePathProperty,"Id");factory.SetBinding(ComboBox.SelectedValueProperty,new Binding("Assignment"){Mode=BindingMode.OneWay});factory.SetBinding(FrameworkElement.TagProperty,new Binding("WallId"));
             factory.SetValue(FrameworkElement.MinHeightProperty,24d);factory.SetValue(FrameworkElement.HeightProperty,26d);factory.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center);factory.SetValue(Control.VerticalContentAlignmentProperty,VerticalAlignment.Center);factory.SetValue(Control.PaddingProperty,new Thickness(4,0,4,0));
+            factory.SetValue(FrameworkElement.MarginProperty,new Thickness(0));
             factory.AddHandler(System.Windows.Controls.Primitives.Selector.SelectionChangedEvent,new SelectionChangedEventHandler((s,e)=>
             {
                 if(rendering)return;var combo=(ComboBox)s;if(!(combo.Tag is string id)||!(combo.SelectedItem is PourChoice choice))return;

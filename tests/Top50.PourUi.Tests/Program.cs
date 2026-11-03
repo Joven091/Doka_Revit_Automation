@@ -41,7 +41,7 @@ internal static class Program
         Check(Find<DataGrid>(window).Single().Items.Count==1,"Pour details display assigned walls after native layout without unassigning them");
         string p2=vm.AddPour();vm.SelectedPourId=p1;window.ShowPage(4);Pump();
         var combo=Find<ComboBox>(window).Single();DependencyObject parent=combo;while(parent!=null&&!(parent is DataGridRow))parent=VisualTreeHelper.GetParent(parent);var bounds=combo.TransformToAncestor((DataGridRow)parent).TransformBounds(new Rect(combo.RenderSize));
-        Check(bounds.Top>=0&&bounds.Bottom<=((DataGridRow)parent).ActualHeight,"Assignment dropdown fits within its row without clipping text");
+        Check(bounds.Top>=0&&bounds.Bottom<=((DataGridRow)parent).ActualHeight,"Assignment dropdown fits within its row without clipping text (top="+bounds.Top+", bottom="+bounds.Bottom+", row="+((DataGridRow)parent).ActualHeight+")");
         combo.SelectedValue=p2;Pump();
         Check(vm.Pours.Single(p=>p.Id==p1).WallIds.Length==0&&vm.Pours.Single(p=>p.Id==p2).WallIds.Length==1,"Assignment dropdown moves a wall to the chosen pour exactly once");
         Click(Button(window,"Top50Undo"));Check(vm.Pours.Single(p=>p.Id==p1).WallIds.Length==1,"Toolbar Undo restores a wall assignment");
