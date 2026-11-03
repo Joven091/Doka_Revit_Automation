@@ -40,7 +40,7 @@ Doka Engineering Dashboard $version - Revit $year
 
 This is the one-time migration installer. It includes the existing calculators, Top50 Planner, Steel Shape and the new Dashboard updater. Settings and project files are preserved. Compatible future Dashboard updates restart only the Dashboard; D3 and Top50 inputs may need Optimize again. Changes to the Revit integration can still require a Revit restart.
 
-Run this migration installer directly. Do not advertise it to the old in-process updater by overwriting latest.json. After migration, Dashboard-only updates use dashboard-latest.json plus the matching Dashboard ZIP. Copy the ZIP first and JSON last; no publishing script is needed. Copying this EXE alone into the company folder does not publish a Dashboard update.
+Users still on the old 1.1.x in-process Dashboard must run this migration installer directly once. After migration, Revit integration updates use latest.json and Dashboard-only updates use dashboard-latest.json plus the matching Dashboard ZIP. Copy the ZIP first and JSON last; no publishing script is needed. Copying this EXE alone into the company folder does not publish a Dashboard update.
 
 Installation logs: %LOCALAPPDATA%\DokaRevitAutomation\InstallerLogs
 Upgrade backups: %LOCALAPPDATA%\DokaRevitAutomation\UpgradeBackups

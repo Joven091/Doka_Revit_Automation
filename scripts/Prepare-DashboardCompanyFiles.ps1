@@ -33,12 +33,12 @@ Copy the EXE and inner Dashboard ZIP first. Leave the inner ZIP compressed.
 Copy latest.json and dashboard-latest.json last, after those two files finish copying.
 
 Existing external Dashboard users: Check for updates reads dashboard-latest.json and restarts only the Dashboard for compatible calculator changes.
-Revit integration updates: Tools > Revit integration updates reads latest.json, stages this installer and waits for Revit to close.
+Revit integration updates: open Check for updates, then click Revit integration updates. This reads latest.json, stages this installer and waits for Revit to close.
 First installation, or a 2024 user still on 1.1.x: run the Revit-specific EXE directly with Revit closed. This one-time migration is not supported by the old in-process update helper.
 
 Revit2027 uses the published 2027 API and .NET 10. The calculator desktop and numerical policies are shared with the 2024 release. Your project/settings files are retained. Runtime folders, registration and update feeds are separated by Revit version.
 Pour-sequence planning remains a design preview and is not included. Autodesk Revit host acceptance must be performed on your own test workstation; isolated Windows installer and desktop checks do not run Revit.
 No company publication, production installation or GitHub merge was performed.
-"@ | Set-Content (Join-Path $OutputDirectory 'READ-ME-FIRST.txt') -Encoding utf8
-Copy-Item (Join-Path $InstallerDirectory 'release-info.json') (Join-Path $OutputDirectory 'release-info.json')
+"@ | Set-Content (Join-Path $destination 'READ-ME-FIRST.txt') -Encoding utf8
+Copy-Item (Join-Path $InstallerDirectory 'release-info.json') (Join-Path $destination 'release-info.json')
 Write-Output "Prepared ready-to-copy Revit $year files in $OutputDirectory. No network publication occurred."
