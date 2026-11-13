@@ -61,6 +61,12 @@ namespace EngineeringDashboard
         }
         internal double WS10StrengthUtilization()=>PrimaryBeamProfile.WS10Strength(length*1000,supports.Select(x=>x*1000),(x,right)=>Response(x/1000,right));
         public static TowerBeamAnalysis Analyze(double length, double[] supports, double load, double ei, double leftEndLoad = 0, double rightEndLoad = 0)
+            =>AnalyzeCore(length,supports,load,ei,leftEndLoad,rightEndLoad,false);
+        // The internal stock search transfers its fresh, immutable local array.
+        // Public callers retain their input ownership and always receive a copy.
+        internal static TowerBeamAnalysis AnalyzeOwned(double length,double[] supports,double load,double ei)
+            =>AnalyzeCore(length,supports,load,ei,0,0,true);
+        private static TowerBeamAnalysis AnalyzeCore(double length,double[] supports,double load,double ei,double leftEndLoad,double rightEndLoad,bool ownSupports)
         {
             if (!Finite(length) || length <= 0 || !Finite(load) || load <= 0 || !Finite(ei) || ei <= 0
                 || !Finite(leftEndLoad) || !Finite(rightEndLoad) || leftEndLoad < 0 || rightEndLoad < 0
@@ -108,7 +114,7 @@ namespace EngineeringDashboard
             if (b > 1e-10) result.regions.Add(new DeflectionRegion { StartMm = supports[n - 1] * 1000, EndMm = length * 1000, PeakMm = rightPeak / ei * 1000, IsOverhang = true });
             result.DeflectionMm = Math.Max(maxY, Math.Max(leftPeak, rightPeak)) / ei * 1000;
             result.length = length; result.load = load; result.ei = ei;
-            result.supports = (double[])supports.Clone(); result.moments = m;
+            result.supports = ownSupports ? supports : (double[])supports.Clone(); result.moments = m;
             result.firstSlope = firstSlope; result.lastSlope = lastSlope;
             result.leftEndLoad = leftEndLoad; result.rightEndLoad = rightEndLoad;
             return result;

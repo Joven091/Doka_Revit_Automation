@@ -13,17 +13,30 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(DashboardDesktopBuild)' == 'true'">
+    <DefineConstants>$(DefineConstants);DASHBOARD_DESKTOP</DefineConstants>
+    <OutputPath>bin/$(Configuration)/dashboard/</OutputPath>
+    <IntermediateOutputPath>obj/$(Configuration)/dashboard/</IntermediateOutputPath>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(DashboardDesktopBuild)' == 'true'">
+    <Compile Remove="App.cs;Commands/**/*.cs;Revit/**/*.cs;Updates/UpdateWindow.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
 
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2024.*">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2024.3.60">
       <PrivateAssets>all</PrivateAssets>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2024.*">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2024.3.60">
       <PrivateAssets>all</PrivateAssets>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
@@ -49,6 +62,8 @@
     <Reference Include="WindowsBase" />
     <Reference Include="System.Xaml" />
   </ItemGroup>
+
+  <Import Project="BeamSolver/BeamSolver.Shared.props" />
 
   <Target Name="ValidateTop50NativePayload" AfterTargets="Build">
     <Error Condition="!Exists('$(TargetDir)google-ortools-native.dll') Or !Exists('$(TargetDir)ortools.dll')" Text="Top50 requires the win-x64 native OR-Tools payload beside MyRevitAddin.dll." />

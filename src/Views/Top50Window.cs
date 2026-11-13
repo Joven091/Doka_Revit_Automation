@@ -24,7 +24,6 @@ namespace EngineeringDashboard
         private readonly TextBlock progress=new TextBlock();
         private readonly List<Button> navigation=new List<Button>();
         private readonly Button optimize,cancel,undo,redo,delete;
-        private DataGrid importTable;
         private bool alternativesExpanded;
         private readonly MenuItem open,save,diagnose;
         private bool renderQueued,rendering;
@@ -38,7 +37,7 @@ namespace EngineeringDashboard
             var root=new Grid{Background=MainBackground};root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());
             var toolbar=new DockPanel{Margin=new Thickness(8),LastChildFill=true};
             System.Windows.Automation.AutomationProperties.SetAutomationId(toolbar,"Top50Toolbar");
-            optimize=Action("Optimize",async()=>{try{await this.model.OptimizeAsync();if(this.model.Selected!=null)ShowPage(2);}catch(Exception e){Error(e);}},true);cancel=Action("Cancel",()=>this.model.Cancel());
+            optimize=Action("Optimize",async()=>{try{if(page==4)await this.model.CheckPoursAsync();else{await this.model.OptimizeAsync();if(this.model.Selected!=null)ShowPage(2);}}catch(Exception e){Error(e);}},true);cancel=Action("Cancel",()=>this.model.Cancel());
             var actions=new WrapPanel{HorizontalAlignment=HorizontalAlignment.Right};
             foreach(var button in new[]{cancel,optimize}){button.Padding=new Thickness(10,5,10,5);button.Margin=new Thickness(3);button.MinHeight=30;actions.Children.Add(button);}
             DockPanel.SetDock(actions,Dock.Right);toolbar.Children.Add(actions);
@@ -46,17 +45,17 @@ namespace EngineeringDashboard
             var title=Label("Top50 Planner",18,Navy,FontWeights.SemiBold,new Thickness(3,0,10,0));title.VerticalAlignment=VerticalAlignment.Center;commands.Children.Add(title);
             var menus=new Menu{Background=Brushes.Transparent,VerticalAlignment=VerticalAlignment.Center};
             var file=new MenuItem{Header="_File",Padding=new Thickness(10,6,10,6)};System.Windows.Automation.AutomationProperties.SetAutomationId(file,"Top50File");
-            open=MenuCommand("Open project…",OpenProject,"Top50Open");save=MenuCommand("Save project…",SaveProject,"Top50Save");file.Items.Add(open);file.Items.Add(save);menus.Items.Add(file);
+            open=MenuCommand("Open project…",OpenProject,"Top50Open");save=MenuCommand("Save project…",SaveProject,"Top50Save");file.Items.Add(open);file.Items.Add(save);file.Items.Add(MenuCommand("Import DXF…",ImportDxf,"Top50ImportDxf"));menus.Items.Add(file);
             var tools=new MenuItem{Header="_Tools",Padding=new Thickness(10,6,10,6)};System.Windows.Automation.AutomationProperties.SetAutomationId(tools,"Top50Tools");
-            diagnose=MenuCommand("Diagnose…",()=>new Top50DiagnosticWindow(this.model.BuildDiagnosticReport){Owner=this}.Show(),"Top50Diagnose");tools.Items.Add(diagnose);menus.Items.Add(tools);commands.Children.Add(menus);AddRevitCommands(commands,tools);
+            diagnose=MenuCommand("Diagnose…",()=>new Top50DiagnosticWindow(this.model.BuildDiagnosticReport){Owner=this}.Show(),"Top50Diagnose");tools.Items.Add(diagnose);tools.Items.Add(MenuCommand("Review wall measurements…",ReviewWallMeasurements,"Top50ReviewWalls"));var unitsMenu=new MenuItem{Header="DXF units"};string[] unitNames={"Use DXF INSUNITS","Reviewed millimetres","Reviewed metres"};for(int u=0;u<unitNames.Length;u++){int choice=u;unitsMenu.Items.Add(MenuCommand(unitNames[u],()=>unitsChoice=choice,"Top50DxfUnits"+u));}tools.Items.Add(unitsMenu);menus.Items.Add(tools);commands.Children.Add(menus);AddRevitCommands(commands,tools);
             undo=Action("Undo",()=>this.model.Undo());redo=Action("Redo",()=>this.model.Redo());delete=Action("Delete",DeleteSelected);
             foreach(var button in new[]{undo,redo,delete}){button.Padding=new Thickness(10,5,10,5);button.Margin=new Thickness(3);button.MinHeight=30;commands.Children.Add(button);System.Windows.Automation.AutomationProperties.SetAutomationId(button,"Top50"+button.Content);DashboardToolbar.Icon(button,(string)button.Content);}
             undo.ToolTip="Undo (Ctrl+Z)";redo.ToolTip="Redo (Ctrl+Y)";delete.ToolTip="Delete selected walls (Delete)";
             PreviewKeyDown+=PlannerShortcut;toolbar.Children.Add(commands);root.Children.Add(toolbar);
             var body=new Grid{Margin=new Thickness(20,8,20,20)};body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});body.RowDefinitions.Add(new RowDefinition());body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});Grid.SetRow(body,1);root.Children.Add(body);
-            var tabs=new UniformGridProxy(4){Margin=new Thickness(0,0,0,14)};string[] labels={"Import","Settings","Results","Casting groups"};
+            var tabs=new UniformGridProxy(5){Margin=new Thickness(0,0,0,14)};string[] labels={"Import","Settings","Results","Casting groups","Pour sequence"};
             for(int i=0;i<labels.Length;i++){int index=i;var button=new Button{Content=labels[i],MinHeight=40,BorderThickness=new Thickness(0,0,0,1)};button.SetResourceReference(StyleProperty,"ViewTab");System.Windows.Automation.AutomationProperties.SetAutomationId(button,"Top50Page"+i);button.Click+=(sender,args)=>{ShowPage(index);if(index==3)QueueHighlight(false);};navigation.Add(button);tabs.Children.Add(button);}body.Children.Add(tabs);
-            Grid.SetRow(content,1);body.Children.Add(content);progress.FontSize=12;progress.Foreground=Muted;progress.Visibility=Visibility.Collapsed;progress.Margin=new Thickness(0,10,0,0);Grid.SetRow(progress,2);body.Children.Add(progress);
+            Grid.SetRow(content,1);body.Children.Add(content);progress.FontSize=12;progress.Foreground=Muted;progress.TextWrapping=TextWrapping.Wrap;progress.Visibility=Visibility.Collapsed;progress.Margin=new Thickness(0,10,0,0);System.Windows.Automation.AutomationProperties.SetAutomationId(progress,"Top50Outcome");Grid.SetRow(progress,2);body.Children.Add(progress);
             Content=root;
             this.model.PropertyChanged+=ModelChanged;Closing+=OnClosing;castingIndex=this.model.SelectedGroupIndex;ShowPage(this.model.CurrentPage);
         }
@@ -90,25 +89,31 @@ namespace EngineeringDashboard
         }
         public void ShowPage(int index)
         {
-            page=Math.Max(0,Math.Min(3,index));importTable=null;model.CurrentPage=page;
+            page=Math.Max(0,Math.Min(4,index));model.CurrentPage=page;
             for(int i=0;i<navigation.Count;i++){navigation[i].Background=i==page?Color("#FFF2BF"):Brushes.White;navigation[i].BorderBrush=i==page?Color("#D4AA00"):Line;navigation[i].BorderThickness=new Thickness(0,0,0,i==page?3:1);}
-            rendering=true;try{content.Content=page==0?ImportPage():page==1?SettingsPage():page==2?ResultsPage():CastingPage();}finally{rendering=false;}
+            rendering=true;try{content.Content=page==0?ImportPage():page==1?SettingsPage():page==2?ResultsPage():page==3?CastingPage():PourPage();}finally{rendering=false;}
             UpdateBusy();
         }
         private UIElement ImportPage()
         {
-            var root=new DockPanel{LastChildFill=true};var top=new StackPanel();
-            var commands=new WrapPanel{Margin=new Thickness(0,0,0,6)};commands.Children.Add(Action("Import DXF…",ImportDxf));var manual=Action("Add manual wall",AddManual);manual.Margin=new Thickness(8,0,0,0);commands.Children.Add(manual);commands.Children.Add(Label("Units override:",13,null,null,new Thickness(8,8,5,0)));var units=new ComboBox{ItemsSource=new[]{"Use DXF INSUNITS","Reviewed millimetres","Reviewed metres"},SelectedIndex=unitsChoice,MinWidth=145,VerticalContentAlignment=VerticalAlignment.Center,ToolTip="Applies to the next DXF import after an explicit review reason."};units.SelectionChanged+=(s,e)=>{if(!rendering)unitsChoice=units.SelectedIndex;};commands.Children.Add(units);top.Children.Add(commands);
-            DockPanel.SetDock(top,Dock.Top);root.Children.Add(top);
-            var labels=new Top50WallLabels(model.Input?.AllWalls??Array.Empty<WallRow>());
-            var rows=model.Input?.Walls.Select(w=>new ImportDisplay(w,labels[w.Id])).ToArray()??Array.Empty<ImportDisplay>();
-            var table=Table(rows,"Wall|Id|245","Length (mm)|Length|160","Status|Diagnostics|*");
-            importTable=table;table.SelectionMode=DataGridSelectionMode.Extended;table.SelectionChanged+=(sender,args)=>UpdateBusy();System.Windows.Automation.AutomationProperties.SetAutomationId(table,"Top50ImportWalls");
-            var checkbox=new Style(typeof(CheckBox));checkbox.Setters.Add(new Setter(FrameworkElement.HorizontalAlignmentProperty,HorizontalAlignment.Left));checkbox.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center));checkbox.Setters.Add(new Setter(FrameworkElement.MarginProperty,new Thickness(6,0,0,0)));
-            table.Columns.Insert(0,new DataGridCheckBoxColumn{Header="Include",Binding=new Binding(nameof(ImportDisplay.Included)){Mode=BindingMode.OneWay},Width=70,ElementStyle=checkbox});
-            table.MouseDoubleClick+=(s,e)=>{if(table.SelectedItem is ImportDisplay row)Review(row.Wall);};
-            table.PreviewKeyDown+=(s,e)=>{if(e.Key==Key.Enter&&table.SelectedItem is ImportDisplay row){Review(row.Wall);e.Handled=true;}};
-            table.ToolTip="Double-click a row or press Enter to review length, inclusion and an explicit reason.";root.Children.Add(table);return root;
+            var body=new StackPanel{Margin=new Thickness(0,8,0,0)};
+            body.Children.Add(Label("Imported walls",19,null,FontWeights.SemiBold));
+            var count=model.Input?.Walls.Count(w=>w.Included)??0;var review=model.Input?.Walls.Count(w=>!w.Included)??0;
+            var summary=Label(count+" walls included"+(review>0?" · "+review+" excluded or awaiting review":""),13,Muted,null,new Thickness(0,8,0,16));System.Windows.Automation.AutomationProperties.SetAutomationId(summary,"Top50ImportSummary");body.Children.Add(summary);
+            var buttons=new WrapPanel();
+            var highlight=Action("Highlight walls",()=>HighlightImportedWalls());highlight.IsEnabled=revit?.Highlight!=null&&model.Input?.RevitSource!=null&&count>0;highlight.MinHeight=34;highlight.Margin=new Thickness(0,0,8,0);highlight.ToolTip="Highlight every included imported wall in Revit. DXF and manually entered walls have no Revit reference.";System.Windows.Automation.AutomationProperties.SetAutomationId(highlight,"Top50HighlightWalls");buttons.Children.Add(highlight);
+            var add=Action("Add wall",async()=>await AddWallFromSelection());add.MinHeight=34;System.Windows.Automation.AutomationProperties.SetAutomationId(add,"Top50AddWall");buttons.Children.Add(add);body.Children.Add(buttons);
+            if(model.Input==null)body.Children.Add(Label(revit?.ReadSelection!=null?"Select walls in Revit, then click Add wall or Use Revit selection.":"Use File → Import DXF or Add wall to enter a measured length.",12,Muted,null,new Thickness(0,14,0,0)));
+            if(review>0)body.Children.Add(Label("Tools → Review wall measurements lets you inspect excluded walls. Full source details are available in Diagnose.",12,Muted,null,new Thickness(0,14,0,0)));
+            return body;
+        }
+        private void ReviewWallMeasurements()
+        {
+            if(model.Input==null)return;
+            var labels=new Top50WallLabels(model.Input.AllWalls);var dialog=new Window{Title="Review wall measurements",Owner=this,Width=900,Height=580,WindowStartupLocation=WindowStartupLocation.CenterOwner};
+            var root=new DockPanel{Margin=new Thickness(12)};var table=Table(model.Input.Walls.Select(w=>new ImportDisplay(w,labels[w.Id])).ToArray(),"Wall|Id|245","Length (mm)|Length|130","Status|Diagnostics|*");table.SelectionMode=DataGridSelectionMode.Extended;
+            var controls=new WrapPanel{Margin=new Thickness(0,0,0,8)};var review=Action("Review selected wall",()=>{if(table.SelectedItem is ImportDisplay row){dialog.Close();Review(row.Wall);}});controls.Children.Add(review);
+            var remove=Action("Remove selected walls",()=>{var ids=table.SelectedItems.OfType<ImportDisplay>().Select(r=>r.Wall.Id).ToArray();if(ids.Length>0){model.DeleteWalls(ids);dialog.Close();}});controls.Children.Add(remove);DockPanel.SetDock(controls,Dock.Top);root.Children.Add(controls);root.Children.Add(table);dialog.Content=root;dialog.ShowDialog();
         }
         private UIElement SettingsPage()
         {
@@ -116,28 +121,48 @@ namespace EngineeringDashboard
             var fixedInputs=new StackPanel();var percentageInputs=new StackPanel();
             System.Windows.Automation.AutomationProperties.SetAutomationId(fixedInputs,"Top50FixedMethodInputs");System.Windows.Automation.AutomationProperties.SetAutomationId(percentageInputs,"Top50PercentageMethodInputs");
             Action showMethod=()=>{fixedInputs.Visibility=model.Settings.OfferingMode==0?Visibility.Visible:Visibility.Collapsed;percentageInputs.Visibility=model.Settings.OfferingMode==1?Visibility.Visible:Visibility.Collapsed;};
-            var method=new ComboBox{ItemsSource=new[]{"Fixed longest-wall sets","Percentage reference"},SelectedIndex=model.Settings.OfferingMode};System.Windows.Automation.AutomationProperties.SetAutomationId(method,"Top50OfferingMethod");method.SelectionChanged+=(s,e)=>{if(!rendering){model.EditSettings(settings=>settings.OfferingMode=method.SelectedIndex);showMethod();}};form.Children.Add(FormRow("Method",method));
-            fixedInputs.Children.Add(FormRow("Longest walls required simultaneously",Number(model.Settings.LongestCount,v=>model.Settings.LongestCount=(int)v)));
-            var identical=new CheckBox{Content="Use identical panel sets",IsChecked=model.Settings.RequireIdenticalKits,ToolTip="Every set contains the same panel sizes and quantities. For example: 3 sets, each with two 4.5 m panels."};identical.Click+=(s,e)=>{model.EditSettings(settings=>settings.RequireIdenticalKits=identical.IsChecked==true);};fixedInputs.Children.Add(identical);form.Children.Add(fixedInputs);
-            percentageInputs.Children.Add(FormRow("Target stock / total wall length",Number(model.Settings.Percentage,v=>model.Settings.Percentage=v," %")));
-            percentageInputs.Children.Add(FormRow("Search above / below target",Number(model.Settings.BandPoints,v=>model.Settings.BandPoints=v," percentage points")));
-            var expansion=new CheckBox{Content="Allow search beyond this percentage range",IsChecked=model.Settings.AllowExpansion};expansion.Click+=(s,e)=>{model.EditSettings(settings=>settings.AllowExpansion=expansion.IsChecked==true);};percentageInputs.Children.Add(expansion);form.Children.Add(percentageInputs);showMethod();
-            var preset=new ComboBox{ItemsSource=new[]{"Economical Offer","Balanced Optimization","Fastest Construction"},SelectedIndex=model.Settings.Preset};preset.SelectionChanged+=(s,e)=>{if(!rendering){model.EditSettings(settings=>settings.Preset=preset.SelectedIndex);}};form.Children.Add(FormRow("Planning preset",preset));stack.Children.Add(Group("Offering method",form));
-            var panels=new UniformGridProxy(6);foreach(var size in Precision.CatalogMm){var check=new CheckBox{Content=(size/1000m).ToString("F2",CultureInfo.InvariantCulture)+" m",IsChecked=model.Settings.CatalogMm.Contains(size),Margin=new Thickness(0,3,0,3)};check.Click+=(s,e)=>{model.EditSettings(settings=>settings.CatalogMm=Precision.CatalogMm.Where(n=>n==size?check.IsChecked==true:settings.CatalogMm.Contains(n)).ToArray());};panels.Children.Add(check);}stack.Children.Add(Group("Permitted nominal panel lengths — user-supplied catalog",panels));
-            var fillers=new StackPanel();fillers.Children.Add(FormRow("Maximum internal fillers per wall",Number(model.Settings.MaxFillers,v=>model.Settings.MaxFillers=(int)v)));fillers.Children.Add(FormRow("Maximum filler width (mm)",Number(model.Settings.MaxFillerMm,v=>model.Settings.MaxFillerMm=(int)v)));stack.Children.Add(Group("Filler settings",fillers));return Scroll(stack);
+            var method=new ComboBox{ItemsSource=new[]{"Fixed longest-wall sets","Percentage reference"},SelectedIndex=model.Settings.OfferingMode};System.Windows.Automation.AutomationProperties.SetAutomationId(method,"Top50OfferingMethod");method.SelectionChanged+=(s,e)=>{if(!rendering){EditSettings(settings=>settings.OfferingMode=method.SelectedIndex);showMethod();}};form.Children.Add(FormRow("Method",method));
+            fixedInputs.Children.Add(FormRow("Longest walls required simultaneously",Number(model.Settings.LongestCount,v=>model.Settings.LongestCount=(int)v,field:"Longest walls required simultaneously",wholeNumber:true,minimum:1)));
+            var identical=new CheckBox{Content="Use identical panel sets",IsChecked=model.Settings.RequireIdenticalKits,ToolTip="Every set contains the same panel sizes and quantities. For example: 3 sets, each with two 4.5 m panels."};identical.Click+=(s,e)=>{EditSettings(settings=>settings.RequireIdenticalKits=identical.IsChecked==true);};fixedInputs.Children.Add(identical);form.Children.Add(fixedInputs);
+            percentageInputs.Children.Add(FormRow("Target stock / total wall length",Number(model.Settings.Percentage,v=>model.Settings.Percentage=v," %",field:"Target stock percentage")));
+            percentageInputs.Children.Add(FormRow("Search above / below target",Number(model.Settings.BandPoints,v=>model.Settings.BandPoints=v," percentage points",field:"Search range above / below target")));
+            var expansion=new CheckBox{Content="Allow search beyond this percentage range",IsChecked=model.Settings.AllowExpansion};expansion.Click+=(s,e)=>{EditSettings(settings=>settings.AllowExpansion=expansion.IsChecked==true);};percentageInputs.Children.Add(expansion);form.Children.Add(percentageInputs);showMethod();
+            var preset=new ComboBox{ItemsSource=new[]{"Economical Offer","Balanced Optimization","Fastest Construction"},SelectedIndex=model.Settings.Preset,ToolTip="Fewest panels first for every preset. Economical: lower offered LM, then fewer panel lengths. Balanced: stock, panel lengths, allocation groups, idle stock, fillers and target deviation. Fastest: fewer allocation groups; construction duration is not calculated."};System.Windows.Automation.AutomationProperties.SetAutomationId(preset,"Top50PlanningPreset");preset.SelectionChanged+=(s,e)=>{if(!rendering){EditSettings(settings=>settings.Preset=preset.SelectedIndex);}};form.Children.Add(FormRow("Planning preset",preset));stack.Children.Add(Group("Offering method",form));
+            var panels=new UniformGridProxy(6);foreach(var size in Precision.CatalogMm){var check=new CheckBox{Content=(size/1000m).ToString("F2",CultureInfo.InvariantCulture)+" m",IsChecked=model.Settings.CatalogMm.Contains(size),Margin=new Thickness(0,3,0,3)};check.Click+=(s,e)=>{EditSettings(settings=>settings.CatalogMm=Precision.CatalogMm.Where(n=>n==size?check.IsChecked==true:settings.CatalogMm.Contains(n)).ToArray());};panels.Children.Add(check);}stack.Children.Add(Group("Permitted nominal panel lengths — user-supplied catalog",panels));
+            var fillers=new StackPanel();fillers.Children.Add(FormRow("Maximum internal fillers per wall",Number(model.Settings.MaxFillers,v=>model.Settings.MaxFillers=(int)v,field:"Maximum internal fillers per wall",wholeNumber:true)));fillers.Children.Add(FormRow("Maximum filler width (mm)",Number(model.Settings.MaxFillerMm,v=>model.Settings.MaxFillerMm=(int)v,field:"Maximum filler width (mm)",wholeNumber:true,maximum:350)));stack.Children.Add(Group("Filler settings",fillers));return Scroll(stack);
         }
         private static Grid FormRow(string label,UIElement editor){var row=new Grid{Margin=new Thickness(0,3,0,3)};row.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(230)});row.ColumnDefinitions.Add(new ColumnDefinition());row.Children.Add(Label(label,13,null,null,new Thickness(0,5,10,5)));Grid.SetColumn(editor,1);row.Children.Add(editor);return row;}
-        private TextBox Number(decimal initial,Action<decimal> apply,string suffix="")
+        private void EditSettings(Action<NativeTop50Project> edit)
+        {
+            try{model.EditSettings(edit);}
+            catch(ArgumentException error){Error(error);Dispatcher.BeginInvoke(new Action(()=>ShowPage(page)));}
+        }
+        private TextBox Number(decimal initial,Action<decimal> apply,string suffix="",string field="Value",bool wholeNumber=false,int minimum=0,int maximum=int.MaxValue)
         {
             var box=new TextBox{Text=initial.ToString(CultureInfo.InvariantCulture)+suffix,Padding=new Thickness(10,5,10,5),BorderBrush=Line,BorderThickness=new Thickness(1)};
-            box.LostKeyboardFocus+=(s,e)=>{var text=box.Text.Replace(suffix.Length==0?"\0":suffix,"").Trim();if(decimal.TryParse(text,NumberStyles.Number,CultureInfo.InvariantCulture,out var value)){if(value!=initial){try{model.EditSettings(settings=>apply(value));}catch(OverflowException){box.BorderBrush=Brushes.Firebrick;Error("Value is outside the supported numeric range.");return;}initial=value;}box.ClearValue(Border.BorderBrushProperty);}else{box.BorderBrush=Brushes.Firebrick;Error("Enter a valid numeric value.");}};return box;
+            System.Windows.Automation.AutomationProperties.SetAutomationId(box,"Top50Number"+field.Replace(" ",""));
+            box.LostKeyboardFocus+=(s,e)=>
+            {
+                try
+                {
+                    var text=box.Text.Replace(suffix.Length==0?"\0":suffix,"").Trim();
+                    if(!decimal.TryParse(text,NumberStyles.Number,CultureInfo.InvariantCulture,out var value))throw new ArgumentException(field+" requires a valid number.");
+                    if(wholeNumber)Top50PlannerPolicy.WholeNumber(value,field,minimum,maximum);
+                    if(value!=initial){model.EditSettings(settings=>apply(value));initial=value;}
+                    box.ClearValue(Border.BorderBrushProperty);box.ClearValue(ToolTipProperty);
+                }
+                catch(Exception error)when(error is ArgumentException||error is OverflowException)
+                {
+                    box.Text=initial.ToString(CultureInfo.InvariantCulture)+suffix;box.BorderBrush=Brushes.Firebrick;box.ToolTip=error.Message;Error(error.Message+" Previous value kept.");
+                }
+            };return box;
         }
         private UIElement ResultsPage()
         {
-            var selected=model.Selected;if(selected==null)return Notice("Optimize reviewed walls to compare equipment proposals.");
+            var selected=model.Selected;if(selected==null)return Notice(model.IsStale?"Cached results were discarded. Optimize reviewed walls to update the equipment offer.":"Optimize reviewed walls to compare equipment proposals. Check the status below if no complete offer was found.");
             var root=new StackPanel();var kpis=new Grid{Height=76};for(int i=0;i<4;i++)kpis.ColumnDefinitions.Add(new ColumnDefinition());
             string[] captions={"Panel types","Panels — both faces","Offered length — per face","Casting groups"},values={selected.Stock.Count.ToString(),Top50PlannerPolicy.TotalPanels(selected).ToString(),Top50PlannerPolicy.OfferedLmPerFace(selected).ToString("0.00",CultureInfo.InvariantCulture)+" LM",selected.Groups.Count.ToString()};
-            for(int i=0;i<4;i++){var stack=new StackPanel();stack.Children.Add(Label(captions[i],12,Muted));stack.Children.Add(Label(values[i],22,null,FontWeights.SemiBold,new Thickness(0,4,0,0)));var card=Card(stack,new Thickness(12));card.Margin=new Thickness(i==0?0:6,0,i==3?0:6,0);Grid.SetColumn(card,i);kpis.Children.Add(card);}root.Children.Add(kpis);
+            for(int i=0;i<4;i++){var stack=new StackPanel();stack.Children.Add(Label(captions[i],12,Muted));stack.Children.Add(Label(values[i],22,null,FontWeights.SemiBold,new Thickness(0,4,0,0)));var card=Card(stack,new Thickness(12));card.Margin=new Thickness(i==0?0:6,0,i==3?0:6,0);Grid.SetColumn(card,i);kpis.Children.Add(card);}root.Children.Add(kpis);root.Children.Add(Label("Best found · fewest panels first · global optimum not established",12,Muted,null,new Thickness(0,6,0,0)));
             bool identicalSets=model.Settings.OfferingMode==0&&selected.IdenticalKitCount>1;
             var stockRows=Top50PlannerPolicy.Inventory(selected);var columns=new List<string>{"Panel length (m)|Length|*","Qty|Quantity|75"};if(identicalSets)columns.Add("Qty per set (both faces)|QuantityPerSet|170");
             var stock=Table(stockRows,columns.ToArray());stock.ColumnHeaderHeight=30;stock.RowHeight=30;stock.Height=Math.Min(360,stockRows.Count*30+32);System.Windows.Automation.AutomationProperties.SetAutomationId(stock,"Top50PanelInventory");
@@ -166,20 +191,20 @@ namespace EngineeringDashboard
             table.RowHeight=40;table.ColumnHeaderHeight=30;table.Height=112;System.Windows.Automation.AutomationProperties.SetAutomationId(table,"Top50ConnectorInventory");
             var names=new Style(typeof(TextBlock));names.Setters.Add(new Setter(TextBlock.TextWrappingProperty,TextWrapping.Wrap));names.Setters.Add(new Setter(TextBlock.FontWeightProperty,FontWeights.SemiBold));names.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center));names.Setters.Add(new Setter(FrameworkElement.MarginProperty,new Thickness(4)));((DataGridTextColumn)table.Columns[0]).ElementStyle=names;
             var articles=new Style(typeof(TextBlock));articles.Setters.Add(new Setter(TextBlock.ForegroundProperty,Muted));articles.Setters.Add(new Setter(TextBlock.FontSizeProperty,12d));articles.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center));((DataGridTextColumn)table.Columns[1]).ElementStyle=articles;Emphasize(table,2,true);
-            var section=Group("Connectors per level — both faces",table);section.Margin=new Thickness(0);return section;
+            var section=Group("Connectors per level — both faces",table);section.Margin=new Thickness(0);section.ToolTip="Stock is reused between allocation groups. Spare adjustable waling extensions may serve direct joints where the approved assembly permits. Joint geometry, clearances and structural adequacy require separate engineering verification.";return section;
         }
         private UIElement CastingPage()
         {
             var proposal=model.Selected;if(proposal==null)return Notice("Select a validated proposal to inspect casting groups.");
             var labels=new Top50WallLabels(model.Input.AllWalls);var grid=new Grid();grid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});grid.RowDefinitions.Add(new RowDefinition());
             var rows=proposal.Groups.Select((group,index)=>new GroupDisplay(group,proposal,index,labels)).ToArray();var header=new WrapPanel{Margin=new Thickness(0,0,0,8)};
-            header.Children.Add(Label("Casting group:",13,null,null,new Thickness(0,9,10,0)));var groups=new ComboBox{ItemsSource=rows,DisplayMemberPath="Choice",Width=260,MinHeight=30};System.Windows.Automation.AutomationProperties.SetAutomationId(groups,"Top50CastingGroupSelector");header.Children.Add(groups);header.Children.Add(Label(model.Input.RevitSource!=null?"Longer-face allowance on both sides · review unequal faces":"Same arrangement on both faces",12,Muted,null,new Thickness(12,9,0,0)));grid.Children.Add(header);
+            header.Children.Add(Label("Casting group:",13,null,null,new Thickness(0,9,10,0)));var groups=new ComboBox{ItemsSource=rows,DisplayMemberPath="Choice",Width=260,MinHeight=30,ToolTip="Equipment allocations reuse the offered stock sequentially. These groups are not an approved pour sequence or a check of concurrent site demand."};System.Windows.Automation.AutomationProperties.SetAutomationId(groups,"Top50CastingGroupSelector");header.Children.Add(groups);header.Children.Add(Label(model.Input.RevitSource!=null?"Longer-face allowance on both sides · review unequal faces":"Same arrangement on both faces",12,Muted,null,new Thickness(12,9,0,0)));header.Children.Add(Label("Sequential equipment reuse · not a pour sequence",12,Muted,null,new Thickness(12,9,0,0)));grid.Children.Add(header);
             var viewport=new Grid{Background=Brushes.White};viewport.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});viewport.RowDefinitions.Add(new RowDefinition());var legend=new DockPanel{Margin=new Thickness(12,8,12,0)};var key=Label("■ Panel    ▨ Filler",12,Muted);DockPanel.SetDock(key,Dock.Right);legend.Children.Add(key);legend.Children.Add(Label("Panel arrangement · dimensions in mm",12,Muted));viewport.Children.Add(legend);
             var diagrams=new ScrollViewer{VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Auto};Grid.SetRow(diagrams,1);viewport.Children.Add(diagrams);var frame=new Border{Child=viewport,BorderBrush=Line,BorderThickness=new Thickness(1)};Grid.SetRow(frame,1);grid.Children.Add(frame);
             groups.SelectionChanged+=(sender,args)=>{if(groups.SelectedItem is GroupDisplay row){castingIndex=row.Index;model.SelectedGroupIndex=castingIndex;diagrams.Content=new Top50Diagram(row.Group,labels);if(!rendering)QueueHighlight(false);}};groups.SelectedIndex=Math.Max(0,Math.Min(castingIndex,rows.Length-1));return grid;
         }
         private void DeleteSelected()
-        {if(model.IsBusy||page!=0||importTable==null)return;var ids=importTable.SelectedItems.OfType<ImportDisplay>().Select(row=>row.Wall.Id).ToArray();if(ids.Length>0)model.DeleteWalls(ids);}
+        {if(model.IsBusy)return;if(page==4){UnassignSelectedPourWalls();return;}if(page==0)ReviewWallMeasurements();}
         private void PlannerShortcut(object sender,KeyEventArgs args)
         {if(TryEditShortcut(args.Key,Keyboard.Modifiers,Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase))args.Handled=true;}
         public bool TryEditShortcut(Key key,ModifierKeys modifiers,bool textEditing)
@@ -187,7 +212,7 @@ namespace EngineeringDashboard
             if(model.IsBusy||revitBusy||textEditing)return false;
             if(modifiers==ModifierKeys.Control&&key==Key.Z&&model.CanUndo){model.Undo();return true;}
             if(modifiers==ModifierKeys.Control&&key==Key.Y&&model.CanRedo){model.Redo();return true;}
-            if(modifiers==ModifierKeys.None&&key==Key.Delete&&page==0&&importTable?.SelectedItems.Count>0){DeleteSelected();return true;}
+            if(modifiers==ModifierKeys.None&&key==Key.Delete&&((page==0&&model.Input?.Walls.Count>0)||(page==4&&pourTable?.SelectedItems.Count>0))){DeleteSelected();return true;}
             return false;
         }
         private void ImportDxf(){if(!ConfirmDiscard())return;var dialog=new OpenFileDialog{Title="Import DXF wall dimensions",Filter="DXF drawings (*.dxf)|*.dxf"};if(dialog.ShowDialog(this)==true)try{var options=new DxfImportOptions();if(unitsChoice!=0){string reason=AskText("Reviewed source units","Reason for the explicit units conversion","");if(reason==null)return;options.MmPerUnitOverride=unitsChoice==1?1:1000;options.OverrideReason=reason;}model.Import(dialog.FileName,options);ShowPage(0);}catch(Exception e){Error(e);}}
@@ -200,9 +225,16 @@ namespace EngineeringDashboard
         {
             var dialog=new Window{Title="Review "+new Top50WallLabels(model.Input.AllWalls)[wall.Id],Owner=this,Width=650,Height=370,WindowStartupLocation=WindowStartupLocation.CenterOwner,ResizeMode=ResizeMode.NoResize};var stack=new StackPanel{Margin=new Thickness(20)};stack.Children.Add(Label(string.Join("\n",wall.Diagnostics)+(wall.Revit==null?"\nProjected raw mm: "+wall.ProjectedRawMm+"; aligned endpoint distance mm: "+wall.EndpointDistanceMm+"; stored: "+wall.StoredMeasurementMm:"\nRevit centre-line: "+wall.Revit.CentreLengthMm+" mm; exterior face: "+wall.Revit.ExteriorLengthMm+" mm; interior face: "+wall.Revit.InteriorLengthMm+" mm. Equipment allowance uses the longer face."),12,Muted));var length=new TextBox{Text=wall.LengthMm.ToString(CultureInfo.InvariantCulture),Margin=new Thickness(0,12,0,6)};stack.Children.Add(FormRow("Reviewed length mm",length));var include=new CheckBox{Content="Include this reviewed wall",IsChecked=wall.Included};stack.Children.Add(include);var reason=new TextBox{Margin=new Thickness(0,8,0,8)};stack.Children.Add(FormRow("Explicit review reason",reason));var ok=new Button{Content="Apply review",IsDefault=true};ok.Click+=(s,e)=>{try{model.ReviewWall(wall.Id,decimal.Parse(length.Text,CultureInfo.InvariantCulture),include.IsChecked==true,reason.Text);dialog.DialogResult=true;}catch(Exception ex){model.RecordDiagnosticError("Review wall "+wall.Id,ex);MessageBox.Show(dialog,ex.Message);}};stack.Children.Add(ok);dialog.Content=stack;if(dialog.ShowDialog()==true){ShowPage(0);}
         }
-        private void ModelChanged(object sender,PropertyChangedEventArgs e){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>ModelChanged(sender,e)));return;}if(e.PropertyName==nameof(Top50ViewModel.Status)||e.PropertyName==nameof(Top50ViewModel.IsBusy)||e.PropertyName==nameof(Top50ViewModel.CanUndo)||e.PropertyName==nameof(Top50ViewModel.CanRedo))UpdateBusy();if(e.PropertyName==nameof(Top50ViewModel.Input)||e.PropertyName==nameof(Top50ViewModel.Proposals)||e.PropertyName==nameof(Top50ViewModel.Selected)||e.PropertyName==nameof(Top50ViewModel.Settings)){if(renderQueued)return;renderQueued=true;Dispatcher.BeginInvoke(new Action(()=>{renderQueued=false;ShowPage(page);}));}}
-        private void UpdateBusy(){bool busy=model.IsBusy||revitBusy;cancel.IsEnabled=model.IsBusy;cancel.Visibility=busy?Visibility.Visible:Visibility.Collapsed;optimize.IsEnabled=!busy;open.IsEnabled=!busy;save.IsEnabled=!busy;content.IsEnabled=!busy;undo.IsEnabled=!busy&&model.CanUndo;redo.IsEnabled=!busy&&model.CanRedo;delete.IsEnabled=!busy&&page==0&&importTable?.SelectedItems.Count>0;if(useRevit!=null)useRevit.IsEnabled=!busy&&!highlighting; if(refreshRevit!=null)refreshRevit.IsEnabled=!busy&&!highlighting&&model.Input?.RevitSource!=null; if(locateRevit!=null)locateRevit.IsEnabled=!busy&&!model.IsStale&&model.Input?.RevitSource!=null&&model.Selected!=null;progress.Text=string.IsNullOrEmpty(revitStatus)?model.Status:revitStatus;progress.Visibility=busy||model.IsStale||!string.IsNullOrEmpty(revitStatus)?Visibility.Visible:Visibility.Collapsed;}
-        private void OnClosing(object sender,CancelEventArgs e){if(model.IsBusy){model.Cancel();e.Cancel=true;return;}if(!ConfirmDiscard())e.Cancel=true;else model.PropertyChanged-=ModelChanged;}
+        private void ModelChanged(object sender,PropertyChangedEventArgs e){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>ModelChanged(sender,e)));return;}if(e.PropertyName==nameof(Top50ViewModel.Status))revitStatus="";if(e.PropertyName==nameof(Top50ViewModel.Status)||e.PropertyName==nameof(Top50ViewModel.IsBusy)||e.PropertyName==nameof(Top50ViewModel.CanUndo)||e.PropertyName==nameof(Top50ViewModel.CanRedo))UpdateBusy();if(e.PropertyName==nameof(Top50ViewModel.Input)||e.PropertyName==nameof(Top50ViewModel.Proposals)||e.PropertyName==nameof(Top50ViewModel.Selected)||e.PropertyName==nameof(Top50ViewModel.Settings)||e.PropertyName==nameof(Top50ViewModel.Pours)||e.PropertyName==nameof(Top50ViewModel.PourChecks)){if(renderQueued)return;renderQueued=true;Dispatcher.BeginInvoke(new Action(()=>{renderQueued=false;ShowPage(page);}));}}
+        private void UpdateBusy(){bool busy=model.IsBusy||revitBusy;cancel.IsEnabled=model.IsBusy;cancel.Visibility=busy?Visibility.Visible:Visibility.Collapsed;optimize.IsEnabled=!busy;open.IsEnabled=!busy;save.IsEnabled=!busy;content.IsEnabled=!busy;undo.IsEnabled=!busy&&model.CanUndo;redo.IsEnabled=!busy&&model.CanRedo;optimize.Content=page==4?"Check pours":"Optimize";delete.IsEnabled=!busy&&((page==0&&model.Input?.Walls.Count>0)||(page==4&&pourTable?.SelectedItems.Count>0));if(useRevit!=null)useRevit.IsEnabled=!busy&&!highlighting; if(refreshRevit!=null)refreshRevit.IsEnabled=!busy&&!highlighting&&model.Input?.RevitSource!=null; if(locateRevit!=null)locateRevit.IsEnabled=!busy&&!model.IsStale&&model.Input?.RevitSource!=null&&model.Selected!=null;progress.Text=string.IsNullOrEmpty(revitStatus)||model.IsBusy||model.IsStale?model.Status:revitStatus;progress.Visibility=string.IsNullOrEmpty(progress.Text)?Visibility.Collapsed:Visibility.Visible;}
+        private void OnClosing(object sender,CancelEventArgs e)
+        {
+            if(model.IsBusy){model.Cancel();e.Cancel=true;return;}
+#if DASHBOARD_DESKTOP
+            if(DesktopHost.DashboardSessionController.IsUpdateRestart){model.PropertyChanged-=ModelChanged;return;}
+#endif
+            if(!ConfirmDiscard())e.Cancel=true;else model.PropertyChanged-=ModelChanged;
+        }
         private void Error(Exception error){model.RecordDiagnosticError("Planner action",error);ShowError(error.Message);}
         private void Error(string message){model.RecordDiagnosticError("Edit planner settings",new ArgumentException(message));ShowError(message);}
         private void ShowError(string message)=>MessageBox.Show(this,message,"Top50 Planner",MessageBoxButton.OK,MessageBoxImage.Information);

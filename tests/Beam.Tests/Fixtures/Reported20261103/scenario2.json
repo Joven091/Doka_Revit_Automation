@@ -1,0 +1,531 @@
+{
+  "Scenario": 2,
+  "SourceSha256": "b76213ad3770175e323b287883f62e9b6f5d777ca19b5cc1d55b79c58a8780a0",
+  "SourceFile": "scenario2.txt",
+  "SelectedCount": 19,
+  "SelectedIds": [
+    "523373",
+    "523375",
+    "523380",
+    "523381",
+    "523459",
+    "523461",
+    "523488",
+    "523534",
+    "523742",
+    "523745",
+    "523866",
+    "523869",
+    "524263",
+    "524390",
+    "583564",
+    "583573",
+    "583653",
+    "583937",
+    "583946"
+  ],
+  "DirectionId": "523459",
+  "Selection": {
+    "Beams": [
+      {
+        "SourceId": "523459",
+        "Label": "Structural Framing [523459]",
+        "Start": {
+          "X": -17181.6291595459,
+          "Y": -11470.344049072266
+        },
+        "End": {
+          "X": -11253.850286865234,
+          "Y": -11470.344049072266
+        },
+        "WidthMm": 649.9998596191407,
+        "DepthMm": 1150.0,
+        "BottomMm": 2850.000030517578
+      },
+      {
+        "SourceId": "523461",
+        "Label": "Structural Framing [523461]",
+        "Start": {
+          "X": -17181.6291595459,
+          "Y": -7195.343362426758
+        },
+        "End": {
+          "X": -11253.850286865234,
+          "Y": -7195.343362426758
+        },
+        "WidthMm": 649.9998596191407,
+        "DepthMm": 1150.0,
+        "BottomMm": 2850.000030517578
+      },
+      {
+        "SourceId": "523488",
+        "Label": "Structural Framing [523488]",
+        "Start": {
+          "X": -11578.850216674806,
+          "Y": -17195.343438720705
+        },
+        "End": {
+          "X": -11578.850216674806,
+          "Y": -11795.343978881836
+        },
+        "WidthMm": 649.9998596191407,
+        "DepthMm": 1150.0,
+        "BottomMm": 2850.000030517578
+      },
+      {
+        "SourceId": "523534",
+        "Label": "Structural Framing [523534]",
+        "Start": {
+          "X": -11578.850216674806,
+          "Y": -6870.343432617187
+        },
+        "End": {
+          "X": -11578.850216674806,
+          "Y": -2994.680289459229
+        },
+        "WidthMm": 649.9998596191407,
+        "DepthMm": 1150.0,
+        "BottomMm": 2850.000030517578
+      },
+      {
+        "SourceId": "523742",
+        "Label": "Structural Framing [523742]",
+        "Start": {
+          "X": -17581.628581237794,
+          "Y": -3293.590823364258
+        },
+        "End": {
+          "X": -17581.628581237794,
+          "Y": -16895.343145751955
+        },
+        "WidthMm": 799.9988433837891,
+        "DepthMm": 1550.0,
+        "BottomMm": 2450.000030517578
+      },
+      {
+        "SourceId": "523745",
+        "Label": "Structural Framing [523745]",
+        "Start": {
+          "X": -5581.628489685058,
+          "Y": -3293.590823364258
+        },
+        "End": {
+          "X": -5581.628489685058,
+          "Y": -16895.343145751955
+        },
+        "WidthMm": 800.0000061035156,
+        "DepthMm": 1550.0,
+        "BottomMm": 2450.000030517578
+      },
+      {
+        "SourceId": "523866",
+        "Label": "Structural Framing [523866]",
+        "Start": {
+          "X": -16883.324111938477,
+          "Y": -17595.34344177246
+        },
+        "End": {
+          "X": -6284.103634643555,
+          "Y": -17595.34344177246
+        },
+        "WidthMm": 800.0000061035156,
+        "DepthMm": 1750.0000000000002,
+        "BottomMm": 2250.000030517578
+      },
+      {
+        "SourceId": "523869",
+        "Label": "Structural Framing [523869]",
+        "Start": {
+          "X": -16883.324111938477,
+          "Y": -2594.680213737488
+        },
+        "End": {
+          "X": -6284.103634643555,
+          "Y": -2594.680213737488
+        },
+        "WidthMm": 800.0001514434815,
+        "DepthMm": 1750.0000000000002,
+        "BottomMm": 2250.000030517578
+      },
+      {
+        "SourceId": "524263",
+        "Label": "Structural Framing [524263]",
+        "Start": {
+          "X": -5981.628492736815,
+          "Y": -11470.344049072275
+        },
+        "End": {
+          "X": -11253.850286865234,
+          "Y": -11470.344049072257
+        },
+        "WidthMm": 649.9998596191601,
+        "DepthMm": 1150.0,
+        "BottomMm": 2850.000030517578
+      },
+      {
+        "SourceId": "524390",
+        "Label": "Structural Framing [524390]",
+        "Start": {
+          "X": -5981.628492736815,
+          "Y": -7195.343362426766
+        },
+        "End": {
+          "X": -11253.850286865238,
+          "Y": -7195.343362426749
+        },
+        "WidthMm": 649.999859619158,
+        "DepthMm": 1150.0,
+        "BottomMm": 2850.000030517578
+      }
+    ],
+    "Slabs": [
+      {
+        "SourceId": "583564",
+        "Label": "Floors [583564]",
+        "ThicknessMm": 200.00000152587882,
+        "TopMm": 4000.000030517578,
+        "Outline": [
+          {
+            "X": -11253.85049700704,
+            "Y": -11795.343565267855
+          },
+          {
+            "X": -11253.85049700704,
+            "Y": -17195.343565267856
+          },
+          {
+            "X": -6285.153899585381,
+            "Y": -17195.343565267856
+          },
+          {
+            "X": -6285.153899585381,
+            "Y": -16895.343565267503
+          },
+          {
+            "X": -5981.628579123837,
+            "Y": -16895.343565267503
+          },
+          {
+            "X": -5981.628579123804,
+            "Y": -11795.343565267855
+          }
+        ]
+      },
+      {
+        "SourceId": "583573",
+        "Label": "Floors [583573]",
+        "ThicknessMm": 200.00000152587882,
+        "TopMm": 4000.000030517578,
+        "Outline": [
+          {
+            "X": -17181.62857912377,
+            "Y": -11795.343565267855
+          },
+          {
+            "X": -17181.62857912377,
+            "Y": -16895.343565267503
+          },
+          {
+            "X": -16885.15389958445,
+            "Y": -16895.343565267503
+          },
+          {
+            "X": -16885.15389958445,
+            "Y": -17195.343565267856
+          },
+          {
+            "X": -11903.85049700704,
+            "Y": -17195.343565267856
+          },
+          {
+            "X": -11903.85049700704,
+            "Y": -11795.343565267855
+          }
+        ]
+      },
+      {
+        "SourceId": "583653",
+        "Label": "Floors [583653]",
+        "ThicknessMm": 200.00000152587882,
+        "TopMm": 4000.000030517578,
+        "Outline": [
+          {
+            "X": -17181.628579123717,
+            "Y": -7520.343565267854
+          },
+          {
+            "X": -17181.628579123717,
+            "Y": -11145.343565267855
+          },
+          {
+            "X": -5981.628579123763,
+            "Y": -11145.343565267855
+          },
+          {
+            "X": -5981.628579123737,
+            "Y": -7520.343565267854
+          }
+        ]
+      },
+      {
+        "SourceId": "583937",
+        "Label": "Floors [583937]",
+        "ThicknessMm": 200.00000152587882,
+        "TopMm": 4000.000030517578,
+        "Outline": [
+          {
+            "X": -6285.153899585381,
+            "Y": -3295.343565267621
+          },
+          {
+            "X": -6285.153899585381,
+            "Y": -2994.6801916553454
+          },
+          {
+            "X": -11253.85049700704,
+            "Y": -2994.6801916553454
+          },
+          {
+            "X": -11253.85049700704,
+            "Y": -6870.3435652678545
+          },
+          {
+            "X": -5981.628579123707,
+            "Y": -6870.3435652678545
+          },
+          {
+            "X": -5981.628579123685,
+            "Y": -3295.343565267621
+          }
+        ]
+      },
+      {
+        "SourceId": "583946",
+        "Label": "Floors [583946]",
+        "ThicknessMm": 200.00000152587882,
+        "TopMm": 4000.000030517578,
+        "Outline": [
+          {
+            "X": -16885.15389958445,
+            "Y": -2994.6801916553454
+          },
+          {
+            "X": -16885.15389958445,
+            "Y": -3295.343565267621
+          },
+          {
+            "X": -17181.628579123662,
+            "Y": -3295.343565267621
+          },
+          {
+            "X": -17181.628579123662,
+            "Y": -6870.3435652678545
+          },
+          {
+            "X": -11903.85049700704,
+            "Y": -6870.3435652678545
+          },
+          {
+            "X": -11903.85049700704,
+            "Y": -2994.6801916553454
+          }
+        ]
+      }
+    ],
+    "Boundaries": [
+      {
+        "SourceId": "523373",
+        "Label": "Structural Columns [523373]",
+        "Kind": "Column",
+        "BottomMm": -2000.000015258789,
+        "TopMm": 3800.0000289916993,
+        "Outline": [
+          {
+            "X": -16885.15389958445,
+            "Y": -1895.3435652675128
+          },
+          {
+            "X": -18285.15389958538,
+            "Y": -1895.3435652675128
+          },
+          {
+            "X": -18285.15389958538,
+            "Y": -2194.680191655053
+          },
+          {
+            "X": -18285.15389958538,
+            "Y": -2994.6801916550567
+          },
+          {
+            "X": -18285.15389958538,
+            "Y": -3295.343565267621
+          },
+          {
+            "X": -17981.628579123666,
+            "Y": -3295.343565267621
+          },
+          {
+            "X": -17181.62857912366,
+            "Y": -3295.343565267621
+          },
+          {
+            "X": -16885.15389958445,
+            "Y": -3295.343565267621
+          }
+        ]
+      },
+      {
+        "SourceId": "523375",
+        "Label": "Structural Columns [523375]",
+        "Kind": "Column",
+        "BottomMm": -2000.000015258789,
+        "TopMm": 3800.0000289916993,
+        "Outline": [
+          {
+            "X": -4885.15389958445,
+            "Y": -1895.3435652675128
+          },
+          {
+            "X": -6285.153899585382,
+            "Y": -1895.3435652675128
+          },
+          {
+            "X": -6285.153899585382,
+            "Y": -2194.680191655343
+          },
+          {
+            "X": -6285.153899585382,
+            "Y": -2994.680191655347
+          },
+          {
+            "X": -6285.153899585382,
+            "Y": -3295.343565267621
+          },
+          {
+            "X": -5981.628579123666,
+            "Y": -3295.343565267621
+          },
+          {
+            "X": -5181.628579123662,
+            "Y": -3295.343565267621
+          },
+          {
+            "X": -4885.15389958445,
+            "Y": -3295.343565267621
+          }
+        ]
+      },
+      {
+        "SourceId": "523380",
+        "Label": "Structural Columns [523380]",
+        "Kind": "Column",
+        "BottomMm": -2000.000015258789,
+        "TopMm": 3800.0000289916993,
+        "Outline": [
+          {
+            "X": -16885.15389958445,
+            "Y": -16895.34356526751
+          },
+          {
+            "X": -18285.15389958538,
+            "Y": -16895.34356526751
+          },
+          {
+            "X": -18285.15389958538,
+            "Y": -17195.34356526756
+          },
+          {
+            "X": -18285.15389958538,
+            "Y": -17995.343565267565
+          },
+          {
+            "X": -18285.15389958538,
+            "Y": -18295.343565267616
+          },
+          {
+            "X": -16885.15389958445,
+            "Y": -18295.343565267616
+          }
+        ]
+      },
+      {
+        "SourceId": "523381",
+        "Label": "Structural Columns [523381]",
+        "Kind": "Column",
+        "BottomMm": -2000.000015258789,
+        "TopMm": 3800.0000289916993,
+        "Outline": [
+          {
+            "X": -4885.15389958445,
+            "Y": -16895.34356526751
+          },
+          {
+            "X": -6285.153899585382,
+            "Y": -16895.34356526751
+          },
+          {
+            "X": -6285.153899585382,
+            "Y": -17195.343565267853
+          },
+          {
+            "X": -6285.153899585382,
+            "Y": -17995.343565267856
+          },
+          {
+            "X": -6285.153899585382,
+            "Y": -18295.343565267616
+          },
+          {
+            "X": -4885.15389958445,
+            "Y": -18295.343565267616
+          }
+        ]
+      }
+    ]
+  },
+  "Parts": [
+    {
+      "Label": "Area 1 · 5 slab panels",
+      "Key": "523459/523461/523488/523534/523866/523869/524263/524390/583564/583573/583653/583937/583946",
+      "Inputs": "PlywoodDeflectionLimit = L/350\nPlywoodProfileId = doka-18mm-9732-103\nUseTowers = True\nTransferSlabLoads = True\nUseBeamNetwork = True\nDepth = 500\nWidth = 200\nBeamLengthMm = 11200.000666809086\nFloorHeight = 3000\nNumberOfProps = 2\nTowerLegCapacityKn = 30\nPrimaryMaterial = DoubleH20\nStockLengthsText = 1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900\nAllowCustomH20Lengths = False\nCustomH20Scope = Both\nIgnoreUplift = True\nStockEndSetbackMm = 150\nMaximumConcreteEndOverhangMm = 150\nExclude600Standalone = False\nUpperSupportSpacingMm = 305\nHasLeftSlab = False\nHasRightSlab = False\nLeftSlabThickness = 200\nRightSlabThickness = 200\nLeftSlabBayMm = 3900\nRightSlabBayMm = 3900\nSlabStripWidthMm = 300\nUseCustomLoads = False\nCustomLiveLoad = 2.25\nCustomFormworkLoad = 0.4\nProp configuration = 300 at bottom\nDeflection criterion = L/270\nDeflection denominator = 270\nFixed deflection limit mm = 0\nB1: width=800.0000061035156; depth=1750.0000000000002 mm; bottom=-1750 mm\nB2: width=649.99985961914069; depth=1150 mm; bottom=-1150 mm\nB3: width=649.99985961914069; depth=1150 mm; bottom=-1150 mm\nB4: width=800.00015144348151; depth=1750.0000000000002 mm; bottom=-1750 mm\nS1: clear span=5399.9994598388666; thickness=200.00000152587882 mm\nS2: clear span=3625.0008270263679; thickness=200.00000152587882 mm\nS3: clear span=3875.6631431579608; thickness=200.00000152587882 mm\nX1: slab bay=1; centre=5602.7789428710948; width=649.99985961914069; depth=1150 mm; bottom=-1150 mm; supports=Automatic\nX2: slab bay=3; centre=5602.7789428710948; width=649.99985961914069; depth=1150 mm; bottom=-1150 mm; supports=Automatic"
+    },
+    {
+      "Label": "Beam 523742 · between columns",
+      "Key": "523742",
+      "Inputs": "PlywoodDeflectionLimit = L/350\nPlywoodProfileId = doka-18mm-9732-103\nUseTowers = True\nTransferSlabLoads = False\nUseBeamNetwork = False\nDepth = 1550\nWidth = 799.99884338378911\nBeamLengthMm = 13599.999580484333\nFloorHeight = 3000\nNumberOfProps = 2\nTowerLegCapacityKn = 30\nPrimaryMaterial = DoubleH20\nStockLengthsText = 1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900\nAllowCustomH20Lengths = False\nCustomH20Scope = Both\nIgnoreUplift = True\nStockEndSetbackMm = 150\nMaximumConcreteEndOverhangMm = 150\nExclude600Standalone = False\nUpperSupportSpacingMm = 305\nHasLeftSlab = False\nHasRightSlab = False\nLeftSlabThickness = 200\nRightSlabThickness = 200\nLeftSlabBayMm = 3900\nRightSlabBayMm = 3900\nSlabStripWidthMm = 300\nUseCustomLoads = False\nCustomLiveLoad = 2.25\nCustomFormworkLoad = 0.4\nProp configuration = 300 at bottom\nDeflection criterion = L/270\nDeflection denominator = 270\nFixed deflection limit mm = 0\nB1: width=799.99884338378911; depth=1550 mm; bottom=-1550 mm\n\n\nVISIBLE / UNCOMMITTED FIELD TEXT\nBeam 523742 · between columns\n\nLAST / RUNNING SEARCH\nNo tower search has been started in this session.\n\nPLYWOOD SECONDARY SPACING\nDoka plywood · 18 mm · maximum secondary spacing 305 mm · L/350\nPressure 41.65 kN/m² · governs: Sheet spacing · Deflection · approximate chart reading\n2440 × 1220 mm sheet layout · chart maximum 315 mm · shorter spans at joints\nBeam: 305 mm\n\nLOADING POLICY\nFully loaded beam + connected slabs + applicable crossings only. Partial construction stages are not checked.\n\nPRIMARY MATERIAL BASIS\nDouble H20 per primary line, equal load sharing: M 10 kNm, V 22 kN, EI 899.7512 kNm².\n\nSEARCH LIMITS / RANKING\nEngineer search: initial legs per primary line = ceiling(loaded line force / min(material assumption, configured leg capacity)); double H20 assumption 35 kN, WS10 assumption 70 kN. Check the estimated tier, fewer legs, then additional legs as required. Rank passing layouts by legs, separate tower groups, 1500 mm braces (1000 mm fallback), symmetry and material economy. Existing member/individual-leg checks determine acceptance. Brace preference does not verify erection stability.\nNormal calculation has no elapsed-time limit. The 30-second solution time is a performance target. Catalogue, custom and fallback searches run to completion within their candidate limits; user cancellation remains available."
+    },
+    {
+      "Label": "Beam 523745 · between columns",
+      "Key": "523745",
+      "Inputs": "PlywoodDeflectionLimit = L/350\nPlywoodProfileId = doka-18mm-9732-103\nUseTowers = True\nTransferSlabLoads = False\nUseBeamNetwork = False\nDepth = 1550\nWidth = 800.0000061035156\nBeamLengthMm = 13599.999580484333\nFloorHeight = 3000\nNumberOfProps = 2\nTowerLegCapacityKn = 30\nPrimaryMaterial = DoubleH20\nStockLengthsText = 1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900\nAllowCustomH20Lengths = False\nCustomH20Scope = Both\nIgnoreUplift = True\nStockEndSetbackMm = 150\nMaximumConcreteEndOverhangMm = 150\nExclude600Standalone = False\nUpperSupportSpacingMm = 305\nHasLeftSlab = False\nHasRightSlab = False\nLeftSlabThickness = 200\nRightSlabThickness = 200\nLeftSlabBayMm = 3900\nRightSlabBayMm = 3900\nSlabStripWidthMm = 300\nUseCustomLoads = False\nCustomLiveLoad = 2.25\nCustomFormworkLoad = 0.4\nProp configuration = 300 at bottom\nDeflection criterion = L/270\nDeflection denominator = 270\nFixed deflection limit mm = 0\nB1: width=800.0000061035156; depth=1550 mm; bottom=-1550 mm\n\n\nVISIBLE / UNCOMMITTED FIELD TEXT\nBeam 523745 · between columns\n\nLAST / RUNNING SEARCH\nNo tower search has been started in this session.\n\nPLYWOOD SECONDARY SPACING\nDoka plywood · 18 mm · maximum secondary spacing 305 mm · L/350\nPressure 41.65 kN/m² · governs: Sheet spacing · Deflection · approximate chart reading\n2440 × 1220 mm sheet layout · chart maximum 315 mm · shorter spans at joints\nBeam: 305 mm\n\nLOADING POLICY\nFully loaded beam + connected slabs + applicable crossings only. Partial construction stages are not checked.\n\nPRIMARY MATERIAL BASIS\nDouble H20 per primary line, equal load sharing: M 10 kNm, V 22 kN, EI 899.7512 kNm².\n\nSEARCH LIMITS / RANKING\nEngineer search: initial legs per primary line = ceiling(loaded line force / min(material assumption, configured leg capacity)); double H20 assumption 35 kN, WS10 assumption 70 kN. Check the estimated tier, fewer legs, then additional legs as required. Rank passing layouts by legs, separate tower groups, 1500 mm braces (1000 mm fallback), symmetry and material economy. Existing member/individual-leg checks determine acceptance. Brace preference does not verify erection stability.\nNormal calculation has no elapsed-time limit. The 30-second solution time is a performance target. Catalogue, custom and fallback searches run to completion within their candidate limits; user cancellation remains available."
+    }
+  ],
+  "SearchElapsedSeconds": 75.026,
+  "Inputs": "PlywoodDeflectionLimit = L/350\nPlywoodProfileId = doka-18mm-9732-103\nUseTowers = True\nTransferSlabLoads = True\nUseBeamNetwork = True\nDepth = 500\nWidth = 200\nBeamLengthMm = 11200.000666809086\nFloorHeight = 3000\nNumberOfProps = 4+\nTowerLegCapacityKn = 70\nPrimaryMaterial = DoubleH20\nStockLengthsText = 1250; 1800; 2450; 2650; 2900; 3300; 3600; 3900; 4500; 4900\nAllowCustomH20Lengths = True\nCustomH20Scope = Both\nIgnoreUplift = True\nStockEndSetbackMm = 150\nMaximumConcreteEndOverhangMm = 150\nExclude600Standalone = True\nUpperSupportSpacingMm = 305\nHasLeftSlab = False\nHasRightSlab = False\nLeftSlabThickness = 200\nRightSlabThickness = 200\nLeftSlabBayMm = 3900\nRightSlabBayMm = 3900\nSlabStripWidthMm = 500\nUseCustomLoads = False\nCustomLiveLoad = 2.25\nCustomFormworkLoad = 0.4\nProp configuration = DokaFit Prop 300 at bottom\nDeflection criterion = L/270\nDeflection denominator = 270\nFixed deflection limit mm = 0\nB1: width=800.0000061035156; depth=1750.0000000000002 mm; bottom=-1750 mm\nB2: width=649.99985961914069; depth=1150 mm; bottom=-1150 mm\nB3: width=649.99985961914069; depth=1150 mm; bottom=-1150 mm\nB4: width=800.00015144348151; depth=1750.0000000000002 mm; bottom=-1750 mm\nS1: clear span=5399.9994598388666; thickness=200.00000152587882 mm\nS2: clear span=3625.0008270263679; thickness=200.00000152587882 mm\nS3: clear span=3875.6631431579608; thickness=200.00000152587882 mm\nX1: slab bay=1; centre=5602.7789428710948; width=649.99985961914069; depth=1150 mm; bottom=-1150 mm; supports=Automatic\nX2: slab bay=3; centre=5602.7789428710948; width=649.99985961914069; depth=1150 mm; bottom=-1150 mm; supports=Automatic",
+  "ActiveSpans": [
+    {
+      "Beam": 1,
+      "StartMm": 298.30504760742406,
+      "EndMm": 10896.47525996052,
+      "LengthMm": 10598.170212353096
+    },
+    {
+      "Beam": 2,
+      "StartMm": 0.0,
+      "EndMm": 11200.000666809086,
+      "LengthMm": 11200.000666809086
+    },
+    {
+      "Beam": 3,
+      "StartMm": 0.0,
+      "EndMm": 11200.000666809086,
+      "LengthMm": 11200.000666809086
+    },
+    {
+      "Beam": 4,
+      "StartMm": 298.30504760742406,
+      "EndMm": 10896.47525996052,
+      "LengthMm": 10598.170212353096
+    }
+  ]
+}

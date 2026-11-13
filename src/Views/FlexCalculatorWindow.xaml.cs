@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+#if !DASHBOARD_DESKTOP
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
+#endif
 using MyRevitAddin.Views;
 
 namespace EngineeringDashboard
@@ -129,6 +131,9 @@ namespace EngineeringDashboard
             }
         }
 
+#if DASHBOARD_DESKTOP
+        private async void BtnImportValues_Click(object sender,RoutedEventArgs e)=>await ApplySlabFromDesktopAsync();
+#else
         private bool applyingToSlab;
         private async void BtnImportValues_Click(object sender,RoutedEventArgs e)
         {
@@ -240,6 +245,7 @@ namespace EngineeringDashboard
             public bool AllowReference(Reference reference, XYZ position) => false;
         }
         private static bool IsLength(Parameter p) => p != null && p.StorageType == StorageType.Double && p.Definition.GetDataType() == SpecTypeId.Length;
+#endif
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
             this.Close();

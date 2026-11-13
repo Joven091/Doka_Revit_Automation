@@ -44,7 +44,7 @@ internal static class Program
         var directory=Path.Combine(Path.GetTempPath(),"Top50-Revit-tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
         try
         {
-            var path=Path.Combine(directory,"source.top50");model.Save(path);Check(NativeProjectStore.Load(path).Version==5,"Revit projects declare V5");
+            var path=Path.Combine(directory,"source.top50");model.Save(path);Check(NativeProjectStore.Load(path).Version==Top50PlannerPolicy.ProjectVersion,"Revit projects declare the current project format");
             var opened=new Top50ViewModel();opened.Open(path,Path.Combine(directory,"cache"));Check(opened.Input.Walls.Count==2&&opened.Input.RemovedWalls.Count==1&&opened.Input.Walls.Any(w=>w.Layer=="Manual"),"project reopen preserves Revit walls, manual rows and deletions without the RVT file");
             Check(opened.Input.Walls.Single(w=>w.Id==firstId).Revit.UniqueId==first.UniqueId&&opened.BuildDiagnosticReport().Contains("exterior mm=6250"),"saved native identities and both face measurements survive reopen");
             var stored=NativeProjectStore.Load(path);stored.SourceBase64=Convert.ToBase64String(new byte[]{1,2,3});NativeProjectStore.Save(stored,path);Reject(()=>NativeProjectStore.Load(path),"checksum");
@@ -52,6 +52,14 @@ internal static class Program
         finally{Directory.Delete(directory,true);}
         app.ActiveUIDocument.Document.Elements.Remove(first);var missing=Top50RevitSelection.Refresh(app,request);model.RefreshRevit(missing);Check(!model.Input.Walls.Single(w=>w.Id==firstId).Included&&model.Input.Walls.Single(w=>w.Id==firstId).Diagnostics.Any(n=>n.Contains("missing")),"deleted native walls retain their identity and are excluded after refresh");
         var previous=model.Input;Reject(()=>model.ImportRevit(unsupported.RevitSource),"No supported");Check(ReferenceEquals(previous,model.Input)&&model.BuildDiagnosticReport().Contains("Curved"),"invalid import preserves the current offer and records source errors");
+        var fastModel=new Top50ViewModel();for(int i=0;i<4;i++)fastModel.AddManual(1000,"Fast outcome regression");
+        fastModel.EditSettings(s=>{s.CatalogMm=new[]{1000};s.OfferingMode=1;s.Percentage=45;s.BandPoints=1;});
+        System.ComponentModel.PropertyChangedEventHandler cancelBusy=null;
+        cancelBusy=(sender,change)=>{if(change.PropertyName==nameof(Top50ViewModel.IsBusy)&&fastModel.IsBusy){fastModel.PropertyChanged-=cancelBusy;fastModel.Cancel();}};
+        fastModel.PropertyChanged+=cancelBusy;fastModel.OptimizeAsync().GetAwaiter().GetResult();
+        Check(!fastModel.IsBusy&&fastModel.Selected==null&&fastModel.Status.Contains("cancelled"),"active first cancellation has a terminal outcome before returning idle");
+        string cancelled=fastModel.Status;fastModel.Cancel();Check(fastModel.Status==cancelled,"idle Cancel preserves the completed cancellation outcome");
+        fastModel.OptimizeAsync().GetAwaiter().GetResult();string completed=fastModel.Status;fastModel.Cancel();Check(completed.Contains("No complete proposal found")&&fastModel.Status==completed,"late Cancel preserves a fast no-result outcome");
         Console.WriteLine(checks+" Top50 Revit source, reader, refresh, highlight and persistence checks passed (test-only Revit API stand-ins).");
     }
 }

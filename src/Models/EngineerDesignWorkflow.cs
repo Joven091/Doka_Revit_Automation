@@ -3,9 +3,48 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace EngineeringDashboard
 {
+    // Necessary support counts belong to the exact prepared check, including its
+    // resolved loads and alternative detail choices. Weak keys retain neither a
+    // completed receiving solve nor its captured load plan after its callbacks die.
+    internal static class PreparedReceiverSupportBounds
+    {
+        private sealed class Bound
+        {
+            internal readonly Func<double[],double,int> Count;
+            internal readonly Func<TransferredSlabOptimizer.Geometry,double,bool> CountsMayFit;
+            internal Bound(Func<double[],double,int> count,Func<TransferredSlabOptimizer.Geometry,double,bool> countsMayFit)
+            {Count=count;CountsMayFit=countsMayFit;}
+        }
+        private static readonly ConditionalWeakTable<Func<TransferredSlabOptimizer.Geometry,double,bool>,Bound> bounds
+            =new ConditionalWeakTable<Func<TransferredSlabOptimizer.Geometry,double,bool>,Bound>();
+        internal static Func<TransferredSlabOptimizer.Geometry,double,bool> Attach(Func<TransferredSlabOptimizer.Geometry,double,bool> check,Func<double[],double,int> count,
+            Func<TransferredSlabOptimizer.Geometry,double,bool> countsMayFit=null)
+        {bounds.Add(check,new Bound(count,countsMayFit));return check;}
+        internal static int Minimum(Func<TransferredSlabOptimizer.Geometry,double,bool> check,double[] stocks,double edge)
+        {
+            if(ReferenceEquals(check,CrossBeamSupportOptimizer.FailedReceiver))return int.MaxValue;
+            return check!=null && bounds.TryGetValue(check,out var bound) ? bound.Count(stocks,edge) : 0;
+        }
+        private static readonly Func<TransferredSlabOptimizer.Geometry,double,bool> UnknownMayFit=(geometry,edge)=>true;
+        // A prepared callback receives metadata once. Bind it outside candidate
+        // loops and composite predicates; unknown callbacks stay conservative.
+        internal static Func<TransferredSlabOptimizer.Geometry,double,bool> Predicate(Func<TransferredSlabOptimizer.Geometry,double,bool> check)
+        {
+            if(ReferenceEquals(check,CrossBeamSupportOptimizer.FailedReceiver))return CrossBeamSupportOptimizer.FailedReceiver;
+            return check!=null && bounds.TryGetValue(check,out var bound) && bound.CountsMayFit!=null ? bound.CountsMayFit : UnknownMayFit;
+        }
+        internal static bool MayFit(Func<TransferredSlabOptimizer.Geometry,double,bool> check,TransferredSlabOptimizer.Geometry geometry,double edge)
+            =>Predicate(check)(geometry,edge);
+        internal static Func<TransferredSlabOptimizer.Geometry,double,bool> Preserve(Func<TransferredSlabOptimizer.Geometry,double,bool> check,Func<TransferredSlabOptimizer.Geometry,double,bool> source)
+        {
+            var predicate=Predicate(source);
+            return Attach(check,(stocks,edge)=>Minimum(source,stocks,edge),predicate);
+        }
+    }
     // Loads per metre along the main beam, at their actual transverse positions.
     // A reference-spacing diagram scales these inputs before solving reactions.
     internal sealed class PositionedSecondaryLoad
@@ -35,7 +74,44 @@ namespace EngineeringDashboard
         internal readonly Dictionary<int,double[]> PrimaryBearingTransfers=new Dictionary<int,double[]>();
         internal readonly Dictionary<int,double[]> CrossingResultantOffsetsMm=new Dictionary<int,double[]>();
         internal readonly Dictionary<int,double> SlabLedgerForces=new Dictionary<int,double>();
-        private readonly ConcurrentDictionary<string,EngineerPrimaryPlan> resolvedCache=new ConcurrentDictionary<string,EngineerPrimaryPlan>();
+        private readonly ConcurrentDictionary<ResolvedPlanKey,EngineerPrimaryPlan> resolvedCache=new ConcurrentDictionary<ResolvedPlanKey,EngineerPrimaryPlan>();
+        // Snapshot the same ordered source identity without formatting every
+        // bearing coordinate and reaction into short-lived strings. The owner
+        // fixes the secondary basis; longitudinal tower stations are absent
+        // because they do not change this determinate transverse reaction split.
+        internal sealed class ResolvedPlanKey : IEquatable<ResolvedPlanKey>
+        {
+            private readonly long[] values;
+            private readonly string[] labels;
+            private readonly int hash;
+            internal ResolvedPlanKey(TowerInput common,TransferNetworkResult result,int beam,CrossBeamSupportResult[] supports,TransferNetworkInput network,bool pending)
+            {
+                int bearings=0;foreach(var support in supports)foreach(var bearing in support.Bearings)if(bearing.Beam==beam)bearings++;
+                values=new long[7+6*supports.Length+9*bearings+6*network.CrossingBeams.Length];labels=new string[bearings];
+                int at=0,label=0;
+                void Add(double value){values[at++]=BitConverter.DoubleToInt64Bits(value);}
+                Add(beam);Add(result.BeamCentresMm[beam]);Add(pending?1:0);Add(common.LegCapacityKn);Add((double)common.PrimaryMaterial);Add(supports.Length);
+                var transfer=result.Beams[beam].Transfer;
+                foreach(var support in supports)
+                {
+                    Add(support.Input.BayNumber);Add(support.Input.PositionMm);Add(support.Input.WidthMm);Add(support.UsesSpreader?1:0);Add(support.SlabEdgeLoadKn);
+                    int local=0;foreach(var bearing in support.Bearings)if(bearing.Beam==beam)local++;Add(local);
+                    foreach(var bearing in support.Bearings)if(bearing.Beam==beam)
+                    {
+                        Add(bearing.Xmm);Add(bearing.Ymm);Add(bearing.ReactionKn);labels[label++]=bearing.Label??"";
+                        Add(bearing.IsConcreteEndZone?1:0);Add(bearing.IsShutterEndZone?1:0);Add(bearing.EndZoneStartMm);Add(bearing.EndZoneEndMm);Add(bearing.PrimaryLine);
+                        Add(bearing.IsPrimaryBearing?0:transfer.LowerCases[0][bearing.Row].StartMm);
+                    }
+                }
+                Add(network.CrossingBeams.Length);
+                foreach(var crossing in network.CrossingBeams)
+                {Add(crossing.BayNumber);Add(crossing.PositionMm);Add(crossing.WidthMm);Add(crossing.DepthMm);Add(crossing.BottomElevationMm);Add((double)crossing.SupportMode);}
+                unchecked{int code=17;foreach(long value in values)code=code*31+value.GetHashCode();foreach(string text in labels)code=code*31+StringComparer.Ordinal.GetHashCode(text);hash=code;}
+            }
+            public override int GetHashCode()=>hash;
+            public override bool Equals(object other)=>Equals(other as ResolvedPlanKey);
+            public bool Equals(ResolvedPlanKey other)=>other!=null && hash==other.hash && values.SequenceEqual(other.values) && labels.SequenceEqual(other.labels,StringComparer.Ordinal);
+        }
         internal bool HasPositionedLoads=>SecondaryBasis!=null;
         internal bool CarriesBay(int bay)=>(bay==Beam-1 && LeftSlab) || (bay==Beam && RightSlab);
         internal bool HasCrossings=>Adjacent(Network,Beam).Any();
@@ -151,15 +227,12 @@ namespace EngineeringDashboard
         internal bool Applies(CrossBeamSupportResult[] supports)=>UseDesignZones;
         internal EngineerPrimaryPlan Resolve(TowerInput common,TransferNetworkResult result,int receivingBeam,CrossBeamSupportResult[] supports,bool pendingAssignments=false)
         {
-            var t=result.Beams[receivingBeam].Transfer;string cacheKey=null;
+            var t=result.Beams[receivingBeam].Transfer;ResolvedPlanKey cacheKey=null;
             if(common.ReuseSearchWork)
             {
                 // Only identical transverse sources are reused. Longitudinal tower
                 // stations do not alter this statically determinate reaction split.
-                cacheKey=FormattableString.Invariant($"{receivingBeam}|{result.BeamCentresMm[receivingBeam]:R}|{pendingAssignments}|{common.LegCapacityKn:R}|{common.PrimaryMaterial}|")
-                    +string.Join(";",supports.Select(s=>FormattableString.Invariant($"{s.Input.BayNumber},{s.Input.PositionMm:R},{s.Input.WidthMm:R},{s.UsesSpreader},{s.SlabEdgeLoadKn:R}")+":"
-                        +string.Join(",",s.Bearings.Where(b=>b.Beam==receivingBeam).Select(b=>FormattableString.Invariant($"{b.Xmm:R}/{b.Ymm:R}/{b.ReactionKn:R}/{b.Label}/{b.IsConcreteEndZone}/{b.IsShutterEndZone}/{b.EndZoneStartMm:R}/{b.EndZoneEndMm:R}/{b.PrimaryLine}/{(b.IsPrimaryBearing ? 0 : t.LowerCases[0][b.Row].StartMm):R}")))))
-                    +"|"+string.Join(";",Network.CrossingBeams.Select(c=>FormattableString.Invariant($"{c.BayNumber}/{c.PositionMm:R}/{c.WidthMm:R}/{c.DepthMm:R}/{c.BottomElevationMm:R}/{c.SupportMode}")));
+                cacheKey=new ResolvedPlanKey(common,result,receivingBeam,supports,Network,pendingAssignments);
                 if(resolvedCache.TryGetValue(cacheKey,out var cached))return cached;
             }
             var plan=CopyBasis();plan.IsResolved=true;
@@ -208,10 +281,13 @@ namespace EngineeringDashboard
             return plan;
         }
         internal double ValueAt(double position,int line)=>Lines[line].Where(q=>q.StartMm<=position+1e-7 && q.EndMm>position+1e-7).Sum(q=>q.KnPerM);
+        internal BeamDistributedLoad[][] WithoutCrossingLoads()=>Build(new HashSet<int>());
         internal BeamDistributedLoad[] Loads(double start,double length,int line,IEnumerable<int> active=null,double selfWeight=0)
         {
             var zones=active==null ? Lines : Build(new HashSet<int>(active));
-            var loads=zones[line].Select(q=>new BeamDistributedLoad {StartMm=Math.Max(start,q.StartMm)-start,EndMm=Math.Min(start+length,q.EndMm)-start,KnPerM=q.KnPerM})
+            // Clip again in member coordinates: subtracting an absolute origin can
+            // round an exactly clipped endpoint a fraction above the member length.
+            var loads=zones[line].Select(q=>new BeamDistributedLoad {StartMm=Math.Max(0,Math.Max(start,q.StartMm)-start),EndMm=Math.Min(length,Math.Min(start+length,q.EndMm)-start),KnPerM=q.KnPerM})
                 .Where(q=>q.EndMm>q.StartMm+1e-7).ToList();
             if(selfWeight>0)loads.Add(new BeamDistributedLoad {StartMm=0,EndMm=length,KnPerM=selfWeight});
             return Merge(loads);

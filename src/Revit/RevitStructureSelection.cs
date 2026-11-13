@@ -61,7 +61,7 @@ namespace EngineeringDashboard
                         if(line==null){record.Status="Blocked";problems.Add(label+": only straight horizontal beams can be imported.");continue;}
                         var a=line.GetEndPoint(0);var b=line.GetEndPoint(1);var direction=b-a;
                         record.Details+="\nLocation start XYZ (mm): "+Xyz(a)+"; end XYZ (mm): "+Xyz(b);
-                        if(Math.Abs(direction.Z)*MmPerFoot>RevitStructureImport.PrecisionMm || Math.Sqrt(direction.X*direction.X+direction.Y*direction.Y)*MmPerFoot<=1)
+                        if(Math.Abs(direction.Z)*MmPerFoot>RevitSelectionGeometry.PrecisionMm || Math.Sqrt(direction.X*direction.X+direction.Y*direction.Y)*MmPerFoot<=1)
                         {record.Status="Blocked";problems.Add(label+": sloped or vertical framing cannot be imported.");continue;}
                         var along=new XYZ(direction.X,direction.Y,0).Normalize();var across=new XYZ(-along.Y,along.X,0);
                         var offsets=geometry.Points.Select(p=>p.DotProduct(across)).ToArray();
@@ -76,9 +76,9 @@ namespace EngineeringDashboard
                         bool rectangular=!geometry.HasCurvedFaces && Level(geometry.TopLevels) && (nominalDepth.HasValue || Level(geometry.BottomLevels))
                             && geometry.Normals.All(n=>Axis(n,along) || Axis(n,across) || Axis(n,XYZ.BasisZ));
                         double depth=nominalDepth??(top-bottom);
-                        record.Details+="\nBeam depth (mm): "+RevitImportDiagnostics.Number(depth)+"; source: "+depthSource
-                            +"\nJoined geometry soffit (mm): "+RevitImportDiagnostics.Number(bottom)+"; section soffit (mm): "+RevitImportDiagnostics.Number(top-depth)
-                            +"\nRectangular section check: "+rectangular+"; transverse family offset (mm): "+RevitImportDiagnostics.Number(correction*MmPerFoot);
+                        record.Details+="\nBeam depth (mm): "+RevitSelectionGeometry.Number(depth)+"; source: "+depthSource
+                            +"\nJoined geometry soffit (mm): "+RevitSelectionGeometry.Number(bottom)+"; section soffit (mm): "+RevitSelectionGeometry.Number(top-depth)
+                            +"\nRectangular section check: "+rectangular+"; transverse family offset (mm): "+RevitSelectionGeometry.Number(correction*MmPerFoot);
                         if(!rectangular)record.Status="Blocked";
                         beams.Add(new RevitSelectedBeam {SourceId=sourceId,Label=label,Start=Point(a),End=Point(b),WidthMm=(offsets.Max()-offsets.Min())*MmPerFoot,DepthMm=depth,BottomMm=top-depth,
                             Problem=rectangular ? null : "The physical section is not a horizontal rectangular beam. Use a separate manual drawing."});
@@ -91,7 +91,7 @@ namespace EngineeringDashboard
                             && geometry.Normals.All(n=>Math.Abs(n.Z)<1e-6 || Axis(n,XYZ.BasisZ));
                         double area=PlanArea(outline);
                         bool complete=Math.Abs(area-geometry.ProjectedTopArea)<=Math.Max(1,area*1e-6);
-                        record.Details+="\nFlat slab check: "+flat+"; footprint area check: "+complete+"; hull area (mm2): "+RevitImportDiagnostics.Number(area);
+                        record.Details+="\nFlat slab check: "+flat+"; footprint area check: "+complete+"; hull area (mm2): "+RevitSelectionGeometry.Number(area);
                         if(geometry.HasTopOpening || !complete || !flat)record.Status="Blocked";
                         slabs.Add(new RevitSelectedSlab {SourceId=sourceId,Label=label,Outline=outline,ThicknessMm=top-bottom,TopMm=top,
                             Problem=geometry.HasTopOpening || !complete ? "Slab openings or disconnected top faces are not supported by this canvas." : flat ? null : "Only flat slabs of constant thickness can be imported."});
@@ -102,13 +102,13 @@ namespace EngineeringDashboard
                         // project coordinates. Retain the double-precision face
                         // edges for beam limits, references and slab intersections.
                         var outline=geometry.TopOutlines.OrderByDescending(PlanArea).FirstOrDefault()??new ImportPoint[0];
-                        double area=PlanArea(outline),tolerance=RevitStructureImport.PrecisionMm;
+                        double area=PlanArea(outline),tolerance=RevitSelectionGeometry.PrecisionMm;
                         bool complete=!geometry.HasCurvedFaces && !geometry.HasTopOpening
-                            && ImportPolygon.BoundaryMatches(outline,geometry.Points.Select(Point).ToArray(),geometry.ProjectedTopArea,tolerance);
-                        record.Details+="\nBoundary footprint source: planar face edge loop; geometry tolerance (mm): "+RevitImportDiagnostics.Number(tolerance)
-                            +"\nBoundary footprint check: "+complete+"; outline area (mm2): "+RevitImportDiagnostics.Number(area)
-                            +"; projected top area difference (mm2): "+RevitImportDiagnostics.Number(Math.Abs(area-geometry.ProjectedTopArea))
-                            +"\nMesh hull area (mm2), reference only: "+RevitImportDiagnostics.Number(PlanArea(Hull(geometry.Points)));
+                            && RevitSelectionGeometry.BoundaryMatches(outline,geometry.Points.Select(Point).ToArray(),geometry.ProjectedTopArea,tolerance);
+                        record.Details+="\nBoundary footprint source: planar face edge loop; geometry tolerance (mm): "+RevitSelectionGeometry.Number(tolerance)
+                            +"\nBoundary footprint check: "+complete+"; outline area (mm2): "+RevitSelectionGeometry.Number(area)
+                            +"; projected top area difference (mm2): "+RevitSelectionGeometry.Number(Math.Abs(area-geometry.ProjectedTopArea))
+                            +"\nMesh hull area (mm2), reference only: "+RevitSelectionGeometry.Number(PlanArea(Hull(geometry.Points)));
                         if(!complete)record.Status="Blocked";
                         boundaries.Add(new RevitSelectedBoundary {SourceId=sourceId,Label=label,Kind=e is Wall ? "Wall" : "Column",Outline=outline,BottomMm=bottom,TopMm=top,
                             Problem=complete ? null : "Irregular column/wall footprints need a separate manual drawing."});
@@ -119,15 +119,15 @@ namespace EngineeringDashboard
             }
             snapshot.Beams=beams.ToArray();snapshot.Slabs=slabs.ToArray();snapshot.Boundaries=boundaries.ToArray();snapshot.Problems=problems.ToArray();snapshot.Notes=notes.ToArray();snapshot.Elements=elements.ToArray();return snapshot;
         }
-        private static string Xyz(XYZ p)=>"("+RevitImportDiagnostics.Number(p.X*MmPerFoot)+", "+RevitImportDiagnostics.Number(p.Y*MmPerFoot)+", "+RevitImportDiagnostics.Number(p.Z*MmPerFoot)+")";
+        private static string Xyz(XYZ p)=>"("+RevitSelectionGeometry.Number(p.X*MmPerFoot)+", "+RevitSelectionGeometry.Number(p.Y*MmPerFoot)+", "+RevitSelectionGeometry.Number(p.Z*MmPerFoot)+")";
         private static string GeometryDetails(GeometryData data)
         {
             var text=new StringBuilder();
             text.AppendLine("Geometry: "+data.Points.Count+" triangulated vertices; "+data.Normals.Count+" planar faces; curved faces="+data.HasCurvedFaces+"; top opening="+data.HasTopOpening);
-            text.AppendLine("Top face levels (mm): "+string.Join(", ",data.TopLevels.Distinct().Select(z=>RevitImportDiagnostics.Number(z*MmPerFoot))));
-            text.AppendLine("Bottom face levels (mm): "+string.Join(", ",data.BottomLevels.Distinct().Select(z=>RevitImportDiagnostics.Number(z*MmPerFoot))));
-            text.AppendLine("Projected top area (mm2): "+RevitImportDiagnostics.Number(data.ProjectedTopArea));
-            text.AppendLine("Face normals: "+string.Join("; ",data.Normals.Select(n=>"("+RevitImportDiagnostics.Number(n.X)+", "+RevitImportDiagnostics.Number(n.Y)+", "+RevitImportDiagnostics.Number(n.Z)+")").Distinct()));
+            text.AppendLine("Top face levels (mm): "+string.Join(", ",data.TopLevels.Distinct().Select(z=>RevitSelectionGeometry.Number(z*MmPerFoot))));
+            text.AppendLine("Bottom face levels (mm): "+string.Join(", ",data.BottomLevels.Distinct().Select(z=>RevitSelectionGeometry.Number(z*MmPerFoot))));
+            text.AppendLine("Projected top area (mm2): "+RevitSelectionGeometry.Number(data.ProjectedTopArea));
+            text.AppendLine("Face normals: "+string.Join("; ",data.Normals.Select(n=>"("+RevitSelectionGeometry.Number(n.X)+", "+RevitSelectionGeometry.Number(n.Y)+", "+RevitSelectionGeometry.Number(n.Z)+")").Distinct()));
             if(data.Points.Count>0)text.AppendLine("Physical world bounds XYZ (mm): "+Xyz(new XYZ(data.Points.Min(p=>p.X),data.Points.Min(p=>p.Y),data.Points.Min(p=>p.Z)))+" to "+Xyz(new XYZ(data.Points.Max(p=>p.X),data.Points.Max(p=>p.Y),data.Points.Max(p=>p.Z))));
             return text.ToString();
         }
@@ -152,7 +152,7 @@ namespace EngineeringDashboard
         {
             if(parameter==null || !parameter.HasValue || parameter.StorageType!=StorageType.Double || parameter.Definition.GetDataType()!=SpecTypeId.Length)return null;
             double value=parameter.AsDouble()*MmPerFoot;
-            return TowerBeamAnalysis.Finite(value) && value>0 && value<=10000 ? value : (double?)null;
+            return RevitSelectionGeometry.Finite(value) && value>0 && value<=10000 ? value : (double?)null;
         }
         private static string Label(Element e)
         {
@@ -161,7 +161,7 @@ namespace EngineeringDashboard
             return text.Substring(0,Math.Min(200,text.Length))+" ["+e.Id.Value+"]";
         }
         private static bool Axis(XYZ a,XYZ b)=>Math.Abs(Math.Abs(a.DotProduct(b))-1)<1e-6;
-        private static bool Level(List<double> levels)=>levels.Count>0 && (levels.Max()-levels.Min())*MmPerFoot<=RevitStructureImport.PrecisionMm;
+        private static bool Level(List<double> levels)=>levels.Count>0 && (levels.Max()-levels.Min())*MmPerFoot<=RevitSelectionGeometry.PrecisionMm;
         private static double PlanArea(ImportPoint[] points)
         {if(points.Length<3)return 0;double sum=0;var origin=points[0];for(int i=0;i<points.Length;i++){var a=points[i];var b=points[(i+1)%points.Length];sum+=(a.X-origin.X)*(b.Y-origin.Y)-(a.Y-origin.Y)*(b.X-origin.X);}return Math.Abs(sum)/2;}
         private static ImportPoint Point(XYZ p)=>new ImportPoint(p.X*MmPerFoot,p.Y*MmPerFoot);

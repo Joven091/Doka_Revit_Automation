@@ -20,6 +20,20 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Compile pattern-reuse and cancellation regressions
+        shell: pwsh
+        run: |
+          foreach ($framework in @('net48','net10.0')) {
+            dotnet build tests/Top50.SearchRegression.Tests -f $framework -c Release --warnaserror
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Verify search fixes on both runtimes
+        shell: pwsh
+        run: |
+          & tests/Top50.SearchRegression.Tests/bin/Release/net48/Top50.SearchRegression.Tests.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet tests/Top50.SearchRegression.Tests/bin/Release/net10.0/Top50.SearchRegression.Tests.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile production planner and tests
         run: dotnet build tests/Top50.PlannerSmoke -c Release --warnaserror
       - name: Diagnose, optimize, cancel, retry, persist and render

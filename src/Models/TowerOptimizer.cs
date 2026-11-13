@@ -21,11 +21,14 @@ namespace EngineeringDashboard
         private readonly BeamSearchTrace trace;
         private readonly bool ignoreUplift;
         public TowerSearchDiagnostics(int denominator,double fixedLimit=0,BeamSearchTrace trace=null,bool ignoreUplift=false) {this.denominator=denominator;this.fixedLimit=fixedLimit;this.trace=trace;this.ignoreUplift=ignoreUplift;}
-        private void Add(string key,int stage,double score,string text,string advice,string summary=null,bool blocker=false)
+        internal TowerSearchDiagnostics Fork()=>new TowerSearchDiagnostics(denominator,fixedLimit,trace,ignoreUplift) {LazyLocations=LazyLocations};
+        internal bool SameConfiguration(TowerSearchDiagnostics other)=>other!=null && denominator==other.denominator && fixedLimit==other.fixedLimit && ignoreUplift==other.ignoreUplift && LazyLocations==other.LazyLocations;
+        private void Add(string key,int stage,double score,string text,string advice,string summary=null,bool blocker=false,int count=1,bool recorded=false)
         {
-            trace?.Increment(BeamSearchCounter.RejectionChecks);
+            if(recorded)trace?.IncrementRecorded(BeamSearchCounter.RejectionChecks,count);
+            else trace?.Increment(BeamSearchCounter.RejectionChecks,count);
             if(!failures.TryGetValue(key,out var f)) failures[key]=f=new Failure {Stage=stage,Score=double.PositiveInfinity};
-            f.Count++;if(score<f.Score) {f.Score=score;f.Text=text;f.Advice=advice;f.Summary=summary??text;f.Blocker=blocker;}
+            f.Count+=count;if(score<f.Score) {f.Score=score;f.Text=text;f.Advice=advice;f.Summary=summary??text;f.Blocker=blocker;}
         }
         private bool RepeatedFailure(string key,double score)
         {
@@ -33,11 +36,27 @@ namespace EngineeringDashboard
             trace?.Increment(BeamSearchCounter.RejectionChecks);failure.Count++;return true;
         }
         public void Geometry(string key,string text,string advice,double score=0,string summary=null,bool blocker=false)=>Add(key,0,score,text,advice,summary,blocker);
+        // Count an example the existing nearest-failure rule would discard
+        // before callers allocate its formatted description.
+        internal bool GeometryRepeated(string key,double score=0)=>RepeatedFailure(key,score);
+        internal bool HasTimeLimit=>trace?.HasTimeLimit==true;
+        internal void CheckCancellation()=>trace?.CheckCancellation();
+        internal void GeometryRecorded(string key,string text,string advice,int count)
+        {if(count>0)Add(key,0,0,text,advice,count:count,recorded:true);}
         public void Limit(string scope,string check,int stage,double demand,double limit,string units,string location,string advice,double tolerance=1e-8)
         {
             trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(demand<=limit+tolerance)return;
             if(RepeatedFailure(scope+"/"+check,demand/limit))return;
             Add(scope+"/"+check,stage,demand/limit,$"{scope} · {check}: {demand:0.###} / {limit:0.###} {units} ({demand/limit*100:0.0}%). {location}",advice,$"{scope} · {check}: {demand:0.###} / {limit:0.###} {units} ({demand/limit*100:0.0}%).");
+        }
+        private void ScalarDeflectionLimit(string scope,int stage,double demand,double limit,double governingLength,string location,string advice,double tolerance)
+        {
+            trace?.Increment(BeamSearchCounter.NumericalChecks);checks++;if(demand<=limit+tolerance)return;
+            string key=scope+"/deflection";if(RepeatedFailure(key,demand/limit))return;
+            // A repeated scalar failure still counts, but its discarded span
+            // annotation needs no floating-point or criterion formatting.
+            string details=!LazyLocations || demand>limit+limit*1e-8 ? location+$" · governing span/overhang {governingLength:0.###} mm (L/{denominator})" : "";
+            Add(key,stage,demand/limit,$"{scope} · deflection: {demand:0.###} / {limit:0.###} mm ({demand/limit*100:0.0}%). {details}",advice,$"{scope} · deflection: {demand:0.###} / {limit:0.###} mm ({demand/limit*100:0.0}%).");
         }
         public void Bearing(string scope,int stage,double reaction,string location,double tolerance=1e-7)
         {
@@ -71,6 +90,21 @@ namespace EngineeringDashboard
             }
             Bearing(scope,stage,a.Reactions.Min()*scale,location);
         }
+        // Values have already received the same scalar multiplication as an
+        // eager response. Keep Analysis(a,1,...) arithmetic and diagnostic order.
+        internal void AnalysisScalars(double moment,double shear,double deflectionUse,double governingLength,double minimumReaction,bool deflectionEvaluated,int count,string scope,int stage,string location)
+        {
+            string advice=stage==1 ? "Review upper spacing, stock length and foot positions." : stage==2 ? "Review upper row spacing, lower secondary stock and foot/primary bearing positions." : "Review primary stock lengths and tower support spacing.";
+            Limit(scope,"moment",stage,moment*1,TowerOptimizer.PairMoment*count/2,"kNm",location,advice);
+            Limit(scope,"shear",stage,shear*1,TowerOptimizer.PairShear*count/2,"kN",location,advice);
+            double allowable=governingLength/denominator;
+            if(deflectionEvaluated)
+            {
+                double demand=deflectionUse*allowable*1;
+                ScalarDeflectionLimit(scope,stage,demand,allowable,governingLength,location,advice,allowable*1e-8);
+            }
+            Bearing(scope,stage,minimumReaction*1,location);
+        }
         public void Primary(TowerBeamAnalysis a,TowerInput input,string location)
         {
             string scope=input.Primary.Description;var region=a.GoverningDeflection(input.DeflectionLimitMm,input.DeflectionDenominator);
@@ -85,6 +119,11 @@ namespace EngineeringDashboard
             int leg=Array.IndexOf(reactions,reactions.Max());
             Limit(scope,"leg load",4,reactions[leg],capacity,"kN",(!LazyLocations || reactions[leg]>capacity+tolerance ? location+$" · support {leg+1}" : ""),"Review support layout and applied loads. Use the permissible leg load for the actual tower configuration.",tolerance);
             Bearing(scope+" legs",4,reactions.Min(),location,bearingTolerance);
+        }
+        internal void LegsScalars(double maximum,double minimum,int peak,double capacity,string scope,string location,double tolerance=1e-8,double bearingTolerance=1e-7)
+        {
+            Limit(scope,"leg load",4,maximum,capacity,"kN",(!LazyLocations || maximum>capacity+tolerance ? location+$" · support {peak+1}" : ""),"Review support layout and applied loads. Use the permissible leg load for the actual tower configuration.",tolerance);
+            Bearing(scope+" legs",4,minimum,location,bearingTolerance);
         }
         public TowerOptimizationException Exception(string title)
         {
@@ -217,6 +256,11 @@ namespace EngineeringDashboard
     }
     public sealed class TowerInput
     {
+        // Fixed neighboring parts for a coordinated retry, in this part's coordinates.
+        // Plain geometry travels to the modern worker; no UI delegates are transported.
+        internal FormworkSolid[] ExternalObstacles=Array.Empty<FormworkSolid>();
+        internal double ObstacleOriginXmm,ObstacleCentreYmm,ObstacleBottomMm;
+        internal FormworkObstacleIndex ExternalObstacleIndex;
         internal TowerSearchDiagnostics Diagnostics;
         internal Dictionary<string,DedicatedCrossSearch> DedicatedCrossCache;
         internal CrossGeometryCache CrossingGeometryWork;
@@ -240,9 +284,14 @@ namespace EngineeringDashboard
         internal NetworkReceiverCache NetworkReceiverWork;
         internal NetworkPrefixCache NetworkPrefixWork;
         internal TransferNetworkResult NetworkWarmStart;
+        internal NetworkCatalogueBound NetworkCatalogueBound;
         internal int EngineerStationLimit=40,EngineerMinimumStations=2,EngineerJunctionExtraTiers;
+        // Exact per-call failed subset; does not change the original adaptive
+        // ceiling sequence, initial tier or receiver-count refinement order.
+        internal int ReceiverFailedThroughStations;
         internal Func<TowerLayout,bool> TransferLayoutAcceptance,TransferLowerAcceptance;
         internal Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> TransferReceiverPreparation;
+        internal Func<TowerInput,TransferredSlabOptimizer.Geometry[],double,TransferredSlabOptimizer.Geometry[]> TransferGeometryFilter;
         internal Dictionary<double,TowerLayout> ReceiverAlternatives;
         internal double ReceiverTransverseOffsetMm;
         internal BeamSearchTrace Trace;
@@ -250,6 +299,7 @@ namespace EngineeringDashboard
         internal bool ReuseSearchWork = true;
         internal bool OptimizeCrossingJunctions = true;
         internal bool PrecheckCrossingFootprints = true;
+        internal bool PrecheckProjectedPrimaries = true;
         // Regression tests can replay the former common-primary-coverage restriction.
         // Production networks share slab/primary extents. Retained internally for historical regression fixtures.
         internal bool IndependentNetworkPrimaryCoverage = false;
@@ -475,7 +525,7 @@ namespace EngineeringDashboard
             Validate(input);
             if(input.LongitudinalStartMm!=0)
             {
-                var local=input.CopyForSearch();local.LongitudinalStartMm=0;var layout=Optimize(local);
+                var local=input.CopyForSearch();local.LongitudinalStartMm=0;local.ObstacleOriginXmm+=input.LongitudinalStartMm;var layout=Optimize(local);
                 layout.LongitudinalStartMm=input.LongitudinalStartMm;layout.PositionsMm=layout.PositionsMm.Select(x=>x+input.LongitudinalStartMm).ToArray();
                 foreach(var p in layout.StockPlan.Pieces)p.StartMm+=input.LongitudinalStartMm;
                 return layout;
@@ -505,7 +555,7 @@ namespace EngineeringDashboard
                     double overhang = (input.LengthMm - covered) / 2;
                     var candidateInput = new TowerInput { PrimaryMaterial = input.PrimaryMaterial, LengthMm = covered, LegCapacityKn = input.LegCapacityKn, TotalLineLoad = input.TotalLineLoad,
                         TransverseLoadMoment = input.TransverseLoadMoment, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator,
-                        Trace = input.Trace, IgnoreUplift = input.IgnoreUplift, AllowCustomH20Lengths = input.AllowCustomH20Lengths, CustomH20Scope = input.CustomH20Scope, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
+                        ExternalObstacles=input.ExternalObstacles,ExternalObstacleIndex=input.ExternalObstacleIndex,ObstacleOriginXmm=input.ObstacleOriginXmm+overhang,ObstacleCentreYmm=input.ObstacleCentreYmm,ObstacleBottomMm=input.ObstacleBottomMm,Trace = input.Trace, IgnoreUplift = input.IgnoreUplift, AllowCustomH20Lengths = input.AllowCustomH20Lengths, CustomH20Scope = input.CustomH20Scope, StockLengthsMm = input.StockLengthsMm, StockEndSetbackMm = input.StockEndSetbackMm, Exclude600Standalone = input.Exclude600Standalone,Diagnostics=input.Diagnostics,DiagnosticOffsetMm=overhang };
                     TowerLayout candidate;
                     try { candidate = OptimizeCovered(candidateInput); }
                     catch (TowerOptimizationException) {continue;}
@@ -528,22 +578,31 @@ namespace EngineeringDashboard
         private static TowerLayout OptimizeEngineer(TowerInput input)
         {
             TowerLayout best=null;int tested=0;
+            var stockWork=input.ReuseSearchWork ? new TowerStockPlanner.FindWorkCache() : null;
             var covers=TransferredSlabOptimizer.StockCovers(input);
-            Func<double[],double,int> estimate=(stocks,width)=>EngineerTowerSearch.InitialLegs(input,
-                (input.TotalLineLoad/2+Math.Abs(input.TransverseLoadMoment)/(width/1000))*input.LengthMm/1000
-                +stocks.Sum(stock=>input.Primary.SelfWeightKnM(stock)*stock/1000));
-            int initial=estimate(new double[0],1524);
-            var work=covers.SelectMany(c=>new[] {false,true}.SelectMany(rotated=>EngineerTowerSearch.Geometries(c,rotated,input)
-                .SelectMany(g=>(rotated ? BaysMm : new[] {1524.0}).Where(width=>!rotated || !input.Exclude600Standalone || width!=600)
-                    .Select(width=>Tuple.Create(c,rotated,g,width,estimate(c,width))))));
-            foreach(var item in work.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Item3.Positions.Length,w.Item5)).ThenBy(w=>w.Item3.Joined.Count(j=>j)))
+            int initial=EngineerInitialStations(input,new double[0],1524);
+            foreach(var item in EngineerWork(input,covers,()=>best?.PositionsMm.Length??int.MaxValue))
             {
                 input.Trace?.CheckCancellation();var g=item.Item3;
                 if(best!=null && g.Positions.Length>best.PositionsMm.Length)continue;
                 double edge=(input.LengthMm-item.Item1.Sum())/2;
-                var worker=input.CopyForSearch();worker.EngineerSearch=false;worker.LengthMm=item.Item1.Sum();
+                if(input.PruneUneconomicCandidates && best!=null)
+                {
+                    var joins=RemoveRedundantJoins(g.Joined,g.Positions,input.Exclude600Standalone);
+                    if(joins==null || !StandaloneBraceMayImprove(g.Positions.Select(x=>x+edge).ToArray(),joins,item.Item4,item.Item2,best))continue;
+                }
+                if(input.ExternalObstacles.Length>0)
+                {
+                    var joins=RemoveRedundantJoins(g.Joined,g.Positions,input.Exclude600Standalone);
+                    if(joins==null)continue;
+                    double start=edge;
+                    var pieces=item.Item1.Select(length=> {var piece=new TowerStockPiece {StartMm=start,StockLengthMm=length};start+=length;return piece;}).ToArray();
+                    var proposed=new TowerLayout {PrimaryMaterial=input.PrimaryMaterial,PositionsMm=g.Positions.Select(x=>x+edge).ToArray(),Joined=joins,WidthMm=item.Item4,StockPlan=new TowerStockPlan {Pieces=pieces}};
+                    if(!CrossBeamSupportOptimizer.ExternalLayoutFits(input,proposed))continue;
+                }
+                var worker=input.CopyForSearch();worker.EngineerSearch=false;worker.LengthMm=item.Item1.Sum();worker.ObstacleOriginXmm+=edge;
                 // Reuse the existing exact member/stock checker at the proposed positions.
-                var candidate=Evaluate(worker,g.Positions,g.Joined,item.Item4,item.Item2);tested++;
+                var candidate=EvaluateCore(worker,g.Positions,g.Joined,item.Item4,item.Item2,stockWork);tested++;
                 if(candidate==null)continue;
                 candidate.PositionsMm=candidate.PositionsMm.Select(x=>x+edge).ToArray();foreach(var piece in candidate.StockPlan.Pieces)piece.StartMm+=edge;
                 candidate.LengthMm=input.LengthMm;candidate.ConcreteEndOverhangMm=edge;candidate.EngineerSearch=true;
@@ -552,6 +611,85 @@ namespace EngineeringDashboard
             }
             if(best==null){var replay=input.CopyForSearch();replay.EngineerSearch=false;best=OptimizeCore(replay);best.EngineerSearch=true;best.SearchAssumedLegKn=EngineerTowerSearch.AssumedLegKn(input);best.SearchInitialLegsPerLine=initial;}
             best.Tested=tested;return best;
+        }
+        private static int EngineerInitialStations(TowerInput input,double[] stocks,double width)
+            =>EngineerTowerSearch.InitialLegs(input,
+                (input.TotalLineLoad/2+Math.Abs(input.TransverseLoadMoment)/(width/1000))*input.LengthMm/1000
+                +stocks.Sum(stock=>input.Primary.SelfWeightKnM(stock)*stock/1000));
+        private sealed class EngineerWorkHeader
+        {
+            internal double[] Stocks,Widths;internal bool Rotated;internal int[] Initial;internal int Minimum,Maximum;
+            internal readonly Dictionary<int,int> LastTier=new Dictionary<int,int>();
+            internal readonly Dictionary<int,TransferredSlabOptimizer.Geometry[]> Retained=new Dictionary<int,TransferredSlabOptimizer.Geometry[]>();
+        }
+        internal static IEnumerable<Tuple<double[],bool,TransferredSlabOptimizer.Geometry,double,int>> EngineerWork(TowerInput input,double[][] covers,Func<int> maximumStations=null,Action<int> generated=null)
+            =>input.ReuseSearchWork && input.Trace?.HasTimeLimit!=true ? EngineerWorkTiers(input,covers,maximumStations,generated) : EngineerWorkEager(input,covers,generated);
+        private static IEnumerable<Tuple<double[],bool,TransferredSlabOptimizer.Geometry,double,int>> EngineerWorkEager(TowerInput input,double[][] covers,Action<int> generated)
+        {
+            var work=covers.SelectMany(c=>new[] {false,true}.SelectMany(rotated=>EngineerTowerSearch.Geometries(c,rotated,input)
+                .SelectMany(g=>
+                {
+                    generated?.Invoke(g.Positions.Length);
+                    return (rotated ? BaysMm : new[] {1524.0}).Where(width=>!rotated || !input.Exclude600Standalone || width!=600)
+                        .Select(width=>Tuple.Create(c,rotated,g,width,EngineerInitialStations(input,c,width)));
+                })));
+            return work.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Item3.Positions.Length,w.Item5)).ThenBy(w=>w.Item3.Joined.Count(j=>j));
+        }
+        private static IEnumerable<Tuple<double[],bool,TransferredSlabOptimizer.Geometry,double,int>> EngineerWorkTiers(TowerInput input,double[][] covers,Func<int> maximumStations,Action<int> generated)
+        {
+            var headers=new List<EngineerWorkHeader>();var tiers=new SortedSet<int>();
+            foreach(var stocks in covers)foreach(bool rotated in new[] {false,true})
+            {
+                input.Trace?.CheckCancellation();
+                var widths=(rotated ? BaysMm : new[] {1524.0}).Where(width=>!rotated || !input.Exclude600Standalone || width!=600).ToArray();
+                var header=new EngineerWorkHeader {Stocks=stocks,Rotated=rotated,Widths=widths,Initial=widths.Select(width=>EngineerInitialStations(input,stocks,width)).ToArray(),
+                    Minimum=Math.Max(stocks.Length*2,1),Maximum=Math.Min(input.EngineerStationLimit,(int)(stocks.Sum()/600)+2)};
+                for(int count=header.Minimum;count<=header.Maximum;count++)
+                {
+                    var needed=header.Initial.Select(initial=>EngineerTowerSearch.TierOrder(count,initial)).Distinct().ToArray();
+                    foreach(int tier in needed)tiers.Add(tier);
+                    if(needed.Length>1)header.LastTier[count]=needed.Max();
+                }
+                headers.Add(header);
+            }
+            foreach(int tier in tiers)
+            {
+                input.Trace?.CheckCancellation();
+                var pending=new List<Tuple<double[],bool,TransferredSlabOptimizer.Geometry,double,int>>();
+                // Original stable tie order: cover, rotation, ascending count,
+                // geometry and width. Different widths may have different tiers.
+                foreach(var header in headers)
+                {
+                    int maximum=Math.Min(header.Maximum,maximumStations?.Invoke()??int.MaxValue);
+                    for(int count=header.Minimum;count<=maximum;count++)
+                    {
+                        if(!header.Initial.Any(initial=>EngineerTowerSearch.TierOrder(count,initial)==tier))continue;
+                        IEnumerable<TransferredSlabOptimizer.Geometry> geometries;
+                        if(header.Retained.TryGetValue(count,out var retained))geometries=retained;
+                        else
+                        {
+                            geometries=EngineerTowerSearch.Geometries(header.Stocks,header.Rotated,input,count-1,count).Select(g=>{generated?.Invoke(g.Positions.Length);return g;});
+                            if(header.LastTier.TryGetValue(count,out int last)&&last>tier)
+                                header.Retained[count]=retained=geometries.ToArray();
+                            if(retained!=null)geometries=retained;
+                        }
+                        foreach(var geometry in geometries)for(int w=0;w<header.Widths.Length;w++)
+                            if(EngineerTowerSearch.TierOrder(count,header.Initial[w])==tier)
+                                pending.Add(Tuple.Create(header.Stocks,header.Rotated,geometry,header.Widths[w],header.Initial[w]));
+                    }
+                    foreach(int count in header.Retained.Keys.Where(count=>count>maximum || header.LastTier[count]<=tier).ToArray())header.Retained.Remove(count);
+                }
+                foreach(var item in pending.OrderBy(w=>w.Item3.Joined.Count(j=>j)))yield return item;
+            }
+        }
+        internal static bool StandaloneBraceMayImprove(double[] positions,bool[] joined,double width,bool rotated,TowerLayout best)
+        {
+            if(positions.Length!=best.PositionsMm.Length)return positions.Length<best.PositionsMm.Length;
+            // These ranking terms depend only on the manufactured support
+            // arrangement. A different stock plan cannot improve them, and
+            // cantilever/symmetry/material ties are considered strictly later.
+            return EngineerTowerSearch.Compare(Standalone600Count(positions,joined,width,rotated),joined.Count(j=>j),EngineerTowerSearch.BracePenalty(positions,joined,width,rotated),
+                best.Standalone600Count,best.BayCount,best.StandaloneBracePenalty)<=0;
         }
         private static TowerLayout OptimizeCovered(TowerInput input)
         {
@@ -655,6 +793,8 @@ namespace EngineeringDashboard
             best.MinimumLegCountProven = !best.SearchTimeLimitReached && best.PositionsMm.Length == Math.Max(capacityBound, minimumPieces * 2); return best;
         }
         public static TowerLayout Evaluate(TowerInput input, double[] positions, bool[] joined, double width, bool rotated)
+            =>EvaluateCore(input,positions,joined,width,rotated,null);
+        private static TowerLayout EvaluateCore(TowerInput input,double[] positions,bool[] joined,double width,bool rotated,TowerStockPlanner.FindWorkCache stockWork)
         {
             Validate(input);
             input.Trace?.Increment(BeamSearchCounter.TowerCandidates);
@@ -673,16 +813,17 @@ namespace EngineeringDashboard
             if (finalJoined == null || input.Exclude600Standalone && rotated && width == 600) return null;
             double left = input.TotalLineLoad / 2 - input.TransverseLoadMoment / (width / 1000), right = input.TotalLineLoad - left;
             if (Math.Min(left, right) <= 0) return null;
-            var response = TowerStockPlanner.Find(input, positions, Math.Max(left, right));
+            var response = TowerStockPlanner.Find(input, positions, Math.Max(left, right),stockWork);
             if (response == null) return null;
             double maxLeg = response.Reactions.Max();
             if (!input.IgnoreUplift && response.Reactions.Min() < -1e-9 * maxLeg) return null;
             var utilization = new[] { maxLeg / input.LegCapacityKn, response.MomentKnM / input.Primary.MomentLimitKnM, response.ShearKn / input.Primary.ShearLimitKn, response.DeflectionUtilization, response.StrengthUtilization };
             if (utilization.Any(x => !TowerBeamAnalysis.Finite(x)) || utilization.Max() > 1 + 1e-10) return null;
-            return new TowerLayout { EngineerSearch=input.EngineerSearch, PrimaryMaterial=input.PrimaryMaterial, IgnoreUplift = input.IgnoreUplift, PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
+            var layout=new TowerLayout { EngineerSearch=input.EngineerSearch, PrimaryMaterial=input.PrimaryMaterial, IgnoreUplift = input.IgnoreUplift, PositionsMm = (double[])positions.Clone(), Joined = finalJoined, WidthMm = width, Rotated = rotated, LengthMm = input.LengthMm, StockPlan = response,
                 LeftLineLoad = left, RightLineLoad = right, LeftReactions = response.Reactions.Select((x,i) => x * (left+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm)) / (Math.Max(left,right)+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm))).ToArray(), RightReactions = response.Reactions.Select((x,i) => x * (right+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm)) / (Math.Max(left,right)+input.Primary.SelfWeightKnM(response.Pieces.First(p=>i>=p.FirstSupport && i<=p.LastSupport).StockLengthMm))).ToArray(),
                 MaxLegKn = maxLeg, LegCapacityKn = input.LegCapacityKn, DeflectionLimitMm = input.DeflectionLimitMm, DeflectionDenominator = input.DeflectionDenominator, MomentKnM = response.MomentKnM, ShearKn = response.ShearKn, DeflectionMm = response.DeflectionMm,
                 Utilization = utilization.Max(), Governing = new[] { "Leg capacity", "Primary moment", "Primary shear", "Primary deflection", "Primary strength / M–V interaction" }[Array.IndexOf(utilization, utilization.Max())] };
+            return CrossBeamSupportOptimizer.ExternalLayoutFits(input,layout) ? layout : null;
         }
         // Maximize independent groups while retaining at least two frames per group.
         // When excluded, a 600 mm pair must remain joined to more frames or be rejected.
@@ -797,11 +938,11 @@ namespace EngineeringDashboard
         // In particular 3300 mm can use 400/1000/1500/400 while the adjacent
         // 3600 mm run uses 300/1000/1000/1000/300. Keep per-member equal tails as a preference; do not impose one brace
         // family on the complete primary line.
-        internal static IEnumerable<TransferredSlabOptimizer.Geometry> StockRunGeometries(double[] stocks,TowerInput input)
+        internal static IEnumerable<TransferredSlabOptimizer.Geometry> StockRunGeometries(double[] stocks,TowerInput input,int afterStations=0)
         {
             if(stocks.Length>3 || input.EngineerPlan==null || !input.EngineerPlan.HasCrossings)yield break;
             int maximum=Math.Min(input.EngineerStationLimit,stocks.Length*6);
-            foreach(int target in Enumerable.Range(stocks.Length*2,Math.Max(0,maximum-stocks.Length*2+1)).Where(n=>Math.Abs(n-input.EngineerPlan.InitialLegs)<=1).OrderBy(n=>TierOrder(n,input.EngineerPlan.InitialLegs)))
+            foreach(int target in Enumerable.Range(stocks.Length*2,Math.Max(0,maximum-stocks.Length*2+1)).Where(n=>n>afterStations && Math.Abs(n-input.EngineerPlan.InitialLegs)<=1).OrderBy(n=>TierOrder(n,input.EngineerPlan.InitialLegs)))
                 foreach(var geometry in StockRunStep(stocks,input,0,0,target,new double[0],new bool[0],new TowerStockPiece[0]).Take(64))yield return geometry;
         }
         private static IEnumerable<TransferredSlabOptimizer.Geometry> StockRunStep(double[] stocks,TowerInput input,int run,double start,int remaining,double[] positions,bool[] joins,TowerStockPiece[] pieces)
@@ -809,8 +950,7 @@ namespace EngineeringDashboard
             input.Trace?.CheckCancellation();
             if(run==stocks.Length)
             {
-                if(remaining==0)yield return new TransferredSlabOptimizer.Geometry {Stock=pieces,Positions=positions,Joined=joins,
-                    MemberSupports=pieces.Select(p=>positions.Skip(p.FirstSupport).Take(p.LastSupport-p.FirstSupport+1).Select(x=>x-p.StartMm).ToArray()).ToArray()};
+                if(remaining==0)yield return TransferredSlabOptimizer.Geometry.Generated(pieces,positions,joins,input.Trace);
                 yield break;
             }
             int after=stocks.Length-run-1;
@@ -828,12 +968,12 @@ namespace EngineeringDashboard
                 }
             }
         }
-        internal static IEnumerable<TransferredSlabOptimizer.Geometry> Geometries(double[] stocks,bool rotated,TowerInput input)
+        internal static IEnumerable<TransferredSlabOptimizer.Geometry> Geometries(double[] stocks,bool rotated,TowerInput input,int afterStations=0,int throughStations=int.MaxValue)
         {
             double length=stocks.Sum(),setback=input.StockEndSetbackMm;
-            int maximum=Math.Min(input.EngineerStationLimit,(int)(length/600)+2);
+            int maximum=Math.Min(Math.Min(input.EngineerStationLimit,(int)(length/600)+2),throughStations);
             var seen=new HashSet<TransferredSlabOptimizer.GeometryKey>();
-            for(int count=stocks.Length*2;count<=maximum;count++)foreach(var groups in Groups(count,rotated))
+            for(int count=Math.Max(stocks.Length*2,afterStations+1);count<=maximum;count++)foreach(var groups in Groups(count,rotated))
             {
                 input.Trace?.CheckCancellation();
                 int joins=count-groups.Length;
@@ -870,7 +1010,7 @@ namespace EngineeringDashboard
                         if(!valid || p.Last()>length-setback+1e-7)continue;
                         var key=new TransferredSlabOptimizer.GeometryKey(p,joined.ToArray());
                         if(!seen.Add(key))continue;
-                        yield return new TransferredSlabOptimizer.Geometry {Stock=pieces.ToArray(),Positions=p,Joined=joined.ToArray(),MemberSupports=pieces.Select(s=>p.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(v=>v-s.StartMm).ToArray()).ToArray()};
+                        yield return TransferredSlabOptimizer.Geometry.Generated(pieces.ToArray(),p,joined.ToArray(),input.Trace);
                     }
                 }
             }

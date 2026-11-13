@@ -37,6 +37,8 @@ namespace EngineeringDashboard.Top50
         public ProposalDto[] Proposals {get;set;}=Array.Empty<ProposalDto>();
         public string SelectedId {get;set;}
         public string[] SearchLog {get;set;}=Array.Empty<string>();
+        public PourDefinition[] Pours {get;set;}=Array.Empty<PourDefinition>();
+        public string SelectedPourId {get;set;}
         public int LongestCount {get;set;}=5;
         public int[] CatalogMm {get;set;}=Precision.CatalogMm.ToArray();
         public int Preset {get;set;}=1;

@@ -1,0 +1,169 @@
+name: Top50 independent engineering acceptance
+on:
+  pull_request:
+    paths: ['src/Top50/**', 'src/ViewModels/Top50*', 'src/Views/Top50*', 'tests/Top50*/**', 'docs/top50-engineering-review/**', 'packaging/**', 'scripts/*Top50*.ps1', 'Directory.Build.props', 'installer-top50.iss', '.github/workflows/top50-engineering-review.yml']
+  workflow_dispatch:
+concurrency:
+  group: top50-engineering-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validation:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    outputs:
+      installer-approved: ${{ steps.release-gate.outputs.approved }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile independent references and existing native regressions
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/top50-engineering-review/independent | Out-Null
+          foreach ($framework in @('net48','net10.0')) {
+            foreach ($project in @('Top50.IndependentValidation','Top50.SearchRegression.Tests')) {
+              dotnet build "tests/$project" -c Release -f $framework --warnaserror
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+          }
+          dotnet build tests/Top50.RepeatabilityTests -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Independent exact references, kits, connectors and project boundaries
+        shell: pwsh
+        run: |
+          $root='artifacts/top50-engineering-review/independent'
+          & tests/Top50.IndependentValidation/bin/Release/net48/Top50.IndependentValidation.exe *> "$root/net48.log"
+          if ($LASTEXITCODE -ne 0) { Get-Content "$root/net48.log"; throw 'Independent net48 acceptance failed' }
+          dotnet tests/Top50.IndependentValidation/bin/Release/net10.0/Top50.IndependentValidation.dll *> "$root/net10.log"
+          if ($LASTEXITCODE -ne 0) { Get-Content "$root/net10.log"; throw 'Independent net10 acceptance failed' }
+          & tests/Top50.IndependentValidation/bin/Release/net48/Top50.IndependentValidation.exe --kits-sweep *> "$root/kit-sweep.log"
+          if ($LASTEXITCODE -ne 0) { Get-Content "$root/kit-sweep.log"; throw 'Independent ordinary kit sweep failed' }
+          & tests/Top50.SearchRegression.Tests/bin/Release/net48/Top50.SearchRegression.Tests.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet tests/Top50.SearchRegression.Tests/bin/Release/net10.0/Top50.SearchRegression.Tests.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & tests/Top50.RepeatabilityTests/bin/Release/net48/Top50.RepeatabilityTests.exe artifacts/top50-engineering-review/repeatability
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Content "$root/net48.log" | Select-Object -Last 3
+          Get-Content "$root/net10.log" | Select-Object -Last 3
+      - name: Repeat the representative project in fresh processes
+        shell: pwsh
+        run: |
+          $root='artifacts/top50-engineering-review/independent'
+          foreach ($repeat in 1..2) {
+            $folder="$root/recorded-$repeat"
+            $extra=if ($repeat -eq 2) { @('--reverse') } else { @() }
+            & tests/Top50.IndependentValidation/bin/Release/net48/Top50.IndependentValidation.exe --recorded "--output=$folder" @extra *> "$root/recorded-$repeat.log"
+            if ($LASTEXITCODE -ne 0) { Get-Content "$root/recorded-$repeat.log"; throw 'Representative project validation failed' }
+          }
+          if ((Get-FileHash "$root/recorded-1/independent-signature.txt").Hash -ne (Get-FileHash "$root/recorded-2/independent-signature.txt").Hash) { throw 'Fresh-process/reordered/culture signatures differ' }
+          Get-Content "$root/recorded-1.log" | Select-Object -Last 5
+          Get-Content "$root/recorded-2.log" | Select-Object -Last 5
+      - name: Compile the actual dashboard and native view checks
+        shell: pwsh
+        run: |
+          foreach ($project in @('Top50.PlannerSmoke','Top50.InstalledReleaseSmoke','Dashboard.ReleaseSmoke','Top50.RevitSource.Tests')) {
+            dotnet build "tests/$project" -c Release --warnaserror
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          ./scripts/Build-BeamSolverWorker.ps1 -OutputDirectory src/bin/Release/net48/BeamSolver
+      - name: Exercise current WPF outcomes, views, Revit stand-ins and dashboard
+        shell: pwsh
+        run: |
+          & tests/Top50.PlannerSmoke/bin/Release/net48/Top50.PlannerSmoke.exe artifacts/top50-engineering-review/planner
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & tests/Dashboard.ReleaseSmoke/bin/Release/net48/Dashboard.ReleaseSmoke.exe artifacts/top50-engineering-review/dashboard
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet tests/Top50.RevitSource.Tests/bin/Release/net10.0/Top50.RevitSource.Tests.dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/Test-Top50StagedPayload.ps1 -EvidenceDirectory artifacts/top50-engineering-review/prepackage
+      - name: Check supervisor release approval after validation
+        id: release-gate
+        shell: pwsh
+        run: ./scripts/Test-Top50ReleaseGate.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: top50-engineering-validation-evidence
+          path: artifacts/top50-engineering-review/
+          if-no-files-found: warn
+  installer:
+    needs: validation
+    if: needs.validation.outputs.installer-approved == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Recheck approval and compile package test hosts
+        shell: pwsh
+        run: |
+          ./scripts/Test-Top50ReleaseGate.ps1
+          foreach ($project in @('Top50.PlannerSmoke','Top50.InstalledReleaseSmoke','Dashboard.ReleaseSmoke','SteelShape.HostSmoke')) {
+            dotnet build "tests/$project" -c Release --warnaserror
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          ./scripts/Ensure-SteelShapeTestBrowser.ps1
+      - uses: actions/checkout@v4
+        with:
+          ref: e78f771122f92b58205e74ac5114cb22ebdf4e2d
+          path: artifacts/previous-dashboard
+      - name: Compile the previous 1.1.26 upgrade fixture
+        shell: pwsh
+        run: |
+          dotnet build artifacts/previous-dashboard/src/MyRevitAddin.csproj -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build the approved installer and test installed payload separately
+        shell: pwsh
+        run: |
+          ./scripts/Build-Top50Installer.ps1 -Compiler "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" -OutputDirectory artifacts/installer-build -TeamRelease
+          $installer=(Get-Item artifacts/installer-build/Install_DokaRevitAutomation.exe).FullName
+          ./scripts/Test-Top50PlannerInstaller.ps1 -Installer $installer -OldPayload artifacts/previous-dashboard/src/bin/Release/net48 -ExpectedOldVersion '1.1.26.0' -EvidenceDirectory artifacts/installed-checks
+          ./scripts/Test-Top50InstallerGuards.ps1 -Installer $installer -EvidenceDirectory artifacts/installer-guards
+          $release='artifacts/top50-dashboard-release'
+          New-Item -ItemType Directory -Force "$release/reports" | Out-Null
+          Copy-Item $installer $release
+          Copy-Item docs/top50-engineering-review/*.md "$release/reports"
+          $source=(& git rev-parse HEAD).Trim()
+          $assets=Get-Content src/obj/project.assets.json -Raw | ConvertFrom-Json
+          $packages=@($assets.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' } | Sort-Object Name | Select-Object -ExpandProperty Name)
+          @{version='1.1.27';sourceCommit=$source;validatedCommit=(Get-Content packaging/top50-engineering-release.json -Raw | ConvertFrom-Json).validatedCommit;target='Revit2024 Dashboard';sdk=(& dotnet --version).Trim();resolvedPackages=$packages;installerSha256=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant();tests='Independent numerical references, Windows WPF, staged/installed native payload, fresh-process restart, upgrade backup and uninstall';limitations='Actual Revit2024 session and clean-machine prerequisites remain unverified; no company share publication'} | ConvertTo-Json -Depth 5 | Set-Content "$release/release-info.json"
+          @"
+          Doka Engineering Dashboard 1.1.27 — Top50 Planner engineering review
+
+          Close every Revit window, run the supplied installer under your own Windows account, then open Revit 2024. It registers the add-in and backs up the previous dashboard. Existing projects and access/update settings are preserved. Uninstall through Windows Apps; saved projects/settings and upgrade backups are preserved.
+
+          Top50 retains both offering methods and all three presets. Panels cover both faces; offered LM is per face. Connectors cover one level on both faces; multiply by your project's applicable levels. Stock is reused between allocation groups. These groups are not an approved pour sequence, and geometric fit is not structural approval.
+
+          New saves use project format V5; older valid projects remain readable. Incompatible cached offers are discarded while inputs are retained for Optimize. Save a separate copy when maintaining compatibility with an older app.
+
+          This includes the prior beam/import fixes, self-contained .NET 10 beam worker, Steel Shape, locked Dome Beta and D3 slab entry, modeless Revit integration and updater. Revit2024 x64/.NET Framework4.8 and the native solver's VC++ x64 runtime are required. The worker includes its own .NET10 runtime.
+
+          Independent and isolated Windows package checks passed. Actual Revit2024 host acceptance and a completely clean-machine prerequisite test were not performed. This package does not merge GitHub code or publish anything to the company update folder.
+
+          Source: $source
+          "@ | Set-Content "$release/README.txt" -Encoding utf8
+          Get-ChildItem $release -Recurse -File | Sort-Object FullName | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.FullName.Substring(([IO.Path]::GetFullPath($release)).Length+1).Replace('\','/'))" } | Set-Content "$release/SHA256SUMS"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: top50-dashboard-1.1.27-release
+          path: artifacts/top50-dashboard-release/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: top50-installed-release-evidence
+          path: |
+            artifacts/installed-checks/
+            artifacts/installer-guards/
+            artifacts/installer-build/*.log
