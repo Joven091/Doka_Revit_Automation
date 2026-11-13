@@ -25,7 +25,7 @@ internal static class ResolvedSpanFrameBoundTests
         {
             var input=Input();input.PrimaryMaterial=material;input.Diagnostics=null;
             double boundary=2*(input.Primary.ShearLimitKn+input.Primary.ShearLimitKn*1e-6);
-            foreach(double q in new[] {1.0,10,Math.BitDecrement(boundary),boundary,Math.BitIncrement(boundary),boundary+1})
+            foreach(double q in new[] {1.0,10,PortableTestRuntime.NextDown(boundary),boundary,PortableTestRuntime.NextUp(boundary),boundary+1})
             foreach(var supports in new[] {new[] {0.0,1000},new[] {150.0,850},new[] {500.0,850}})
             {
                 var loads=new[] {new BeamDistributedLoad {StartMm=0,EndMm=1000,KnPerM=sign*q}};

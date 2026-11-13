@@ -19,7 +19,7 @@ internal static class ReportedPartDiagnostics
         string output=Option(args,"--output","artifacts/reported-parts"),mode=Option(args,"--mode","worker");
         if(mode!="worker" && mode!="in-process")throw new Exception("Mode must be worker or in-process");
         string worker=Path.GetFullPath(Option(args,"--worker","tools/BeamSolver.Worker/bin/Release/net10.0/Doka.BeamSolver.dll"));
-        string dotnet=Option(args,"--dotnet",Environment.ProcessPath);
+        string dotnet=Option(args,"--dotnet",PortableTestRuntime.ProcessPath);
         bool fixturesOnly=args.Contains("--reported-part-fixtures");
         if(!fixturesOnly && mode=="worker" && (!File.Exists(worker)||!File.Exists(dotnet)))throw new Exception("Build matching worker and provide --dotnet host");
         Directory.CreateDirectory(output);bool failed=false;

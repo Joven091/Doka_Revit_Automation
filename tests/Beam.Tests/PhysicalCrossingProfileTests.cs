@@ -17,7 +17,7 @@ internal static class PhysicalCrossingProfileTests
     static void DedicatedRouteGates()
     {
         var input=Common();
-        foreach(double end in new[]{0.0,150,Math.BitDecrement(175),175,200,500})
+        foreach(double end in new[]{0.0,150,PortableTestRuntime.NextDown(175),175,200,500})
         foreach(bool carried in new[]{false,true})
         {
             input.MaximumConcreteEndOverhangMm=end;
@@ -104,7 +104,7 @@ internal static class PhysicalCrossingProfileTests
         Check(ReferenceEquals(filter(changed,source,0),source),"another end-overhang policy cannot borrow a no-fullspan dedicated certificate");
         changed=input.CopyForSearch();changed.StockEndSetbackMm++;
         Check(ReferenceEquals(filter(changed,source,0),source),"another end-setback policy cannot borrow the fixed primary-axis coefficient");
-        changed=input.CopyForSearch();changed.StockEndSetbackMm=Math.BitIncrement(input.StockEndSetbackMm);
+        changed=input.CopyForSearch();changed.StockEndSetbackMm=PortableTestRuntime.NextUp(input.StockEndSetbackMm);
         Check(ReferenceEquals(filter(changed,source,0),source),"an adjacent-double stock-end policy retains the original scope fallback");
     }
     static void ActualScenario3InteriorDensity()

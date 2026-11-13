@@ -43,7 +43,7 @@ internal static class MissingReceiverWidthProofTests
             Check(!alternatives.Rejects(width,10,input.Trace),"a higher ceiling cannot consume the proof");
         }
         Check(!alternatives.Rejects(1524,8,input.Trace),"the selected width is never a missing-width failure");
-        Check(!alternatives.Rejects(Math.BitIncrement(1000.0),8,input.Trace),"unrecognized widths do not inherit a rounded failure");
+        Check(!alternatives.Rejects(PortableTestRuntime.NextUp(1000.0),8,input.Trace),"unrecognized widths do not inherit a rounded failure");
         alternatives.Add(1000,Winner());Check(!alternatives.Rejects(1000,8,input.Trace),"a retained passing alternative always wins over failure evidence");
         alternatives.Clear();Check(!alternatives.Rejects(1524,8,input.Trace),"later dictionary clearing cannot invent a failure for the original winner");
         Check(!alternatives.Complete(input,input,selected,false,false) && !alternatives.Rejects(1500,8,input.Trace),"an incomplete replacement clears the previous proof");

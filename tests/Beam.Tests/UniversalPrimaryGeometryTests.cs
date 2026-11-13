@@ -102,7 +102,7 @@ internal static class UniversalPrimaryGeometryTests
         }
         Check(input.Trace.Count(BeamSearchCounter.PrimaryAnalyses)==0,"geometry views never run primary FE");
         var names=(string[])typeof(BeamSearchTrace).GetField("CounterNames",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null);
-        Check(names.Length==Enum.GetValues<BeamSearchCounter>().Length,"all appended trace counter IDs retain ordered labels");
+        Check(names.Length==Enum.GetValues(typeof(BeamSearchCounter)).Length,"all appended trace counter IDs retain ordered labels");
     }
     internal static void NetworkParity()
     {

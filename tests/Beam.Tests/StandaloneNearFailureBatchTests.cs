@@ -33,7 +33,7 @@ internal static class StandaloneNearFailureBatchTests
     static void FullFindParity()
     {
         foreach(bool custom in new[] {false,true})foreach(var material in new[] {PrimaryBeamMaterial.DoubleH20,PrimaryBeamMaterial.WS10})
-        foreach(bool lazy in new[] {false,true})foreach(double setback in new[] {1e-9,Math.BitDecrement(150.0),150.0,Math.BitIncrement(150.0),300.0})
+        foreach(bool lazy in new[] {false,true})foreach(double setback in new[] {1e-9,PortableTestRuntime.NextDown(150.0),150.0,PortableTestRuntime.NextUp(150.0),300.0})
         foreach(double q in new[] {.125,20.0,35.0,90.0})
         {
             foreach(var positions in new[] {new[] {750.0,1750,3350,4350,5850},new[] {150.0,1150,3350,4350,5850}})
@@ -42,12 +42,12 @@ internal static class StandaloneNearFailureBatchTests
                 a.Diagnostics.LazyLocations=b.Diagnostics.LazyLocations=lazy;Compare(a,b,positions,q);
             }
         }
-        foreach(double length in new[] {Math.BitDecrement(3900.0),3900.0,Math.BitIncrement(3900.0)})
-        foreach(double last in new[] {Math.BitDecrement(3750.0),3750.0,Math.BitIncrement(3750.0),3900.0})
+        foreach(double length in new[] {PortableTestRuntime.NextDown(3900.0),3900.0,PortableTestRuntime.NextUp(3900.0)})
+        foreach(double last in new[] {PortableTestRuntime.NextDown(3750.0),3750.0,PortableTestRuntime.NextUp(3750.0),3900.0})
         {
             var a=Input(length);var b=Input(length);Compare(a,b,new[] {750.0,1750,last},35);
         }
-        foreach(double q in new[] {22/.75,Math.BitDecrement(22/.75),Math.BitIncrement(22/.75),22/.75*(1-2e-6),22/.75*(1+2e-6)})
+        foreach(double q in new[] {22/.75,PortableTestRuntime.NextDown(22/.75),PortableTestRuntime.NextUp(22/.75),22/.75*(1-2e-6),22/.75*(1+2e-6)})
             Compare(Input(3900),Input(3900),new[] {750.0,1750,3750},q);
         var noStocks=Input(1000);noStocks.StockLengthsMm=new[] {2450.0};var same=Input(1000);same.StockLengthsMm=new[] {2450.0};
         Compare(noStocks,same,new[] {750.0,900},90);

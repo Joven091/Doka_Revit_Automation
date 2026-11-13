@@ -134,7 +134,7 @@ internal static class GeometryCountViewTests
         Parallel.For(0,32,i=>{var actual=parallel.GetCountRange(source,4,7,null,out _);if(!actual.SequenceEqual(first))throw new Exception("Concurrent count view mismatch");});
         Check(parallel.GetCountRange(source,4,7,null,out bool parallelHit).SequenceEqual(first) && parallelHit,"concurrent publication retains a completed ordered view");
         foreach(bool rotated in new[] {false,true})foreach(bool exclude in new[] {false,true})
-        foreach(double setback in new[] {Math.BitDecrement(150.0),150.0,Math.BitIncrement(150.0)})
+        foreach(double setback in new[] {PortableTestRuntime.NextDown(150.0),150.0,PortableTestRuntime.NextUp(150.0)})
         foreach(var cover in new[] {new[] {2450.0},new[] {1800.0,2450},new[] {2450.0,2450,2450}})
         {
             input=Input();input.Exclude600Standalone=exclude;input.StockEndSetbackMm=setback;

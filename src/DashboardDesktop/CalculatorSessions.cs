@@ -47,7 +47,7 @@ namespace EngineeringDashboard
         }
         internal static FlexCalculatorViewModel RestoreRestartInputs(CalculationRecord record)
         {
-            var vm=new FlexCalculatorViewModel();CalculationFiles.Apply(record,"Slab",vm,FileInputs);
+            var vm=new FlexCalculatorViewModel();ApplySlabInputs(record,vm);
             vm.PlywoodProfileId=record.Inputs.Single(f=>f.Name=="PlywoodProfileId").Value;
             vm.PlywoodDeflectionLimit=PlywoodSpacing.RestoreDeflectionLimit(record.Inputs.Single(f=>f.Name=="PlywoodDeflectionLimit").Value,vm.DeflectionLimit);
             return vm;

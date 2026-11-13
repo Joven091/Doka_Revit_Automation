@@ -80,7 +80,7 @@ internal static class EarlyProjectedPoseGroupTests
             try{new CrossBeamSupportOptimizer.ProjectedPoseForceMark(5000,1524,0).TryGetForGroup(local,Network(),0,new CrossBeamSupportOptimizer.ProjectedJunctionWork(Array.Empty<FormworkSolid>()),out _);}catch(OperationCanceledException){propagated=true;}
             Check(propagated,"eager group proofs cannot bypass cancellation");
         }
-        var names=(string[])typeof(BeamSearchTrace).GetField("CounterNames",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null);Check(names.Length==Enum.GetValues<BeamSearchCounter>().Length,"new group/descriptor counter IDs retain matching appended labels");
+        var names=(string[])typeof(BeamSearchTrace).GetField("CounterNames",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null);Check(names.Length==Enum.GetValues(typeof(BeamSearchCounter)).Length,"new group/descriptor counter IDs retain matching appended labels");
     }
     internal static void Run(){FailedFamilies();PassingOrder();UnknownAndDisabled();Console.WriteLine("PASS "+checks+" early projected group checks: pre-descriptor pruning, exact native selected geometry/forces, unknown source fallback, reference policy, cancellation and diagnostics");}
 }

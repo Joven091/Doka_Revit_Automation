@@ -70,7 +70,7 @@ internal static class ProjectedValueScalarTests
             double use=Math.Max(unit.DeflectionUtilization,Math.Max(unit.MomentKnM/10,unit.ShearKn/22)),threshold=1/use;
             double R(double q)=>q*(span-2*edge)/span;
             var cases=new[]{Tuple.Create(R(.1/use),R(.1/use)),Tuple.Create(R(4/use),R(.1/use)),Tuple.Create(R(.1/use),R(4/use)),Tuple.Create(R(4/use),R(4/use)),Tuple.Create(0.0,R(.1/use)),Tuple.Create(-0.0,R(.1/use)),
-                Tuple.Create(R(Math.BitDecrement(threshold)),R(.1/use)),Tuple.Create(R(Math.BitIncrement(threshold)),R(.1/use)),Tuple.Create(R(70/unit.Reactions.Max()),R(.1/use)),Tuple.Create(-1.0,R(.1/use)),Tuple.Create(double.NaN,1.0),Tuple.Create(1.0,double.PositiveInfinity)};
+                Tuple.Create(R(PortableTestRuntime.NextDown(threshold)),R(.1/use)),Tuple.Create(R(PortableTestRuntime.NextUp(threshold)),R(.1/use)),Tuple.Create(R(70/unit.Reactions.Max()),R(.1/use)),Tuple.Create(-1.0,R(.1/use)),Tuple.Create(double.NaN,1.0),Tuple.Create(1.0,double.PositiveInfinity)};
             foreach(var reaction in cases)foreach(bool lazy in new[]{false,true})Compare(stock,criterion,reaction,unit,true,lazy);
             foreach(int mode in Enumerable.Range(0,8))Compare(stock,criterion,Tuple.Create(R(.1/use),R(4/use)),unit,true,true,mode);
             Compare(stock,criterion,Tuple.Create(R(.1/use),R(4/use)),unit,false);

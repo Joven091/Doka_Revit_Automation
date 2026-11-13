@@ -33,7 +33,7 @@ internal static class EarlyUniversalProfileTests
     {
         Check(TransferNetworkOptimizer.ReceiverAggregateLoadBound.SharedConcreteCoefficient(599)==0
             && TransferNetworkOptimizer.ReceiverAggregateLoadBound.SharedConcreteCoefficient(double.NaN)==0,"unsupported axis domain supplies no added force");
-        foreach(double span in new[]{600.0,Math.BitIncrement(600),650,1000,2200,3000,4500,10000})
+        foreach(double span in new[]{600.0,PortableTestRuntime.NextUp(600),650,1000,2200,3000,4500,10000})
         {
             double coefficient=TransferNetworkOptimizer.ReceiverAggregateLoadBound.SharedConcreteCoefficient(span),limit=Math.Min(350,span/2-150);
             Check(coefficient>0 && coefficient<=span/2,"coefficient is positive and covered by the direct-primary planning arm");

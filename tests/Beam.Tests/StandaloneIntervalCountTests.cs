@@ -47,20 +47,20 @@ internal static class StandaloneIntervalCountTests
             var positions=Enumerable.Range(0,n).Select(i=>150+(length-300)*i/(n-1)).ToArray();
             int first=random.Next(n-1),start=(int)(positions[first]/3),stockCount=40+sample%80;
             var stocks=Enumerable.Range(0,stockCount).Select(_=>25+random.NextDouble()*(length-25)).OrderBy(x=>x).ToArray();
-            double setback=new[] {double.Epsilon,1e-9,Math.BitDecrement(150.0),150.0,Math.BitIncrement(150.0),300.0}[sample%6];
+            double setback=new[] {double.Epsilon,1e-9,PortableTestRuntime.NextDown(150.0),150.0,PortableTestRuntime.NextUp(150.0),300.0}[sample%6];
             if(positions[first]-start>=setback-1e-7)Enumeration(stocks,positions,start,first,length,setback);
         }
-        foreach(double length in new[] {Math.BitDecrement(3900.0),3900.0,Math.BitIncrement(3900.0)})
-        foreach(double setback in new[] {double.Epsilon,1e-9,Math.BitDecrement(150.0),150.0,Math.BitIncrement(150.0)})
+        foreach(double length in new[] {PortableTestRuntime.NextDown(3900.0),3900.0,PortableTestRuntime.NextUp(3900.0)})
+        foreach(double setback in new[] {double.Epsilon,1e-9,PortableTestRuntime.NextDown(150.0),150.0,PortableTestRuntime.NextUp(150.0)})
         {
             int start=25;var positions=new[] {1.0,24,200,1150,length};
             var edges=new[] {length-start-1e-7,length-start,length-start+1e-7};
-            var stocks=Enumerable.Range(1,155).Select(i=>25.0*i).Concat(edges.SelectMany(x=>new[] {Math.BitDecrement(x),x,x,Math.BitIncrement(x)})).OrderBy(x=>x).ToArray();
+            var stocks=Enumerable.Range(1,155).Select(i=>25.0*i).Concat(edges.SelectMany(x=>new[] {PortableTestRuntime.NextDown(x),x,x,PortableTestRuntime.NextUp(x)})).OrderBy(x=>x).ToArray();
             Enumeration(stocks,positions,start,2,length,setback);
         }
         // Here the remaining abs guard excludes a middle range while its exact
         // upper tolerance endpoint can pass. A one-sided suffix trim is wrong.
-        var special=new[] {3875-1e-7,3875.0,Math.BitDecrement(3875+1e-7),3875+1e-7,Math.BitIncrement(3875+1e-7)};
+        var special=new[] {3875-1e-7,3875.0,PortableTestRuntime.NextDown(3875+1e-7),3875+1e-7,PortableTestRuntime.NextUp(3875+1e-7)};
         Enumeration(special,new[] {1.0,24,150,1150,3900},25,2,3900,double.Epsilon);
     }
     static TowerInput Input(double length,bool custom=true,PrimaryBeamMaterial material=PrimaryBeamMaterial.DoubleH20)
@@ -88,7 +88,7 @@ internal static class StandaloneIntervalCountTests
         {
             var a=Input(6000,custom,material);var b=Input(6000,custom,material);a.StockEndSetbackMm=b.StockEndSetbackMm=setback;Compare(a,b,stations,q);
         }
-        var rareStocks=Enumerable.Range(1,30).Select(i=>25.0*i).Concat(new[] {3875-1e-7,3875.0,Math.BitDecrement(3875+1e-7),3875+1e-7}).ToArray();
+        var rareStocks=Enumerable.Range(1,30).Select(i=>25.0*i).Concat(new[] {3875-1e-7,3875.0,PortableTestRuntime.NextDown(3875+1e-7),3875+1e-7}).ToArray();
         var first=Input(3900,false);var second=Input(3900,false);first.StockLengthsMm=second.StockLengthsMm=rareStocks;first.StockEndSetbackMm=second.StockEndSetbackMm=double.Epsilon;
         Compare(first,second,new[] {1.0,24,150,1150,3900},200);
     }

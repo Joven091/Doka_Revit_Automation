@@ -6,9 +6,14 @@
     <PlatformTarget>x64</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="System.Text.Json" Version="10.0.15" />
+    <!-- Do not import MemoryExtensions over the production LINQ array operations. -->
+    <PackageReference Include="System.Memory" Version="4.6.3" Aliases="BeamTestMemory" />
     <Compile Include="../Beam.Tests/*.cs" />
     <Compile Include="../../src/ViewModels/BeamCalculatorViewModel.cs" />
     <Compile Include="../../src/ViewModels/BeamCalculatorViewModel.Towers.cs" />
@@ -27,4 +32,4 @@
   </ItemGroup>
 <ItemGroup><Compile Include="../../src/Models/CrossBeamSupport.cs"/><Compile Include="../../src/Models/FormworkObstacleIndex.cs"/><Compile Include="../../src/Models/SecondarySettingOut.cs"/></ItemGroup><ItemGroup><Compile Include="../../src/Models/PlywoodSpacing.cs"/><Compile Include="../../src/ViewModels/BeamCalculatorViewModel.Plywood.cs"/></ItemGroup><ItemGroup><Compile Include="../../src/Models/EquivalentTransferredLoading.cs"/></ItemGroup><ItemGroup><Compile Include="../../src/Models/CrossingSlabSupports.cs"/></ItemGroup><ItemGroup><Compile Include="../../src/Models/EngineerDesignWorkflow.cs"/></ItemGroup><ItemGroup><Compile Include="../../src/Models/CrossBeamSupport.PrimaryBearings.cs" /></ItemGroup><ItemGroup><Compile Include="../../src/Models/RevitStructureImport.cs" /></ItemGroup><ItemGroup><Compile Include="../../src/Models/RevitImportDiagnostics.cs" /></ItemGroup><ItemGroup><Compile Include="../../src/ViewModels/BeamCalculatorViewModel.Revit.cs" /></ItemGroup><ItemGroup><Compile Include="../../src/Models/RevitStructureImport.Perimeter.cs" /></ItemGroup><ItemGroup><EmbeddedResource Include="../Beam.Tests/Fixtures/Combined20261028/area*.xml" LogicalName="Combined20261028.%(Filename)%(Extension)"/></ItemGroup><Import Project="../../src/BeamSolver/BeamSolver.Shared.props" /><ItemGroup><Compile Include="../../src/BeamSolver/BeamWire.cs" /><Compile Include="../../src/BeamSolver/BeamSolverClient.cs" /></ItemGroup>  <ItemGroup><Compile Include="../../src/Models/RevitSelectionContracts.cs" Link="RevitSelectionContracts.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../src/Models/RevitSelectionGeometry.cs" Link="RevitSelectionGeometry.cs" /></ItemGroup>
-</Project>
+<ItemGroup><EmbeddedResource Include="../Beam.Tests/Fixtures/Reported20261103/scenario*.json" LogicalName="Reported20261103.%(Filename)%(Extension)"/></ItemGroup></Project>

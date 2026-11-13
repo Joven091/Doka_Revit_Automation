@@ -41,7 +41,7 @@ internal static class ScalarDiagnosticFormattingTests
             {
                 CultureInfo.CurrentCulture=culture;var x=new BeamSearchTrace("scalar diagnostics parity");var y=new BeamSearchTrace("scalar diagnostics parity");
                 var old=new TowerSearchDiagnostics(denominator,trace:x,ignoreUplift:ignore){LazyLocations=lazy};var actual=new TowerSearchDiagnostics(denominator,trace:y,ignoreUplift:ignore){LazyLocations=lazy};
-                var uses=new[]{0.0,-0.0,1.0,Math.BitDecrement(1.0+1e-8),Math.BitIncrement(1.0+1e-8),5.0,6.0,5.0,4.0,double.NaN,double.PositiveInfinity,double.NegativeInfinity,-1.0};
+                var uses=new[]{0.0,-0.0,1.0,PortableTestRuntime.NextDown(1.0+1e-8),PortableTestRuntime.NextUp(1.0+1e-8),5.0,6.0,5.0,4.0,double.NaN,double.PositiveInfinity,double.NegativeInfinity,-1.0};
                 var lengths=new[]{0.0,1000,1000.0001,double.NaN,double.PositiveInfinity,double.NegativeInfinity};
                 for(int i=0;i<78;i++)
                 {

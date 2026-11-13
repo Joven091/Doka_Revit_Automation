@@ -106,7 +106,7 @@ internal static class ResolvedSupportCountBoundTests
             double per=sign<0 ? 2*input.Primary.ShearLimitKn : Math.Min(2*input.Primary.ShearLimitKn,capacity);
             double limit=count*per;
             double boundary=(limit+1e-6)/(1-1e-6);
-            foreach(double magnitude in new[] {0,limit,Math.BitDecrement(boundary),boundary,Math.BitIncrement(boundary),boundary+1e-3,1e20})
+            foreach(double magnitude in new[] {0,limit,PortableTestRuntime.NextDown(boundary),boundary,PortableTestRuntime.NextUp(boundary),boundary+1e-3,1e20})
             {
                 double force=sign*magnitude;int floor=CrossBeamSupportOptimizer.PrimarySupportCountFloor(input,force);
                 for(int supports=Math.Max(0,count-1);supports<=Math.Min(40,count+1);supports++)
@@ -184,7 +184,7 @@ internal static class ResolvedSupportCountBoundTests
             var input=Input(capacity);input.PrimaryMaterial=material;input.Diagnostics=null;
             var prepared=Prepare(input,crossingForce);
             var stocks=material==PrimaryBeamMaterial.WS10 ? new[] {1250.0,1250} : new[] {1250.0,1200};
-            foreach(double edge in new[] {0.0,Math.BitIncrement(0.0),.000000001,150.0})
+            foreach(double edge in new[] {0.0,PortableTestRuntime.NextUp(0.0),.000000001,150.0})
             {
                 double start=edge;int expected=0;var required=new System.Collections.Generic.List<int>();
                 foreach(double length in stocks)

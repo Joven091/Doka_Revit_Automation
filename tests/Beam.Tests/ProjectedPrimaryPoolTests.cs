@@ -32,13 +32,13 @@ internal static class ProjectedPrimaryPoolTests
         input.LegCapacityKn=70;
         var outside=typeof(TransferredSlabOptimizer).GetMethod("OutsideBand",Hidden);
         bool Outside(double lo,double hi,double centre,double tolerance)=>(bool)outside.Invoke(null,new object[]{lo,hi,centre,tolerance});
-        foreach(double tolerance in new[]{Math.ScaleB(1.0,-20),Math.ScaleB(1.0,-24)})
+        foreach(double tolerance in new[]{Math.Pow(2.0,-20),Math.Pow(2.0,-24)})
         {
             Check(!Outside(1+tolerance,2,1,tolerance),"exact upper band equality is unknown");
             Check(!Outside(0,1-tolerance,1,tolerance),"exact lower band equality is unknown");
             Check(!Outside(1-tolerance*2,1+tolerance*2,1,tolerance),"crossing the band is unknown");
-            Check(Outside(Math.BitIncrement(1+tolerance),2,1,tolerance),"a strictly separated upper range is supported");
-            Check(Outside(0,Math.BitDecrement(1-tolerance),1,tolerance),"a strictly separated lower range is supported");
+            Check(Outside(PortableTestRuntime.NextUp(1+tolerance),2,1,tolerance),"a strictly separated upper range is supported");
+            Check(Outside(0,PortableTestRuntime.NextDown(1-tolerance),1,tolerance),"a strictly separated lower range is supported");
         }
         Check(!Outside(-1e-7,-1e-7,0,1e-7) && !Outside(1e-7,1e-7,0,1e-7),"the actual uplift boundary touch remains unknown");
         Check(!Outside(70-1e-6,70+1e-6,70,1e-6),"the actual reaction fallback band crossing remains unknown");

@@ -94,7 +94,7 @@ internal static class NecessaryFailureHintTests
         foreach(double q in new[]{0.0,-0.0,double.Epsilon,-double.Epsilon,1e12,-1e12,double.MaxValue,-double.MaxValue})
             One(Input(),6000,new[]{150.0,1650,3150,4650,5850},new[]{Q(0,2000,q),Q(2500,6000,-q)});
         var input=Input();double limit=input.Primary.ShearLimitKn+input.Primary.ShearLimitKn*1e-6,boundary=2*limit;
-        foreach(double q in new[]{Math.BitDecrement(boundary),boundary,Math.BitIncrement(boundary)})
+        foreach(double q in new[]{PortableTestRuntime.NextDown(boundary),boundary,PortableTestRuntime.NextUp(boundary)})
         {
             var loads=new[]{Q(0,500,q),Q(500,1000,q)};var sparse=Sparse.TryCreate(1000,loads);
             One(input,1000,new[]{0.0,1000},loads);

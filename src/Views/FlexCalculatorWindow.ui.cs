@@ -85,8 +85,17 @@ namespace EngineeringDashboard
             RefreshInputValidity();
             return vm != null && vm.IsCalculationValid && !TextInputs(this).Any(t => t.IsEnabled && Validation.GetHasError(t));
         }
-        private const string FileInputs = "SlabThickness,FloorHeight,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad,PrimaryBeamCount,SecondaryBeamCantilever,DeflectionLimit,PropCount,PropSpacing,PrimaryBeamCantilever,PropModel,PropType,PropOrientation," +
-            "PrimaryRightCantilever,SecondaryRightCantilever,PrimaryHasAccess,SecondaryHasAccess,PrimaryAccessEnd,SecondaryAccessEnd,PrimaryAccessLeftMm,PrimaryAccessRightMm,SecondaryAccessLeftMm,SecondaryAccessRightMm,TotalAccessLoadKnM2,ExactPrimaryBeamCount,ExactPropCount";
+        private const string LegacyFileInputs = "SlabThickness,FloorHeight,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad,PrimaryBeamCount,SecondaryBeamCantilever,DeflectionLimit,PropCount,PropSpacing,PrimaryBeamCantilever,PropModel,PropType,PropOrientation";
+        private const string AccessFileInputs = "PrimaryRightCantilever,SecondaryRightCantilever,PrimaryHasAccess,SecondaryHasAccess,PrimaryAccessEnd,SecondaryAccessEnd,PrimaryAccessLeftMm,PrimaryAccessRightMm,SecondaryAccessLeftMm,SecondaryAccessRightMm,TotalAccessLoadKnM2,ExactPrimaryBeamCount,ExactPropCount";
+        private const string FileInputs = LegacyFileInputs + "," + AccessFileInputs;
+        private static void ApplySlabInputs(CalculationRecord record, FlexCalculatorViewModel model)
+        {
+            CalculationFiles.Apply(record,"Slab",model,LegacyFileInputs);
+            // Before 1.2.6 none of the access fields existed. A new-format record
+            // must contain the complete group; a partially missing group is corrupt.
+            var names=AccessFileInputs.Split(',');
+            if(record.Inputs.Any(f=>names.Contains(f.Name))) CalculationFiles.Apply(record,"Slab",model,AccessFileInputs);
+        }
         internal CalculationRecord CaptureCalculation()
         {
             if(!TryGetValidCalculation(out var vm)) throw new ArgumentException("Correct the inputs before saving or exporting.");
@@ -98,7 +107,7 @@ namespace EngineeringDashboard
         }
         internal void RestoreCalculation(CalculationRecord record)
         {
-            var candidate=new FlexCalculatorViewModel(); CalculationFiles.Apply(record,"Slab",candidate,FileInputs);
+            var candidate=new FlexCalculatorViewModel(); ApplySlabInputs(record,candidate);
             candidate.PlywoodProfileId=record.Inputs.SingleOrDefault(f=>f.Name=="PlywoodProfileId")?.Value ?? PlywoodCatalog.Default.Id;
             candidate.PlywoodDeflectionLimit=PlywoodSpacing.RestoreDeflectionLimit(record.Inputs.SingleOrDefault(f=>f.Name=="PlywoodDeflectionLimit")?.Value,candidate.DeflectionLimit);
             if(!candidate.IsCalculationValid) throw new ArgumentException("The loaded calculation is invalid: "+candidate.WarningMessage);

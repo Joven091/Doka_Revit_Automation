@@ -41,7 +41,7 @@ internal static class ReportedScenarioEvidence
     static readonly BindingFlags Instance=BindingFlags.NonPublic|BindingFlags.Instance;
     static string Inputs(BeamCalculatorViewModel model)=>(string)typeof(BeamCalculatorViewModel).GetMethod("CaptureDiagnosticInputs",Instance).Invoke(model,null);
     static void Check(bool value,string message){if(!value)throw new InvalidDataException(message);}
-    internal static string Hash(string path){using var stream=File.OpenRead(path);return Convert.ToHexString(SHA256.HashData(stream));}
+    internal static string Hash(string path){using var stream=File.OpenRead(path);using var algorithm=SHA256.Create();return BitConverter.ToString(algorithm.ComputeHash(stream)).Replace("-", "");}
     static void Set(BeamCalculatorViewModel model,string property,object value)=>typeof(BeamCalculatorViewModel).GetProperty(property).SetValue(model,value);
     internal static void Apply(BeamCalculatorViewModel model,BeamSolverReply reply,bool valid,string warning="",string failure="")
     {
@@ -63,7 +63,7 @@ internal static class ReportedScenarioEvidence
     static void Wire(string path,object value)
     {
         string temp=path+"."+Guid.NewGuid().ToString("N")+".tmp";
-        try {BeamWire.Write(temp,value);File.Move(temp,path,true);}finally{if(File.Exists(temp))File.Delete(temp);}
+        try {BeamWire.Write(temp,value);PortableTestRuntime.MoveOverwrite(temp,path);}finally{if(File.Exists(temp))File.Delete(temp);}
     }
     static void CheckReconstructedRequest(string path,BeamCalculatorViewModel child,string expectedHash)
     {

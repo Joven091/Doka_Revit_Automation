@@ -21,13 +21,13 @@ internal static class UniversalSharedViewTests
         original[0].KnPerM=100;Check(signature.Equals(equivalent),"a signature owns its numeric snapshot independently of its source load objects");
         Check(!signature.Equals(Signature(new[]{Q(0,2000,10)})),"equal density cannot erase an atomic clipping boundary");
         Check(!signature.Equals(Signature(new[]{Q(1000,2000,10),Q(0,1000,10)})),"load arithmetic order is part of the signature");
-        Check(!signature.Equals(Signature(new[]{Q(0,1000,Math.BitIncrement(10.0)),Q(1000,2000,10)})),"one-bit density changes have separate evidence");
-        Check(!signature.Equals(Signature(shear:Math.BitIncrement(22.0))) && !signature.Equals(Signature(moment:Math.BitIncrement(10.0))),"both generic section capacities are exact signature inputs");
+        Check(!signature.Equals(Signature(new[]{Q(0,1000,PortableTestRuntime.NextUp(10.0)),Q(1000,2000,10)})),"one-bit density changes have separate evidence");
+        Check(!signature.Equals(Signature(shear:PortableTestRuntime.NextUp(22.0))) && !signature.Equals(Signature(moment:PortableTestRuntime.NextUp(10.0))),"both generic section capacities are exact signature inputs");
         var source=new[]{new TransferredSlabOptimizer.Geometry()};var key=new Bound.UniversalViewKey(signature,source,150);
         var same=new Bound.UniversalViewKey(equivalent,source,150);
         Check(key.Equals(same) && key.GetHashCode()==same.GetHashCode(),"view keys combine exact numeric profile with parent identity and edge");
         Check(!key.Equals(new Bound.UniversalViewKey(signature,source.ToArray(),150)),"another parent array has an independent retained universe");
-        Check(!key.Equals(new Bound.UniversalViewKey(signature,source,Math.BitIncrement(150.0))),"one-bit absolute origin changes have separate evidence");
+        Check(!key.Equals(new Bound.UniversalViewKey(signature,source,PortableTestRuntime.NextUp(150.0))),"one-bit absolute origin changes have separate evidence");
         var cache=new Bound.UniversalViewCache(4096,2);var trace=new BeamSearchTrace("shared universal cache checks");var first=View(key);
         Check(ReferenceEquals(cache.Publish(first,trace),first) && cache.TryGet(same,trace,out var found) && ReferenceEquals(first,found),"separate numeric snapshots share only completed identical views");
         Check(trace.Count(BeamSearchCounter.UniversalGeometrySharedProfileHits)==1,"equivalent-snapshot hits are measured separately from ordinary same-context hits");

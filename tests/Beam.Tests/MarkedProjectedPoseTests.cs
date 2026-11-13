@@ -66,7 +66,7 @@ internal static class MarkedProjectedPoseTests
             Check(propagated,"local and shared proof reuse cannot bypass cancellation");
         }
         var names=(string[])typeof(BeamSearchTrace).GetField("CounterNames",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null);
-        Check(names.Length==Enum.GetValues<BeamSearchCounter>().Length,"the once-per-proof trace counter retains a matching appended label");
+        Check(names.Length==Enum.GetValues(typeof(BeamSearchCounter)).Length,"the once-per-proof trace counter retains a matching appended label");
     }
     static void ActualSortedBuilder()
     {

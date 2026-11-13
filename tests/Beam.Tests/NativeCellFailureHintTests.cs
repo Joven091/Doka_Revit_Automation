@@ -79,7 +79,7 @@ internal static class NativeCellFailureHintTests
         foreach(double sign in new[]{1.0,-1})
         {
             double boundary=2*(input.Primary.ShearLimitKn+input.Primary.ShearLimitKn*1e-6);
-            foreach(double q in new[]{Math.BitDecrement(boundary),boundary,Math.BitIncrement(boundary)})
+            foreach(double q in new[]{PortableTestRuntime.NextDown(boundary),boundary,PortableTestRuntime.NextUp(boundary)})
             {
                 var sparse=Sparse.TryCreate(2000,new[]{Q(0,1000,sign*q),Q(1000,2000,0)});
                 Check(!sparse.TryFitNativeFailureDescriptor(input,Native(new[]{0.0,1000,1900}),9,0,out _,out _),"ULP threshold neighbourhood remains unknown on the native cell path");
@@ -88,7 +88,7 @@ internal static class NativeCellFailureHintTests
         foreach(double q in new[]{0.0,-0.0,double.Epsilon,-double.Epsilon,double.MaxValue,-double.MaxValue})
             Compare(input,4000,new[]{Q(0,2000,0),Q(2000,4000,q)},Native(new[]{150.0,2100,3800}),17,1);
         Compare(input,2000,new[]{Q(-0.0,1000,100),Q(1000,2000,0)},Vector.NativeSlice(new[]{-0.0,1000,1900},0,3,0),9,0);
-        foreach(double endpoint in new[]{2000.0,Math.BitDecrement(2000),Math.BitIncrement(2000),2000-5e-8,2000+5e-8})
+        foreach(double endpoint in new[]{2000.0,PortableTestRuntime.NextDown(2000),PortableTestRuntime.NextUp(2000),2000-5e-8,2000+5e-8})
             Compare(input,4000,new[]{Q(0,2000,50),Q(2000,4000,-50)},Native(new[]{150.0,endpoint,3800}),9,0);
         var tiny=new[]{Q(0,500,1),Q(500,500+5e-8,1e10),Q(500+5e-8,1000,1)};Compare(input,1000,tiny,Native(new[]{100.0,500,500+5e-8,900}),17,1);
         double huge=double.MaxValue;var zero=Sparse.TryCreate(huge,new[]{Q(0,huge*.5,0),Q(huge*.5,huge,-0.0)});

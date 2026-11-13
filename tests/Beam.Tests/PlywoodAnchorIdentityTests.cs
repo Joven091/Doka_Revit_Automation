@@ -20,14 +20,14 @@ internal static class PlywoodAnchorIdentityTests
     {
         const double start=2400,end=4920,first=2440,last=4880;
         foreach(int sign in new[] {-1,1})
-        foreach(double delta in new[] {Math.BitIncrement(first)-first,Math.BitIncrement(last)-last,9e-8})
+        foreach(double delta in new[] {PortableTestRuntime.NextUp(first)-first,PortableTestRuntime.NextUp(last)-last,9e-8})
             ExactSources(start,end,new[] {first+sign*delta,last+sign*delta});
         foreach(int sign in new[] {-1,1})
         {
             Rejected(()=>PlywoodSpacing.FillRequiredRows(start,end,488,new[] {first+sign*1.1e-7,last}),"a mandatory sheet-joint displacement outside the existing identity tolerance is still rejected at the near end");
             Rejected(()=>PlywoodSpacing.FillRequiredRows(start,end,488,new[] {first,last+sign*1.1e-7}),"a mandatory sheet-joint displacement outside the existing identity tolerance is still rejected at the far end");
         }
-        double near=first+(Math.BitIncrement(first)-first),far=last-(Math.BitIncrement(last)-last);
+        double near=first+(PortableTestRuntime.NextUp(first)-first),far=last-(PortableTestRuntime.NextUp(last)-last);
         ExactSources(start,end,new[] {near,near+80,far-80,far});
         Rejected(()=>PlywoodSpacing.FillRequiredRows(start,end,488,new[] {near,near+1e-8,far}),"distinct mandatory rows are not silently coalesced or dropped");
         foreach(double anchor in new[] {first,last})

@@ -25,8 +25,8 @@ internal static class BoundedMatrixLruTests
         Check(fifo.Get(a)==null&&ReferenceEquals(fifo.Get(b),p),"original FIFO reference is unchanged by hits");
         Check(lru.Get(b)==null&&ReferenceEquals(lru.Get(a),p),"LRU hit refresh protects A and evicts B");
         lru.Store(Key(),other);Check(ReferenceEquals(lru.Get(a),p),"duplicate stores do not overwrite immutable preparation");
-        Check(lru.Get(Key(Math.BitIncrement(1150)-1150))==null,"adjacent IEEE support coordinate is not rounded");
-        Check(lru.Get(Key(ei:Math.BitIncrement(899.7512)))==null,"adjacent IEEE stiffness is not rounded");
+        Check(lru.Get(Key(PortableTestRuntime.NextUp(1150)-1150))==null,"adjacent IEEE support coordinate is not rounded");
+        Check(lru.Get(Key(ei:PortableTestRuntime.NextUp(899.7512)))==null,"adjacent IEEE stiffness is not rounded");
         var untouched=new LoadedBeamAnalysis.MatrixCache(1);untouched.Store(a,p);untouched.Store(b,p);
         Check(ReferenceEquals(untouched.Get(a),p)&&untouched.Get(b)==null,"default cache retains the original no-admission-after-capacity policy");
         long size=LoadedBeamAnalysis.MatrixCache.EstimateEntryBytes(a,p);

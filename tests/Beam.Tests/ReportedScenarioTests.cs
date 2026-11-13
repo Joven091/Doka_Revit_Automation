@@ -34,7 +34,8 @@ internal static class ReportedScenarioTests
     static readonly BindingFlags Private=BindingFlags.NonPublic|BindingFlags.Instance;
     static string Option(string[] args,string name,string fallback) {int n=Array.IndexOf(args,name);return n<0 ? fallback : args[n+1];}
     static void Check(bool value,string message) {if(!value)throw new Exception(message);}
-    static void Near(double a,double b,string message,double relative=1e-9) {Check(double.IsFinite(a)&&double.IsFinite(b)&&Math.Abs(a-b)<=relative*Math.Max(1,Math.Max(Math.Abs(a),Math.Abs(b))),message+": "+a.ToString("R",CultureInfo.InvariantCulture)+" != "+b.ToString("R",CultureInfo.InvariantCulture));}
+    static bool Finite(double value)=>!double.IsNaN(value)&&!double.IsInfinity(value);
+    static void Near(double a,double b,string message,double relative=1e-9) {Check(Finite(a)&&Finite(b)&&Math.Abs(a-b)<=relative*Math.Max(1,Math.Max(Math.Abs(a),Math.Abs(b))),message+": "+a.ToString("R",CultureInfo.InvariantCulture)+" != "+b.ToString("R",CultureInfo.InvariantCulture));}
     static Dictionary<string,string> Scalars(string inputs)=>inputs.Split('\n').Where(s=>s.Contains(" = ")).Select(s=>s.Split(new[] {" = "},2,StringSplitOptions.None)).ToDictionary(s=>s[0],s=>s[1].Trim());
     static void ApplyInputs(BeamCalculatorViewModel model,string inputs)
     {
@@ -133,7 +134,7 @@ internal static class ReportedScenarioTests
     static IEnumerable<TransferMember> Members(TowerLayout layout)=>layout?.Transfer==null ? Enumerable.Empty<TransferMember>() : layout.Transfer.PrimaryCases.SelectMany(c=>c).Concat(layout.Transfer.LowerCases.SelectMany(c=>c)).Concat(layout.Transfer.UpperMembers);
     static void ValidateMember(TransferMember member,TowerInput input)
     {
-        Check(member.Analysis.DeflectionEvaluated && double.IsFinite(member.Utilization) && member.Utilization<=1+1e-8,"Member capacity/deflection: "+member.Name);
+        Check(member.Analysis.DeflectionEvaluated && Finite(member.Utilization) && member.Utilization<=1+1e-8,"Member capacity/deflection: "+member.Name);
         Check(member.Analysis.MomentKnM<=member.MomentLimitKnM*(1+1e-8) && member.Analysis.ShearKn<=member.ShearLimitKn*(1+1e-8),"Member bending/shear: "+member.Name);
         Check(member.Analysis.DeflectionUtilization<=1+1e-8,"Member deflection limit: "+member.Name);
         if(!input.IgnoreUplift)Check(member.MinimumReactionKn>=-1e-7,"Member uplift");
@@ -156,7 +157,7 @@ internal static class ReportedScenarioTests
     {
         Check(layout!=null && !layout.SearchTimeLimitReached,"Missing layout or elapsed-time truncation");
         Check(layout.Utilization<=1+1e-8 && layout.MaxLegKn<=input.LegCapacityKn+1e-8,"Layout capacity");
-        Check(layout.LeftReactions.Concat(layout.RightReactions).All(r=>double.IsFinite(r)&&r<=input.LegCapacityKn+1e-8),"Individual leg capacity");
+        Check(layout.LeftReactions.Concat(layout.RightReactions).All(r=>Finite(r)&&r<=input.LegCapacityKn+1e-8),"Individual leg capacity");
         Near(layout.MaxLegKn,layout.LeftReactions.Concat(layout.RightReactions).Max(),"Maximum leg envelope",1e-7);
         foreach(var member in Members(layout))ValidateMember(member,input);
         if(input.Exclude600Standalone)Check(layout.Standalone600Count==0,"Standalone 600 tower excluded");
@@ -279,7 +280,7 @@ internal static class ReportedScenarioTests
         }
         Check(failures.Count==0,string.Join("\n\n",failures));
     }
-    static string Hash(string text)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+    static string Hash(string text){using var algorithm=SHA256.Create();return BitConverter.ToString(algorithm.ComputeHash(Encoding.UTF8.GetBytes(text))).Replace("-", "");}
     static object LayoutSnapshot(TowerLayout layout)=>new {layout.LegCount,layout.GroupCount,layout.BayCount,layout.Standalone600Count,layout.StandaloneBracePenalty,layout.BraceLocationPenalty,layout.SymmetryErrorMm,layout.CantileverImbalanceMm,layout.MaxLegKn,layout.Utilization,layout.PositionsMm,layout.Joined,layout.WidthMm,layout.TransverseOffsetMm,layout.LongitudinalStartMm,layout.LengthMm,layout.MinimumLegCountProven,layout.SearchTimeLimitReached,H20=layout.StockPlan.TotalH20Count+(layout.Transfer?.AdditionalH20Count??0),layout.StockPlan.TotalStockLengthMm};
     internal static object PartSnapshot(Tuple<RevitDrawingDefinition,BeamCalculatorViewModel> part)
     {
@@ -305,7 +306,7 @@ internal static class ReportedScenarioTests
             File.WriteAllText(Path.Combine(output,"scenario"+number+".inputs.xml"),model.NetworkConfigurationXml);
             if(fixturesOnly)continue;
             string worker=Option(args,"--worker",Path.GetFullPath("tools/BeamSolver.Worker/bin/Release/net10.0/Doka.BeamSolver.dll"));
-            string host=Option(args,"--dotnet",Environment.ProcessPath);
+            string host=Option(args,"--dotnet",PortableTestRuntime.ProcessPath);
             if(mode=="worker")Check(File.Exists(worker)&&File.Exists(host),"Build matching worker and provide --dotnet host first");
             using var session=new BeamSolverSession(mode=="worker" ? worker : Path.Combine(output,"explicit-in-process-no-worker"),mode=="worker" ? host : null);
             model.SharedSolverSession=session;

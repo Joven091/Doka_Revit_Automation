@@ -73,7 +73,7 @@ internal static class StandaloneStockIntervalTests
             if(sample%2!=0){positions=new[] {start-125.0}.Concat(positions).Concat(new[] {start+length+125}).ToArray();first=1;last=count;}
             var loads=new[] {.125,8.125,35.0,input.Primary.ShearLimitKn/local[0],2*input.Primary.MomentLimitKnM/(local[0]*local[0]),
                 count*Math.Min(input.LegCapacityKn,2*input.Primary.ShearLimitKn)/(length/1000)};
-            foreach(double q in loads.SelectMany(q=>new[] {Math.BitDecrement(q),q,Math.BitIncrement(q),q*(1+1e-6),q*(1-1e-6)}))
+            foreach(double q in loads.SelectMany(q=>new[] {PortableTestRuntime.NextDown(q),q,PortableTestRuntime.NextUp(q),q*(1+1e-6),q*(1-1e-6)}))
             {
                 bool expected=TowerStockPlanner.UniformMemberForcesFit(input,length/1000,local,q);
                 bool actual=(bool)bound.Invoke(null,new object[] {input,length/1000,positions,start,first,last,q});

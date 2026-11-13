@@ -31,8 +31,8 @@ internal static class PreparedSpanMaximumTests
             var shape=TransferredSlabOptimizer.PrepareSpanShape(geometry,context);
             if(shape.MaximumTail!=shape.Tails.Max() || shape.MaximumClearSpan!=shape.ClearSpans.Max())throw new Exception("Span maxima did not retain exact prepared dimensions");
             var boundaries=shape.Tails.SelectMany(t=>new[] {(input.Primary.ShearLimitKn+1e-7)/t,2*(input.Primary.MomentLimitKnM+1e-7)/(t*t)})
-                .Concat(shape.ClearSpans.SelectMany(s=>new[] {(2*input.Primary.ShearLimitKn+1e-7)/s,(16*input.Primary.MomentLimitKnM+1e-7)/(s*s)})).Where(double.IsFinite)
-                .SelectMany(q=>new[] {Math.BitDecrement(q),q,Math.BitIncrement(q)}).Concat(new[] {0.0,random.NextDouble()*100}).ToArray();
+                .Concat(shape.ClearSpans.SelectMany(s=>new[] {(2*input.Primary.ShearLimitKn+1e-7)/s,(16*input.Primary.MomentLimitKnM+1e-7)/(s*s)})).Where(PortableTestRuntime.IsFinite)
+                .SelectMany(q=>new[] {PortableTestRuntime.NextDown(q),q,PortableTestRuntime.NextUp(q)}).Concat(new[] {0.0,random.NextDouble()*100}).ToArray();
             foreach(double q in boundaries)
             {
                 if(TransferredSlabOptimizer.PreparedSpanShapeFits(input,geometry,context,q)!=Reference(input,geometry,shape,q))throw new Exception("Span maxima changed an exact scalar acceptance boundary");

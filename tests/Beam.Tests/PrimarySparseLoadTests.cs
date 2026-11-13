@@ -48,10 +48,10 @@ internal static class PrimarySparseLoadTests
         foreach(var material in new[]{PrimaryBeamMaterial.DoubleH20,PrimaryBeamMaterial.WS10})foreach(double sign in new[]{-1.0,1})
         {
             var input=Input(material);double v=input.Primary.ShearLimitKn,boundary=2*(v+v*1e-6);
-            foreach(double q in new[]{Math.BitDecrement(boundary),boundary,Math.BitIncrement(boundary)})
+            foreach(double q in new[]{PortableTestRuntime.NextDown(boundary),boundary,PortableTestRuntime.NextUp(boundary)})
                 Parity(input,1000,new[]{Q(0,500,sign*q),Q(500,1000,sign*q)},new[]{0.0,1000});
         }
-        foreach(double coordinate in new[]{500.0,Math.BitIncrement(500),Math.BitDecrement(500),500+double.Epsilon})
+        foreach(double coordinate in new[]{500.0,PortableTestRuntime.NextUp(500),PortableTestRuntime.NextDown(500),500+double.Epsilon})
             Parity(Input(),1000,new[]{Q(0,500,-20),Q(500,1000,20)},new[]{0.0,coordinate,1000});
         Parity(Input(),2*double.Epsilon,new[]{Q(0,double.Epsilon,double.MaxValue),Q(double.Epsilon,2*double.Epsilon,-double.MaxValue)},new[]{0.0,2*double.Epsilon});
         Parity(Input(),1000,new[]{Q(0,500,double.MaxValue),Q(500,1000,-double.MaxValue)},new[]{0.0,1000});

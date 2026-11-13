@@ -13,7 +13,7 @@ internal static class NecessaryMemberCacheTests
         var cache=new TransferredSlabOptimizer.ResponseCache<CrossBeamSupportOptimizer.NecessaryMemberKey,bool>(2);
         cache.Store(Key(),false);
         Check(cache.TryGetValue(Key(supports:new[]{200.0,2250}),out bool failed) && !failed,"equal local members from distinct complete geometries reuse the same necessary rejection");
-        foreach(var changed in new[] {Key(start:Math.BitIncrement(0.0)),Key(length:Math.BitIncrement(2450)),Key(line:1),Key(supports:new[]{Math.BitIncrement(200),2250.0}),Key(supports:new[]{2250.0,200}),Key(supports:new[]{200.0,1225,2250})})
+        foreach(var changed in new[] {Key(start:PortableTestRuntime.NextUp(0.0)),Key(length:PortableTestRuntime.NextUp(2450)),Key(line:1),Key(supports:new[]{PortableTestRuntime.NextUp(200),2250.0}),Key(supports:new[]{2250.0,200}),Key(supports:new[]{200.0,1225,2250})})
             Check(!cache.TryGetValue(changed,out _),"absolute load start, length, line, adjacent support values, order and count stay exact");
         cache.Store(Key(line:1),true);cache.TryGetValue(Key(),out _);cache.Store(Key(start:1),false);
         Check(cache.Count==2 && !cache.TryGetValue(Key(line:1),out _) && cache.TryGetValue(Key(),out failed) && !failed,"member responses retain bounded LRU eviction and both positive/negative outcomes");

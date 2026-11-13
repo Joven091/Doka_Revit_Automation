@@ -77,7 +77,7 @@ internal static class NativeExternalWidthProofTests
         foreach(string name in new[] {"X0","X1","Y0","Y1","Z0","Z1"})
         {
             var field=fields.Single(f=>f.Name==name);double saved=(double)field.GetValue(solid);
-            Mutation(()=>field.SetValue(solid,Math.BitIncrement(saved)),()=>field.SetValue(solid,saved),"one ULP "+name);
+            Mutation(()=>field.SetValue(solid,PortableTestRuntime.NextUp(saved)),()=>field.SetValue(solid,saved),"one ULP "+name);
         }
         Mutation(()=>solid.IsLeg=true,()=>solid.IsLeg=false,"leg flag");
         Mutation(()=>solid.IsTowerEnvelope=true,()=>solid.IsTowerEnvelope=false,"tower-envelope flag");
@@ -90,7 +90,7 @@ internal static class NativeExternalWidthProofTests
         foreach(var target in new[] {common,input})foreach(string name in new[] {"ObstacleOriginXmm","ObstacleCentreYmm","ObstacleBottomMm"})
         {
             var field=typeof(TowerInput).GetField(name,Hidden);double saved=(double)field.GetValue(target);
-            Mutation(()=>field.SetValue(target,Math.BitIncrement(saved)),()=>field.SetValue(target,saved),"exact "+(ReferenceEquals(target,common) ? "common " : "input ")+name);
+            Mutation(()=>field.SetValue(target,PortableTestRuntime.NextUp(saved)),()=>field.SetValue(target,saved),"exact "+(ReferenceEquals(target,common) ? "common " : "input ")+name);
         }
         var acceptance=input.TransferLayoutAcceptance;var lower=input.TransferLowerAcceptance;var preparation=input.TransferReceiverPreparation;var geometryFilter=input.TransferGeometryFilter;
         Mutation(()=>input.TransferLayoutAcceptance=l=>acceptance(l),()=>input.TransferLayoutAcceptance=acceptance,"equal-behavior replacement acceptance callback");

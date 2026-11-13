@@ -38,9 +38,9 @@ internal static class SpanShapeHistoryTests
         Check(a.Boundaries[0]==500 && a.Boundaries[3]==2800 && a.Same(Context()),"context owns an immutable prehashed snapshot of source footprint values");
         bool readOnly=false;try{a.Boundaries[0]=1;}catch(NotSupportedException){readOnly=true;}
         Check(readOnly && a.Same(Context()),"inspection cannot mutate the hashed context through its boundary collection");
-        var edge=Context(Math.BitIncrement(25.125));var edgeShape=TransferredSlabOptimizer.PrepareSpanShape(geometry,edge,trace,owner);
+        var edge=Context(PortableTestRuntime.NextUp(25.125));var edgeShape=TransferredSlabOptimizer.PrepareSpanShape(geometry,edge,trace,owner);
         Check(!ReferenceEquals(edgeShape,TransferredSlabOptimizer.PrepareSpanShape(geometry,b,trace,owner)),"adjacent representable edges retain distinct exact contexts");
-        var changed=Bands();changed[0].StartMm=Math.BitIncrement(changed[0].StartMm);
+        var changed=Bands();changed[0].StartMm=PortableTestRuntime.NextUp(changed[0].StartMm);
         var shifted=new TransferredSlabOptimizer.SpanGeometryContext(0,changed);
         Check(!a.Same(shifted) && !ReferenceEquals(first,TransferredSlabOptimizer.PrepareSpanShape(geometry,shifted,trace,owner)),"adjacent representable footprint boundaries are not rounded or merged");
         var reversed=new TransferredSlabOptimizer.SpanGeometryContext(0,Bands().Reverse().ToArray());

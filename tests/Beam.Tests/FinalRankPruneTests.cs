@@ -122,12 +122,12 @@ internal static class FinalRankPruneTests
         {
             var candidate=Sample(random,2+sample%5);var best=sample%2==0 ? candidate.Item3 : Sample(random,2+sample%4).Item3;Metrics(candidate,best);
         }
-        foreach(double delta in new[] {0.0,1e-7,-1e-7,Math.BitIncrement(1e-7),Math.BitDecrement(1e-7)})
+        foreach(double delta in new[] {0.0,1e-7,-1e-7,PortableTestRuntime.NextUp(1e-7),PortableTestRuntime.NextDown(1e-7)})
         {
             var a=Sample(new Random(55),4,2450,delta);var b=Sample(new Random(55),4,2450,0);Metrics(a,b.Item3);
         }
         var basis=Sample(new Random(99),4,2450);double boundary=2450+.01/basis.Item3.Transfer.PhysicalRowCount;
-        foreach(double stock in new[] {2450.0,boundary,Math.BitIncrement(boundary),Math.BitDecrement(boundary),2450-.01/basis.Item3.Transfer.PhysicalRowCount})
+        foreach(double stock in new[] {2450.0,boundary,PortableTestRuntime.NextUp(boundary),PortableTestRuntime.NextDown(boundary),2450-.01/basis.Item3.Transfer.PhysicalRowCount})
         {
             var a=Sample(new Random(99),4,stock);var b=Sample(new Random(99),4,2450);a.Item3.Utilization=.2;b.Item3.Utilization=.8;Metrics(a,b.Item3);
         }

@@ -205,6 +205,7 @@ public partial class FlexCalculatorViewModel : INotifyPropertyChanged
         ClearResults();
         try { ValidateInputs();
             double pressure=UseCustomLoads ? 25*SlabThickness/1000+CustomLiveLoad+CustomFormworkLoad : SlabLoadHelper.CalculateTotalLoad(SlabThickness);
+            if (HasAccessExtensions) pressure = Math.Max(pressure, TotalAccessLoadKnM2);
             PlywoodResult=PlywoodSpacing.CalculateForSheet(SelectedPlywood,pressure,PlywoodSpacing.ParseDeflectionLimit(PlywoodDeflectionLimit));
             CalculateValidInputs(); IsCalculationValid = SuggestedPrimaryBeamSpacing > 0 && string.IsNullOrEmpty(WarningMessage); }
         catch (ArgumentException ex) { ClearResults(); WarningMessage = ex.Message; }

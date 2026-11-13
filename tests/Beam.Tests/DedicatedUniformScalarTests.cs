@@ -78,7 +78,7 @@ internal static class DedicatedUniformScalarTests
             var factors=new List<double> {0,.125,1,8,35};
             for(int i=-20;i<=20;i++)
             {factors.Add((1+i*1e-8)/use);factors.Add((70+i*1e-7)/peak);}
-            foreach(double q in new[] {1/use,70/peak}){factors.Add(Math.BitDecrement(q));factors.Add(Math.BitIncrement(q));}
+            foreach(double q in new[] {1/use,70/peak}){factors.Add(PortableTestRuntime.NextDown(q));factors.Add(PortableTestRuntime.NextUp(q));}
             foreach(double factor in factors)foreach(bool lazy in new[] {false,true})Case(supports,criterion,factor,70,70,lazy,unit);
             double passing=.25/use,max=peak*passing;
             for(int i=-20;i<=20;i++)Case(supports,criterion,passing,70,max+i*1e-9,true,unit);

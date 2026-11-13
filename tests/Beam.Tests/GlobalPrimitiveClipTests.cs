@@ -17,7 +17,7 @@ internal static class GlobalPrimitiveClipTests
         var average=Bound.GuardedAverage(raw,raw,new[]{0.0,650,1000});Check(average.Length==1,"the numeric lower load can omit zero cells while its clipping contract cannot");
         var full=new Bound.UniversalProfileSignature(average,22,10,primitive);
         Check(!full.Equals(new Bound.UniversalProfileSignature(average,22,10,new[]{0.0,500,500,1000})),"equal lower loads with another zero-cell partition have independent cached evidence");
-        Check(!full.Equals(new Bound.UniversalProfileSignature(average,22,10,new[]{0.0,500,500,Math.BitIncrement(650.0),Math.BitIncrement(650.0),1000})),"primitive clipping cuts retain exact numeric bits");
+        Check(!full.Equals(new Bound.UniversalProfileSignature(average,22,10,new[]{0.0,500,500,PortableTestRuntime.NextUp(650.0),PortableTestRuntime.NextUp(650.0),1000})),"primitive clipping cuts retain exact numeric bits");
         Check(Bound.PrimitiveIntervals(raw,raw,new[]{double.NaN})==null,"nonfinite possible source cuts supply unknown");
         foreach(double delta in new[]{-2e-7,-1e-7,-5e-8,0,5e-8,1e-7,2e-7})
         {

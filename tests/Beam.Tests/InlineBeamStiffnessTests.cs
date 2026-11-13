@@ -84,7 +84,7 @@ internal static class InlineBeamStiffnessTests
         var unit=new[] {new BeamDistributedLoad {StartMm=0,EndMm=length,KnPerM=1},new BeamDistributedLoad {StartMm=850,EndMm=3075,KnPerM=.375}};
         var shape=LoadedBeamAnalysis.AnalyzeBandedAssemblyReference(length,supports,unit,points,TowerOptimizer.PairEI,270);
         foreach(double scale in new[] {10/shape.MomentKnM,22/shape.ShearKn,70/shape.Reactions.Max(),1/shape.DeflectionUtilization})
-        foreach(double factor in new[] {Math.BitDecrement(scale),scale,Math.BitIncrement(scale),scale*(1-1e-6),scale*(1+1e-6)})
+        foreach(double factor in new[] {PortableTestRuntime.NextDown(scale),scale,PortableTestRuntime.NextUp(scale),scale*(1-1e-6),scale*(1+1e-6)})
         {
             var loads=unit.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM*factor}).ToArray();
             var expected=LoadedBeamAnalysis.AnalyzeBandedAssemblyReference(length,supports,loads,points,TowerOptimizer.PairEI,270,70,true,false,true);

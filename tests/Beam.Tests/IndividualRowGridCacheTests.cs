@@ -70,18 +70,18 @@ internal static class IndividualRowGridCacheTests
         Check(before.Equals(same) && before.GetHashCode()==same.GetHashCode(),"independent inputs with equal consumed values share an exact key");
         var changes=new Action<TowerInput>[]
         {
-            i=>i.LongitudinalStartMm=Math.BitIncrement(0.0),i=>i.TransferredSlab.FixedRowStartMm=Math.BitIncrement(50.0),
+            i=>i.LongitudinalStartMm=PortableTestRuntime.NextUp(0.0),i=>i.TransferredSlab.FixedRowStartMm=PortableTestRuntime.NextUp(50.0),
             i=>i.TransferredSlab.UpperSpacingMm=350,i=>i.TransferredSlab.LeftSlabSpacingMm=488,i=>i.TransferredSlab.RightSlabSpacingMm=305,
             i=>i.TransferredSlab.LeftBayMm=0,i=>i.TransferredSlab.RightBayMm=0,i=>i.TransferredSlab.LocalReceivingRows=false,
             i=>i.TransferredSlab.IncludeConcreteEndStrips=true,i=>i.TransferredSlab.IncludeMainBeamEndLoads=false,
-            i=>i.TransferredSlab.SharedRowsMm[0]=Math.BitIncrement(i.TransferredSlab.SharedRowsMm[0]),
+            i=>i.TransferredSlab.SharedRowsMm[0]=PortableTestRuntime.NextUp(i.TransferredSlab.SharedRowsMm[0]),
             i=>Array.Reverse(i.TransferredSlab.SharedRowsMm),i=>i.TransferredSlab.SharedRowsMm=null,
-            i=>i.TransferredSlab.LeftBaselineWidthsMm[0]=Math.BitIncrement(i.TransferredSlab.LeftBaselineWidthsMm[0]),
-            i=>i.TransferredSlab.RightBaselineWidthsMm[0]=Math.BitIncrement(i.TransferredSlab.RightBaselineWidthsMm[0]),
+            i=>i.TransferredSlab.LeftBaselineWidthsMm[0]=PortableTestRuntime.NextUp(i.TransferredSlab.LeftBaselineWidthsMm[0]),
+            i=>i.TransferredSlab.RightBaselineWidthsMm[0]=PortableTestRuntime.NextUp(i.TransferredSlab.RightBaselineWidthsMm[0]),
             i=>i.TransferredSlab.LeftBaselineWidthsMm=null,i=>i.TransferredSlab.RightBaselineWidthsMm=null,
             i=>i.TransferredSlab.LeftEffectiveWidthsMm[0]=0,i=>i.TransferredSlab.RightEffectiveWidthsMm[0]=0,
             i=>i.TransferredSlab.LeftEffectiveWidthsMm=null,i=>i.TransferredSlab.RightEffectiveWidthsMm=null,
-            i=>i.TransferredSlab.ReceivingRowsMm=new[] {Math.BitIncrement(2440.0)},
+            i=>i.TransferredSlab.ReceivingRowsMm=new[] {PortableTestRuntime.NextUp(2440.0)},
             i=>i.TransferredSlab.ReceivingCrossings=new[] {new TransferCrossingBeamRow {PositionMm=2000,WidthMm=650}},
             i=>i.TransferredSlab.EngineerReceiverCount=8
         };
@@ -90,7 +90,7 @@ internal static class IndividualRowGridCacheTests
             var candidate=Input();change(candidate);
             Check(!before.Equals(new TransferredSlabOptimizer.IndividualGridKey(candidate,3900,3900,50)),"every consumed scalar/array dependency retains its exact value and null/order distinction");
         }
-        foreach(var values in new[] {new[] {Math.BitIncrement(3900.0),3900,50},new[] {3900.0,Math.BitIncrement(3900.0),50},new[] {3900.0,3900,Math.BitIncrement(50.0)}})
+        foreach(var values in new[] {new[] {PortableTestRuntime.NextUp(3900.0),3900,50},new[] {3900.0,PortableTestRuntime.NextUp(3900.0),50},new[] {3900.0,3900,PortableTestRuntime.NextUp(50.0)}})
             Check(!before.Equals(new TransferredSlabOptimizer.IndividualGridKey(input,values[0],values[1],values[2])),"coverage, row coverage and edge keep one-ULP distinctions");
         var positiveZero=Input();positiveZero.LongitudinalStartMm=0.0;
         var negativeZero=Input();negativeZero.LongitudinalStartMm=BitConverter.Int64BitsToDouble(long.MinValue);
@@ -219,7 +219,7 @@ internal static class IndividualRowGridCacheTests
         KeyDependencies();
         foreach(bool shared in new[] {false,true})foreach(bool local in new[] {false,true})
         foreach(bool concrete in new[] {false,true})foreach(bool beam in new[] {false,true})
-        foreach(double edge in new[] {Math.BitDecrement(50.0),50.0,Math.BitIncrement(50.0)})
+        foreach(double edge in new[] {PortableTestRuntime.NextDown(50.0),50.0,PortableTestRuntime.NextUp(50.0)})
         {
             var value=Input(false,shared);value.TransferredSlab.LocalReceivingRows=local;
             value.TransferredSlab.IncludeConcreteEndStrips=concrete;value.TransferredSlab.IncludeMainBeamEndLoads=beam;Parity(value,3900,3900,edge);
@@ -227,7 +227,7 @@ internal static class IndividualRowGridCacheTests
         var coordinated=Input(true);Parity(coordinated,10500,10500,50);
         Check((bool)Get(Call(build,coordinated,10500,10500,50),"Adjusted"),"the cached path includes real opposite-side row coordination and source mapping");
         var unusedKey=new TransferredSlabOptimizer.IndividualGridKey(coordinated,10500,10500,50);
-        coordinated.TransferredSlab.SharedRowsMm[5]=Math.BitIncrement(coordinated.TransferredSlab.SharedRowsMm[5]);
+        coordinated.TransferredSlab.SharedRowsMm[5]=PortableTestRuntime.NextUp(coordinated.TransferredSlab.SharedRowsMm[5]);
         Check(!unusedKey.Equals(new TransferredSlabOptimizer.IndividualGridKey(coordinated,10500,10500,50)),"even an inactive remote source coordinate remains part of the global ordinal contract");
         Parity(coordinated,10500,10500,50);
         const double parentLength=6099.999812417978,beamLength=6099.999812417687,covered=5950;

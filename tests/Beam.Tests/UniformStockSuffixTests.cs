@@ -31,7 +31,7 @@ internal static class UniformStockSuffixTests
     static double[] Around(double center)
     {
         double lower=center,upper=center;var values=new double[65];values[32]=center;
-        for(int i=1;i<=32;i++){lower=Math.BitDecrement(lower);upper=Math.BitIncrement(upper);values[32-i]=lower;values[32+i]=upper;}return values;
+        for(int i=1;i<=32;i++){lower=PortableTestRuntime.NextDown(lower);upper=PortableTestRuntime.NextUp(upper);values[32-i]=lower;values[32+i]=upper;}return values;
     }
     static void PredicateProof()
     {
@@ -83,7 +83,7 @@ internal static class UniformStockSuffixTests
             var a=Input(6000,custom,material);var b=Input(6000,custom,material);a.StockEndSetbackMm=b.StockEndSetbackMm=setback;Compare(a,b,positions,q);
         }
         var first=Input(3900,false);var second=Input(3900,false);
-        var stocks=Enumerable.Range(1,30).Select(i=>25.0*i).Concat(new[] {3875-1e-7,3875.0,Math.BitDecrement(3875+1e-7),3875+1e-7}).ToArray();
+        var stocks=Enumerable.Range(1,30).Select(i=>25.0*i).Concat(new[] {3875-1e-7,3875.0,PortableTestRuntime.NextDown(3875+1e-7),3875+1e-7}).ToArray();
         first.StockLengthsMm=second.StockLengthsMm=stocks;first.StockEndSetbackMm=second.StockEndSetbackMm=double.Epsilon;
         Compare(first,second,new[] {1.0,24,150,1150,3900},20);
         // A mix of passing/failed member intervals makes first diagnostic-key

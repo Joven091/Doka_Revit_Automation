@@ -69,5 +69,11 @@ internal static class AccessTests
         check(!original.IsCalculationValid && original.WarningMessage.Contains("positive slab-loaded"), "Overlapping access zones cannot erase the slab");
         original.PrimaryAccessRightMm = 250;
         check(original.IsCalculationValid, "Corrected access geometry recovers");
+        var highAccess = new FlexCalculatorViewModel { PrimaryBeamCount = "2", PropCount = "2", PropSpacing = 500,
+            PrimaryBeamCantilever = 150, SecondaryBeamCantilever = 150, PrimaryAccessRightMm = 50, PrimaryHasAccess = true, TotalAccessLoadKnM2 = 30 };
+        check(highAccess.PlywoodResult != null, "Higher access pressure is checked against the plywood chart");
+        check(!highAccess.IsCalculationValid && highAccess.WarningMessage.Contains("Uplift"), "High access pressure cannot hide before-pour uplift");
+        near(30, highAccess.PlywoodResult.PressureKnM2, "Access pressure above slab pressure governs plywood");
+        near(350, highAccess.SecondaryBeamSpacing, "Access deck pressure constrains secondary row spacing");
     }
 }

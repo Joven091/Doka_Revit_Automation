@@ -51,8 +51,8 @@ internal static class ReceiverAggregateReserveTests
         Check(TransferNetworkOptimizer.ReceiverAggregateLoadBound.MaximumLedgerHalf(10,3000)>15,"positive ledger maximum is guarded upward");
         Check(TransferNetworkOptimizer.ReceiverAggregateLoadBound.LowerForce(1,1e9)==0,"force allowance scales to raw cancellation terms");
         var common=Common();double p=Math.Min(common.LegCapacityKn,2*common.Primary.ShearLimitKn);
-        for(int n=2;n<=40;n++)foreach(double left in new[]{-n*p,-n*p/2,0,n*p,Math.BitIncrement(n*p)})
-        foreach(double right in new[]{-n*p,0,n*p,Math.BitIncrement(n*p)})
+        for(int n=2;n<=40;n++)foreach(double left in new[]{-n*p,-n*p/2,0,n*p,PortableTestRuntime.NextUp(n*p)})
+        foreach(double right in new[]{-n*p,0,n*p,PortableTestRuntime.NextUp(n*p)})
         {
             if(!CrossBeamSupportOptimizer.PrimarySupportCountFits(common,n,left) || !CrossBeamSupportOptimizer.PrimarySupportCountFits(common,n,right))continue;
             double sum=left+right,force=TransferNetworkOptimizer.ReceiverAggregateLoadBound.LowerForce(Math.Max(0,sum),Math.Abs(left)+Math.Abs(right));
