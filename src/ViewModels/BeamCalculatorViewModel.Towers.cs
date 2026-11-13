@@ -51,7 +51,7 @@ namespace EngineeringDashboard
         // Optional deadline for explicitly requested diagnostic runs; normal calculation is unrestricted.
         internal TimeSpan TowerSearchTimeLimit {get;set;}=TimeSpan.FromSeconds(25);
         public bool IsOptimizing { get; private set; }
-        public string SearchProgressText=>HasCombinedRevitDrawing && IsOptimizing ? combinedSearchProgress : towerCancellation?.IsCancellationRequested==true ? "Stopping the search…" : beamSearchTrace?.ProgressText??"Preparing the calculation";
+        public string SearchProgressText=>HasCombinedRevitDrawing && IsOptimizing ? combinedSearchProgress+(runningRevitDrawing==null ? "" : " · "+runningRevitDrawing.SearchProgressText) : towerCancellation?.IsCancellationRequested==true ? "Stopping the search…" : beamSearchTrace?.ProgressText??"Preparing the calculation";
         public double SearchElapsedSeconds=>beamSearchTrace?.ElapsedSeconds??0;
         public bool CanCancelOptimization => IsOptimizing && towerCancellation!=null && !towerCancellation.IsCancellationRequested;
         public void CancelOptimization()
@@ -71,6 +71,7 @@ namespace EngineeringDashboard
         public string TowerStockSchedule => TowerResult?.StockSchedule ?? "";
         public string TowerSearchNote => TowerResult == null ? "" : TowerResult.SearchNote + " Tested layouts: " + TowerResult.Tested + ".";
         public const string TowerAssumptions = "Two primary lines use the selected material and its stated strength/stiffness basis. Each stock member is analyzed separately with at least two supports, full uniform load, rigid non-settling supports and free ends. Catalogue primary lengths (or optional custom lengths for H20 only) have no internal gaps, overlaps or projection beyond the concrete ends. Additional custom lengths are multiples of 25 mm; enabling them retains a better stock-only solution. Symmetric concrete end overhang is allowed up to the entered limit (default 75 mm). Only the concrete load directly over the actual primary stock length is included. Concrete beyond the primary ends contributes no load to these checks. Adjacent member ends are independent; no shared support, mechanical butt splice or bending continuity is assumed at a member break. The support-centre setback from every stock end is a planning allowance (default 150 mm), not a verified bearing/head detail. Exact secondary placement and load transfer near member ends require detailing. Deflection criteria L/500, L/350 (default) or L/270 apply separately to each support span and end overhang, including support rotation; L is not the concrete or primary stock length. Legacy fixed limits remain as saved. Checks include every member's shear, moment, deflection and leg reactions. Cross bays 600/1000/1500/2000 mm; frames 1524 mm. Rotated towers are isolated with a common transverse width. Search ranks legs, braced bays, primary quantity, then governing utilization; it is bounded, not an exhaustive global optimum. Enter a permissible leg load applicable to the actual tower configuration. The selected plywood chart sets the secondary spacing limit. Secondary H20s, sheet joints/orientation/end details, local bearing, tower height/bracing/stability, tower self-weight and foundations are outside this calculation. Tower layouts are report-only; existing prop-spacing Revit parameters cannot represent them.";
+        private FormworkSolid[] combinedObstacles=Array.Empty<FormworkSolid>();
         internal TowerInput CreateTowerInput(bool checkPlywood = true)
         {
             if (textErrors) throw new ArgumentException("Correct the highlighted input before optimizing.");
@@ -91,6 +92,9 @@ namespace EngineeringDashboard
                 IgnoreUplift = IgnoreUplift, AllowCustomH20Lengths = AllowCustomH20Lengths, CustomH20Scope = CustomH20Scope, Exclude600Standalone = Exclude600Standalone, MaximumConcreteEndOverhangMm = MaximumConcreteEndOverhangMm, StockLengthsMm = TowerStockPlanner.ParseLengths(StockLengthsText), StockEndSetbackMm = StockEndSetbackMm,
                 TotalLineLoad = IsNetworkMode ? 0 : AreaLoad(Depth) * Width / 1000 + left + right,
                 TransverseLoadMoment = IsTransferMode ? 0 : (right - left) * (Width + (HasAnySlab ? SlabStripWidthMm : 0)) / 2000 };
+            input.ExternalObstacles=combinedObstacles;
+            input.ObstacleCentreYmm=IsNetworkMode ? 0 : PlanOriginYmm;
+            input.ObstacleBottomMm=NetworkBeams.Count==0 ? -Depth : NetworkBeams[0].BottomElevationMm;
             if(IsNetworkMode) { input.Network=CreateNetworkInput(); input.Network.Validate(input); input.TotalLineLoad=input.Network.AreaLoad(input.Network.Beams[0].DepthMm)*input.Network.Beams[0].WidthMm/1000; }
             else if (IsTransferMode)
             {
@@ -104,6 +108,7 @@ namespace EngineeringDashboard
             return input;
         }
         internal void ValidateTowerInputs() { var common=CreateTowerInput(false);if(IndependentBeams.Count>30)throw new ArgumentException("Use at most 30 independent beams.");foreach(var b in IndependentBeams)IndependentInput(common,b); if (BeamLengthMm > 50000) throw new ArgumentException("Beam length must not exceed 50,000 mm."); }
+        internal BeamSolverSession SharedSolverSession;
         public async Task OptimizeTowersAsync(bool useTimeLimit=false)
         {
             if (!UseTowers || IsOptimizing) return;
@@ -124,11 +129,15 @@ namespace EngineeringDashboard
                     +(input.Network==null ? "" : "\n"+string.Join("\n",input.Network.Beams.Select((b,i)=>System.FormattableString.Invariant($"B{i+1}: area load={input.Network.AreaLoad(b.DepthMm):R} kN/m²; beam line load={input.Network.AreaLoad(b.DepthMm)*b.WidthMm/1000:R} kN/m")).Concat(input.Network.Bays.Select((s,i)=>System.FormattableString.Invariant($"S{i+1}: area load={input.Network.AreaLoad(s.ThicknessMm):R} kN/m²"))))));
                 TransferNetworkResult networkResult=null;
                 TowerLayout[] independentResults=null;
+                var sharedSolver=SharedSolverSession;
                 var result = await Task.Run(() => {
                     using(trace.Measure(BeamSearchStage.SolverWall))
                     {
-                        var main=input.Network==null ? TowerOptimizer.Optimize(input) : (networkResult=TransferNetworkOptimizer.Optimize(input,input.Network)).Beams[0];
-                        independentResults=independentInputs.Select(i=>TransferredSlabOptimizer.Optimize(i)).ToArray();return main;
+                        using(var ownedSolver=sharedSolver==null ? new BeamSolverSession() : null)
+                        {
+                            var reply=(sharedSolver??ownedSolver).Solve(new BeamSolverRequest {Main=input,Independent=independentInputs});
+                            networkResult=reply.Network;independentResults=reply.Independent;return reply.Main;
+                        }
                     }
                 });
                 cancellation.Token.ThrowIfCancellationRequested();

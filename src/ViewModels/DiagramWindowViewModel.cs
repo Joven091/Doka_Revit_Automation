@@ -11,6 +11,19 @@ namespace MyRevitAddin.ViewModels
         // The View will bind to this collection
         public ObservableCollection<DiagramRowItem> DiagramRows { get; set; }
 
+        public static DiagramWindowViewModel ForAccess(SlabBeamAnalysis beam, string name, string loadCase)
+        {
+            var result = new DiagramWindowViewModel(SlabAccessPlots.Generate(beam));
+            foreach (var row in result.DiagramRows)
+            {
+                row.CaseText = name + " · " + loadCase + " · " + beam.Supports.Length + " actual supports";
+                row.GeometryText = $"Left cantilever {beam.LeftCantilever * 1000:0.##} mm · support spans {beam.Span * 1000:0.##} mm · right cantilever {beam.RightCantilever * 1000:0.##} mm. Dashed lines mark slab edges.";
+            }
+            result.DiagramRows[0].GeometryText += " Red: slab zone. Blue: access zone. Primary UDL = this primary's secondary reaction / secondary spacing.";
+            result.DiagramRows[3].GeometryText += " Negative = downward; positive = upward.";
+            return result;
+        }
+
         public static DiagramWindowViewModel ForSelection(int selection, double span, double cantilever, double load, double ei, string name)
         {
             var five = ContinuousBeamResponse.Analyze(selection, span, cantilever, load, ei);

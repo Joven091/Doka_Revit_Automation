@@ -52,6 +52,14 @@ namespace EngineeringDashboard.Top50
     {
         public static IReadOnlyList<string> Validate(IReadOnlyList<WallRow> walls,Proposal proposal,SearchLimits limits)
         {
+            var errors=ValidateGeometry(walls,proposal,limits).ToList();
+            errors.AddRange(ValidateIdenticalKits(walls,proposal,limits.LongestSimultaneous,limits.RequireIdenticalKits?(int?)limits.LongestSimultaneous:null));
+            return errors.AsReadOnly();
+        }
+        // Open checks this first so corrupt geometry still fails atomically.
+        // Policy-incompatible but geometrically sound caches can then be omitted.
+        public static IReadOnlyList<string> ValidateGeometry(IReadOnlyList<WallRow> walls,Proposal proposal,SearchLimits limits)
+        {
             var errors=new List<string>();var included=walls.Where(w=>w.Included).ToDictionary(w=>w.Id);
             if(proposal.Stock.Count==0 || proposal.Stock.Any(x=>x.Key<=0 || x.Value<=0))errors.Add("Reusable stock must have positive nominal sizes and counts.");
             if(proposal.Groups.Count>limits.MaximumGroups)errors.Add("Casting group limit exceeded.");
@@ -75,9 +83,17 @@ namespace EngineeringDashboard.Top50
             foreach(var id in included.Keys)if(!seen.Contains(id))errors.Add("Included wall not assigned: "+id);
             var longest=included.Values.OrderByDescending(w=>w.LengthMicrometres).ThenBy(w=>w.Id,StringComparer.Ordinal).Take(limits.LongestSimultaneous).Select(w=>w.Id).ToArray();
             if(longest.Length>0 && !proposal.Groups.Any(g=>longest.All(id=>g.Walls.Any(a=>a.WallId==id))))errors.Add("Required longest walls are not simultaneous in one casting.");
-            if(proposal.IdenticalKitCount>0)
+            return errors.AsReadOnly();
+        }
+        internal static IReadOnlyList<string> ValidateIdenticalKits(IReadOnlyList<WallRow> walls,Proposal proposal,int longestCount,int? requiredKits=null)
+        {
+            var errors=new List<string>();
+            if(proposal.IdenticalKitCount<0)errors.Add("Identical kit count cannot be negative.");
+            if(requiredKits.HasValue&&proposal.IdenticalKitCount!=requiredKits.Value)errors.Add("Proposal does not provide the required identical kit count.");
+            int kits=requiredKits??proposal.IdenticalKitCount;
+            if(kits>0)
             {
-                int kits=proposal.IdenticalKitCount;
+                var longest=new HashSet<string>(walls.Where(w=>w.Included).OrderByDescending(w=>w.LengthMicrometres).ThenBy(w=>w.Id,StringComparer.Ordinal).Take(longestCount).Select(w=>w.Id),StringComparer.Ordinal);
                 if(proposal.Stock.Any(p=>p.Value%kits!=0))errors.Add("Identical kit stock is not an exact repeated inventory.");
                 foreach(var a in proposal.Groups.SelectMany(g=>g.Walls).Where(a=>longest.Contains(a.WallId)))
                     if(a.Pattern.PanelsMm.GroupBy(p=>p).Any(g=>!proposal.Stock.TryGetValue(g.Key,out var stock)||g.Count()>stock/kits))errors.Add("Required wall does not fit one identical kit: "+a.WallId);

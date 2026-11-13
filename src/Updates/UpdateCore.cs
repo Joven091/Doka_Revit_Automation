@@ -9,10 +9,28 @@ using System.Threading;
 
 namespace MyRevitAddin.Updates
 {
+    internal static class UpdateTarget
+    {
+        internal static int Year
+        {
+            get
+            {
+#if REVIT2027
+                const int fallback=2027;
+#else
+                const int fallback=2024;
+#endif
+                var value=Environment.GetEnvironmentVariable("DOKA_DASHBOARD_REVIT_VERSION");
+                if(string.IsNullOrEmpty(value))return fallback;
+                if(value=="2024")return 2024;if(value=="2027")return 2027;
+                throw new InvalidDataException("Unsupported Revit version in the update context.");
+            }
+        }
+    }
     [DataContract]
     internal sealed class UpdateSettings
     {
-        internal const string DefaultSource = @"\\DOKAAREDUBA\ApplDat\MEA\ENG\Joven\BeamCalculator\Updates";
+        internal static string DefaultSource => @"\\DOKAAREDUBA\ApplDat\MEA\ENG\Joven\BeamCalculator\Updates"+(UpdateTarget.Year==2024?"":@"\Revit2027");
         [DataMember(Name="schemaVersion", IsRequired=true)] public int SchemaVersion {get;set;}
         [DataMember(Name="sourceDirectory", IsRequired=true)] public string SourceDirectory {get;set;}
         internal static UpdateSettings Load(string installation)
@@ -41,8 +59,8 @@ namespace MyRevitAddin.Updates
         internal void Validate()
         {
             UpdateFiles.ParseVersion(Version);
-            if(SchemaVersion!=1 || ProductId!=Product || RevitVersion!=2024)
-                throw new InvalidDataException("This release is not a compatible Revit 2024 add-in update.");
+            if(SchemaVersion!=1 || ProductId!=Product || RevitVersion!=UpdateTarget.Year)
+                throw new InvalidDataException("This release is not a compatible Revit "+UpdateTarget.Year+" add-in update.");
             if(string.IsNullOrWhiteSpace(InstallerFile) || !Regex.IsMatch(InstallerFile,@"\A[A-Za-z0-9][A-Za-z0-9._-]*\.exe\z",RegexOptions.IgnoreCase))
                 throw new InvalidDataException("The update installer name is invalid.");
             if(Sha256==null || !Regex.IsMatch(Sha256,@"\A[0-9a-fA-F]{64}\z") || SizeBytes<=0 || SizeBytes>512L*1024*1024)
@@ -59,6 +77,7 @@ namespace MyRevitAddin.Updates
         [DataMember(IsRequired=true)] public string InstallDirectory {get;set;}
         [DataMember(IsRequired=true)] public int HostProcessId {get;set;}
         [DataMember(IsRequired=true)] public long HostStartedUtcTicks {get;set;}
+        [DataMember(EmitDefaultValue=false)] public string InstalledAssemblyFile {get;set;}
     }
 
     internal static class UpdateFiles
@@ -94,6 +113,12 @@ namespace MyRevitAddin.Updates
             using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","").ToLowerInvariant();
         }
         internal static bool SamePath(string a,string b)=>string.Equals(Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar),Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar),StringComparison.OrdinalIgnoreCase);
+        internal static string InstalledAssembly(UpdatePlan plan)
+        {
+            string name=string.IsNullOrEmpty(plan.InstalledAssemblyFile)?"MyRevitAddin.dll":plan.InstalledAssemblyFile;
+            if(name!="MyRevitAddin.dll"&&name!="Doka.RevitBridge.dll")throw new InvalidDataException("Invalid installed add-in assembly.");
+            return Path.Combine(plan.InstallDirectory,name);
+        }
         internal static bool Inside(string path,string folder)=>Path.GetFullPath(path).StartsWith(Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase);
         internal static UpdateManifest Check(string source,Version installed)
         {
@@ -143,6 +168,7 @@ namespace MyRevitAddin.Updates
             var plan=ReadJson<UpdatePlan>(path);
             if(plan?.Release==null)throw new InvalidDataException("The staged update is invalid.");
             plan.Release.Validate();
+            InstalledAssembly(plan);
             if(!SamePath(plan.InstallDirectory,expectedInstallDirectory) || !SamePath(Path.GetDirectoryName(plan.InstallerPath),Path.GetDirectoryName(path))
                 || Path.GetFileName(plan.InstallerPath)!=plan.Release.InstallerFile || plan.HostProcessId<=0 || plan.HostStartedUtcTicks<=0)
                 throw new InvalidDataException("The update plan does not match this user's Revit add-in installation.");

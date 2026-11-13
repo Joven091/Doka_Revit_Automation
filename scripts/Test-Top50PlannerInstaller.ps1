@@ -1,12 +1,12 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Installer,[Parameter(Mandatory)][string]$OldPayload,[Parameter(Mandatory)][string]$EvidenceDirectory)
+param([Parameter(Mandatory)][string]$Installer,[Parameter(Mandatory)][string]$OldPayload,[Parameter(Mandatory)][string]$EvidenceDirectory,[string]$ExpectedOldVersion='1.1.15.0')
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 $Installer=(Resolve-Path -LiteralPath $Installer).Path
 $OldPayload=(Resolve-Path -LiteralPath $OldPayload).Path
 $evidence=[IO.Path]::GetFullPath($EvidenceDirectory)
 New-Item -ItemType Directory -Force $evidence | Out-Null
-$root=Join-Path $env:LOCALAPPDATA ('Temp\DokaTop50InstallerTests\'+[guid]::NewGuid().ToString('N'))
+$root=Join-Path $env:LOCALAPPDATA ('Temp\DokaTop50InstallerTests\'+[guid]::NewGuid().ToString('N')+'\path with spaces')
 New-Item -ItemType Directory -Path $root | Out-Null
 $expected=[Diagnostics.FileVersionInfo]::GetVersionInfo($Installer).FileVersion.Trim()
 $checks=0
@@ -20,6 +20,11 @@ $fresh=Join-Path $root 'fresh';Install $fresh 'fresh'
 Check (([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $fresh 'MyRevitAddin.dll')).FileVersion.Trim()) -eq $expected) 'installed version matches installer'
 foreach($dll in Get-ChildItem (Join-Path $repo 'src/bin/Release/net48') -Filter '*.dll' -File){Check ((Get-FileHash $dll.FullName).Hash -eq (Get-FileHash (Join-Path $fresh $dll.Name)).Hash) "installed payload $($dll.Name)"}
 Check (!(Test-Path (Join-Path $fresh 'RevitAPI.dll'))) 'host Revit API is not distributed'
+$workerFiles=Get-ChildItem (Join-Path $repo 'src/bin/Release/net48/BeamSolver') -Recurse -File
+foreach($file in $workerFiles){
+    $relative=$file.FullName.Substring((Join-Path $repo 'src/bin/Release/net48').Length+1)
+    Check ((Get-FileHash $file.FullName).Hash -eq (Get-FileHash (Join-Path $fresh $relative)).Hash) "installed self-contained worker $relative"
+}
 [xml]$manifest=Get-Content -LiteralPath (Join-Path $fresh 'MyRevitAddin.addin') -Raw
 Check (@($manifest.RevitAddIns.AddIn).Count -eq 3) 'three original add-in registrations retained'
 Check (@($manifest.RevitAddIns.AddIn | Where-Object Assembly -ne (Join-Path $fresh 'MyRevitAddin.dll')).Count -eq 0) 'all registration paths resolve to installed assembly'
@@ -46,11 +51,28 @@ if(Test-Path $dashboardSmoke){
     Check ($dashboardExit -eq 0) 'installed File/Tools headers, edit icons, Dome lock and Top50 Revit source interactions'
 }
 
+$releaseSmoke=Join-Path $repo 'tests/Top50.InstalledReleaseSmoke/bin/Release/net48/Top50.InstalledReleaseSmoke.exe'
+if(Test-Path $releaseSmoke){
+    $runner=Join-Path $root 'Top50.InstalledReleaseSmoke.exe';Copy-Item $releaseSmoke $runner
+    '<configuration><runtime><assemblyBinding xmlns="urn:schemas-microsoft-com:asm.v1"><probing privatePath="fresh"/></assemblyBinding></runtime></configuration>' | Set-Content ($runner+'.config')
+    $installedEvidence=Join-Path $evidence 'installed-release'
+    & $runner $installedEvidence $fresh *> (Join-Path $evidence 'installed-release.log')
+    if($LASTEXITCODE -ne 0){Get-Content (Join-Path $evidence 'installed-release.log')}
+    Check ($LASTEXITCODE -eq 0) 'installed planner direct/filler quantities and actual bundled worker'
+    & $runner $installedEvidence $fresh --restart *> (Join-Path $evidence 'installed-restart.log')
+    if($LASTEXITCODE -ne 0){Get-Content (Join-Path $evidence 'installed-restart.log')}
+    Check ($LASTEXITCODE -eq 0) 'installed planner saved project and worker survive a fresh-process restart'
+}
+
 $upgrade=Join-Path $root 'upgrade';New-Item -ItemType Directory -Path $upgrade | Out-Null
 Get-ChildItem $OldPayload -File | Copy-Item -Destination $upgrade
+if(Test-Path (Join-Path $OldPayload 'BeamSolver')){Copy-Item (Join-Path $OldPayload 'BeamSolver') $upgrade -Recurse}
+$oldWorker=Join-Path $upgrade 'BeamSolver';New-Item -ItemType Directory -Force $oldWorker | Out-Null
+'Disposable previous worker backup sentinel' | Set-Content (Join-Path $oldWorker 'backup-sentinel.txt')
+$oldWorkerHash=(Get-FileHash (Join-Path $oldWorker 'backup-sentinel.txt')).Hash
 Copy-Item (Join-Path $repo 'MyRevitAddin.addin') (Join-Path $upgrade 'MyRevitAddin.addin')
 $oldHash=(Get-FileHash (Join-Path $upgrade 'MyRevitAddin.dll')).Hash
-Check (([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $upgrade 'MyRevitAddin.dll')).FileVersion.Trim()) -eq '1.1.15.0') 'upgrade fixture retains original beam version'
+Check (([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $upgrade 'MyRevitAddin.dll')).FileVersion.Trim()) -eq $ExpectedOldVersion) 'upgrade fixture retains the expected previous dashboard version'
 $preserved=@{}
 foreach($name in @('access-settings.json','update-settings.json','saved-project.top50','Unrelated.dll')){
     'Disposable preservation sentinel' | Set-Content (Join-Path $upgrade $name)
@@ -60,11 +82,13 @@ Install $upgrade 'upgrade'
 foreach($name in $preserved.Keys){Check ((Get-FileHash (Join-Path $upgrade $name)).Hash -eq $preserved[$name]) "upgrade preserves $name"}
 $backup=(Get-ChildItem ($upgrade+'-backups') -Directory | Sort-Object Name | Select-Object -Last 1).FullName
 Check ((Get-FileHash (Join-Path $backup 'MyRevitAddin.dll')).Hash -eq $oldHash) 'backup preserves original beam assembly'
+Check ((Get-FileHash (Join-Path $backup 'BeamSolver/backup-sentinel.txt')).Hash -eq $oldWorkerHash) 'backup preserves the previous worker tree recursively'
 foreach($name in @('access-settings.json','update-settings.json')){Check ((Get-FileHash (Join-Path $backup $name)).Hash -eq $preserved[$name]) "backup preserves $name"}
 Check (([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $upgrade 'MyRevitAddin.dll')).FileVersion.Trim()) -eq $expected) 'upgrade installs current version'
 foreach($target in @($fresh,$upgrade)){
     $p=Start-Process (Join-Path $target 'unins000.exe') -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -PassThru
     if(!$p.WaitForExit(60000)){throw 'Uninstall timed out'};$p.Refresh();Check ($p.ExitCode -eq 0) "isolated uninstall $target"
+    Check (!(Test-Path (Join-Path $target 'BeamSolver/Doka.BeamSolver.exe'))) 'uninstall removes the registered worker executable'
 }
 foreach($name in $preserved.Keys){Check ((Get-FileHash (Join-Path $upgrade $name)).Hash -eq $preserved[$name]) "uninstall preserves $name"}
 Check ((Get-FileHash (Join-Path $backup 'MyRevitAddin.dll')).Hash -eq $oldHash) 'upgrade backup survives uninstall'

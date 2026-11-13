@@ -56,6 +56,7 @@ namespace EngineeringDashboard
             text.AppendLine("\nCURRENT INPUTS\n"+current);
             text.AppendLine("\nVISIBLE / UNCOMMITTED FIELD TEXT\n"+(string.IsNullOrEmpty(visibleInputs) ? "(none supplied)" : visibleInputs));
             text.AppendLine("\nLAST / RUNNING SEARCH");
+            if(HasCombinedRevitDrawing)text.AppendLine("This is the combined-canvas coordinator. Live per-area solver stages, counters and runtime appear under Combined Revit drawing calculations below.");
             if(beamSearchTrace==null)text.AppendLine("No tower search has been started in this session.");
             else
             {

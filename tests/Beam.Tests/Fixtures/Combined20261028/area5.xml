@@ -1,0 +1,61 @@
+<ReportedBeamArea LengthMm="5000.97134513855">
+<TransferNetworkConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <SupportFormatVersion>3</SupportFormatVersion>
+  <PlanOriginYmm>0</PlanOriginYmm>
+  <Beams>
+    <TransferBeamRow>
+      <RevitSource>Structural Framing [523801]</RevitSource>
+      <Label>B1</Label>
+      <SpanLengthMm>5000.97134513855</SpanLengthMm>
+      <BottomElevationMm>-1550</BottomElevationMm>
+      <DepthMm>1550</DepthMm>
+      <WidthMm>800.0000061035156</WidthMm>
+    </TransferBeamRow>
+    <TransferBeamRow>
+      <RevitSource>Structural Framing [523798]</RevitSource>
+      <Label>B2</Label>
+      <SpanLengthMm>4998.39434421441</SpanLengthMm>
+      <BottomElevationMm>-1550</BottomElevationMm>
+      <DepthMm>1550</DepthMm>
+      <WidthMm>800.0000061035156</WidthMm>
+    </TransferBeamRow>
+  </Beams>
+  <Bays>
+    <TransferBayRow>
+      <RevitSource>Floors [583330]; Floors [584569]</RevitSource>
+      <Outline>
+        <ImportPoint>
+          <X>0</X>
+          <Y>0</Y>
+        </ImportPoint>
+        <ImportPoint>
+          <X>4998.39434421441</X>
+          <Y>0</Y>
+        </ImportPoint>
+        <ImportPoint>
+          <X>4998.39434421441</X>
+          <Y>4203.3922668457035</Y>
+        </ImportPoint>
+        <ImportPoint>
+          <X>0</X>
+          <Y>4203.3922668457035</Y>
+        </ImportPoint>
+      </Outline>
+      <WidthMm>4203.3922668457035</WidthMm>
+      <ThicknessMm>200.00000152587882</ThicknessMm>
+    </TransferBayRow>
+  </Bays>
+  <CrossingBeams>
+    <TransferCrossingBeamRow>
+      <RevitSource>Structural Framing [523531]</RevitSource>
+      <BottomElevationMm>-1150</BottomElevationMm>
+      <SupportMode>Automatic</SupportMode>
+      <BayNumber>1</BayNumber>
+      <PositionMm>2450.000036859512</PositionMm>
+      <WidthMm>649.999968624115</WidthMm>
+      <DepthMm>1150</DepthMm>
+    </TransferCrossingBeamRow>
+  </CrossingBeams>
+  <IndependentBeams />
+</TransferNetworkConfiguration>
+</ReportedBeamArea>

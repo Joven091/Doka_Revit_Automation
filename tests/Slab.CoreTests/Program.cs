@@ -42,6 +42,7 @@ internal static class Program
             vm.SetTextInputErrors(true);Check(vm.SecondaryBeamSpacing==0,"invalid text clears derived spacing");vm.SetTextInputErrors(false);Check(vm.SecondaryBeamSpacing==275,"spacing recovers after input repair");
             vm.SelectedPlywood=null;Check(!vm.IsCalculationValid && vm.SecondaryBeamSpacing==0,"missing plywood invalidates slab");
             UpliftTests.Run(Check,Equal);CantileverTests.Run(Check,Equal);FivePlusTests.Run(Check,Equal);
+            AccessTests.Run(Check,Equal);
             Console.WriteLine($"Passed {checks} slab core and plywood checks.");return 0;
         }
         catch(Exception ex) {Console.Error.WriteLine(ex);return 1;}

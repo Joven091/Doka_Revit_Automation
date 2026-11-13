@@ -46,7 +46,9 @@ namespace EngineeringDashboard
                 balanced.JunctionNotice=(Math.Abs(centre-original.Input.PositionMm)<1e-7 ? "Frame centred across the cross beam. " : "")
                     +$"Balanced primary overhangs {layout.PositionsMm[0]-stock.StartMm:0.###}/{stock.EndMm-layout.PositionsMm[1]:0.###} mm. Local receiving H20s are repositioned and added where necessary; local plywood cuts/joints are permitted. Design spacing and main-primary UDLs remain unchanged. "
                     +$"Tower leg offset {balanced.TowerSpanOffsetMm:0.###} mm along the crossing span. Existing junction end zones and their checked load paths are retained.";
-                result.Beams=beams;result.CrossSupports=(CrossBeamSupportResult[])result.CrossSupports.Clone();result.CrossSupports[index]=balanced;
+                var supports=(CrossBeamSupportResult[])result.CrossSupports.Clone();supports[index]=balanced;
+                if(!ExternalSettingOutFits(common,result,beams,supports))continue;
+                result.Beams=beams;result.CrossSupports=supports;
             }
         }
 
@@ -112,7 +114,10 @@ namespace EngineeringDashboard
                 layout.Utilization=Math.Max(layout.MaxLegKn/layout.LegCapacityKn,members.Max(m=>m.Utilization));layout.MomentKnM=members.Max(m=>m.Analysis.MomentKnM);layout.ShearKn=members.Max(m=>m.Analysis.ShearKn);layout.DeflectionMm=members.Max(m=>m.Analysis.DeflectionMm);
                 layout.Governing=layout.MaxLegKn/layout.LegCapacityKn>=members.Max(m=>m.Utilization) ? "Leg capacity" : members.OrderByDescending(m=>m.Utilization).First().Name;
                 layout.CentringNotice="Primary supports centred beneath each stock piece; existing UDL zones retained and all revised reactions/member checks pass.";
-                RefreshStockDemands(layout);adjusted[beam]=layout;result.Beams=adjusted;
+                adjusted[beam]=layout;
+                if(!ExternalSettingOutFits(common,result,adjusted,result.CrossSupports))
+                {retain("Unequal primary overhangs retained: centred supports would clash with a neighboring drawing part.");continue;}
+                RefreshStockDemands(layout);result.Beams=adjusted;
             }
         }
 
@@ -193,7 +198,14 @@ namespace EngineeringDashboard
             // target frames together; an obsolete offset pose must not obstruct
             // the same row needed by another crossing's centred pose.
             if(!TryAdjustSecondaries(result,selected.SelectMany(s=>s.Solids).ToArray(),new FormworkSolid[0],out var beams,true,reason))return;
+            if(!ExternalSettingOutFits(common,result,beams,selected))return;
             result.Beams=beams;result.CrossSupports=selected;
+        }
+        private static bool ExternalSettingOutFits(TowerInput common,TransferNetworkResult result,TowerLayout[] beams,CrossBeamSupportResult[] supports)
+        {
+            if(common.ExternalObstacles.Length==0)return true;
+            return ExternalNetworkFits(common,new TransferNetworkResult {Input=result.Input,Beams=beams,CrossSupports=supports,Bays=result.Bays,
+                BeamCentresMm=result.BeamCentresMm,SlabCoveredLengthMm=result.SlabCoveredLengthMm,RowPhaseMm=result.RowPhaseMm});
         }
 
         private sealed class SettingOutRow

@@ -1,0 +1,94 @@
+name: Top50 panel consolidation and Dashboard update
+on:
+  pull_request:
+    paths: ['src/Top50/**', 'src/ViewModels/Top50ViewModel*', 'tests/Top50.SearchRegression.Tests/**', 'tests/Shared/Top50PanelConsolidationReport.cs', '.github/workflows/top50-panel-consolidation.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: top50-panel-consolidation-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate consolidation and existing allocation policies on both runtimes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/evidence | Out-Null
+          foreach ($framework in @('net48','net10.0')) {
+            dotnet build tests/Top50.SearchRegression.Tests -f $framework -c Release --warnaserror
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if ($framework -eq 'net48') {
+              & tests/Top50.SearchRegression.Tests/bin/Release/net48/Top50.SearchRegression.Tests.exe 2>&1 | Tee-Object artifacts/evidence/regression-net48.txt
+            } else {
+              dotnet tests/Top50.SearchRegression.Tests/bin/Release/net10.0/Top50.SearchRegression.Tests.dll 2>&1 | Tee-Object artifacts/evidence/regression-net10.txt
+            }
+            if ($LASTEXITCODE -ne 0) { throw "Failed $framework consolidation regression" }
+          }
+      - name: Independent allocation and project-state verification
+        shell: pwsh
+        run: |
+          dotnet run --project tests/Top50.IndependentValidation -c Release -f net10.0 2>&1 | Tee-Object artifacts/evidence/independent.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare native UI checks on disposable runner
+        shell: pwsh
+        run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
+      - name: Build compatible Dashboard update, without an installer
+        shell: pwsh
+        run: |
+          ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/current -Version 1.2.2
+          dotnet build tests/DashboardDesktop.Smoke -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item artifacts/current/payload/Doka.EngineeringDashboard.exe.config tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe.config -Force
+      - name: Retrieve the verified previous Dashboard for actual restart testing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $source=gh api repos/${{ github.repository }}/actions/runs/40856562564 --jq '.head_sha + " " + .conclusion'
+          if($LASTEXITCODE -ne 0 -or $source -ne 'a2158cface07b0145ef24926dd67b55501923133 success'){throw 'Previous payload provenance differs'}
+          gh run download 40856562564 --repo ${{ github.repository }} --name dashboard-update-files-1.2.1 --dir artifacts/previous-feed
+          if($LASTEXITCODE -ne 0){throw 'Previous payload download failed'}
+          $meta=Get-Content artifacts/previous-feed/dashboard-latest.json -Raw | ConvertFrom-Json
+          $archive=Join-Path artifacts/previous-feed $meta.archiveFile
+          if($meta.version -ne '1.2.1' -or $meta.sha256 -ne 'ca17ff3919291353e767e0db72aa3a9ed833f527f60efc43961626a27b0c8659' -or (Get-Item $archive).Length -ne $meta.sizeBytes -or (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $meta.sha256){throw 'Previous payload checksum/version mismatch'}
+          Expand-Archive $archive artifacts/previous
+      - name: Actual Dashboard restart and native working-input recovery
+        shell: pwsh
+        run: |
+          & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe --helper-update (Resolve-Path artifacts/previous) (Resolve-Path artifacts/current/payload) artifacts/evidence/helper
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & tests/DashboardDesktop.Smoke/bin/Release/net48/DashboardDesktop.Smoke.exe (Resolve-Path artifacts/current/payload/Doka.EngineeringDashboard.exe) artifacts/evidence/desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: top50-consolidation-validation
+          path: |
+            artifacts/evidence/*.txt
+            artifacts/evidence/**/acceptance.txt
+            artifacts/evidence/**/failure.txt
+            artifacts/evidence/**/*-evidence.txt
+            artifacts/evidence/**/Logs/*.txt
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: dashboard-update-files-1.2.2
+          path: artifacts/current/feed/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: dashboard-update-json-1.2.2
+          path: artifacts/current/feed/dashboard-latest.json
+          if-no-files-found: error

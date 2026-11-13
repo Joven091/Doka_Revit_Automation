@@ -10,7 +10,7 @@ using MyRevitAddin.ViewModels;
 
 namespace EngineeringDashboard;
 
-public class FlexCalculatorViewModel : INotifyPropertyChanged
+public partial class FlexCalculatorViewModel : INotifyPropertyChanged
 {
     // --- Constants ---
     private const double MAX_H20_SHEAR_KN = 11.00;
@@ -100,12 +100,12 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         : $"{SelectedPlywood.Label} · 2440 × 1220 mm · secondary spacing {SecondaryBeamSpacing:0} mm\n"
         + $"Chart maximum {PlywoodResult.ChartMaximumSpacingMm:0} mm · {PlywoodResult.PressureKnM2:0.00} kN/m² · L/{PlywoodResult.Denominator} · shorter spans at sheet joints";
     public string PrimaryBeamCount { get => _primaryBeamCount; set { _primaryBeamCount = value; OnPropertyChanged(); Calculate(); } }
-    public double SecondaryBeamCantilever { get => _secondaryBeamCantilever; set { _secondaryBeamCantilever = value; OnPropertyChanged(); Calculate(); } }
+    public double SecondaryBeamCantilever { get => _secondaryBeamCantilever; set { _secondaryBeamCantilever = value; secondaryRightCantilever = value; OnPropertyChanged(); Calculate(); } }
     public string DeflectionLimit { get => _deflectionLimit; set { _deflectionLimit = value; OnPropertyChanged(); Calculate(); } }
 
     public string PropCount { get => _propCount; set { _propCount = value; OnPropertyChanged(); Calculate(); } }
     public double PropSpacing { get => _propSpacing; set { _propSpacing = value; OnPropertyChanged(); Calculate(); } }
-    public double PrimaryBeamCantilever { get => _primaryBeamCantilever; set { _primaryBeamCantilever = value; OnPropertyChanged(); Calculate(); } }
+    public double PrimaryBeamCantilever { get => _primaryBeamCantilever; set { _primaryBeamCantilever = value; primaryRightCantilever = value; OnPropertyChanged(); Calculate(); } }
     
     public string PropModel
     {
@@ -186,6 +186,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         PlywoodSpacing.ParseDeflectionLimit(PlywoodDeflectionLimit);
         if (PropSpacing < 1) throw new ArgumentException("Prop spacing must be at least 1 mm.");
         CheckNumber(SecondaryBeamCantilever, "Secondary cantilever", false); CheckNumber(PrimaryBeamCantilever, "Primary cantilever", false);
+        ValidateAccessInputs();
         if (UseCustomLoads) { CheckNumber(CustomLiveLoad, "Live load", false); CheckNumber(CustomFormworkLoad, "Formwork load", false); }
         if (!PrimaryBeamCountOptions.Contains(PrimaryBeamCount) || !PropCountOptions.Contains(PropCount) || !DeflectionLimitOptions.Contains(DeflectionLimit)) throw new ArgumentException("Select valid support counts and a deflection limit.");
         if (!PropModelOptions.Contains(PropModel) || PropTypeOptions == null || !PropTypeOptions.Contains(PropType) || PropOrientationOptions == null || !PropOrientationOptions.Contains(PropOrientation)) throw new ArgumentException("Select a supported prop and outer tube orientation.");
@@ -197,17 +198,20 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         PrimaryDeflectionMm = PropLookupExtensionMm = 0;
         PlywoodResult = null;
         PrimaryDiagramViewModel = SecondaryDiagramViewModel = null;
+        ClearAccessResults();
     }
     private void Calculate()
     {
         ClearResults();
         try { ValidateInputs();
             double pressure=UseCustomLoads ? 25*SlabThickness/1000+CustomLiveLoad+CustomFormworkLoad : SlabLoadHelper.CalculateTotalLoad(SlabThickness);
+            if (HasAccessExtensions) pressure = Math.Max(pressure, TotalAccessLoadKnM2);
             PlywoodResult=PlywoodSpacing.CalculateForSheet(SelectedPlywood,pressure,PlywoodSpacing.ParseDeflectionLimit(PlywoodDeflectionLimit));
             CalculateValidInputs(); IsCalculationValid = SuggestedPrimaryBeamSpacing > 0 && string.IsNullOrEmpty(WarningMessage); }
         catch (ArgumentException ex) { ClearResults(); WarningMessage = ex.Message; }
         OnPropertyChanged(nameof(IsCalculationValid)); OnPropertyChanged(nameof(PropExtensionMm)); OnPropertyChanged(nameof(PropLookupExtensionMm)); OnPropertyChanged(nameof(PrimaryDeflectionMm));
         OnPropertyChanged(nameof(PlywoodResult)); OnPropertyChanged(nameof(SecondaryBeamSpacing)); OnPropertyChanged(nameof(PlywoodSpacingSummary));
+        NotifyAccessProperties();
         CommandManager.InvalidateRequerySuggested();
     }
     private void CalculateValidInputs()
@@ -239,6 +243,7 @@ public class FlexCalculatorViewModel : INotifyPropertyChanged
         }
 
         CheckNumber(w_slab, "Total slab load");
+        if (UsesAccessAnalysis) { CalculateAccessInputs(w_slab, capacity); return; }
         double a_s = SecondaryBeamCantilever / 1000.0;
         double L_p = PropSpacing / 1000.0;
         double a_p = PrimaryBeamCantilever / 1000.0;

@@ -19,7 +19,7 @@ class Program
  static IEnumerable<T> Find<T>(DependencyObject root) where T:DependencyObject{foreach(var item in LogicalTreeHelper.GetChildren(root))if(item is DependencyObject d){if(d is T t)yield return t;foreach(var x in Find<T>(d))yield return x;}}
  static void Pump()=>Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{}));
  static FlexCalculatorWindow window;
- static void Enter(string path,string text){var b=Find<TextBox>(window).Single(t=>t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path==path);b.Text=text;b.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();}
+ static void Enter(string path,string text){if(path=="PrimaryBeamCantilever"){Enter("PrimaryLeftCantilever",text);Enter("PrimaryRightCantilever",text);return;}var b=Find<TextBox>(window).Single(t=>t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path==path);b.Text=text;b.GetBindingExpression(TextBox.TextProperty).UpdateSource();Pump();}
  [STAThread] static int Main(string[] args){try{Run(args);Console.WriteLine($"Passed {checks} slab calculation/catalog/WPF checks.");return 0;}catch(Exception ex){Console.Error.WriteLine(ex);return 1;}finally{window?.Close();}}
  static void Run(string[] args)
  {
@@ -42,6 +42,7 @@ class Program
    string report=CalculationFiles.Report("Slab",new[]{CalculationFiles.Field("Floor","<script>alert(1)</script>")},new[]{CalculationFiles.Field("Spacing (mm)",originalSpacing)},"Adopted assumptions");
    Check(!report.Contains("<script>") && report.Contains("&lt;script&gt;") && report.Contains("Spacing (mm)"),"report encodes names and contains results");
   } finally { File.Delete(recordPath);fileWindow.Close(); }
+  AccessTests.Run(Check,Equal);
   // Reference cells were extracted from the cited source PDFs, including merged cells.
   foreach(var line in File.ReadLines(Path.Combine(AppContext.BaseDirectory,"prop-capacity-reference.csv")).Skip(1)){
    var c=line.Split(',');double ext=double.Parse(c[1],CultureInfo.InvariantCulture);double? actual=PropDataHelper.GetCapacity(ext,c[2]);
@@ -111,6 +112,25 @@ class Program
   savedPlywood.Inputs.Single(f=>f.Name=="SecondaryBeamSpacing").Value="999";savedPlywood.Inputs.RemoveAll(f=>f.Name=="PlywoodProfileId");window.RestoreCalculation(savedPlywood);Pump();Check(v.SelectedPlywood==PlywoodCatalog.Default && v.SecondaryBeamSpacing==488,"legacy manual slab spacing cannot override calculation");
   savedPlywood.Inputs.Add(CalculationFiles.Field("PlywoodProfileId","unknown"));bool invalidPlywood=false;try{window.RestoreCalculation(savedPlywood);}catch(ArgumentException){invalidPlywood=true;}Check(invalidPlywood && v.SelectedPlywood==PlywoodCatalog.Default,"unknown slab plywood leaves retained inputs unchanged");
   v.SlabThickness=300;Pump();
+  var withoutAccess=window.CaptureCalculation();
+  v.PrimaryBeamCount="2";v.PropCount="2";v.PropSpacing=1000;v.PrimaryBeamCantilever=450;v.SecondaryBeamCantilever=150;
+  v.PrimaryAccessLeftMm=350;v.PrimaryAccessRightMm=350;v.PrimaryHasAccess=true;
+  var endChoice=Find<ComboBox>(window).Single(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="PrimaryAccessEnd");
+  endChoice.SelectedItem="Both";Pump();Check(v.ShowPrimaryAccessLeft&&v.ShowPrimaryAccessRight&&v.IsCalculationValid,"Both ends selector activates independent access inputs");
+  Equal(.75,v.TotalAccessLoadKnM2,"total access load default includes deck");
+  var accessSaved=window.CaptureCalculation();Check(accessSaved.Kind=="SlabAccess","access files cannot be silently treated as fully loaded symmetric slabs by old versions");
+  bool oldReaderRejected=false;try{CalculationFiles.Apply(accessSaved,"Slab",new FlexCalculatorViewModel(),"SlabThickness");}catch(ArgumentException){oldReaderRejected=true;}Check(oldReaderRejected,"old slab reader rejects new access geometry");
+  v.TotalAccessLoadKnM2=1;window.RestoreCalculation(accessSaved);Pump();Equal(.75,v.TotalAccessLoadKnM2,"access pressure persists");
+  Check(v.PrimaryHasAccess&&v.PrimaryAccessEnd=="Both"&&v.PrimaryAccessLeftMm==350&&v.PrimaryAccessRightMm==350,"both access lengths persist");
+  Check(window.BuildReport().Contains("includes deck weight")&&window.BuildReport().Contains("UDLs"),"access report contains actual loads and assumptions");
+  var accessVisual=(SlabAccessDiagram)window.FindName("AccessDiagram");accessVisual.Measure(new Size(440,395));accessVisual.Arrange(new Rect(0,0,440,395));accessVisual.UpdateLayout();
+  var accessImage=new RenderTargetBitmap(440,395,96,96,PixelFormats.Pbgra32);accessImage.Render(accessVisual);
+  Check(accessVisual.DrawnAccessZones==2&&accessVisual.DrawnSupports==2,"actual access preview renders both zones and support locations");
+  Enter("TotalAccessLoadKnM2","bad");Invalid(v,"access input conversion blocks calculation");v.PrimaryHasAccess=false;Pump();Check(v.IsCalculationValid,"disabled access text does not block ordinary slab");
+  v.PrimaryHasAccess=true;Pump();Invalid(v,"reactivated bad access text blocks again");Enter("TotalAccessLoadKnM2","0.75");Check(v.IsCalculationValid,"repaired access load restores diagrams");
+  string[] accessFields={"PrimaryRightCantilever","SecondaryRightCantilever","PrimaryHasAccess","SecondaryHasAccess","PrimaryAccessEnd","SecondaryAccessEnd","PrimaryAccessLeftMm","PrimaryAccessRightMm","SecondaryAccessLeftMm","SecondaryAccessRightMm","TotalAccessLoadKnM2","ExactPrimaryBeamCount","ExactPropCount"};
+  withoutAccess.Inputs.RemoveAll(f=>accessFields.Contains(f.Name));window.RestoreCalculation(withoutAccess);Pump();
+  Check(!v.PrimaryHasAccess&&!v.SecondaryHasAccess&&!v.UsesAccessAnalysis,"legacy file loaded over active access resets new settings to defaults");
   Enter("SlabThickness","abc");Invalid(v,"text conversion");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var ignored),"import guard");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"results hidden");
   Enter("SlabThickness","300");Check(v.IsCalculationValid&&import.IsEnabled,"text repair");v.UseCustomLoads=true;Pump();Enter("CustomLiveLoad","bad");Invalid(v,"custom text");v.UseCustomLoads=false;Pump();Check(v.IsCalculationValid,"inactive conversion ignored");v.UseCustomLoads=true;Pump();Invalid(v,"reactivated conversion");Enter("CustomLiveLoad","2.25");v.UseCustomLoads=false;
   Enter("PrimaryBeamCantilever","1000");Invalid(v,"UI uplift");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var upliftIgnored),"uplift import blocked");Check(((Border)window.FindName("ResultsBorder")).Visibility==Visibility.Collapsed,"uplift results hidden");Enter("PrimaryBeamCantilever","500");Check(v.IsCalculationValid&&import.IsEnabled,"UI uplift recovery");
@@ -120,12 +140,18 @@ class Program
   v.PropModel="DokaFit Prop";Pump();Check(!v.PropOrientationOptions.Contains("at fixed"),"orientation choices");v.PropModel="Prop Type Eurex eco 20";Pump();
   if(args.Length>1 && args[1]=="uplift"){Enter("PrimaryBeamCantilever","900");Invalid(v,"rendered uplift state");}
   if(args.Length>1 && args[1]=="tip"){v.PropCount="2";v.PropSpacing=1000;v.PrimaryBeamCount="3";Enter("PrimaryBeamCantilever","1000");Invalid(v,"rendered tip state");Check(!import.IsEnabled&&!window.TryGetValidCalculation(out var tipIgnored),"tip import blocked");}
+  if(args.Length>1 && args[1]=="access"){
+   v.PrimaryBeamCount="2";v.PropCount="2";v.PropSpacing=1000;v.PrimaryBeamCantilever=450;v.SecondaryBeamCantilever=150;
+   v.PrimaryAccessEnd="Both";v.PrimaryAccessLeftMm=350;v.PrimaryAccessRightMm=350;v.PrimaryHasAccess=true;Pump();Check(v.IsCalculationValid,"access screenshot uses a valid checked result");
+   ((ScrollViewer)window.FindName("InputScroll")).ScrollToBottom();Pump();
+  }
   if(args.Length>0){
    SavePreview(args[0],1040,860);
    if(v.IsCalculationValid){
     int lines=v.PrimaryBeamCount=="5+"?5:int.Parse(v.PrimaryBeamCount), supports=v.PropCount=="5+"?5:int.Parse(v.PropCount);
-    Check(((SlabSupportDiagram)window.FindName("SupportDiagram")).DrawnPropCount==lines*supports,"live support schematic");
-    if(v.PrimaryBeamCount=="5+"||v.PropCount=="5+")Check(((TextBlock)window.FindName("DiagramCaption")).Text.Contains("five supports"),"five-plus schematic labelled");
+    if(v.UsesAccessAnalysis)Check(((SlabAccessDiagram)window.FindName("AccessDiagram")).DrawnSupports==(v.AccessPreviewBeam=="Secondary H20"?v.ActualPrimaryBeamCount:v.ActualPropCount),"live access support schematic");
+    else Check(((SlabSupportDiagram)window.FindName("SupportDiagram")).DrawnPropCount==lines*supports,"live support schematic");
+    if(!v.UsesAccessAnalysis&&(v.PrimaryBeamCount=="5+"||v.PropCount=="5+"))Check(((TextBlock)window.FindName("DiagramCaption")).Text.Contains("five supports"),"five-plus schematic labelled");
    }
    ((Expander)window.FindName("LoadInputsExpander")).IsExpanded=true;v.UseCustomLoads=true;Pump();
    SavePreview(Path.ChangeExtension(args[0],"loads.png"),1040,860);

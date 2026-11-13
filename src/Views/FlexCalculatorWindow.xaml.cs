@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+#if !DASHBOARD_DESKTOP
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
+#endif
 using MyRevitAddin.Views;
 
 namespace EngineeringDashboard
@@ -129,6 +131,9 @@ namespace EngineeringDashboard
             }
         }
 
+#if DASHBOARD_DESKTOP
+        private async void BtnImportValues_Click(object sender,RoutedEventArgs e)=>await ApplySlabFromDesktopAsync();
+#else
         private bool applyingToSlab;
         private async void BtnImportValues_Click(object sender,RoutedEventArgs e)
         {
@@ -197,8 +202,8 @@ namespace EngineeringDashboard
                             change.Start();
                             try
                             {
-                                if(!parameters[0].Set(vm.PropSpacing/304.8) || !parameters[1].Set(vm.PrimaryBeamCantilever/304.8)
-                                    || !parameters[2].Set(vm.PrimaryBeamCantilever/304.8) || !parameters[3].Set(vm.SuggestedPrimaryBeamSpacing/304.8)) throw new InvalidOperationException("A parameter rejected its value.");
+                                if(!parameters[0].Set(vm.PropSpacing/304.8) || !parameters[1].Set(vm.PrimaryLeftCantilever/304.8)
+                                    || !parameters[2].Set(vm.PrimaryRightCantilever/304.8) || !parameters[3].Set(vm.SuggestedPrimaryBeamSpacing/304.8)) throw new InvalidOperationException("A parameter rejected its value.");
                                 if(change.Commit() != TransactionStatus.Committed) throw new InvalidOperationException("Instance update was not committed.");
                                 updated++;
                             }
@@ -240,6 +245,7 @@ namespace EngineeringDashboard
             public bool AllowReference(Reference reference, XYZ position) => false;
         }
         private static bool IsLength(Parameter p) => p != null && p.StorageType == StorageType.Double && p.Definition.GetDataType() == SpecTypeId.Length;
+#endif
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
             this.Close();

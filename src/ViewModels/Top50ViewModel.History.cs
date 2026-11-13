@@ -34,7 +34,7 @@ namespace EngineeringDashboard
         public void EditSettings(Action<NativeTop50Project> edit)
         {
             RequireEditable();if(edit==null)throw new ArgumentNullException(nameof(edit));var before=CopySettings(Settings);
-            try{edit(Settings);}catch{Settings=before;throw;}Changed();
+            try{edit(Settings);Top50PlannerPolicy.Apply(Settings);Top50PlannerPolicy.ValidateSettings(Settings);}catch{Settings=before;throw;}Changed();
         }
         public void ReviewWall(string id,decimal lengthMm,bool include,string reason)
         {
@@ -46,6 +46,7 @@ namespace EngineeringDashboard
             RequireEditable();var selectedIds=new HashSet<string>(ids??Array.Empty<string>(),StringComparer.Ordinal);if(selectedIds.Count==0)return;
             if(input==null||selectedIds.Any(id=>!input.Walls.Any(w=>w.Id==id)))throw new ArgumentException("Select existing walls to delete.");
             var removed=input.Walls.Where(w=>selectedIds.Contains(w.Id)).ToArray();
+            foreach(var pour in Settings.Pours)pour.WallIds=pour.WallIds.Where(id=>!selectedIds.Contains(id)).ToArray();
             input.RemovedWalls=Array.AsReadOnly(input.RemovedWalls.Concat(removed).ToArray());input.Walls=Array.AsReadOnly(input.Walls.Where(w=>!selectedIds.Contains(w.Id)).ToArray());
             Changed();Notify(nameof(Input));
         }
@@ -59,6 +60,7 @@ namespace EngineeringDashboard
                 to.Push(CaptureEdit());var state=from.Pop();input=CopyInput(state.Input);Settings=CopySettings(state.Settings);Top50PlannerPolicy.Apply(Settings);
                 Proposals=Array.AsReadOnly(state.Proposals);selected=Proposals.FirstOrDefault(p=>p.Id==state.SelectedId);SearchLog=state.SearchLog;IsStale=state.Stale;
                 stateToken=state.Token;Dirty=stateToken!=savedStateToken;CurrentPage=state.Page;SelectedGroupIndex=state.Group;revision++;
+                ClearPourChecks();
                 Status=action+" applied."+(IsStale?" Optimize again to update the results.":"");RememberEdit();Refresh();
             });
         }

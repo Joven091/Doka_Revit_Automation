@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace EngineeringDashboard
@@ -217,66 +218,368 @@ namespace EngineeringDashboard
     /// <summary>Transverse force transfer with continuous distributed primary design loads.</summary>
     public static class TransferredSlabOptimizer
     {
+        // A raw caller-supplied vector is never inferred from geometry. Native
+        // slices are reserved for immutable generated positions and retain the
+        // original global-coordinate subtraction, including its rounding.
+        internal readonly struct SupportVector
+        {
+            private readonly double[] values;
+            private readonly double origin;
+            private readonly int firstPlusOne,count;
+            internal SupportVector(double[] values){this.values=values;origin=0;firstPlusOne=0;count=0;}
+            private SupportVector(double[] values,int first,int count,double origin){this.values=values;this.origin=origin;firstPlusOne=first+1;this.count=count;}
+            internal static SupportVector NativeSlice(double[] positions,int first,int count,double origin)
+            {
+                if(positions==null)throw new ArgumentNullException(nameof(positions));
+                if(first<0 || count<0 || first>positions.Length-count)throw new ArgumentOutOfRangeException(nameof(first));
+                return new SupportVector(positions,first,count,origin);
+            }
+            internal bool IsNull=>values==null;
+            internal bool IsNative=>firstPlusOne!=0;
+            internal int Length=>firstPlusOne==0 ? values.Length : count;
+            internal double this[int index]
+            {
+                get
+                {
+                    if(firstPlusOne==0)return values[index];
+                    if((uint)index>=(uint)count)throw new IndexOutOfRangeException();
+                    return values[firstPlusOne-1+index]-origin;
+                }
+            }
+            internal bool SameStorage(SupportVector other)
+                =>ReferenceEquals(values,other.values) && firstPlusOne==other.firstPlusOne
+                    && (firstPlusOne==0 || count==other.count && BitConverter.DoubleToInt64Bits(origin)==BitConverter.DoubleToInt64Bits(other.origin));
+            // Legacy span screening used LINQ First/Last, whose malformed-input
+            // exceptions differ from array indexing. Keep those error paths.
+            internal double First()=>IsNull ? Enumerable.First((double[])null) : Length==0 ? Enumerable.First(Array.Empty<double>()) : this[0];
+            internal double Last()=>IsNull ? Enumerable.Last((double[])null) : Length==0 ? Enumerable.Last(Array.Empty<double>()) : this[Length-1];
+            internal double[] Copy()
+            {
+                var result=new double[Length];for(int i=0;i<result.Length;i++)result[i]=this[i];return result;
+            }
+        }
         internal sealed class Geometry
         {
-            public TowerStockPiece[] Stock; public double[] Positions; public bool[] Joined; public double[][] MemberSupports;
+            public TowerStockPiece[] Stock; public double[] Positions; public bool[] Joined;
+            private double[][] memberSupports;
+            private bool nativeSupports;
+            // Compatibility inspectors/full response consumers receive the same
+            // fresh per-geometry arrays as before. Early checks use Supports().
+            public double[][] MemberSupports
+            {
+                get=>MaterializeSupports(null);
+                set{Volatile.Write(ref nativeSupports,false);Volatile.Write(ref memberSupports,value);}
+            }
+            internal bool HasNativeSupportSlices=>Volatile.Read(ref nativeSupports);
+            internal bool HasMaterializedSupports=>Volatile.Read(ref memberSupports)!=null;
+            internal SupportVector Supports(int run)
+            {
+                var saved=Volatile.Read(ref memberSupports);if(saved!=null)return new SupportVector(saved[run]);
+                if(Volatile.Read(ref nativeSupports))
+                {
+                    var stock=Stock[run];return SupportVector.NativeSlice(Positions,stock.FirstSupport,stock.LastSupport-stock.FirstSupport+1,stock.StartMm);
+                }
+                return new SupportVector(saved[run]);
+            }
+            internal bool HasSupportMetadata=>Volatile.Read(ref nativeSupports) || Volatile.Read(ref memberSupports)!=null;
+            internal int SupportRuns
+            {
+                get{var saved=Volatile.Read(ref memberSupports);return saved!=null ? saved.Length : Volatile.Read(ref nativeSupports) ? Stock.Length : saved.Length;}
+            }
+            internal double[][] MaterializeSupports(BeamSearchTrace trace)
+            {
+                trace?.CheckCancellation();var saved=Volatile.Read(ref memberSupports);
+                if(saved!=null || !Volatile.Read(ref nativeSupports))return saved;
+                var created=new double[Stock.Length][];
+                for(int run=0;run<created.Length;run++)
+                {trace?.CheckCancellation();var stock=Stock[run];created[run]=SupportVector.NativeSlice(Positions,stock.FirstSupport,stock.LastSupport-stock.FirstSupport+1,stock.StartMm).Copy();}
+                trace?.CheckCancellation();return Interlocked.CompareExchange(ref memberSupports,created,null)??created;
+            }
+            // Called only by the native generator factories after their arrays
+            // and pieces are complete. Those sources are immutable afterward;
+            // site translations construct a new Geometry before registration.
+            internal void PrepareGeneratedSupports(BeamSearchTrace trace)
+            {
+                trace?.CheckCancellation();if(HasSupportMetadata)return;
+                bool known=Stock!=null && Stock.Length>0 && Positions!=null && Joined!=null && Joined.Length==Positions.Length-1;
+                if(known)foreach(var stock in Stock)
+                {
+                    trace?.CheckCancellation();
+                    if(stock==null || stock.FirstSupport<0 || stock.LastSupport<=stock.FirstSupport || stock.LastSupport>=Positions.Length
+                        || !TowerBeamAnalysis.Finite(stock.StartMm) || !TowerBeamAnalysis.Finite(stock.StockLengthMm) || stock.StockLengthMm<=0) {known=false;break;}
+                    for(int i=stock.FirstSupport;i<=stock.LastSupport;i++)
+                        if(!TowerBeamAnalysis.Finite(Positions[i]) || !TowerBeamAnalysis.Finite(Positions[i]-stock.StartMm)){known=false;break;}
+                    if(!known)break;
+                }
+                trace?.CheckCancellation();
+                if(known){Volatile.Write(ref nativeSupports,true);return;}
+                // Unsupported sources keep the exact former eager expression,
+                // including its LINQ slicing/error behavior.
+                MemberSupports=Stock.Select(s=>Positions.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(x=>x-s.StartMm).ToArray()).ToArray();
+            }
+            internal static Geometry Generated(TowerStockPiece[] stock,double[] positions,bool[] joined,BeamSearchTrace trace)
+            {
+                var result=new Geometry {Stock=stock,Positions=positions,Joined=joined};result.PrepareGeneratedSupports(trace);return result;
+            }
             internal SpanGeometryShape SpanShape;
+            internal GeometryRank[] Rankings;
+            internal int[] NecessarySupportHashes;
+            // A location to recheck, never a load, capacity or cached verdict.
+            internal int NecessaryFailureHint;
         }
-        // One immutable entry per already retained geometry. Unlike a short-lived
-        // dictionary, this survives traversal of the other stock/support families.
-        // Loads, material and capacities are deliberately evaluated on every use.
+        // Pure integer hashes for the retained immutable member-support arrays.
+        // No loads, capacities or acceptance decisions are stored on geometry.
+        internal static void NecessarySupportHash(Geometry geometry,int run,BeamSearchTrace trace,out int polynomial,out int power)
+        {
+            var saved=Volatile.Read(ref geometry.NecessarySupportHashes);
+            if(saved==null)
+            {
+                trace?.CheckCancellation();var created=new int[geometry.SupportRuns*2];
+                unchecked
+                {
+                    for(int i=0;i<geometry.SupportRuns;i++)
+                    {
+                        var supports=geometry.Supports(i);int h=0,factor=1;for(int j=0;j<supports.Length;j++){h=h*31+supports[j].GetHashCode();factor*=31;}
+                        created[2*i]=h;created[2*i+1]=factor;
+                    }
+                }
+                trace?.CheckCancellation();Volatile.Write(ref geometry.NecessarySupportHashes,created);saved=created;
+            }
+            polynomial=saved[2*run];power=saved[2*run+1];
+        }
+        internal sealed class GeometryRank
+        {
+            internal FinalGeometryRank Final;
+            internal readonly double Width,Centre,Brace,Cantilever,Symmetry;
+            internal readonly bool Rotated,Engineer;
+            internal readonly int Joined,Narrow;
+            internal GeometryRank(Geometry geometry,double width,bool rotated,double centre,bool engineer)
+            {
+                Width=width;Rotated=rotated;Centre=centre;Engineer=engineer;
+                Joined=geometry.Joined.Count(j=>j);
+                Brace=EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,width,rotated);
+                Narrow=TowerOptimizer.Standalone600Count(geometry.Positions,geometry.Joined,width,rotated);
+                Cantilever=geometry.Stock.Sum(p=>Math.Abs((geometry.Positions[p.FirstSupport]-p.StartMm)-(p.EndMm-geometry.Positions[p.LastSupport])));
+                Symmetry=engineer ? TowerOptimizer.SymmetryError(geometry.Positions,geometry.Stock.Select(p=>p.StockLengthMm).ToArray(),centre) : 0;
+            }
+            internal bool Matches(double width,bool rotated,double centre,bool engineer)=>Width==width && Rotated==rotated && Centre==centre && Engineer==engineer;
+        }
+        internal sealed class FinalGeometryRank
+        {
+            internal readonly double Edge,Centre,Brace,Cantilever,PrimarySymmetry,BraceLocation,StockLength;
+            internal readonly int Stations,Joined,Narrow;
+            internal FinalGeometryRank(Geometry geometry,GeometryRank rank,double edge,double centre)
+            {
+                Edge=edge;Centre=centre;Stations=geometry.Positions.Length;Joined=geometry.Joined.Count(x=>x);
+                var positions=geometry.Positions.Select(x=>x+edge).ToArray();
+                Narrow=TowerOptimizer.Standalone600Count(positions,geometry.Joined,rank.Width,rank.Rotated);
+                Brace=EngineerTowerSearch.BracePenalty(positions,geometry.Joined,rank.Width,rank.Rotated);
+                Cantilever=geometry.Stock.Sum(p=>
+                {
+                    double start=p.StartMm+edge;
+                    return Math.Abs((positions[p.FirstSupport]-start)-(start+p.StockLengthMm-positions[p.LastSupport]));
+                });
+                PrimarySymmetry=TowerOptimizer.SymmetryError(positions,geometry.Stock.Select(p=>p.StockLengthMm).ToArray(),centre);
+                BraceLocation=EngineerTowerSearch.BraceLocationPenalty(positions,geometry.Joined,rank.Width,rank.Rotated);
+                StockLength=geometry.Stock.Sum(p=>p.StockLengthMm);
+            }
+        }
+        internal static FinalGeometryRank FinalRankGeometry(Geometry geometry,GeometryRank rank,double edge,double centre,bool reuse)
+        {
+            var saved=reuse ? Volatile.Read(ref rank.Final) : null;
+            if(saved!=null && saved.Edge==edge && saved.Centre==centre)return saved;
+            var created=new FinalGeometryRank(geometry,rank,edge,centre);
+            if(reuse)Volatile.Write(ref rank.Final,created);return created;
+        }
+        internal sealed class KnownLayoutRank
+        {
+            internal readonly TowerLayout Layout;
+            internal readonly int Stations,Joined,Narrow;
+            internal readonly double Brace,Cantilever,Symmetry,BraceLocation,Cost;
+            internal KnownLayoutRank(TowerLayout layout)
+            {
+                Layout=layout;Stations=layout.PositionsMm.Length;Joined=layout.BayCount;Narrow=layout.Standalone600Count;
+                Brace=layout.StandaloneBracePenalty;Cantilever=layout.CantileverImbalanceMm;Symmetry=layout.SymmetryErrorMm;
+                BraceLocation=layout.BraceLocationPenalty;Cost=Economy(layout);
+            }
+        }
+        private static KnownLayoutRank KnownWinner(Dictionary<double,KnownLayoutRank> saved,double width,TowerLayout layout)
+        {
+            if(!saved.TryGetValue(width,out var rank) || !ReferenceEquals(rank.Layout,layout))saved[width]=rank=new KnownLayoutRank(layout);
+            return rank;
+        }
+        // All operations, including absolute coordinates and parenthesization,
+        // match the final layout getters. A zero result retains cost/utilization
+        // ties for the ordinary complete member and receiver checks.
+        internal static int CompareKnownRanks(FinalGeometryRank candidate,double secondary,KnownLayoutRank best)
+        {
+            int order=candidate.Stations.CompareTo(best.Stations);if(order!=0)return order;
+            order=EngineerTowerSearch.Compare(candidate.Narrow,candidate.Joined,candidate.Brace,best.Narrow,best.Joined,best.Brace);if(order!=0)return order;
+            if(Math.Abs(candidate.Cantilever-best.Cantilever)>1e-7)return candidate.Cantilever.CompareTo(best.Cantilever);
+            double symmetry=candidate.PrimarySymmetry+(candidate.Cantilever+secondary);
+            if(Math.Abs(symmetry-best.Symmetry)>1e-7)return symmetry.CompareTo(best.Symmetry);
+            if(Math.Abs(candidate.BraceLocation-best.BraceLocation)>1e-7)return candidate.BraceLocation.CompareTo(best.BraceLocation);
+            return 0;
+        }
+        internal static GeometryRank RankGeometry(Geometry geometry,double width,bool rotated,double centre,bool engineer,bool reuse)
+        {
+            var saved=reuse ? Volatile.Read(ref geometry.Rankings) : null;
+            if(saved!=null)foreach(var entry in saved)if(entry.Matches(width,rotated,centre,engineer))return entry;
+            var created=new GeometryRank(geometry,width,rotated,centre,engineer);
+            if(!reuse)return created;
+            while(true)
+            {
+                saved=Volatile.Read(ref geometry.Rankings);
+                if(saved!=null)foreach(var entry in saved)if(entry.Matches(width,rotated,centre,engineer))return entry;
+                int retained=Math.Min(15,saved?.Length??0);
+                var next=new GeometryRank[retained+1];
+                if(retained>0)Array.Copy(saved,saved.Length-retained,next,0,retained);
+                next[retained]=created;
+                if(ReferenceEquals(Interlocked.CompareExchange(ref geometry.Rankings,next,saved),saved))return created;
+            }
+        }
+        // Exact immutable footprint values. Geometry dimensions are retained
+        // separately; loads, material and capacities remain live on every use.
         internal sealed class SpanGeometryContext
         {
-            internal readonly double Edge;internal readonly double[] Boundaries;
+            internal readonly double Edge;
+            private readonly double[] boundaries;
+            internal readonly int Hash;
+            internal IList<double> Boundaries=>Array.AsReadOnly(boundaries);
             internal SpanGeometryContext(double edge,BeamDistributedLoad[] bands)
-            {Edge=edge;Boundaries=bands.SelectMany(b=>new[] {b.StartMm,b.EndMm}).ToArray();}
+            {
+                Edge=edge;boundaries=bands.SelectMany(b=>new[] {b.StartMm,b.EndMm}).ToArray();
+                unchecked{int hash=edge.GetHashCode()*31+boundaries.Length;foreach(double value in boundaries)hash=hash*31+value.GetHashCode();Hash=hash;}
+            }
             internal bool Same(SpanGeometryContext other)
             {
                 if(ReferenceEquals(this,other))return true;
-                if(other==null || Edge!=other.Edge || Boundaries.Length!=other.Boundaries.Length)return false;
-                for(int i=0;i<Boundaries.Length;i++)if(Boundaries[i]!=other.Boundaries[i])return false;
+                if(other==null || Hash!=other.Hash || Edge!=other.Edge || boundaries.Length!=other.boundaries.Length)return false;
+                for(int i=0;i<boundaries.Length;i++)if(boundaries[i]!=other.boundaries[i])return false;
                 return true;
+            }
+            internal SpanGeometryShape Build(Geometry geometry,BeamSearchTrace trace)
+            {
+                var tails=new double[geometry.Stock.Length];var clearSpans=new double[geometry.Stock.Length];double maximumTail=0,maximumClearSpan=0;
+                for(int run=0;run<geometry.Stock.Length;run++)
+                {
+                    trace?.CheckCancellation();
+                    var stock=geometry.Stock[run];var supports=geometry.Supports(run);double origin=stock.StartMm+Edge;
+                    for(int tail=0;tail<2;tail++)
+                    {
+                        double a=tail==0 ? 0 : supports[supports.Length-1],b=tail==0 ? supports[0] : stock.StockLengthMm;
+                        bool unknown=false;for(int i=0;i<boundaries.Length;i+=2)if(boundaries[i+1]>origin+a && boundaries[i]<origin+b){unknown=true;break;}
+                        if(!unknown)tails[run]=Math.Max(tails[run],(b-a)/1000);
+                    }
+                    for(int span=0;span<=supports.Length;span++)
+                    {
+                        double a=origin+(span==0 ? 0 : supports[span-1]),b=origin+(span==supports.Length ? stock.StockLengthMm : supports[span]);
+                        for(int i=0;i<boundaries.Length;i+=2)
+                        {
+                            if(boundaries[i+1]<=a)continue;if(boundaries[i]>=b)break;
+                            clearSpans[run]=Math.Max(clearSpans[run],(Math.Min(b,boundaries[i])-a)/1000);
+                            a=Math.Max(a,boundaries[i+1]);if(a>=b)break;
+                        }
+                        clearSpans[run]=Math.Max(clearSpans[run],(b-a)/1000);
+                    }
+                    maximumTail=Math.Max(maximumTail,tails[run]);maximumClearSpan=Math.Max(maximumClearSpan,clearSpans[run]);
+                }
+                trace?.CheckCancellation();return new SpanGeometryShape(this,tails,clearSpans,maximumTail,maximumClearSpan);
             }
         }
         internal sealed class SpanGeometryShape
         {
-            internal SpanGeometryContext Context;
-            internal double[] Tails,ClearSpans;
+            internal readonly SpanGeometryContext Context;
+            // Owned complete arrays; retained search consumers only read them.
+            internal readonly double[] Tails,ClearSpans;
+            internal readonly double MaximumTail,MaximumClearSpan;
+            internal SpanGeometryShape(SpanGeometryContext context,double[] tails,double[] clearSpans,double maximumTail,double maximumClearSpan)
+            {Context=context;Tails=tails;ClearSpans=clearSpans;MaximumTail=maximumTail;MaximumClearSpan=maximumClearSpan;}
         }
-        internal static SpanGeometryShape PrepareSpanShape(Geometry geometry,SpanGeometryContext context,BeamSearchTrace trace=null)
+        internal readonly struct SpanShapeKey : IEquatable<SpanShapeKey>
         {
-            var found=Volatile.Read(ref geometry.SpanShape);
-            if(found!=null && context.Same(found.Context))
-            {if(trace?.EnableHotProfiling==true)trace.Increment(BeamSearchCounter.SpanGeometryHits);return found;}
-            if(trace?.EnableHotProfiling==true)trace.Increment(BeamSearchCounter.SpanGeometryBuilds);
-            var shape=new SpanGeometryShape {Context=context,Tails=new double[geometry.Stock.Length],ClearSpans=new double[geometry.Stock.Length]};
-            var bands=context.Boundaries;
-            for(int run=0;run<geometry.Stock.Length;run++)
+            private readonly Geometry geometry;private readonly SpanGeometryContext context;private readonly int hash;
+            internal SpanShapeKey(Geometry geometry,SpanGeometryContext context)
+            {this.geometry=geometry;this.context=context;unchecked{hash=RuntimeHelpers.GetHashCode(geometry)*31+context.Hash;}}
+            public override int GetHashCode()=>hash;
+            public override bool Equals(object other)=>other is SpanShapeKey && Equals((SpanShapeKey)other);
+            public bool Equals(SpanShapeKey other)=>ReferenceEquals(geometry,other.geometry) && (context==null ? other.context==null : context.Same(other.context));
+        }
+        internal sealed class SpanShapeHistory
+        {
+            private sealed class Shard
             {
-                var stock=geometry.Stock[run];var supports=geometry.MemberSupports[run];double origin=stock.StartMm+context.Edge;
-                for(int tail=0;tail<2;tail++)
+                internal readonly ResponseCache<SpanShapeKey,SpanGeometryShape> Entries;
+                internal long Hits,Builds;
+                internal Shard(int capacity){Entries=new ResponseCache<SpanShapeKey,SpanGeometryShape>(capacity);}
+            }
+            // Workers share only immutable shapes. Independent bounded LRUs keep
+            // unrelated exact-key hits from serializing on one owner-wide lock.
+            // Their capacities sum to the same total retention limit.
+            private readonly Shard[] shards;
+            internal SpanShapeHistory(int capacity=16384)
+            {
+                if(capacity<=0)throw new ArgumentOutOfRangeException(nameof(capacity));
+                int count=Math.Min(16,capacity);shards=new Shard[count];
+                for(int i=0;i<count;i++)shards[i]=new Shard(capacity/count+(i<capacity%count ? 1 : 0));
+            }
+            private Shard For(SpanShapeKey key)
+            {
+                // Spread integer-mm and adjacent-double contexts across shards;
+                // the original exact key still decides every cache hit.
+                unchecked
                 {
-                    double a=tail==0 ? 0 : supports[supports.Length-1],b=tail==0 ? supports[0] : stock.StockLengthMm;
-                    bool unknown=false;for(int i=0;i<bands.Length;i+=2)if(bands[i+1]>origin+a && bands[i]<origin+b){unknown=true;break;}
-                    if(!unknown)shape.Tails[run]=Math.Max(shape.Tails[run],(b-a)/1000);
-                }
-                for(int span=0;span<=supports.Length;span++)
-                {
-                    double a=origin+(span==0 ? 0 : supports[span-1]),b=origin+(span==supports.Length ? stock.StockLengthMm : supports[span]);
-                    for(int i=0;i<bands.Length;i+=2)
-                    {
-                        if(bands[i+1]<=a)continue;if(bands[i]>=b)break;
-                        shape.ClearSpans[run]=Math.Max(shape.ClearSpans[run],(Math.Min(b,bands[i])-a)/1000);
-                        a=Math.Max(a,bands[i+1]);if(a>=b)break;
-                    }
-                    shape.ClearSpans[run]=Math.Max(shape.ClearSpans[run],(b-a)/1000);
+                    uint hash=(uint)key.GetHashCode();hash^=hash>>16;hash*=0x7feb352d;
+                    hash^=hash>>15;hash*=0x846ca68b;hash^=hash>>16;
+                    return shards[hash%(uint)shards.Length];
                 }
             }
+            internal int Count {get{int count=0;foreach(var shard in shards)lock(shard.Entries)count+=shard.Entries.Count;return count;}}
+            internal long Hits {get{long hits=0;foreach(var shard in shards)lock(shard.Entries)hits+=shard.Hits;return hits;}}
+            internal long Builds {get{long builds=0;foreach(var shard in shards)lock(shard.Entries)builds+=shard.Builds;return builds;}}
+            internal bool TryGet(SpanShapeKey key,BeamSearchTrace trace,out SpanGeometryShape shape)
+            {
+                var shard=For(key);
+                lock(shard.Entries){trace?.CheckCancellation();if(!shard.Entries.TryGetValue(key,out shape))return false;shard.Hits++;return true;}
+            }
+            internal SpanGeometryShape Publish(SpanShapeKey key,SpanGeometryShape shape,BeamSearchTrace trace)
+            {
+                var shard=For(key);
+                lock(shard.Entries)
+                {
+                    trace?.CheckCancellation();shard.Builds++;
+                    if(shard.Entries.TryGetValue(key,out var saved)){shard.Hits++;return saved;}
+                    shard.Entries.Store(key,shape);return shape;
+                }
+            }
+        }
+        internal static SpanGeometryShape PrepareSpanShape(Geometry geometry,SpanGeometryContext context,BeamSearchTrace trace=null,GeometryCache owner=null)
+        {
+            trace?.CheckCancellation();var found=Volatile.Read(ref geometry.SpanShape);
+            if(found!=null && context.Same(found.Context))
+            {trace?.Increment(BeamSearchCounter.SpanGeometryHits);return found;}
+            var history=owner?.SpanShapes;var key=history==null ? default(SpanShapeKey) : new SpanShapeKey(geometry,context);
+            if(history!=null && history.TryGet(key,trace,out found))
+            {trace?.Increment(BeamSearchCounter.SpanGeometryHits);Volatile.Write(ref geometry.SpanShape,found);return found;}
+            // No shared lock encloses the supports-by-footprints traversal. A
+            // fault/cancellation leaves both the history and last slot untouched.
+            var shape=context.Build(geometry,trace);trace?.CheckCancellation();
+            if(history!=null)shape=history.Publish(key,shape,trace);
+            trace?.Increment(BeamSearchCounter.SpanGeometryBuilds);trace?.CheckCancellation();
             Volatile.Write(ref geometry.SpanShape,shape);return shape;
         }
         internal static bool PreparedSpanShapeFits(TowerInput input,Geometry geometry,SpanGeometryContext context,double largest)
         {
-            var shape=PrepareSpanShape(geometry,context,input.Trace);
+            var shape=PrepareSpanShape(geometry,context,input.Trace,input.ReuseSearchWork ? input.TransferredSlab?.SharedGeometryCache??input.NetworkGeometryWork : null);
+            if(!input.Primary.IsWS10)
+            {
+                // H20 has no stock-dependent self-weight. Every run therefore
+                // uses the same nonnegative line load and the same limits;
+                // the largest dimensions retain each original scalar check.
+                double q=largest,tail=shape.MaximumTail,span=shape.MaximumClearSpan;
+                return !(q*tail>input.Primary.ShearLimitKn+1e-7 || q*tail*tail/2>input.Primary.MomentLimitKnM+1e-7
+                    || q*span>2*input.Primary.ShearLimitKn+1e-7 || q*span*span>16*input.Primary.MomentLimitKnM+1e-7);
+            }
             for(int run=0;run<geometry.Stock.Length;run++)
             {
                 double q=largest+input.Primary.SelfWeightKnM(geometry.Stock[run].StockLengthMm),tail=shape.Tails[run],span=shape.ClearSpans[run];
@@ -305,11 +608,94 @@ namespace EngineeringDashboard
                 return true;
             }
         }
+        // Preserve Tuple<double,double> equality and hashing without boxing either
+        // coordinate while the hot receiving-header dictionaries are queried.
+        internal readonly struct ReceivingPairKey : IEquatable<ReceivingPairKey>
+        {
+            private readonly double first,second;
+            internal ReceivingPairKey(double first,double second){this.first=first;this.second=second;}
+            public bool Equals(ReceivingPairKey other)=>first.Equals(other.first) && second.Equals(other.second);
+            public override bool Equals(object other)=>other is ReceivingPairKey key && Equals(key);
+            public override int GetHashCode(){unchecked{int hash=first.GetHashCode();return ((hash<<5)+hash)^second.GetHashCode();}}
+        }
+        private readonly struct CountRangeKey : IEquatable<CountRangeKey>
+        {
+            private readonly Geometry[] parent;
+            private readonly int minimum,maximum;
+            internal CountRangeKey(Geometry[] parent,int minimum,int maximum){this.parent=parent;this.minimum=minimum;this.maximum=maximum;}
+            public bool Equals(CountRangeKey other)=>ReferenceEquals(parent,other.parent) && minimum==other.minimum && maximum==other.maximum;
+            public override bool Equals(object other)=>other is CountRangeKey key && Equals(key);
+            public override int GetHashCode(){unchecked{int hash=parent==null ? 0 : parent.GetHashCode();hash=((hash<<5)+hash)^minimum;return ((hash<<5)+hash)^maximum;}}
+        }
         // Created for one pass only: stock, setback and exclusion settings are constant.
         internal sealed class GeometryCache
         {
             internal Geometry[] Fixed;
+            internal readonly SpanShapeHistory SpanShapes=new SpanShapeHistory();
+            internal readonly TransferNetworkOptimizer.ReceiverAggregateLoadBound.UniversalViewCache UniversalPrimaryViews=new TransferNetworkOptimizer.ReceiverAggregateLoadBound.UniversalViewCache();
             private readonly ConcurrentDictionary<string,Lazy<Geometry[]>> items = new ConcurrentDictionary<string,Lazy<Geometry[]>>();
+            private sealed class EngineerEntry
+            {
+                internal int Limit;
+                internal Geometry[] All=Array.Empty<Geometry>();
+                internal readonly Dictionary<int,Geometry[]> Ranges=new Dictionary<int,Geometry[]>();
+            }
+            private readonly ConcurrentDictionary<string,EngineerEntry> engineer=new ConcurrentDictionary<string,EngineerEntry>();
+            private readonly ResponseCache<string,Geometry[]> regularPrefixes=new ResponseCache<string,Geometry[]>(128);
+            private readonly ResponseCache<CountRangeKey,Geometry[]> countRanges=new ResponseCache<CountRangeKey,Geometry[]>(128);
+            internal Geometry[] GetCountRange(Geometry[] source,int minimum,int maximum,BeamSearchTrace trace,out bool hit)
+            {
+                trace?.CheckCancellation();
+                // Arrays use reference identity: completed extensions publish a
+                // new parent array and cannot reuse a view of an older universe.
+                var key=new CountRangeKey(source,minimum,maximum);
+                lock(countRanges)
+                {
+                    trace?.CheckCancellation();
+                    if(countRanges.TryGetValue(key,out var saved)){hit=true;return saved;}
+                }
+                var selected=source.Where(g=>g.Positions.Length>=minimum && g.Positions.Length<=maximum).ToArray();
+                if(selected.Length==source.Length)selected=source;
+                trace?.CheckCancellation();
+                lock(countRanges)
+                {
+                    trace?.CheckCancellation();
+                    if(countRanges.TryGetValue(key,out var saved)){hit=true;return saved;}
+                    countRanges.Store(key,selected);hit=false;return selected;
+                }
+            }
+            internal Geometry[] GetRegularPrefix(string key,Func<Geometry[]> build,out bool hit)
+            {
+                lock(regularPrefixes)if(regularPrefixes.TryGetValue(key,out var saved)){hit=true;return saved;}
+                var generated=build();
+                // Independent prefixes can build concurrently. Publish only a
+                // completed result; an interrupted builder leaves no evidence.
+                lock(regularPrefixes)
+                {
+                    if(regularPrefixes.TryGetValue(key,out var saved)){hit=true;return saved;}
+                    regularPrefixes.Store(key,generated);hit=false;return generated;
+                }
+            }
+            internal Geometry[] GetEngineer(string key,int limit,Func<int,Geometry[]> build,out bool hit,out int reused)
+            {
+                if(Fixed!=null){hit=true;reused=Fixed.Length;return Fixed;}
+                var entry=engineer.GetOrAdd(key,_=>new EngineerEntry());
+                lock(entry)
+                {
+                    if(entry.Ranges.TryGetValue(limit,out var saved)){hit=true;reused=saved.Length;return saved;}
+                    if(limit<=entry.Limit)
+                    {
+                        hit=true;var subset=entry.All.Where(g=>g.Positions.Length<=limit).ToArray();
+                        entry.Ranges[limit]=subset;reused=subset.Length;return subset;
+                    }
+                    int previous=entry.Limit;
+                    var added=build(previous).Where(g=>g.Positions.Length>previous && g.Positions.Length<=limit).ToArray();
+                    reused=entry.All.Length;hit=false;
+                    var all=entry.All.Concat(added).ToArray();
+                    // Publish only a completed extension; cancellation leaves earlier ranges intact.
+                    entry.All=all;entry.Limit=limit;entry.Ranges[limit]=all;return all;
+                }
+            }
             internal Geometry[] Get(string key,Func<Geometry[]> build,out bool hit)
             {
                 if(Fixed!=null){hit=true;return Fixed;}
@@ -321,18 +707,24 @@ namespace EngineeringDashboard
         private sealed class Upper { public double Stock, Edge, Foot, OtherFoot, Bay, Load; public bool Custom; public LoadedBeamAnalysis Analysis; }
         private sealed class CrossOption
         {
+            internal bool FinalSymmetryPrepared;
+            internal double FinalSymmetryWidth,FinalSecondarySymmetry;
             internal readonly ResponseCache<PrimaryLoadKey,PrimaryLoadData> PrimaryLoads=new ResponseCache<PrimaryLoadKey,PrimaryLoadData>(512);
             public double Start, Stock; public Upper Left, Right; public LoadedBeamAnalysis[] Cases; public string[] Names;
             public TransferMember[] UnitMembers;public string[][] UnitPointLabels;
             public EngineerPrimaryPlan PositionedPlan;
-            // Only the latest grid is retained, keeping memory bounded in single-beam searches.
+            // The latest grid stays on the fast path. Ranked geometry traversal
+            // alternates covered lengths, so retain a bounded set of complete
+            // transverse checks and their exact resolved receiving callbacks.
             public string RowKey,TransverseKey;
             public bool TransversePassed;
             internal Func<Geometry,double,bool> PreparedReceiver;
+            internal ResponseCache<string,TransversePreparation> TransversePreparations;
             internal bool SpanPrepared;
             internal double[] MinimumLineLoads;
             internal BeamDistributedLoad[] UnknownSpans;
             internal SpanGeometryContext SpanContext;
+            internal ResponseCache<double,SpanGeometryContext> SpanContexts;
             public int[] DesignCases;
             public TransferMember[][] LowerByCase;
             public bool[] LowerCaseComputed;
@@ -340,12 +732,22 @@ namespace EngineeringDashboard
             // not the longitudinal station. Bound this cache within one receiving-beam solve.
             public readonly Dictionary<Tuple<int,double,double,double>,LoadedBeamAnalysis> RowAnalyses = new Dictionary<Tuple<int,double,double,double>,LoadedBeamAnalysis>();
         }
+        private sealed class TransversePreparation
+        {
+            internal bool Passed;
+            internal Func<Geometry,double,bool> Receiver;
+        }
         private sealed class RowGrid
         {
+            internal RowQuantities Quantities;
             public double[] Rows, Tributaries, LeftScales, RightScales, LeftPhysicalScales, RightPhysicalScales;
             internal double[] SettingOutRows;
             internal int[] SettingOutDesignRows;
             internal readonly Dictionary<string,RowGrid> JointLayouts=new Dictionary<string,RowGrid>();
+            internal StockGridContract JointContract;
+            internal StockGridMemo LastStockGrid;
+            internal StockGridMemo[] StockGrids;
+            internal int NextStockGrid;
             public int[] SlabRowIndices,SlabSourceRowIndices;
             internal double[] SharedSlabRowsMm,LeftSourceScales,RightSourceScales;
             internal bool Adjusted;
@@ -366,6 +768,100 @@ namespace EngineeringDashboard
                     slice=new RowSlice {Indices=indices,Positions=indices.Select(i=>Rows[i]-stock.StartMm).ToArray()};Slices[key]=slice;
                 }
                 return slice;
+            }
+        }
+        private sealed class RowQuantities
+        {
+            internal readonly int Physical,Left,Right;
+            internal RowQuantities(RowGrid grid)
+            {Physical=grid.SettingOutRows?.Length??grid.Rows.Length;Left=grid.LeftScales.Count(x=>x>0);Right=grid.RightScales.Count(x=>x>0);}
+        }
+        internal sealed class IndividualGridKey : IEquatable<IndividualGridKey>
+        {
+            private readonly long[] values;private readonly int hash;
+            internal IndividualGridKey(TowerInput input,double covered,double rowCoverage,double edge)
+            {
+                var t=input.TransferredSlab;
+                var eligible=t.EngineerNetwork==null ? Array.Empty<TransferCrossingBeamRow>() : EngineerPrimaryPlan.Adjacent(t.EngineerNetwork,t.EngineerBeam).ToArray();
+                values=new long[22+(t.SharedRowsMm?.Length??0)+(t.LeftBaselineWidthsMm?.Length??0)+(t.RightBaselineWidthsMm?.Length??0)
+                    +(t.LeftEffectiveWidthsMm?.Length??0)+(t.RightEffectiveWidthsMm?.Length??0)+(t.ReceivingRowsMm?.Length??0)
+                    +2*(t.ReceivingCrossings?.Length??0)+2*eligible.Length];int at=0;
+                Action<double> add=x=>values[at++]=BitConverter.DoubleToInt64Bits(x);
+                Action<double[]> array=items=>{values[at++]=items?.Length??-1;if(items!=null)foreach(double x in items)add(x);};
+                add(covered);add(rowCoverage);add(edge);add(t.RowStart(input,rowCoverage));add(input.LongitudinalStartMm);
+                add(t.UpperSpacingMm);add(t.SlabSpacing(true));add(t.SlabSpacing(false));
+                values[at++]=t.LeftBayMm>0 ? 1 : 0;values[at++]=t.RightBayMm>0 ? 1 : 0;
+                values[at++]=t.LocalReceivingRows ? 1 : 0;values[at++]=t.IncludeConcreteEndStrips ? 1 : 0;values[at++]=t.IncludeMainBeamEndLoads ? 1 : 0;
+                // Full source order, including inactive rows, determines the
+                // public slab-source ordinal maps. Never trim it to local rows.
+                array(t.SharedRowsMm);array(t.LeftBaselineWidthsMm);array(t.RightBaselineWidthsMm);
+                array(t.LeftEffectiveWidthsMm);array(t.RightEffectiveWidthsMm);array(t.ReceivingRowsMm);
+                values[at++]=t.ReceivingCrossings?.Length??-1;
+                if(t.ReceivingCrossings!=null)foreach(var c in t.ReceivingCrossings){add(c.PositionMm);add(c.WidthMm);}
+                values[at++]=t.EngineerReceiverCount;values[at++]=eligible.Length;
+                foreach(var c in eligible){add(c.PositionMm);add(c.WidthMm);}
+                unchecked {int h=17;foreach(long x in values)h=h*31+x.GetHashCode();hash=h;}
+            }
+            public override int GetHashCode()=>hash;
+            public override bool Equals(object other)=>Equals(other as IndividualGridKey);
+            public bool Equals(IndividualGridKey other)=>other!=null && hash==other.hash && values.SequenceEqual(other.values);
+        }
+        private sealed class IndividualGridSnapshot
+        {
+            private readonly RowGrid data;
+            internal IndividualGridSnapshot(RowGrid source){data=Copy(source);}
+            private static T[] Copy<T>(T[] source)=>source==null ? null : (T[])source.Clone();
+            private static RowGrid Copy(RowGrid source)=>new RowGrid
+            {
+                Rows=Copy(source.Rows),Tributaries=Copy(source.Tributaries),LeftScales=Copy(source.LeftScales),RightScales=Copy(source.RightScales),
+                LeftPhysicalScales=Copy(source.LeftPhysicalScales),RightPhysicalScales=Copy(source.RightPhysicalScales),
+                SettingOutRows=Copy(source.SettingOutRows),SettingOutDesignRows=Copy(source.SettingOutDesignRows),
+                SlabRowIndices=Copy(source.SlabRowIndices),SlabSourceRowIndices=Copy(source.SlabSourceRowIndices),SharedSlabRowsMm=Copy(source.SharedSlabRowsMm),
+                LeftSourceScales=Copy(source.LeftSourceScales),RightSourceScales=Copy(source.RightSourceScales),
+                Adjusted=source.Adjusted,Key=source.Key,SourceAnalysisKey=source.SourceAnalysisKey
+            };
+            // No mutable joint, slice or quantity memo leaves its receiving
+            // context. Public result arrays cannot mutate the saved snapshot.
+            internal RowGrid Create()=>Copy(data);
+        }
+        private sealed class StockGridContract
+        {
+            private readonly bool engineer,prepared;
+            private readonly double edge,maximum;
+            private readonly double[] crossings;
+            internal StockGridContract(TowerInput input,double edge)
+            {
+                engineer=input.EngineerWorkflow;prepared=input.PrepareReceiverChecks;this.edge=edge;
+                maximum=input.TransferredSlab.UpperSpacingMm;
+                crossings=input.TransferredSlab.ReceivingCrossings.SelectMany(c=>new[] {c.PositionMm,c.WidthMm}).ToArray();
+            }
+            internal bool Matches(TowerInput input,double candidateEdge)
+            {
+                var current=input.TransferredSlab.ReceivingCrossings;
+                if(engineer!=input.EngineerWorkflow || prepared!=input.PrepareReceiverChecks || edge!=candidateEdge
+                    || maximum!=input.TransferredSlab.UpperSpacingMm || crossings.Length!=current.Length*2)return false;
+                for(int i=0;i<current.Length;i++)
+                    if(crossings[2*i]!=current[i].PositionMm || crossings[2*i+1]!=current[i].WidthMm)return false;
+                return true;
+            }
+        }
+        private sealed class StockGridMemo
+        {
+            private readonly double[] stocks;
+            internal readonly double Conflict;
+            internal readonly RowGrid Grid;
+            internal StockGridMemo(Geometry geometry,double conflict,RowGrid grid)
+            {
+                stocks=new double[geometry.Stock.Length*2];
+                for(int i=0;i<geometry.Stock.Length;i++){stocks[2*i]=geometry.Stock[i].StartMm;stocks[2*i+1]=geometry.Stock[i].StockLengthMm;}
+                Conflict=conflict;Grid=grid;
+            }
+            internal bool Matches(Geometry geometry)
+            {
+                if(stocks.Length!=geometry.Stock.Length*2)return false;
+                for(int i=0;i<geometry.Stock.Length;i++)
+                    if(stocks[2*i]!=geometry.Stock[i].StartMm || stocks[2*i+1]!=geometry.Stock[i].StockLengthMm)return false;
+                return true;
             }
         }
         private sealed class RowSlice { internal int[] Indices; internal double[] Positions; }
@@ -403,6 +899,31 @@ namespace EngineeringDashboard
             return grid;
         }
         private static RowGrid BuildIndividualRowGrid(TowerInput input,double covered,double rowCoverage,double edge)
+        {
+            var owner=input.ReuseSearchWork && input.Trace?.HasTimeLimit!=true && input.TransferredSlab.HasIndividualSpacings
+                ? input.NetworkNumerics??input.TransferredSlab.SharedSearchWork : null;
+            if(owner==null)return CreateIndividualRowGrid(input,covered,rowCoverage,edge);
+            input.Trace?.CheckCancellation();
+            var key=new IndividualGridKey(input,covered,rowCoverage,edge);IndividualGridSnapshot saved;
+            lock(owner.IndividualRows)
+            {
+                input.Trace?.CheckCancellation();
+                saved=owner.IndividualRows.TryGetValue(key,out var value) ? (IndividualGridSnapshot)value : null;
+            }
+            if(saved!=null)
+            {input.Trace?.Increment(BeamSearchCounter.IndividualRowGridCacheHits);return saved.Create();}
+            var generated=CreateIndividualRowGrid(input,covered,rowCoverage,edge);
+            if(generated==null)return null; // Replay failures in their own diagnostic scope.
+            input.Trace?.CheckCancellation();
+            var snapshot=new IndividualGridSnapshot(generated);
+            lock(owner.IndividualRows)
+            {
+                input.Trace?.CheckCancellation();
+                if(!owner.IndividualRows.TryGetValue(key,out _))owner.IndividualRows.Store(key,snapshot);
+            }
+            return generated;
+        }
+        private static RowGrid CreateIndividualRowGrid(TowerInput input,double covered,double rowCoverage,double edge)
         {
             var t=input.TransferredSlab;double slabStart=t.RowStart(input,rowCoverage),slabEnd=slabStart+rowCoverage;
             double[] shared,left,right,leftBase,rightBase;
@@ -475,13 +996,20 @@ namespace EngineeringDashboard
             internal bool TryGetValue(TKey key,out TValue value)
             {
                 if(!entries.TryGetValue(key,out var node)){value=default(TValue);return false;}
-                order.Remove(node);order.AddLast(node);value=node.Value.Value;return true;
+                if(!ReferenceEquals(node,order.Last)){order.Remove(node);order.AddLast(node);}
+                value=node.Value.Value;return true;
             }
             internal void Store(TKey key,TValue value)
             {
-                if(entries.TryGetValue(key,out var old)){order.Remove(old);entries.Remove(key);}
-                else if(entries.Count>=capacity){entries.Remove(order.First.Value.Key);order.RemoveFirst();}
-                entries.Add(key,order.AddLast(new KeyValuePair<TKey,TValue>(key,value)));
+                LinkedListNode<KeyValuePair<TKey,TValue>> node;
+                if(entries.TryGetValue(key,out node)){order.Remove(node);entries.Remove(key);}
+                else if(entries.Count>=capacity){node=order.First;entries.Remove(node.Value.Key);order.RemoveFirst();}
+                // The private node has no external identity. Replace its key as
+                // well as its value, preserving remove/add dictionary semantics
+                // for an equal key object with different ownership.
+                if(node==null)node=order.AddLast(new KeyValuePair<TKey,TValue>(key,value));
+                else {node.Value=new KeyValuePair<TKey,TValue>(key,value);order.AddLast(node);}
+                entries.Add(key,node);
             }
         }
         private struct PrimaryLoadKey : IEquatable<PrimaryLoadKey>
@@ -497,17 +1025,24 @@ namespace EngineeringDashboard
             internal BeamDistributedLoad[] Uniform;
             internal double[] Positions,Forces;
         }
-        internal sealed class UniformShapeKey : IEquatable<UniformShapeKey>
+        internal readonly struct UniformShapeKey : IEquatable<UniformShapeKey>
         {
-            private readonly double length,ei;private readonly int denominator,hash;private readonly double[] supports;
-            internal UniformShapeKey(double length,double[] supports,double ei,int denominator)
+            private readonly double length,ei,start,end;private readonly int denominator,hash;private readonly double[] supports;
+            internal UniformShapeKey(double length,double[] supports,double ei,int denominator,double start=0,double? end=null)
             {
-                this.length=length;this.supports=supports;this.ei=ei;this.denominator=denominator;
-                unchecked{int h=(length.GetHashCode()*31+ei.GetHashCode())*31+denominator;foreach(double x in supports)h=h*31+x.GetHashCode();hash=h;}
+                this.length=length;this.supports=supports;this.ei=ei;this.denominator=denominator;this.start=start;this.end=end??length;
+                unchecked{int h=(((length.GetHashCode()*31+ei.GetHashCode())*31+denominator)*31+this.start.GetHashCode())*31+this.end.GetHashCode();foreach(double x in supports)h=h*31+x.GetHashCode();hash=h;}
             }
             public override int GetHashCode()=>hash;
-            public override bool Equals(object other)=>Equals(other as UniformShapeKey);
-            public bool Equals(UniformShapeKey other)=>other!=null && hash==other.hash && length==other.length && ei==other.ei && denominator==other.denominator && supports.SequenceEqual(other.supports);
+            public override bool Equals(object other)=>other is UniformShapeKey && Equals((UniformShapeKey)other);
+            public bool Equals(UniformShapeKey other)
+            {
+                if(hash!=other.hash || length!=other.length || ei!=other.ei || start!=other.start || end!=other.end || denominator!=other.denominator)return false;
+                if(ReferenceEquals(supports,other.supports))return true;
+                if(supports==null || other.supports==null || supports.Length!=other.supports.Length)return false;
+                for(int i=0;i<supports.Length;i++)if(!supports[i].Equals(other.supports[i]))return false;
+                return true;
+            }
         }
         internal sealed class PrimaryCheck { public LoadedBeamAnalysis Analysis; public bool Passed; public BeamPointLoad[] Points; public BeamDistributedLoad[] Uniform; }
         internal sealed class PrimaryKey : IEquatable<PrimaryKey>
@@ -551,7 +1086,7 @@ namespace EngineeringDashboard
             public override bool Equals(object other)=>other is PreparedPrimaryKey && Equals((PreparedPrimaryKey)other);
             public override int GetHashCode(){unchecked{return (((member.GetHashCode()*31+(int)material)*31+criterion)*31+legLimit.GetHashCode())*31+(ignoreUplift ? 1 : 0);}}
         }
-        internal sealed class PreparedPrimaryCheck {internal bool Passed;internal TowerSearchDiagnostics Diagnostics;internal LoadedBeamAnalysis Analysis;}
+        internal sealed class PreparedPrimaryCheck {internal bool Passed;internal TowerSearchDiagnostics Diagnostics;internal LoadedBeamAnalysis Analysis;internal UniformPrimaryFailure? UniformFailure;}
         // Exact immutable numerical inputs. Include both distributed and point loads,
         // stiffness and criterion; no rounded geometry, forces or eligibility decisions.
         internal sealed class TransverseKey : IEquatable<TransverseKey>
@@ -577,6 +1112,9 @@ namespace EngineeringDashboard
         // Complete responses use exact force keys; diagnostic locations are never cached.
         internal sealed class SearchWorkCache
         {
+            // Numeric immutable snapshots only: no input, network, callback or
+            // global registry owner is retained by this per-worker cache.
+            internal readonly ResponseCache<IndividualGridKey,object> IndividualRows=new ResponseCache<IndividualGridKey,object>(128);
             private readonly Dictionary<TransverseKey,LinkedListNode<KeyValuePair<TransverseKey,LoadedBeamAnalysis>>> transverse=new Dictionary<TransverseKey,LinkedListNode<KeyValuePair<TransverseKey,LoadedBeamAnalysis>>>();
             private readonly LinkedList<KeyValuePair<TransverseKey,LoadedBeamAnalysis>> transverseOrder=new LinkedList<KeyValuePair<TransverseKey,LoadedBeamAnalysis>>();
             internal LoadedBeamAnalysis GetTransverse(TransverseKey key)
@@ -591,9 +1129,9 @@ namespace EngineeringDashboard
                 transverse.Add(key,transverseOrder.AddLast(new KeyValuePair<TransverseKey,LoadedBeamAnalysis>(key,value)));
             }
             internal readonly ResponseCache<PreparedPrimaryKey,PreparedPrimaryCheck> PreparedPrimaryChecks=new ResponseCache<PreparedPrimaryKey,PreparedPrimaryCheck>(16384);
-            internal readonly LoadedBeamAnalysis.MatrixCache Matrix=new LoadedBeamAnalysis.MatrixCache(2048,true);
+            internal readonly LoadedBeamAnalysis.MatrixCache Matrix=new LoadedBeamAnalysis.MatrixCache(32768,true,leastRecentlyUsed:true,maximumBytes:80L*1024*1024);
             private readonly ResponseCache<PrimaryKey,PrimaryCheck> responses=new ResponseCache<PrimaryKey,PrimaryCheck>(4096);
-            internal readonly ResponseCache<UniformShapeKey,LoadedBeamAnalysis> UniformShapes=new ResponseCache<UniformShapeKey,LoadedBeamAnalysis>(2048);
+            internal readonly ResponseCache<UniformShapeKey,LoadedBeamAnalysis> UniformShapes=new ResponseCache<UniformShapeKey,LoadedBeamAnalysis>(8192);
             internal PrimaryCheck Get(PrimaryKey key)=>responses.TryGetValue(key,out var check) ? check : null;
             internal void Store(PrimaryKey key,PrimaryCheck check)=>responses.Store(key,check);
         }
@@ -673,7 +1211,9 @@ namespace EngineeringDashboard
         private sealed class LayoutWork
         {
             internal Geometry Geometry;internal double Width,Edge;internal bool Rotated;
+            internal GeometryRank Rank;
             internal CrossOption[] Crosses;internal RowGrid Grid;
+            internal int FirstSpansPassing=-1;
             internal int JoinedBays,Narrow;internal double Brace,Cantilever,Symmetry;
         }
         private static TowerLayout OptimizeCore(TowerInput input,bool shareDiagnostics)
@@ -691,12 +1231,18 @@ namespace EngineeringDashboard
             // Dedicated/negative-gap crossings have identical geometry and checks
             // at counts 3 through 8; do not repeat a failed search six times.
             bool refineReceivers=t.EngineerNetwork!=null && EngineerPrimaryPlan.Adjacent(t.EngineerNetwork,t.EngineerBeam).Any();
+            // Increasing the station ceiling changes candidate geometry only.
+            // Keep exact transverse options, rows and numerical checks for each
+            // fixed receiver count instead of preparing them again at every tier.
+            var preparations=input.ReuseSearchWork && shareDiagnostics ? new Dictionary<int,ReceivingPreparation>() : null;
             int receiverCount=3;
             while(true)
             {
                 var worker=input.CopyForSearch();worker.EngineerStationLimit=limit;
                 worker.TransferredSlab=t.Copy();worker.TransferredSlab.SharedGeometryCache=cache;worker.TransferredSlab.EngineerReceiverCount=receiverCount;
-                try{return OptimizeCoreByLegTier(worker,shareDiagnostics);}
+                ReceivingPreparation prepared=null;
+                if(preparations!=null && !preparations.TryGetValue(receiverCount,out prepared))preparations[receiverCount]=prepared=new ReceivingPreparation(worker);
+                try{return OptimizeCoreByLegTier(worker,shareDiagnostics,prepared);}
                 catch(TowerOptimizationException) when(refineReceivers && receiverCount<8){receiverCount++;}
                 catch(TowerOptimizationException) when(limit<maximum){limit=Math.Min(maximum,limit+(input.EngineerPlan==null ? 4 : 2));receiverCount=3;}
             }
@@ -707,8 +1253,8 @@ namespace EngineeringDashboard
             var geometryCache = input.ReuseSearchWork ? t.SharedGeometryCache ?? new GeometryCache() : null;
             // A receiving-beam solve has fixed beam loads and upper-foot plans. These options
             // depend on transverse width and tributary size, not the primary stock cover.
-            var crossCache = new Dictionary<Tuple<double,double>,CrossOption[]>();
-            var rowCache = new Dictionary<Tuple<double,double>,RowGrid>();
+            var crossCache = new Dictionary<ReceivingPairKey,CrossOption[]>();
+            var rowCache = new Dictionary<ReceivingPairKey,RowGrid>();
             // Different tower combinations often repeat an identical local primary member.
             // Include every support, distributed-load boundary and intensity, without rounding. This cache
             // lives only in one receiving-beam solve and retains at most 4096 checks.
@@ -740,7 +1286,7 @@ namespace EngineeringDashboard
                         if (rotated && input.Exclude600Standalone && width == 600) continue;
                         input.Trace?.Work("Transfer slab and lower secondary options");
                         double tributary = t.UpperSpacingMm;
-                        var crossKey = Tuple.Create(width,tributary);
+                        var crossKey = new ReceivingPairKey(width,tributary);
                         input.Trace?.CheckCancellation();
                         if (!input.ReuseSearchWork || !crossCache.TryGetValue(crossKey,out var crosses))
                         {
@@ -751,18 +1297,7 @@ namespace EngineeringDashboard
                         else input.Trace?.Increment(BeamSearchCounter.CrossCacheHits);
                         if (crosses.Length == 0) continue;
                         input.Trace?.Work("Transfer tower/support geometry");
-                        string geometryKey = (input.EngineerSearch ? "E"+input.EngineerStationLimit+":"+(input.EngineerPlan?.InitialLegs??0)+":" : "")+(rotated ? "R:" : "N:") + Values(cover);
-                        input.Trace?.CheckCancellation();
-                        Func<Geometry[]> buildGeometry=()=>
-                        {
-                            Geometry[] generated;
-                            using(input.Trace?.Measure(BeamSearchStage.Geometry))generated=Geometries(cover,rotated,input).ToArray();
-                            input.Trace?.Increment(BeamSearchCounter.GeometryBuilds);
-                            return generated;
-                        };
-                        bool hit=false;
-                        var geometries=geometryCache==null ? buildGeometry() : geometryCache.Get(geometryKey,buildGeometry,out hit);
-                        if(hit)input.Trace?.Increment(BeamSearchCounter.GeometryCacheHits);
+                        var geometries=SearchGeometries(input,geometryCache,cover,rotated);
                         if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
                         foreach (var geometry in geometries)
                         {
@@ -771,7 +1306,7 @@ namespace EngineeringDashboard
                             // at the end rows without increasing the shared slab tributaries.
                             foreach (double phase in t.PlywoodSheetLengthMm>0 ? new[] {0.0} : t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })
                             {
-                                var rowKey = Tuple.Create(covered,phase);
+                                var rowKey = new ReceivingPairKey(covered,phase);
                                 if (!rowCache.TryGetValue(rowKey,out var grid))
                                 {
                                     grid=BuildRowGrid(input,covered,rowCoverage,first,count,phase,edge);
@@ -819,17 +1354,48 @@ namespace EngineeringDashboard
             }
             return first==rows.Length ? 0 : rows[first];
         }
+        private static void EnsureStockGridContract(TowerInput input,RowGrid source,double edge)
+        {
+            if(source.JointContract!=null && source.JointContract.Matches(input,edge))return;
+            var contract=new StockGridContract(input,edge);input.Trace?.CheckCancellation();
+            source.JointLayouts.Clear();source.StockGrids=null;source.LastStockGrid=null;source.NextStockGrid=0;source.JointContract=contract;
+        }
+        // Primary support positions do not affect row/joint conflicts or their
+        // repair. Reuse the complete answer for the exact stock starts/lengths
+        // within this one immutable base row grid and repair-input contract.
+        private static RowGrid ResolveStockGrid(TowerInput input,Geometry geometry,RowGrid source,double edge,out double conflicting)
+        {
+            input.Trace?.CheckCancellation();EnsureStockGridContract(input,source,edge);
+            bool reuse=input.ReuseSearchWork && input.PrepareReceiverChecks;
+            if(reuse)
+            {
+                var saved=source.LastStockGrid;
+                if(saved!=null && saved.Matches(geometry)){conflicting=saved.Conflict;return saved.Grid;}
+                if(source.StockGrids!=null)foreach(var entry in source.StockGrids)
+                    if(entry!=null && entry.Matches(geometry)){source.LastStockGrid=entry;conflicting=entry.Conflict;return entry.Grid;}
+            }
+            conflicting=input.PrepareReceiverChecks ? ConflictingRow(geometry,source.Rows) : source.Rows.FirstOrDefault(r=>geometry.Stock.Skip(1).Any(s=>Math.Abs(s.StartMm-r)<40));
+            var result=conflicting>0 ? GridForStocks(input,geometry,source,edge) : source;
+            input.Trace?.CheckCancellation();
+            if(reuse)
+            {
+                var saved=new StockGridMemo(geometry,conflicting,result);
+                if(source.StockGrids==null)source.StockGrids=new StockGridMemo[8];
+                source.StockGrids[source.NextStockGrid]=saved;source.NextStockGrid=(source.NextStockGrid+1)%source.StockGrids.Length;source.LastStockGrid=saved;
+            }
+            return result;
+        }
         // The site bearer permits lower H20 placement to vary independently of the
         // checked design rows. Repair primary-joint conflicts before rejecting a
         // tower arrangement; keep all source loads and nominal UDLs unchanged.
         private static RowGrid GridForStocks(TowerInput input,Geometry geometry,RowGrid source,double edge)
         {
             if(source==null)return null;
+            EnsureStockGridContract(input,source,edge);
             if(ConflictingRow(geometry,source.SettingOutRows??source.Rows)==0)return source;
             if(!input.EngineerWorkflow)return null;
             string key=Values(geometry.Stock.Select(p=>p.StartMm).ToArray());
             if(source.JointLayouts.TryGetValue(key,out var cached))return cached;
-            source.JointLayouts[key]=null;
             double covered=geometry.Stock.Sum(p=>p.StockLengthMm);
             var crossings=input.TransferredSlab.ReceivingCrossings;
             var requests=source.Rows.Select((x,i)=>
@@ -861,30 +1427,72 @@ namespace EngineeringDashboard
                     return Enumerable.Range(0,requests.Length).Where(i=>x>=requests[i].MinimumMm-1e-7 && x<=requests[i].MaximumMm+1e-7)
                         .OrderBy(i=>Math.Abs(placed.ReceiversMm[i]-x)).DefaultIfEmpty(-1).First();
                 }).ToArray();
-                if(mapping.Any(i=>i<0) || ConflictingRow(geometry,placed.RowsMm)>0)return null;
+                if(mapping.Any(i=>i<0) || ConflictingRow(geometry,placed.RowsMm)>0)
+                {input.Trace?.CheckCancellation();source.JointLayouts[key]=null;return null;}
                 var adjusted=new RowGrid {Rows=source.Rows,Tributaries=source.Tributaries,LeftScales=source.LeftScales,RightScales=source.RightScales,
                     LeftPhysicalScales=source.LeftPhysicalScales,RightPhysicalScales=source.RightPhysicalScales,SlabRowIndices=source.SlabRowIndices,
                     SlabSourceRowIndices=source.SlabSourceRowIndices,SharedSlabRowsMm=source.SharedSlabRowsMm,LeftSourceScales=source.LeftSourceScales,RightSourceScales=source.RightSourceScales,
                     Adjusted=true,SettingOutRows=placed.RowsMm,SettingOutDesignRows=mapping,SourceAnalysisKey=source.AnalysisKey,Key=source.Key+"|joints:"+key};
-                source.JointLayouts[key]=adjusted;return adjusted;
+                input.Trace?.CheckCancellation();source.JointLayouts[key]=adjusted;return adjusted;
             }
-            catch(ArgumentException){return null;}
+            catch(ArgumentException){input.Trace?.CheckCancellation();source.JointLayouts[key]=null;return null;}
         }
-        private static TowerLayout OptimizeCoreByLegTier(TowerInput input,bool shareDiagnostics)
+        // Private to one receiving solve and one spreader receiver count;
+        // loads, criteria, permissions and junction callbacks stay unchanged.
+        private sealed class ReceivingPreparation
+        {
+            private readonly Func<TowerLayout,bool> layoutAcceptance,lowerAcceptance;
+            private readonly Func<TowerLayout,Func<Geometry,double,bool>> receiverPreparation;
+            private int exhaustedStations;
+            internal ReceivingPreparation(TowerInput input)
+            {layoutAcceptance=input.TransferLayoutAcceptance;lowerAcceptance=input.TransferLowerAcceptance;receiverPreparation=input.TransferReceiverPreparation;}
+            // This preparation never leaves one OptimizeEngineer invocation and
+            // one receiver count: its loads, stock scope and captured callback
+            // inputs stay fixed while only the station ceiling grows. Keep the
+            // callback identity guard explicit if preparation reuse is expanded.
+            private bool SameCallbacks(TowerInput input)=>ReferenceEquals(layoutAcceptance,input.TransferLayoutAcceptance)
+                && ReferenceEquals(lowerAcceptance,input.TransferLowerAcceptance) && ReferenceEquals(receiverPreparation,input.TransferReceiverPreparation);
+            internal int ExhaustedStations(TowerInput input)=>SameCallbacks(input) ? exhaustedStations : 0;
+            internal void Exhausted(TowerInput input)
+            {
+                if(SameCallbacks(input) && input.Trace?.BudgetReached!=true && input.NetworkSeedCompletion?.Found!=true)
+                    exhaustedStations=Math.Max(exhaustedStations,input.EngineerStationLimit);
+            }
+            internal readonly Dictionary<ReceivingPairKey,CrossOption[]> Crosses=new Dictionary<ReceivingPairKey,CrossOption[]>();
+            internal readonly Dictionary<ReceivingPairKey,RowGrid> Rows=new Dictionary<ReceivingPairKey,RowGrid>();
+            internal readonly ResponseCache<PrimaryKey,PrimaryCheck> Primaries=new ResponseCache<PrimaryKey,PrimaryCheck>(4096);
+            internal readonly LoadedBeamAnalysis.MatrixCache Matrix=new LoadedBeamAnalysis.MatrixCache();
+        }
+        private static TowerLayout OptimizeCoreByLegTier(TowerInput input,bool shareDiagnostics,ReceivingPreparation prepared=null)
         {
             var t = input.TransferredSlab; t.Validate(input); TowerLayout best = null; int tested = 0;
             var work=new List<LayoutWork>();
+            var knownWinners=new Dictionary<double,KnownLayoutRank>();
+            bool recordedSupportFloor=false;
+            // A positioned primary plan fixes InitialLegs independently of the
+            // geometries below. Its exhausted tiers can therefore be discarded
+            // before grid repair and ranking metadata are allocated. Planless
+            // callers still derive their initial tier from the original work.
+            int exhaustedGeometry=input.EngineerSearch && input.EngineerPlan!=null ? Math.Max(prepared?.ExhaustedStations(input)??0,input.ReceiverFailedThroughStations) : 0;
+            // This necessary check uses only the fixed positioned plan, geometry
+            // and cover edge. It does not depend on repaired setting-out rows or
+            // invoke receiving callbacks. Keep planless initial-tier inference
+            // on its original complete worklist.
+            bool screenWorkSpans=input.EngineerSearch && input.EngineerPlan!=null && input.DeferTransferLayout
+                && input.PrepareReceiverChecks && input.PrepareSpanGeometry && input.ReuseSearchWork && input.DeferCrossingChecks
+                && input.EngineerPlan.Network.CrossingBeams.Any(c=>(c.BayNumber==input.EngineerPlan.Beam || c.BayNumber==input.EngineerPlan.Beam+1)
+                    && c.SupportMode!=CrossBeamSupportMode.LegacySlabRows);
             var geometryCache = input.ReuseSearchWork ? t.SharedGeometryCache ?? new GeometryCache() : null;
             // A receiving-beam solve has fixed beam loads and upper-foot plans. These options
             // depend on transverse width and tributary size, not the primary stock cover.
-            var crossCache = new Dictionary<Tuple<double,double>,CrossOption[]>();
-            var rowCache = new Dictionary<Tuple<double,double>,RowGrid>();
+            var crossCache = prepared?.Crosses ?? new Dictionary<ReceivingPairKey,CrossOption[]>();
+            var rowCache = prepared?.Rows ?? new Dictionary<ReceivingPairKey,RowGrid>();
             // Different tower combinations often repeat an identical local primary member.
             // Include every support, distributed-load boundary and intensity, without rounding. This cache
             // lives only in one receiving-beam solve and retains at most 4096 checks.
-            var primaryCache = input.ReuseSearchWork ? new ResponseCache<PrimaryKey,PrimaryCheck>(4096) : null;
+            var primaryCache = input.ReuseSearchWork ? prepared?.Primaries ?? new ResponseCache<PrimaryKey,PrimaryCheck>(4096) : null;
             var shared = input.ReuseSearchWork && input.ReuseNetworkNumerics ? t.SharedSearchWork : null;
-            var matrixCache = input.ReuseSearchWork ? shared?.Matrix ?? new LoadedBeamAnalysis.MatrixCache() : null;
+            var matrixCache = input.ReuseSearchWork ? shared?.Matrix ?? prepared?.Matrix ?? new LoadedBeamAnalysis.MatrixCache() : null;
             if(!shareDiagnostics || input.Diagnostics==null)input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace,ignoreUplift:input.IgnoreUplift) {LazyLocations=input.LazySearchDiagnostics};var diag=input.Diagnostics;
             input.Trace?.Work("Transfer primary cover generation");
             double[][] covers;
@@ -910,7 +1518,7 @@ namespace EngineeringDashboard
                         if (rotated && input.Exclude600Standalone && width == 600) continue;
                         input.Trace?.Work("Transfer slab and lower secondary options");
                         double tributary = t.UpperSpacingMm;
-                        var crossKey = Tuple.Create(width,tributary);
+                        var crossKey = new ReceivingPairKey(width,tributary);
                         input.Trace?.CheckCancellation();
                         if (!input.ReuseSearchWork || !crossCache.TryGetValue(crossKey,out var crosses))
                         {
@@ -923,9 +1531,11 @@ namespace EngineeringDashboard
                         // Check the receiving H20s before generating primary tower geometry.
                         // Sheet-controlled rows have one fixed phase, independent of the towers.
                         // Refining a failing crossing must not enumerate thousands of primaries first.
+                        int minimumStations=0;
+                        bool checkPreparedGeometry=false;
                         if(input.EngineerSearch && t.PlywoodSheetLengthMm>0)
                         {
-                            var rowKey=Tuple.Create(covered,0.0);
+                            var rowKey=new ReceivingPairKey(covered,0.0);
                             if(!rowCache.TryGetValue(rowKey,out var fixedGrid))
                             {
                                 fixedGrid=BuildRowGrid(input,covered,rowCoverage,first,count,0,edge);
@@ -934,29 +1544,67 @@ namespace EngineeringDashboard
                             if(fixedGrid==null)continue;
                             crosses=crosses.Where(c=>AcceptTransverseCases(input,c,width,fixedGrid,edge)).ToArray();
                             if(crosses.Length==0)continue;
+                            // Joint setting-out retains this exact source analysis
+                            // key and prepared check. Unknown external callbacks
+                            // carry no bound; an OR detail uses its weaker branch.
+                            if(input.PrepareReceiverChecks && input.ReuseSearchWork && input.ReuseTransversePreparations
+                                && input.OptimizeCrossingSearch && input.DeferTransferLayout && input.DeferCrossingChecks
+                                && input.FullLoadingOnly && input.EngineerPlan?.UseDesignZones==true
+                                && input.Trace?.HasTimeLimit!=true && geometryCache?.Fixed==null)
+                            {
+                                // Resolved span forces and receiving-frame
+                                // footprints constrain single-stock covers too.
+                                checkPreparedGeometry=true;
+                                minimumStations=crosses.Min(c=>PreparedReceiverSupportBounds.Minimum(c.PreparedReceiver,cover,edge));
+                                int available=Math.Min(input.EngineerStationLimit,input.NetworkLegCeiling/2);
+                                if(minimumStations>available)
+                                {
+                                    if(!recordedSupportFloor)
+                                    {
+                                        diag.Geometry(input.DiagnosticScope+"resolved support floor",
+                                            $"{input.DiagnosticScope}this primary stock cover's resolved loads require at least {minimumStations} support stations per primary line; the current ceiling allows {available}.",
+                                            "Review the station ceiling or select another primary stock arrangement.",minimumStations-available);
+                                        recordedSupportFloor=true;
+                                    }
+                                    continue;
+                                }
+                            }
                         }
                         input.Trace?.Work("Transfer tower/support geometry");
-                        string geometryKey = (input.EngineerSearch ? "E"+input.EngineerStationLimit+":"+(input.EngineerPlan?.InitialLegs??0)+":" : "")+(rotated ? "R:" : "N:") + Values(cover);
-                        input.Trace?.CheckCancellation();
-                        Func<Geometry[]> buildGeometry=()=>
-                        {
-                            Geometry[] generated;
-                            using(input.Trace?.Measure(BeamSearchStage.Geometry))generated=Geometries(cover,rotated,input).ToArray();
-                            input.Trace?.Increment(BeamSearchCounter.GeometryBuilds);
-                            return generated;
-                        };
-                        bool hit=false;
-                        var geometries=geometryCache==null ? buildGeometry() : geometryCache.Get(geometryKey,buildGeometry,out hit);
-                        if(hit)input.Trace?.Increment(BeamSearchCounter.GeometryCacheHits);
-                        if(geometries.Length==0)diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
+                        var geometries=SearchGeometries(input,geometryCache,cover,rotated);
+                        if(geometries.Length==0 && !diag.GeometryRepeated(input.DiagnosticScope+"tower geometry"))diag.Geometry(input.DiagnosticScope+"tower geometry",$"{input.DiagnosticScope}tower geometry: no searched D3 support pattern fits stocks {string.Join(", ",cover)} mm with {input.StockEndSetbackMm:0.###} mm end setbacks; exclude standalone 600 = {input.Exclude600Standalone}.","Review stock lengths, end setbacks and the standalone-600 setting.");
+                        // Universal lower-load exclusion follows all original
+                        // retention/dedup/site-normalization rules; it cannot
+                        // refill a capped family or reorder surviving objects.
+                        if(checkPreparedGeometry && input.TransferGeometryFilter!=null)
+                            geometries=input.TransferGeometryFilter(input,geometries,edge);
+                        int firstStations=Math.Max(Math.Max(minimumStations,input.EngineerMinimumStations),exhaustedGeometry+1);
+                        geometries=CountRange(input,geometryCache,geometries,firstStations,Math.Min(input.EngineerStationLimit,input.NetworkLegCeiling/2));
+                        var preparedPredicates=checkPreparedGeometry ? crosses.Select(c=>PreparedReceiverSupportBounds.Predicate(c.PreparedReceiver)).ToArray() : null;
                         foreach (var geometry in geometries)
                         {
+                            if(geometry.Positions.Length<minimumStations)continue;
                             if(geometry.Positions.Length*2>input.NetworkLegCeiling || input.EngineerSearch && (geometry.Positions.Length>input.EngineerStationLimit || geometry.Positions.Length<input.EngineerMinimumStations))continue;
+                            if(geometry.Positions.Length<=exhaustedGeometry)continue;
+                            if(checkPreparedGeometry)
+                            {
+                                bool mayFit=false;
+                                foreach(var predicate in preparedPredicates)
+                                    if(predicate(geometry,edge)){mayFit=true;break;}
+                                if(!mayFit){input.Trace?.Increment(BeamSearchCounter.PreparedGeometryBoundsRejected);continue;}
+                            }
+                            int firstSpansPassing=-1;
+                            if(screenWorkSpans)
+                            {
+                                input.Trace?.CheckCancellation();
+                                firstSpansPassing=FirstPrimarySpansPassing(input,geometry,crosses,edge);
+                                if(firstSpansPassing<0)continue;
+                            }
                             // Try centred rows and phase shifts. Independent primary coverage adds beam load
                             // at the end rows without increasing the shared slab tributaries.
                             foreach (double phase in t.PlywoodSheetLengthMm>0 ? new[] {0.0} : t.FixedRowPhaseMm.HasValue ? new[] {t.FixedRowPhaseMm.Value} : new[] { 0.0, -50, 50, -100, 100 })
                             {
-                                var rowKey = Tuple.Create(covered,phase);
+                                var rowKey = new ReceivingPairKey(covered,phase);
                                 if (!rowCache.TryGetValue(rowKey,out var grid))
                                 {
                                     grid=BuildRowGrid(input,covered,rowCoverage,first,count,phase,edge);
@@ -971,44 +1619,62 @@ namespace EngineeringDashboard
                                 // resulting larger beam tributaries are checked at their actual loads.
                                 if (!independent && !t.IncludeConcreteEndStrips && !t.IncludeMainBeamEndLoads && tributaries.Max() > t.UpperSpacingMm+1e-7) continue;
                                 // A transverse row must bear on both longitudinal stocks, away from independent member breaks.
-                                var conflicting=input.PrepareReceiverChecks ? ConflictingRow(geometry,rows) : rows.FirstOrDefault(r=>geometry.Stock.Skip(1).Any(s=>Math.Abs(s.StartMm-r)<40));
-                                if(conflicting>0 && (grid=GridForStocks(input,geometry,grid,edge))==null) {double joint=geometry.Stock.Skip(1).OrderBy(s=>Math.Abs(s.StartMm-conflicting)).First().StartMm;diag.Geometry(input.DiagnosticScope+"row/joint",$"{input.DiagnosticScope}support row x={conflicting+edge:0.###} mm is {Math.Abs(joint-conflicting):0.###} mm from primary joint x={joint+edge:0.###} mm; minimum 40 mm.","Review upper row spacing and the primary stock combination.",40-Math.Abs(joint-conflicting));continue;}
+                                grid=ResolveStockGrid(input,geometry,grid,edge,out double conflicting);
+                                if(conflicting>0 && grid==null) {double joint=geometry.Stock.Skip(1).OrderBy(s=>Math.Abs(s.StartMm-conflicting)).First().StartMm;if(!diag.GeometryRepeated(input.DiagnosticScope+"row/joint",40-Math.Abs(joint-conflicting)))diag.Geometry(input.DiagnosticScope+"row/joint",$"{input.DiagnosticScope}support row x={conflicting+edge:0.###} mm is {Math.Abs(joint-conflicting):0.###} mm from primary joint x={joint+edge:0.###} mm; minimum 40 mm.","Review upper row spacing and the primary stock combination.",40-Math.Abs(joint-conflicting));continue;}
+                                var rank=RankGeometry(geometry,width,rotated,input.LongitudinalStartMm+input.LengthMm/2-edge,input.EngineerSearch,input.ReuseSearchWork);
                                 work.Add(new LayoutWork {Geometry=geometry,Width=width,Rotated=rotated,Crosses=crosses,Grid=grid,Edge=edge,
-                                    JoinedBays=geometry.Joined.Count(j=>j),Brace=EngineerTowerSearch.BracePenalty(geometry.Positions,geometry.Joined,width,rotated),
-                                    Narrow=TowerOptimizer.Standalone600Count(geometry.Positions,geometry.Joined,width,rotated),
-                                    Cantilever=geometry.Stock.Sum(p=>Math.Abs((geometry.Positions[p.FirstSupport]-p.StartMm)-(p.EndMm-geometry.Positions[p.LastSupport]))),
-                                    Symmetry=input.EngineerSearch ? TowerOptimizer.SymmetryError(geometry.Positions,geometry.Stock.Select(p=>p.StockLengthMm).ToArray(),input.LongitudinalStartMm+input.LengthMm/2-edge) : 0});
+                                    Rank=rank,FirstSpansPassing=firstSpansPassing,JoinedBays=rank.Joined,Brace=rank.Brace,Narrow=rank.Narrow,Cantilever=rank.Cantilever,Symmetry=rank.Symmetry});
                             }
                         }
                     }
                 }
                 // Stable order within a leg tier keeps all original timber/utilization ties.
                 // Economic bounds, rather than a leg-only cutoff, retain valid timber/support trade-offs.
-                int initial=input.EngineerSearch && work.Count>0 ? work.GroupBy(w=>Tuple.Create(w.Crosses,w.Edge)).Min(group=>group.First().Crosses.Min(c=>InitialLegs(input,c,group.First().Edge,group.First().Geometry.Stock))) : 2;
-                foreach(var item in input.EngineerSearch ? work.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Geometry.Positions.Length,initial)).ThenBy(w=>w.JoinedBays).ThenBy(w=>w.Brace).ThenBy(w=>w.Cantilever) : work.OrderBy(w=>w.Geometry.Positions.Length))
+                int initial=input.EngineerSearch && work.Count>0 ? input.EngineerPlan?.InitialLegs??work.GroupBy(w=>Tuple.Create(w.Crosses,w.Edge)).Min(group=>group.First().Crosses.Min(c=>InitialLegs(input,c,group.First().Edge,group.First().Geometry.Stock))) : 2;
+                // A completed failed ceiling already checked every earlier
+                // geometry, including its receiving callbacks. Growing only the
+                // ceiling cannot make that exact rejected candidate pass. Keep
+                // the original initial tier above, then sort only new work.
+                int exhausted=input.EngineerSearch ? Math.Max(prepared?.ExhaustedStations(input)??0,input.EngineerPlan==null ? 0 : input.ReceiverFailedThroughStations) : 0;
+                var pending=exhausted==0 ? (IEnumerable<LayoutWork>)work : work.Where(w=>w.Geometry.Positions.Length>exhausted);
+                foreach(var item in input.EngineerSearch ? pending.OrderBy(w=>EngineerTowerSearch.TierOrder(w.Geometry.Positions.Length,initial)).ThenBy(w=>w.JoinedBays).ThenBy(w=>w.Brace).ThenBy(w=>w.Cantilever) : pending.OrderBy(w=>w.Geometry.Positions.Length))
                 {
                     input.Trace?.CheckCancellation();
                     var geometry=item.Geometry;var grid=item.Grid;
                     TowerLayout widthBest=best;
                     if(input.ReceiverAlternatives!=null)input.ReceiverAlternatives.TryGetValue(item.Width,out widthBest);
                     if(geometry.Positions.Length*2>input.NetworkLegCeiling || input.EngineerSearch && widthBest!=null && geometry.Positions.Length>widthBest.PositionsMm.Length)continue;
+                    KnownLayoutRank knownBest=input.EngineerSearch && widthBest!=null ? KnownWinner(knownWinners,item.Width,widthBest) : null;
                     if(input.EngineerSearch && widthBest!=null && geometry.Positions.Length==widthBest.PositionsMm.Length)
                     {
                         int bays=item.JoinedBays;
-                        if(bays>widthBest.BayCount || bays==widthBest.BayCount && item.Brace>widthBest.StandaloneBracePenalty+1e-7)continue;
+                        if(bays>knownBest.Joined || bays==knownBest.Joined && item.Brace>knownBest.Brace+1e-7)continue;
                     }
                     double geometryCantilever=item.Cantilever;
                     double geometrySymmetry=input.EngineerSearch ? item.Symmetry+item.Cantilever : 0;
-                    foreach(var cross in item.Crosses)
+                    for(int crossIndex=Math.Max(0,item.FirstSpansPassing);crossIndex<item.Crosses.Length;crossIndex++)
                     {
+                        var cross=item.Crosses[crossIndex];
+                        if(input.EngineerSearch && widthBest!=null && (knownBest==null || !ReferenceEquals(knownBest.Layout,widthBest)))knownBest=KnownWinner(knownWinners,item.Width,widthBest);
                         if(input.EngineerSearch && input.PruneUneconomicCandidates && widthBest!=null && geometry.Positions.Length==widthBest.PositionsMm.Length
-                            && EngineerTowerSearch.Compare(item.Narrow,item.JoinedBays,item.Brace,widthBest.Standalone600Count,widthBest.BayCount,widthBest.StandaloneBracePenalty)==0
-                            && (geometryCantilever>widthBest.CantileverImbalanceMm+1e-7 || Math.Abs(geometryCantilever-widthBest.CantileverImbalanceMm)<1e-7 && geometrySymmetry+Math.Abs(2*cross.Start+cross.Stock)>widthBest.SymmetryErrorMm+1e-7))
+                            && EngineerTowerSearch.Compare(item.Narrow,item.JoinedBays,item.Brace,knownBest.Narrow,knownBest.Joined,knownBest.Brace)==0
+                            && (geometryCantilever>knownBest.Cantilever+1e-7 || Math.Abs(geometryCantilever-knownBest.Cantilever)<1e-7 && geometrySymmetry+Math.Abs(2*cross.Start+cross.Stock)>knownBest.Symmetry+1e-7))
                         {
                             // This exact geometric lower bound already ranks worse.
                             // Capacity checks cannot improve fixed stock/support symmetry;
                             // upper-member imbalance can only add to the lower bound.
                             continue;
+                        }
+                        if(input.EngineerSearch && input.PruneUneconomicCandidates && input.PrepareReceiverChecks && widthBest!=null && geometry.Positions.Length==widthBest.PositionsMm.Length)
+                        {
+                            var winner=knownBest;
+                            var basis=item.Rank??RankGeometry(geometry,item.Width,item.Rotated,input.LongitudinalStartMm+input.LengthMm/2-item.Edge,true,input.ReuseSearchWork);
+                            var final=FinalRankGeometry(geometry,basis,item.Edge,input.LongitudinalStartMm+input.LengthMm/2,input.ReuseSearchWork);
+                            int order=CompareKnownRanks(final,FinalSecondarySymmetry(cross,item.Width),winner);
+                            bool rejected=order>0;
+                            if(order==0){double cost=FinalEconomy(final,cross,grid,input);rejected=cost>winner.Cost && Math.Abs(cost-winner.Cost)>.01;}
+                            if(rejected)
+                            {input.Trace?.Increment(BeamSearchCounter.FinalRankPruned);continue;}
                         }
                         input.Trace?.Increment(BeamSearchCounter.TransferCandidates);tested++;
                         if(!input.EngineerSearch && input.PruneUneconomicCandidates && widthBest!=null)
@@ -1016,7 +1682,7 @@ namespace EngineeringDashboard
                             double score=Economy(geometry,cross,grid,input);
                             if(score>Economy(best)+.01) {input.Trace?.Increment(BeamSearchCounter.EconomyPruned);continue;}
                         }
-                        var candidate=OffsetReceiver(input,Evaluate(input,geometry,item.Width,item.Rotated,cross,grid,item.Edge,primaryCache,matrixCache,shared,widthBest));
+                        var candidate=OffsetReceiver(input,Evaluate(input,geometry,item.Width,item.Rotated,cross,grid,item.Edge,primaryCache,matrixCache,shared,widthBest,crossIndex==item.FirstSpansPassing));
                         if(candidate!=null && input.EngineerSearch){candidate.SearchAssumedLegKn=EngineerTowerSearch.AssumedLegKn(input);candidate.SearchInitialLegsPerLine=InitialLegs(input,cross,item.Edge,geometry.Stock);}
                         if(candidate!=null && (widthBest==null || Better(candidate,widthBest)) && (input.TransferLayoutAcceptance==null || AcceptLayout(input,candidate)))
                         {
@@ -1028,7 +1694,14 @@ namespace EngineeringDashboard
                 }
             }
             catch(BeamSearchDeadlineException) when(best!=null) {best.SearchTimeLimitReached=true;}
-            if (best == null) throw diag.Exception("No valid transferred-slab layout found within the bounded search.");
+            if (best == null)
+            {
+                // Cancellation/deadlines do not prove exhaustion, even if they
+                // arrive immediately after the last candidate was checked.
+                input.Trace?.CheckCancellation();
+                if(input.EngineerSearch)prepared?.Exhausted(input);
+                throw diag.Exception("No valid transferred-slab layout found within the bounded search.");
+            }
             best.SearchTimeLimitReached=input.Trace?.BudgetReached==true;
             best.Tested = tested; return best;
         }
@@ -1060,6 +1733,23 @@ namespace EngineeringDashboard
             return input.EngineerPlan?.InitialLegs??EngineerTowerSearch.InitialLegs(input,force);
         }
         private static double Timber(TowerLayout l) => l.StockPlan.PrimaryLengthMm+l.Transfer.AdditionalTimberMm;
+        private static double FinalSecondarySymmetry(CrossOption cross,double width)
+        {
+            if(cross.FinalSymmetryPrepared && cross.FinalSymmetryWidth==width)return cross.FinalSecondarySymmetry;
+            double result=Math.Abs((-width/2-cross.Start)-(cross.Stock-(width/2-cross.Start)));
+            foreach(var upper in new[] {cross.Left,cross.Right})if(upper!=null)
+                result=Math.Max(result,Math.Abs((upper.Foot-upper.Edge)-(upper.Stock-(upper.Bay-upper.OtherFoot-upper.Edge))));
+            cross.FinalSecondarySymmetry=result;cross.FinalSymmetryWidth=width;cross.FinalSymmetryPrepared=true;return result;
+        }
+        private static double FinalEconomy(FinalGeometryRank geometry,CrossOption cross,RowGrid grid,TowerInput input)
+        {
+            var quantities=Volatile.Read(ref grid.Quantities);
+            if(quantities==null){quantities=new RowQuantities(grid);Volatile.Write(ref grid.Quantities,quantities);}
+            int feet=2*((cross.Left==null ? 0 : quantities.Left)+(cross.Right==null ? 0 : quantities.Right));
+            double primary=geometry.StockLength*2*input.Primary.CountPerLine;
+            double additional=quantities.Physical*cross.Stock+quantities.Left*(cross.Left?.Stock??0)+quantities.Right*(cross.Right?.Stock??0);
+            return geometry.Stations*2*TowerOptimizer.TowerLegTimberEquivalentMm+feet*TowerOptimizer.UpperFootTimberEquivalentMm+(primary+additional);
+        }
         internal static double Economy(TowerLayout l)=>l.LegCount*TowerOptimizer.TowerLegTimberEquivalentMm+l.Transfer.UpperFootCount*TowerOptimizer.UpperFootTimberEquivalentMm+Timber(l);
         private static double Economy(Geometry g,CrossOption cross,RowGrid grid,TowerInput input)
         {
@@ -1170,48 +1860,99 @@ namespace EngineeringDashboard
             var covers=catalogue.Concat(custom).GroupBy(x=>string.Join(";",x)).Select(g=>g.First()).OrderBy(x=>x.Length).ThenBy(x=>x.Sum()).ToArray();
             input.Trace?.Increment(BeamSearchCounter.CoveragePlans,covers.Length);return covers;
         }
-        private static IEnumerable<Geometry> Geometries(double[] stock,bool rotated,TowerInput input)
+        internal static Geometry[] SearchGeometries(TowerInput input,GeometryCache cache,double[] cover,bool rotated)
+        {
+            input.Trace?.CheckCancellation();
+            Func<int,Geometry[]> build=after=>
+            {
+                Geometry[] generated;
+                using(input.Trace?.Measure(BeamSearchStage.Geometry))generated=Geometries(cover,rotated,input,after,cache).ToArray();
+                input.Trace?.Increment(BeamSearchCounter.GeometryBuilds);return generated;
+            };
+            if(cache==null)return build(0);
+            bool hit;Geometry[] result;
+            if(input.EngineerSearch)
+            {
+                // Generator settings stay exact; loads and response criteria do not
+                // affect these stock/support patterns. Work ordering later sorts by
+                // station tier, preserving the original order within each tier.
+                bool stockRuns=!rotated && cover.Length<=3 && input.EngineerPlan?.HasCrossings==true;
+                string key=System.FormattableString.Invariant($"{(stockRuns ? input.EngineerPlan.InitialLegs : 0)}|{stockRuns}|{input.StockEndSetbackMm:R}|{input.Exclude600Standalone}|{input.TransferredSlab?.IsNetwork??false}|{input.PrimaryMaterial}|")
+                    +Values(input.PrimaryStockLengthsMm)+"|"+(rotated ? "R:" : "N:")+Values(cover);
+                result=cache.GetEngineer(key,input.EngineerStationLimit,build,out hit,out int reused);
+                if(reused>0)input.Trace?.Increment(BeamSearchCounter.ExtendedGeometryPatternsReused,reused);
+            }
+            else result=cache.Get((rotated ? "R:" : "N:")+Values(cover),()=>build(0),out hit);
+            if(hit)input.Trace?.Increment(BeamSearchCounter.GeometryCacheHits);return result;
+        }
+        internal static Geometry[] CountRange(TowerInput input,GeometryCache cache,Geometry[] source,int minimum,int maximum)
+        {
+            // Planless searches infer their initial tier from the full worklist.
+            // Fixed and timed searches retain their original traversal as well.
+            if(!input.EngineerSearch || input.EngineerPlan==null || cache==null || cache.Fixed!=null || input.Trace?.HasTimeLimit==true)return source;
+            return cache.GetCountRange(source,minimum,maximum,input.Trace,out _);
+        }
+        private static IEnumerable<Geometry> Geometries(double[] stock,bool rotated,TowerInput input,int afterStations=0,GeometryCache cache=null)
         {
             var states=new List<Geometry> {new Geometry {Stock=new TowerStockPiece[0],Positions=new double[0],Joined=new bool[0]}};
-            foreach (double length in stock)
+            for(int run=0;run<stock.Length;run++)
             {
-                var patterns=new List<double[]>();
-                foreach (double bay in rotated ? new[] {1524.0} : TowerOptimizer.BaysMm)
-                    for (int n=2;n<=(rotated ? 2 : 6);n++) if ((n-1)*bay<=length-2*input.StockEndSetbackMm && !(input.Exclude600Standalone && n==2 && bay==600)) patterns.Add(Enumerable.Repeat(bay,n-1).ToArray());
-                if (!rotated) foreach(double a in TowerOptimizer.BaysMm) foreach(double b in TowerOptimizer.BaysMm)
-                    if (a!=b && a+b<=length-2*input.StockEndSetbackMm) patterns.Add(new[] {a,b});
-                // Independent towers can have an unbraced gap, including multiple rotated towers under one stock run.
-                foreach(double a in rotated ? new[] {1524.0} : TowerOptimizer.BaysMm) foreach(double b in rotated ? new[] {1524.0} : TowerOptimizer.BaysMm)
-                    foreach(double inset in new[] {input.StockEndSetbackMm,300.0,450.0}.Where(x=>x>=input.StockEndSetbackMm))
-                    {
-                        double gap=length-2*inset-a-b;
-                        if(gap>=25 && !(input.Exclude600Standalone && (a==600 || b==600))) patterns.Add(new[] {a,gap,b});
-                    }
-                var next=new List<Geometry>();
-                foreach(var state in states) foreach(var bays in patterns)
+                input.Trace?.CheckCancellation();double length=stock[run];
+                if(cache!=null && run<stock.Length-1)
                 {
-                    input.Trace?.CheckCancellation();
-                    double start=state.Stock.Sum(x=>x.StockLengthMm), inset=(length-bays.Sum())/2; int first=state.Positions.Length;
-                    var p=new List<double> {start+inset}; foreach(double bay in bays) p.Add(p.Last()+bay);
-                    bool keep=p.Count%2!=0 || !rotated && bays.All(b=>TowerOptimizer.BaysMm.Contains(b)) && bays.Any(b=>b==600);
-                    var joins=state.Joined.Concat(first==0 ? new bool[0] : new[] {false}).Concat(Enumerable.Range(1,p.Count-1).Select(i=>keep || i%2==1)).ToArray();
-                    var positions=state.Positions.Concat(p).ToArray();
-                    if(input.EngineerSearch && positions.Length>input.EngineerStationLimit)continue;
-                    joins=TowerOptimizer.RemoveRedundantJoins(joins,positions,input.Exclude600Standalone);
-                    if(joins==null)continue;
-                    next.Add(new Geometry { Stock=state.Stock.Concat(new[] {new TowerStockPiece {StartMm=start,StockLengthMm=length,FirstSupport=first,LastSupport=first+p.Count-1}}).ToArray(),Positions=positions,Joined=joins });
+                    // Regular intermediate states depend only on this exact
+                    // stock prefix and its generation settings, not on any
+                    // later member, load, primary plan or completed station tier.
+                    string key=System.FormattableString.Invariant($"{input.EngineerSearch}|{input.EngineerStationLimit}|{input.StockEndSetbackMm:R}|{input.Exclude600Standalone}|{rotated}|")+Values(stock.Take(run+1).ToArray());
+                    states=cache.GetRegularPrefix(key,()=>
+                    {
+                        var generated=RegularGeometryStep(states,length,rotated,input).ToArray();
+                        input.Trace?.CheckCancellation();return generated;
+                    },out _).ToList();
                 }
-                states=input.EngineerSearch
-                    ? next.GroupBy(x=>x.Positions.Length).SelectMany(g=>g.OrderBy(x=>x.Joined.Count(j=>j)).ThenBy(x=>EngineerTowerSearch.BracePenalty(x.Positions,x.Joined,rotated ? 1500 : 1524,rotated)).ThenBy(x=>x.Stock.Sum(s=>x.Positions[s.FirstSupport]-s.StartMm)).Take(24)).ToList()
-                    : next.GroupBy(x=>x.Positions.Length).SelectMany(g=>g.OrderBy(x=>x.Stock.Sum(s=>x.Positions[s.FirstSupport]-s.StartMm)).Take(12)).OrderBy(x=>x.Positions.Length).Take(84).ToList();
+                else states=RegularGeometryStep(states,length,rotated,input);
             }
             // Keep fully mirrored regular groups even when the inset-based beam-search cap drops them.
             var symmetric=SymmetricGeometries(stock,rotated,input).GroupBy(g=>g.Positions.Length).SelectMany(g=>g.Take(24));
-            if(input.EngineerSearch)states=(rotated ? Enumerable.Empty<Geometry>() : EngineerTowerSearch.StockRunGeometries(stock,input)).Concat(EngineerTowerSearch.Geometries(stock,rotated,input)).Concat(states.Where(g=>g.Positions.Length<=input.EngineerStationLimit)).ToList();
-            states=states.Concat(symmetric).GroupBy(g=>new GeometryKey(g.Positions,g.Joined)).Select(g=>g.First()).ToList();
+            if(input.EngineerSearch)states=(rotated ? Enumerable.Empty<Geometry>() : EngineerTowerSearch.StockRunGeometries(stock,input,afterStations)).Concat(EngineerTowerSearch.Geometries(stock,rotated,input,afterStations)).Concat(states.Where(g=>g.Positions.Length<=input.EngineerStationLimit && g.Positions.Length>afterStations)).ToList();
+            states=states.Concat(symmetric).Where(g=>g.Positions.Length>afterStations).GroupBy(g=>new GeometryKey(g.Positions,g.Joined)).Select(g=>g.First()).ToList();
             if(input.TransferredSlab?.IsNetwork==true)states=states.SelectMany(g=>SiteGeometries(g,input.StockEndSetbackMm)).GroupBy(g=>new GeometryKey(g.Positions,g.Joined)).Select(g=>g.First()).ToList();
-            foreach(var geometry in states)geometry.MemberSupports=geometry.Stock.Select(s=>geometry.Positions.Skip(s.FirstSupport).Take(s.LastSupport-s.FirstSupport+1).Select(x=>x-s.StartMm).ToArray()).ToArray();
+            // Engineer generators already register exact stored-coordinate
+            // slices. Register regular/site objects without materializing them.
+            foreach(var geometry in states)if(!geometry.HasSupportMetadata)geometry.PrepareGeneratedSupports(input.Trace);
             return states;
+        }
+        private static List<Geometry> RegularGeometryStep(List<Geometry> states,double length,bool rotated,TowerInput input)
+        {
+            var patterns=new List<double[]>();
+            foreach (double bay in rotated ? new[] {1524.0} : TowerOptimizer.BaysMm)
+                for (int n=2;n<=(rotated ? 2 : 6);n++) if ((n-1)*bay<=length-2*input.StockEndSetbackMm && !(input.Exclude600Standalone && n==2 && bay==600)) patterns.Add(Enumerable.Repeat(bay,n-1).ToArray());
+            if (!rotated) foreach(double a in TowerOptimizer.BaysMm) foreach(double b in TowerOptimizer.BaysMm)
+                if (a!=b && a+b<=length-2*input.StockEndSetbackMm) patterns.Add(new[] {a,b});
+            // Independent towers can have an unbraced gap, including multiple rotated towers under one stock run.
+            foreach(double a in rotated ? new[] {1524.0} : TowerOptimizer.BaysMm) foreach(double b in rotated ? new[] {1524.0} : TowerOptimizer.BaysMm)
+                foreach(double inset in new[] {input.StockEndSetbackMm,300.0,450.0}.Where(x=>x>=input.StockEndSetbackMm))
+                {
+                    double gap=length-2*inset-a-b;
+                    if(gap>=25 && !(input.Exclude600Standalone && (a==600 || b==600))) patterns.Add(new[] {a,gap,b});
+                }
+            var next=new List<Geometry>();
+            foreach(var state in states) foreach(var bays in patterns)
+            {
+                input.Trace?.CheckCancellation();
+                double start=state.Stock.Sum(x=>x.StockLengthMm), inset=(length-bays.Sum())/2; int first=state.Positions.Length;
+                var p=new List<double> {start+inset}; foreach(double bay in bays) p.Add(p.Last()+bay);
+                bool keep=p.Count%2!=0 || !rotated && bays.All(b=>TowerOptimizer.BaysMm.Contains(b)) && bays.Any(b=>b==600);
+                var joins=state.Joined.Concat(first==0 ? new bool[0] : new[] {false}).Concat(Enumerable.Range(1,p.Count-1).Select(i=>keep || i%2==1)).ToArray();
+                var positions=state.Positions.Concat(p).ToArray();
+                if(input.EngineerSearch && positions.Length>input.EngineerStationLimit)continue;
+                joins=TowerOptimizer.RemoveRedundantJoins(joins,positions,input.Exclude600Standalone);
+                if(joins==null)continue;
+                next.Add(new Geometry { Stock=state.Stock.Concat(new[] {new TowerStockPiece {StartMm=start,StockLengthMm=length,FirstSupport=first,LastSupport=first+p.Count-1}}).ToArray(),Positions=positions,Joined=joins });
+            }
+            return input.EngineerSearch
+                ? next.GroupBy(x=>x.Positions.Length).SelectMany(g=>g.OrderBy(x=>x.Joined.Count(j=>j)).ThenBy(x=>EngineerTowerSearch.BracePenalty(x.Positions,x.Joined,rotated ? 1500 : 1524,rotated)).ThenBy(x=>x.Stock.Sum(s=>x.Positions[s.FirstSupport]-s.StartMm)).Take(24)).ToList()
+                : next.GroupBy(x=>x.Positions.Length).SelectMany(g=>g.OrderBy(x=>x.Stock.Sum(s=>x.Positions[s.FirstSupport]-s.StartMm)).Take(12)).OrderBy(x=>x.Positions.Length).Take(84).ToList();
         }
         // Set-out gaps between independent towers use 25 mm increments. Translate
         // each complete group; never stretch catalogue frames or linked brace bays.
@@ -1503,23 +2244,124 @@ namespace EngineeringDashboard
         }
         private static BeamDistributedLoad[] PrimaryUniformLoads(TowerInput input,CrossOption cross,double stockStart,double stockLength,int line,int c,double edge)
             =>PrimaryLoads(input,cross,stockStart,stockLength,line,c,edge).Uniform;
+        internal readonly struct UniformPrimaryFailure
+        {
+            internal readonly double Moment,Shear,DeflectionUse,GoverningLength,MinimumReaction,MaximumReaction;
+            internal readonly int PeakReaction;
+            internal UniformPrimaryFailure(double moment,double shear,double deflectionUse,double length,double minimum,double maximum,int peak)
+            {Moment=moment;Shear=shear;DeflectionUse=deflectionUse;GoverningLength=length;MinimumReaction=minimum;MaximumReaction=maximum;PeakReaction=peak;}
+        }
+        internal static bool TryRejectUniformPrimary(TowerInput input,double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,SearchWorkCache shared,double legCapacity,out UniformPrimaryFailure failure)
+        {
+            if(!TryCheckUniformPrimary(input,length,supports,uniform,points,shared,legCapacity,out failure,out bool passed) || passed)
+            {failure=default(UniformPrimaryFailure);return false;}
+            input.Trace?.Increment(BeamSearchCounter.UniformPrimaryCacheHits);return true;
+        }
+        internal static bool TryCheckUniformPrimary(TowerInput input,double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,SearchWorkCache shared,double legCapacity,out UniformPrimaryFailure failure,out bool passed)
+        {
+            failure=default(UniformPrimaryFailure);passed=false;
+            if(input.Primary.IsWS10 || !input.OptimizePrimaryResponses || !input.ReuseSearchWork || !input.ReuseNetworkNumerics || shared==null
+                || points==null || points.Length!=0 || uniform==null || uniform.Length!=1 || uniform[0].StartMm<0 || uniform[0].EndMm>length
+                || !TowerBeamAnalysis.Finite(uniform[0].KnPerM) || uniform[0].KnPerM<0 || !TowerBeamAnalysis.Finite(legCapacity) || legCapacity<=0)return false;
+            return CheckUniformPrimaryValues(input,length,supports,uniform[0].StartMm,uniform[0].EndMm,uniform[0].KnPerM,shared,legCapacity,out failure,out passed);
+        }
+        // The native projected pair is point-free with one exact UDL. Query its
+        // existing immutable unit before allocating a rejected member graph.
+        internal static bool TryRejectUniformPrimaryValues(TowerInput input,double length,double[] supports,double loadStart,double loadEnd,double factor,SearchWorkCache shared,double legCapacity,out UniformPrimaryFailure failure)
+        {
+            failure=default(UniformPrimaryFailure);
+            if(input.Primary.IsWS10 || !input.OptimizePrimaryResponses || !input.ReuseSearchWork || !input.ReuseNetworkNumerics || shared==null
+                || loadStart<0 || loadEnd>length || !TowerBeamAnalysis.Finite(factor) || factor<0 || !TowerBeamAnalysis.Finite(legCapacity) || legCapacity<=0)return false;
+            if(!CheckUniformPrimaryValues(input,length,supports,loadStart,loadEnd,factor,shared,legCapacity,out failure,out bool passed) || passed)
+            {failure=default(UniformPrimaryFailure);return false;}
+            input.Trace?.Increment(BeamSearchCounter.UniformPrimaryCacheHits);return true;
+        }
+        private static bool CheckUniformPrimaryValues(TowerInput input,double length,double[] supports,double loadStart,double loadEnd,double factor,SearchWorkCache shared,double legCapacity,out UniformPrimaryFailure failure,out bool passed)
+        {
+            failure=default(UniformPrimaryFailure);passed=false;
+            input.Trace?.CheckCancellation();
+            var key=new UniformShapeKey(length,supports,input.Primary.EI,input.DeflectionDenominator,loadStart,loadEnd);
+            if(!shared.UniformShapes.TryGetValue(key,out var unit) || unit==null || !unit.DeflectionEvaluated || unit.Reactions==null || unit.Reactions.Length==0)return false;
+            double moment=unit.MomentKnM*factor,shear=unit.ShearKn*factor,deflection=unit.DeflectionUtilization*factor;
+            double maximum=unit.Reactions[0]*factor,minimum=maximum;int peak=0;
+            if(!TowerBeamAnalysis.Finite(moment) || !TowerBeamAnalysis.Finite(shear) || !TowerBeamAnalysis.Finite(deflection) || !TowerBeamAnalysis.Finite(maximum))return false;
+            for(int i=1;i<unit.Reactions.Length;i++)
+            {
+                double reaction=unit.Reactions[i]*factor;if(!TowerBeamAnalysis.Finite(reaction))return false;
+                if(reaction>maximum){maximum=reaction;peak=i;}if(reaction<minimum)minimum=reaction;
+            }
+            double utilization=Math.Max(deflection,Math.Max(moment/input.Primary.MomentLimitKnM,shear/input.Primary.ShearLimitKn));
+            // These exact boundaries already require a fresh direct numerical
+            // response in AnalyzePrimary; never short-circuit that reanalysis.
+            if(Math.Abs(utilization-1)<1e-7 || Math.Abs(maximum-input.LegCapacityKn)<1e-6
+                || !input.IgnoreUplift && Math.Abs(minimum)<1e-7)return false;
+            passed=utilization<=1+1e-8 && (input.IgnoreUplift || minimum>=-1e-7) && maximum<=legCapacity+1e-8;
+            failure=new UniformPrimaryFailure(moment,shear,deflection,unit.GoverningLengthMm,minimum,maximum,peak);
+            return true;
+        }
+        // A whole projected pool may fail at its least governing actual UDL.
+        // Keep every factor in the existing scaled-response path: crossing ANY
+        // direct-reanalysis boundary, a cold shape or nonfinite scale is unknown.
+        internal static bool TryRejectUniformPrimaryRange(TowerInput input,double length,double[] supports,double loadStart,double loadEnd,double minimumFactor,double maximumFactor,SearchWorkCache shared,double legCapacity,out UniformPrimaryFailure failure)
+        {
+            failure=default(UniformPrimaryFailure);
+            bool finite(double value)=>TowerBeamAnalysis.Finite(value);
+            if(input.PrimaryMaterial!=PrimaryBeamMaterial.DoubleH20 || !input.OptimizePrimaryResponses || !input.ReuseSearchWork || !input.ReuseNetworkNumerics
+                || input.Trace?.HasTimeLimit==true || shared==null || !finite(length) || length<=0 || supports==null || supports.Length!=2
+                || !finite(supports[0]) || !finite(supports[1]) || supports[0]<0 || supports[1]>length || supports[1]<=supports[0]
+                || !finite(loadStart) || !finite(loadEnd) || loadStart<0 || loadEnd>length || loadEnd<=loadStart
+                || !finite(minimumFactor) || !finite(maximumFactor) || minimumFactor<0 || maximumFactor<minimumFactor
+                || !finite(legCapacity) || legCapacity<=0 || !finite(input.LegCapacityKn) || input.LegCapacityKn<=0)return false;
+            input.Trace?.CheckCancellation();
+            var key=new UniformShapeKey(length,supports,input.Primary.EI,input.DeflectionDenominator,loadStart,loadEnd);
+            if(!shared.UniformShapes.TryGetValue(key,out var unit) || unit==null || !unit.DeflectionEvaluated || unit.Reactions==null || unit.Reactions.Length!=2
+                || !finite(unit.MomentKnM) || unit.MomentKnM<0 || !finite(unit.ShearKn) || unit.ShearKn<0
+                || !finite(unit.DeflectionUtilization) || unit.DeflectionUtilization<0)return false;
+            if(!Scale(minimumFactor,out var low,out double lowUse) || !Scale(maximumFactor,out var high,out double highUse))return false;
+            // Rounded subtraction is monotone on either side of the centre.
+            // Test the nearest endpoint with the ORIGINAL subtraction/Abs;
+            // equality and every interval crossing the band stay conservative.
+            if(!OutsideBand(lowUse,highUse,1,1e-7)
+                || !OutsideBand(Math.Min(low.MaximumReaction,high.MaximumReaction),Math.Max(low.MaximumReaction,high.MaximumReaction),input.LegCapacityKn,1e-6)
+                || !input.IgnoreUplift && !OutsideBand(Math.Min(low.MinimumReaction,high.MinimumReaction),Math.Max(low.MinimumReaction,high.MinimumReaction),0,1e-7))return false;
+            if(lowUse<=1+1e-8 && (input.IgnoreUplift || low.MinimumReaction>=-1e-7) && low.MaximumReaction<=legCapacity+1e-8)return false;
+            input.Trace?.CheckCancellation();failure=low;return true;
+            bool Scale(double factor,out UniformPrimaryFailure scaled,out double utilization)
+            {
+                scaled=default(UniformPrimaryFailure);utilization=0;
+                double moment=unit.MomentKnM*factor,shear=unit.ShearKn*factor,deflection=unit.DeflectionUtilization*factor;
+                double maximum=unit.Reactions[0]*factor,minimum=maximum;int peak=0;
+                if(!finite(moment) || !finite(shear) || !finite(deflection) || !finite(maximum))return false;
+                for(int i=1;i<unit.Reactions.Length;i++)
+                {
+                    double reaction=unit.Reactions[i]*factor;if(!finite(reaction))return false;
+                    if(reaction>maximum){maximum=reaction;peak=i;}if(reaction<minimum)minimum=reaction;
+                }
+                utilization=Math.Max(deflection,Math.Max(moment/input.Primary.MomentLimitKnM,shear/input.Primary.ShearLimitKn));
+                if(!finite(utilization))return false;
+                scaled=new UniformPrimaryFailure(moment,shear,deflection,unit.GoverningLengthMm,minimum,maximum,peak);return true;
+            }
+        }
+        private static bool OutsideBand(double low,double high,double centre,double tolerance)
+            =>high<centre ? Math.Abs(high-centre)>tolerance : low>centre && Math.Abs(low-centre)>tolerance;
         internal static LoadedBeamAnalysis AnalyzePrimary(TowerInput input,double length,double[] supports,BeamDistributedLoad[] uniform,BeamPointLoad[] points,LoadedBeamAnalysis.MatrixCache matrices,SearchWorkCache shared)
         {
             using(var hot=input.Trace?.Hot(BeamHotStage.PrimaryResponse))
             {
+            input.Trace?.CheckCancellation();
             bool reject=input.StagePrimaryChecks && !input.Primary.IsWS10 && !input.DeferCrossingChecks;
             LoadedBeamAnalysis analysis=null;long before=matrices?.Hits??0;
-            if(input.OptimizePrimaryResponses && shared!=null && points.Length==0 && uniform.Length==1 && uniform[0].StartMm==0 && uniform[0].EndMm==length && uniform[0].KnPerM>=0)
+            if(input.OptimizePrimaryResponses && shared!=null && points.Length==0 && uniform.Length==1 && uniform[0].StartMm>=0 && uniform[0].EndMm<=length && uniform[0].KnPerM>=0)
             {
-                var shape=new UniformShapeKey(length,supports,input.Primary.EI,input.DeflectionDenominator);
+                var shape=new UniformShapeKey(length,supports,input.Primary.EI,input.DeflectionDenominator,uniform[0].StartMm,uniform[0].EndMm);
                 if(!shared.UniformShapes.TryGetValue(shape,out var unit))
                 {
                     input.Trace?.Increment(BeamSearchCounter.PrimaryAnalyses);
-                    unit=LoadedBeamAnalysis.AnalyzeCombinedCached(length,supports,new[] {new BeamDistributedLoad {StartMm=0,EndMm=length,KnPerM=1}},points,input.Primary.EI,input.DeflectionDenominator,matrices);
+                    unit=LoadedBeamAnalysis.AnalyzeCombinedCached(length,supports,new[] {new BeamDistributedLoad {StartMm=uniform[0].StartMm,EndMm=uniform[0].EndMm,KnPerM=1}},points,input.Primary.EI,input.DeflectionDenominator,matrices);
                     shared.UniformShapes.Store(shape,unit);
                 }
                 else input.Trace?.Increment(BeamSearchCounter.UniformPrimaryCacheHits);
-                analysis=unit.Scale(uniform[0].KnPerM);
+                analysis=input.Primary.IsWS10 ? unit.Scale(uniform[0].KnPerM) : unit.ScaleForCheck(uniform[0].KnPerM);
                 // Retain the original arithmetic at acceptance boundaries.
                 if(Math.Abs(PrimaryUtilization(input,analysis)-1)<1e-7 || Math.Abs(analysis.Reactions.Max()-input.LegCapacityKn)<1e-6
                     || !input.IgnoreUplift && Math.Abs(analysis.Reactions.Min())<1e-7)analysis=null;
@@ -1635,7 +2477,31 @@ namespace EngineeringDashboard
         {
             string key=grid.CheckKey(input);
             if(input.ReuseSearchWork && cross.TransverseKey==key)return cross.TransversePassed;
+            bool reuse=input.ReuseSearchWork && input.ReuseTransversePreparations;
+            if(reuse && cross.TransversePreparations!=null && cross.TransversePreparations.TryGetValue(key,out var saved))
+            {
+                cross.TransverseKey=key;cross.TransversePassed=saved.Passed;cross.PreparedReceiver=saved.Receiver;
+                return saved.Passed;
+            }
+            string previousKey=cross.TransverseKey;bool previousPassed=cross.TransversePassed;var previousReceiver=cross.PreparedReceiver;
             cross.TransverseKey=key;cross.TransversePassed=false;cross.PreparedReceiver=null;
+            try
+            {
+                bool passed=CheckTransverseCases(input,cross,width,grid,edge);
+                if(reuse)
+                {
+                    // An interrupted lower check must never become cached evidence
+                    // that an otherwise identical grid fails or has been prepared.
+                    input.Trace?.CheckCancellation();
+                    if(cross.TransversePreparations==null)cross.TransversePreparations=new ResponseCache<string,TransversePreparation>(8);
+                    cross.TransversePreparations.Store(key,new TransversePreparation {Passed=passed,Receiver=cross.PreparedReceiver});
+                }
+                return passed;
+            }
+            catch {cross.TransverseKey=previousKey;cross.TransversePassed=previousPassed;cross.PreparedReceiver=previousReceiver;throw;}
+        }
+        private static bool CheckTransverseCases(TowerInput input,CrossOption cross,double width,RowGrid grid,double edge)
+        {
             var ls=grid.LeftScales;var rs=grid.RightScales;
             if(cross.Left!=null && !Pass(input,cross.Left.Analysis,Math.Max(ls.Max(),input.TransferredSlab.SlabSpacing(true)/1000),1,input.Diagnostics,input.DiagnosticScope+"Left slab H20",1,()=> $"governing row T{Array.IndexOf(ls,ls.Max())+1} · stock {cross.Left.Stock:0} mm")
                 || cross.Right!=null && !Pass(input,cross.Right.Analysis,Math.Max(rs.Max(),input.TransferredSlab.SlabSpacing(false)/1000),1,input.Diagnostics,input.DiagnosticScope+"Right slab H20",1,()=> $"governing row T{Array.IndexOf(rs,rs.Max())+1} · stock {cross.Right.Stock:0} mm"))return false;
@@ -1648,6 +2514,10 @@ namespace EngineeringDashboard
             probe=OffsetReceiver(input,probe);
             if(!input.TransferLowerAcceptance(probe))return false;
             cross.PreparedReceiver=input.TransferReceiverPreparation?.Invoke(probe);
+            // Failure resolved entirely from this fixed transverse option and
+            // row grid cannot be repaired by any primary tower geometry. Keep
+            // ordinary geometry-dependent callbacks on the full candidate path.
+            if(ReferenceEquals(cross.PreparedReceiver,CrossBeamSupportOptimizer.FailedReceiver))return false;
             return cross.TransversePassed=true;
         }
         private static bool PreparedSpanScreen(TowerInput input,Geometry geometry,CrossOption cross,double edge,EngineerPrimaryPlan plan)
@@ -1666,12 +2536,11 @@ namespace EngineeringDashboard
             double largest=Math.Max(0,Math.Max(cross.MinimumLineLoads[0],cross.MinimumLineLoads[1]));
             if(input.PrepareSpanGeometry && input.ReuseSearchWork)
             {
-                if(cross.SpanContext==null || cross.SpanContext.Edge!=edge)cross.SpanContext=new SpanGeometryContext(edge,cross.UnknownSpans);
-                return PreparedSpanShapeFits(input,geometry,cross.SpanContext,largest);
+                return PreparedSpanShapeFits(input,geometry,PreparedSpanContext(input,cross,edge),largest);
             }
             for(int run=0;run<geometry.Stock.Length;run++)
             {
-                var stock=geometry.Stock[run];var supports=geometry.MemberSupports[run];double origin=stock.StartMm+edge;
+                var stock=geometry.Stock[run];var supports=geometry.Supports(run);double origin=stock.StartMm+edge;
                 double q=largest+input.Primary.SelfWeightKnM(stock.StockLengthMm);
                 for(int tail=0;tail<2;tail++)
                 {
@@ -1696,6 +2565,18 @@ namespace EngineeringDashboard
                 }
             }
             return true;
+        }
+        private static SpanGeometryContext PreparedSpanContext(TowerInput input,CrossOption cross,double edge)
+        {
+            if(cross.SpanContext!=null && cross.SpanContext.Edge==edge)return cross.SpanContext;
+            if(cross.SpanContexts!=null && cross.SpanContexts.TryGetValue(edge,out var saved))return cross.SpanContext=saved;
+            // UnknownSpans is fixed for this transverse option. Ranked work
+            // interleaves covered lengths; changing only the exact edge should
+            // not repeatedly allocate the same immutable footprint boundaries.
+            var context=new SpanGeometryContext(edge,cross.UnknownSpans);
+            input.Trace?.CheckCancellation();
+            if(cross.SpanContexts==null)cross.SpanContexts=new ResponseCache<double,SpanGeometryContext>(8);
+            cross.SpanContexts.Store(edge,context);return cross.SpanContext=context;
         }
         private static bool NecessaryPrimarySpans(TowerInput input,Geometry geometry,CrossOption cross,double edge,int stage)
         {
@@ -1731,7 +2612,7 @@ namespace EngineeringDashboard
                 var loads=unresolved ? new[] {new BeamDistributedLoad {StartMm=0,EndMm=stock.StockLengthMm,KnPerM=Math.Max(0,minimum[line])+input.Primary.SelfWeightKnM(stock.StockLengthMm)}}
                     : PrimaryUniformLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,stage,edge);
                 if(loads==null)continue;
-                var supports=geometry.MemberSupports[Array.IndexOf(geometry.Stock,stock)];
+                var supports=geometry.Supports(Array.IndexOf(geometry.Stock,stock));
                 foreach(bool far in new[] {false,true})
                 {
                     double a=far ? supports.Last() : 0,b=far ? stock.StockLengthMm : supports.First(),support=far ? a : b;
@@ -1746,7 +2627,7 @@ namespace EngineeringDashboard
                     // tail resultant therefore gives necessary support-face demands.
                     if(Math.Abs(force)>input.Primary.ShearLimitKn+1e-7 || Math.Abs(moment)>input.Primary.MomentLimitKnM+1e-7)return false;
                 }
-                var limits=new[] {0.0}.Concat(supports).Concat(new[] {stock.StockLengthMm}).ToArray();
+                var limits=new double[supports.Length+2];for(int i=0;i<supports.Length;i++)limits[i+1]=supports[i];limits[limits.Length-1]=stock.StockLengthMm;
                 for(int span=1;span<limits.Length;span++)
                 {
                     double a=limits[span-1],b=limits[span];
@@ -1763,6 +2644,20 @@ namespace EngineeringDashboard
             return true;
             }
         }
+        // Preserve transverse-option order. Earlier entries are proven failures;
+        // retain the first passing entry's complete stage proof on LayoutWork so
+        // it need not repeat the same necessary checks after sorting.
+        private static int FirstPrimarySpansPassing(TowerInput input,Geometry geometry,CrossOption[] crosses,double edge)
+        {
+            for(int i=0;i<crosses.Length;i++)
+            {
+                bool fits=true;
+                foreach(int stage in crosses[i].DesignCases)
+                    if(!NecessaryPrimarySpans(input,geometry,crosses[i],edge,stage)){fits=false;break;}
+                if(fits)return i;
+            }
+            return -1;
+        }
         // Ordering only: never use this estimate to accept or reject a member.
         internal static double PrimaryPriority(TransferMember member)
         {
@@ -1777,12 +2672,23 @@ namespace EngineeringDashboard
             using(var hot=input.Trace?.Hot(BeamHotStage.LayoutAcceptance))return input.TransferLayoutAcceptance(layout);
         }
         private static double PrimaryUtilization(TowerInput input,LoadedBeamAnalysis analysis)=>Math.Max(analysis.DeflectionUtilization,input.Primary.Strength(analysis));
-        private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,ResponseCache<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent)
+        private static TowerLayout Evaluate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,ResponseCache<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent,bool primarySpansChecked=false)
+        {
+            try {return EvaluateCandidate(input,g,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared,incumbent,primarySpansChecked);}
+            catch(ArgumentException error) when(error.Message=="Beam load equilibrium failed." || error.Message=="Unstable beam supports.")
+            {
+                // A numerically rejected trial must not discard an already passing
+                // stock plan or prevent the remaining generated layouts being checked.
+                input.Diagnostics?.Geometry(input.DiagnosticScope+"candidate numerics",input.DiagnosticScope+error.Message+" Generated primary stocks "+string.Join(", ",g.Stock.Select(p=>p.StockLengthMm))+" mm rejected.","This trial is excluded; other support arrangements remain eligible.");
+                return null;
+            }
+        }
+        private static TowerLayout EvaluateCandidate(TowerInput input,Geometry g,double width,bool rotated,CrossOption cross,RowGrid grid,double edge,ResponseCache<PrimaryKey,PrimaryCheck> primaryCache,LoadedBeamAnalysis.MatrixCache matrixCache,SearchWorkCache shared,TowerLayout incumbent,bool primarySpansChecked)
         {
             if(!input.DeferTransferLayout)return EvaluateReference(input,g,width,rotated,cross,grid,edge,primaryCache,matrixCache,shared);
             if(input.EngineerSearch && !AcceptTransverseCases(input,cross,width,grid,edge))return null;
             bool preparedSpans=cross.PreparedReceiver!=null && input.DeferCrossingChecks;
-            if(preparedSpans)foreach(int stage in cross.DesignCases)if(!NecessaryPrimarySpans(input,g,cross,edge,stage))return null;
+            if(preparedSpans && !primarySpansChecked)foreach(int stage in cross.DesignCases)if(!NecessaryPrimarySpans(input,g,cross,edge,stage))return null;
             if(cross.PreparedReceiver!=null && !cross.PreparedReceiver(g,edge)){input.Trace?.Increment(BeamSearchCounter.TransferLayoutsDeferred);return null;}
             var rows=grid.Rows;var trib=grid.Tributaries;var ls=grid.LeftScales;var rs=grid.RightScales;
             if(ls.Length!=rows.Length || rs.Length!=rows.Length)throw new ArgumentException("Crossing beam row loads do not match the support rows.");
@@ -1793,11 +2699,11 @@ namespace EngineeringDashboard
             foreach(int c in cross.DesignCases)
             {
                 var checks=new PrimaryCheck[g.Stock.Length*2];
-                if(input.EngineerSearch && !preparedSpans && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
+                if(input.EngineerSearch && !preparedSpans && !primarySpansChecked && !NecessaryPrimarySpans(input,g,cross,edge,c))return null;
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {
-                    var supports=g.MemberSupports[Array.IndexOf(g.Stock,stock)];
+                    var supports=g.MaterializeSupports(input.Trace)[Array.IndexOf(g.Stock,stock)];
                     var loadData=PrimaryLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,c,edge);
                     var uniform=loadData.Uniform;
                     if(uniform==null) {input.Diagnostics?.Geometry(input.DiagnosticScope+"primary distributed uplift","Primary UDL has an upward resultant within a loaded interval.","Review transverse bearings and asymmetric slab/crossing loads.");return null;}
@@ -1837,7 +2743,7 @@ namespace EngineeringDashboard
                 for(int line=0;line<2;line++)for(int i=0;i<g.Stock.Length;i++)
                 {
                     var stock=g.Stock[i];var check=checkedCases[c][line*g.Stock.Length+i];
-                    members[line*g.Stock.Length+i]=new TransferMember {PrimaryMaterial=input.PrimaryMaterial,PrimarySelfWeightKnM=input.Primary.SelfWeightKnM(stock.StockLengthMm),Name="P"+(i+1)+(line==0 ? " L" : " R"),LoadCase=cross.Names[cross.DesignCases[c]],StartMm=stock.StartMm+edge,LengthMm=stock.StockLengthMm,SupportsMm=g.MemberSupports[i],Points=check.Points,Uniform=check.Uniform,LegacyPrimaryUniform=input.EngineerPlan?.UseDesignZones==true ? LegacyPrimaryUniformLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,cross.DesignCases[c],edge) : null,Analysis=check.Analysis};
+                    members[line*g.Stock.Length+i]=new TransferMember {PrimaryMaterial=input.PrimaryMaterial,PrimarySelfWeightKnM=input.Primary.SelfWeightKnM(stock.StockLengthMm),Name="P"+(i+1)+(line==0 ? " L" : " R"),LoadCase=cross.Names[cross.DesignCases[c]],StartMm=stock.StartMm+edge,LengthMm=stock.StockLengthMm,SupportsMm=g.MaterializeSupports(input.Trace)[i],Points=check.Points,Uniform=check.Uniform,LegacyPrimaryUniform=input.EngineerPlan?.UseDesignZones==true ? LegacyPrimaryUniformLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,cross.DesignCases[c],edge) : null,Analysis=check.Analysis};
                 }
                 primaryCases.Add(members);
             }
@@ -1906,7 +2812,7 @@ namespace EngineeringDashboard
                 var lower=LowerCase(input,cross,width,grid,edge,c);if(lower==null)return null;
                 for(int line=0;line<2;line++) foreach(var stock in g.Stock)
                 {
-                    var supports=g.MemberSupports[Array.IndexOf(g.Stock,stock)];
+                    var supports=g.MaterializeSupports(input.Trace)[Array.IndexOf(g.Stock,stock)];
                     var loadData=PrimaryLoads(input,cross,stock.StartMm+edge,stock.StockLengthMm,line,c,edge);
                     var uniform=loadData.Uniform;
                     if(uniform==null) {input.Diagnostics?.Geometry(input.DiagnosticScope+"primary distributed uplift","Primary UDL has an upward resultant within a loaded interval.","Review transverse bearings and asymmetric slab/crossing loads.");return null;}

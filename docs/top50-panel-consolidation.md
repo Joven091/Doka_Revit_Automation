@@ -1,0 +1,11 @@
+# Consolidating reusable panel sizes
+
+The October 29 report's selected offer contains one 500 mm and one 750 mm panel per face. Across every casting group they can be replaced with two 750 mm panels. The nine 1600 mm walls then use 750 + 100 filler + 750; the affected 2810 mm wall uses 2000 + 60 filler + 750. The offer retains 46 panels across both faces and ten groups, reduces the number of panel sizes from six to five, and changes the offered length from 99.25 to 99.50 LM per face.
+
+The original candidate generator never generated that inventory. A new pass operates on the already validated allocations after the original inventory solves, retaining their candidate pool and deterministic work allowances. It tests ordered substitutions of one existing panel size into another permitted size already in the offer, merges their stock quantities and adjusts only internal fillers. Every alternative must pass wall closure, filler width/count, group stock, required longest-wall concurrency, identical-kit and offering-band checks. Group membership and order, and total panel quantity, stay fixed.
+
+Original offers remain available. All valid alternatives participate in the final ranking under the selected preset; the best improving substitution supplies the next consolidation step. Each step removes one panel size, so the search terminates without a time cutoff. Identical inventory/arrangement pairs are deduplicated before the display limit. The method is a local improvement and does not prove a global optimum. Consolidated allocations report a feasible validation status rather than inheriting the original inventory's solver optimality bound.
+
+Search policy version 5 identifies the new pass. Cached earlier offers can still be revalidated and opened, with a prompt to Optimize under the current policy. No project fields, casting-group semantics or actual pour-sequence functionality change.
+
+Casting groups are simultaneous equipment allocations. The first group contains the required longest walls; other groups may be sorted by installed panel length. A physical pour plan requires project-defined walls/zones, order and dependencies, then equipment checks against those actual stages. Reordering the existing display alone would not supply those constraints.

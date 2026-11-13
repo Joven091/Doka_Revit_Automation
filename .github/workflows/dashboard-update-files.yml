@@ -1,0 +1,70 @@
+name: Dashboard manual update files
+on:
+  pull_request:
+    paths: ['.github/workflows/dashboard-update-files.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Retrieve the already validated release
+        # Pinned to the tested 1.2.0 release; change the run/head/version together for later releases.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source=$(gh api repos/${{ github.repository }}/actions/runs/40844718341 --jq '.head_sha + " " + .conclusion')
+          test "$source" = '83e8d0d6790f31319de8afafdc6f64c3de663d99 success'
+          gh run download 40844718341 --repo ${{ github.repository }} --name dashboard-live-update-development-kit --dir verified-kit
+      - name: Verify and copy only the JSON and its matching ZIP
+        shell: python
+        run: |
+          import hashlib, json, pathlib, re, shutil, zipfile
+          feed = pathlib.Path('verified-kit/feed')
+          metadata = feed / 'dashboard-latest.json'
+          data = json.loads(metadata.read_text(encoding='utf-8-sig'))
+          assert data['schemaVersion'] == 1 and data['productId'] == 'Doka.EngineeringDashboard.Desktop'
+          assert data['revitVersion'] == 2024 and data['bridgeProtocol'] == 1 and data['version'] == '1.2.0'
+          name = data['archiveFile']
+          assert re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*\.zip', name)
+          archive = feed / name
+          assert archive.stat().st_size == data['sizeBytes']
+          with archive.open('rb') as source:
+              assert hashlib.file_digest(source, 'sha256').hexdigest() == data['sha256']
+          with zipfile.ZipFile(archive) as package:
+              manifest = json.loads(package.read('dashboard-package.json'))
+              assert manifest['version'] == data['version'] and manifest['bridgeProtocol'] == 1
+              assert {'Doka.EngineeringDashboard.exe', 'MyRevitAddin.dll', 'Doka.DashboardUpdater.exe', 'BeamSolver/Doka.BeamSolver.exe'} <= set(package.namelist())
+          output = pathlib.Path('manual-update-files')
+          output.mkdir()
+          shutil.copyfile(metadata, output / metadata.name)
+          shutil.copyfile(archive, output / archive.name)
+          pathlib.Path('manual-update-provenance.json').write_text(json.dumps({
+              'sourceRun': 40844718341,
+              'validatedSourceHead': '83e8d0d6790f31319de8afafdc6f64c3de663d99',
+              'manifest': data,
+              'fileCount': 2,
+              'installerBuilt': False,
+              'companyPublished': False
+          }, indent=2) + '\n')
+          print(metadata.read_text())
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-update-files
+          path: manual-update-files/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-update-json
+          path: manual-update-files/dashboard-latest.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-update-files-evidence
+          path: manual-update-provenance.json
+          if-no-files-found: error

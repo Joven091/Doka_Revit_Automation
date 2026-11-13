@@ -89,11 +89,18 @@ namespace EngineeringDashboard.Top50
         public double SolverDeterministicWork { get; }
         public long PatternVisitLimit { get; }
         public int Seed { get; }
-        public SearchLimits(int maxInternalFillers,int maxFillerMm,int maximumGroups,int longestSimultaneous,double seconds,int seed,int patternsPerLength=4,double? solverDeterministicWork=null)
+        public bool RequireIdenticalKits { get; }
+        public SearchLimits(int maxInternalFillers,int maxFillerMm,int maximumGroups,int longestSimultaneous,double seconds,int seed,int patternsPerLength=4,double? solverDeterministicWork=null,bool requireIdenticalKits=false)
         {
             double work=solverDeterministicWork??seconds;
-            if(maxInternalFillers<0 || maxFillerMm<0 || maxFillerMm>350 || maximumGroups<1 || longestSimultaneous<1 || seconds<=0 || double.IsNaN(seconds) || double.IsInfinity(seconds) || work<=0 || double.IsNaN(work) || double.IsInfinity(work) || patternsPerLength<1 || patternsPerLength>4) throw new ArgumentOutOfRangeException(nameof(maxInternalFillers));
+            if(maxInternalFillers<0)throw new ArgumentException("Maximum internal fillers per wall must be zero or greater.");
+            if(maxFillerMm<0||maxFillerMm>350)throw new ArgumentException("Maximum filler width must be between 0 and 350 mm.");
+            if(maximumGroups<1)throw new ArgumentException("Maximum allocation groups must be at least 1.");
+            if(longestSimultaneous<1)throw new ArgumentException("Longest walls required simultaneously must be at least 1.");
+            if(seconds<=0||double.IsNaN(seconds)||double.IsInfinity(seconds)||work<=0||double.IsNaN(work)||double.IsInfinity(work))throw new ArgumentException("Search effort must be a positive finite value.");
+            if(patternsPerLength<1||patternsPerLength>4)throw new ArgumentException("Retained patterns per length must be between 1 and 4.");
             MaxInternalFillers=maxInternalFillers;MaxFillerMm=maxFillerMm;MaximumGroups=maximumGroups;LongestSimultaneous=longestSimultaneous;SearchEffort=seconds;SolverDeterministicWork=work;Seed=seed;PatternsPerLength=patternsPerLength;
+            RequireIdenticalKits=requireIdenticalKits;
             PatternVisitLimit=(long)Math.Max(1,Math.Ceiling(Math.Min(1000000000,seconds*50000)));
         }
     }

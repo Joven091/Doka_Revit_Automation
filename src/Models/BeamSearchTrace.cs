@@ -12,19 +12,21 @@ namespace EngineeringDashboard
     {
         CoveragePlans, CoverageVariants, UpperAnalyses, LowerAnalyses, PrimaryAnalyses,
         TowerCandidates, TransferCandidates, NetworkSolves, NumericalChecks, RejectionChecks,
-        GeometryBuilds, GeometryCacheHits, CrossCacheHits, LowerCaseCacheHits, PrimaryCacheHits, PrimaryMatrixCacheHits, LowerResponseCacheHits, EconomyPruned, PrimaryDeflectionSkipped, NetworkPrimaryCacheHits, TransferLayoutsBuilt, TransferLayoutsDeferred, NetworkBranchesPruned, NetworkTransverseCacheHits, CompleteNetworkCandidates, CrossingLegClashesRejected, NetworkSpacingTrials, UniformPrimaryCacheHits, PrimaryLoadCacheHits, SeedNetworkCandidates, PreparedPrimaryCacheHits, CrossingGeometryCacheHits, ReceiverSearchCacheHits, WarmNetworkCandidates, CheckedPrefixCacheHits, LocalReceiverFailures, SpanGeometryBuilds, SpanGeometryHits, PrimaryBearingCacheHits
+        GeometryBuilds, GeometryCacheHits, CrossCacheHits, LowerCaseCacheHits, PrimaryCacheHits, PrimaryMatrixCacheHits, LowerResponseCacheHits, EconomyPruned, PrimaryDeflectionSkipped, NetworkPrimaryCacheHits, TransferLayoutsBuilt, TransferLayoutsDeferred, NetworkBranchesPruned, NetworkTransverseCacheHits, CompleteNetworkCandidates, CrossingLegClashesRejected, NetworkSpacingTrials, UniformPrimaryCacheHits, PrimaryLoadCacheHits, SeedNetworkCandidates, PreparedPrimaryCacheHits, CrossingGeometryCacheHits, ReceiverSearchCacheHits, WarmNetworkCandidates, CheckedPrefixCacheHits, LocalReceiverFailures, SpanGeometryBuilds, SpanGeometryHits, PrimaryBearingCacheHits, ProjectedFootprintFailures, ProjectedPrimaryTrials, ProjectedSecondaryTrials, ProjectedMemberTrials, ProjectedPrimaryFailuresReused, ProjectedPlacementFailuresReused, ExtendedGeometryPatternsReused, ProjectedPoseFailuresReused, ProjectedPrimaryScreenFailures,
+        WarmNetworkAttempts,WarmSlabOptionMissing,WarmReceiverRepairAttempts,WarmReceiverRepairSuccesses,WarmMaximaProbes,WarmMaximaSuccesses,FinalRankPruned,
+        ResolvedStockCountsRejected,ResolvedSpanGeometryRejected,ReceiverFrameMetadataRejected,PreparedGeometryBoundsRejected,IndividualRowGridCacheHits,ReceiverWidthFailuresReused,UniversalPrimaryGeometryRejected,UniversalGeometryViewHits,UniversalGeometryViewBuilds,UniversalGeometryViewFallbacks,UniversalGeometrySourceEntries,UniversalGeometrySurvivingEntries,UniversalGeometryPeakBytes,UniversalGeometrySharedProfileHits,ProjectedPoseForceProofs,ProjectedPoseGroupsRejected,ProjectedPoseDescriptorsAvoided,ExteriorNormalMembersRejected,PrimaryBearingMidpointRejections,ProjectedPrimaryPoolRejections,ResolvedFailureHintRejected,ResolvedFailureHintSingleCellRejected
     }
     // Deadline expiry is separate from user cancellation and structural rejection.
     internal sealed class BeamSearchDeadlineException : Exception
     {
         internal BeamSearchDeadlineException():base("Search time limit reached before a complete valid solution was found. This does not prove that no feasible layout exists.") { }
     }
-    internal enum BeamHotStage { LoadPreparation, PrimaryResponse, TransverseResponse, SpanScreen, LayoutAcceptance, CrossingRecheck, SharedCrossing, PrimaryRecheck }
+    internal enum BeamHotStage { LoadPreparation, PrimaryResponse, TransverseResponse, SpanScreen, LayoutAcceptance, CrossingRecheck, SharedCrossing, PrimaryRecheck, CrossingPlacement }
     internal enum BeamSearchStage { InputValidation, SolverWall, StockCovers, UpperOptions, ReceivingBeams, Geometry, TransverseAnalysis, PrimaryAnalysis, CrossingSupports, Movement, ResultApplication, DrawingPreparation }
     // Workers write atomic counters; the UI can read without touching solver collections.
     internal sealed class BeamSearchTrace
     {
-        private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred","Network branches pruned by exact bounds","Network transverse response cache hits","Complete network candidates","Crossing leg clashes rejected before member checks","Network spacing vectors searched","Uniform primary shape cache hits","Primary load-data cache hits","Seed network candidates","Prepared primary check cache hits","Crossing geometry cache hits","Complete receiving-beam search cache hits","Passing warm-start networks","Checked network prefix cache hits","Spacing scenarios rejected by local receiver feasibility","Profile span geometry builds","Profile span geometry reuse hits","Local primary-bearing crossing cache hits"};
+        private static readonly string[] CounterNames = {"Primary cover plans generated","Coverage/phase variants visited","Slab H20 analyses","Lower secondary analyses","Primary member analyses","Beam-only tower candidates","Transferred layout candidates","Receiving-beam solves","Numerical checks","Recorded rejection checks (not unique layouts)","Tower geometry builds","Tower geometry cache hits","Transverse option cache hits","Lower row-case cache hits","Primary member cache hits","Primary matrix cache hits","Lower response cache hits","Candidates pruned by economy bounds","Primary deflection evaluations skipped after another failure","Network primary response cache hits","Detailed transfer layouts built","Detailed transfer layouts deferred","Network branches pruned by exact bounds","Network transverse response cache hits","Complete network candidates","Crossing leg clashes rejected before member checks","Network spacing vectors searched","Uniform primary shape cache hits","Primary load-data cache hits","Seed network candidates","Prepared primary check cache hits","Crossing geometry cache hits","Complete receiving-beam search cache hits","Passing warm-start networks","Checked network prefix cache hits","Spacing scenarios rejected by local receiver feasibility","Profile span geometry builds","Profile span geometry reuse hits","Local primary-bearing crossing cache hits","Profile projected footprints rejected","Profile projected primary trials","Profile projected secondary trials","Profile projected member trials","Profile exact primary failures reused","Failed projected placement groups reused","Tower patterns retained between station tiers","Failed crossing poses reused across pitches","Projected placements rejected by early primary checks","Warm network attempts","Warm networks missing an old slab option","Local warm receiver repair attempts","Passing local warm receiver repairs","Warm-only maximum-spacing probes","Passing warm-only maximum-spacing probes","Transferred candidates pruned by final deterministic rank","Early independent-stock count checks rejected","Early resolved span/tail checks rejected","Early receiving-frame checks rejected","Geometries rejected by composed prepared bounds","Completed individual row-grid cache hits","Centred fixed-width receiving searches rejected by complete count-eight subset proof","Entries excluded from universal geometry views (repeated views counted)","Universal minimum-load view cache hits","Universal minimum-load views built","Universal minimum-load view conservative fallbacks","Parent entries in universal mask builds","Surviving entries in universal mask builds","Peak bytes retained in the shared universal geometry-view cache","Universal geometry-view hits across equivalent numeric profile snapshots","Distinct projected pose force proofs shared across widths and offsets","Projected pose groups rejected before descriptor construction","Projected width/offset descriptors avoided by group force proof","Independent exterior normal-line member checks rejected","Primary-bearing probes rejected by stock-independent midpoint moment","Projected placements rejected by minimum governing retained reaction proof","Resolved primary checks rejected by a freshly rechecked failure hint","Resolved primary failure hints rejected by a current single-cell proof"};
         // Sampling is opt-in for benchmark runs. No per-check stopwatch,
         // timer allocation or profiling collection is used by normal calculation.
         internal bool EnableHotProfiling=false;
@@ -67,7 +69,7 @@ namespace EngineeringDashboard
         }
         private long ended, catalogueTicks, customTicks;
         private long firstCompleteNetworkTicks=-1;
-        private string pass="Not started", work="Validating inputs", context="", outcome="Running", error="", result="", derivedInputs="";
+        private string pass="Not started", work="Validating inputs", context="", outcome="Running", error="", result="", derivedInputs="",networkPhase="Not started";
         private string rejectedPass="";
         private string crossingRejection="";
         internal void CrossingRejected(string reason)=>Volatile.Write(ref crossingRejection,reason.Length<=4000 ? reason : reason.Substring(0,4000));
@@ -101,6 +103,7 @@ namespace EngineeringDashboard
         {
             int index=(int)counter;long value=Interlocked.Read(ref counters[index]);
             foreach(var pending in pendingCounters.Values)value+=Interlocked.Read(ref pending[index]);
+            var external=Volatile.Read(ref workerCounters);if(external!=null)value+=external[index];
             return value;
         }
         private void FlushCounters()
@@ -108,11 +111,28 @@ namespace EngineeringDashboard
             foreach(var pending in pendingCounters.Values)for(int i=0;i<pending.Length;i++)
             {long value=Interlocked.Exchange(ref pending[i],0);if(value!=0)Interlocked.Add(ref counters[i],value);}
         }
+        internal void ObserveMaximum(BeamSearchCounter counter,long value)
+        {
+            int index=(int)counter;long before;
+            do{before=Interlocked.Read(ref counters[index]);if(value<=before)return;}while(Interlocked.CompareExchange(ref counters[index],value,before)!=before);
+        }
         internal void Increment(BeamSearchCounter counter,long amount=1)
         {
             if(HasTimeLimit)CheckCancellation();else CancellationToken.ThrowIfCancellationRequested();
+            IncrementRecorded(counter,amount);
+        }
+        // A diagnostic batch has already observed cancellation at each original
+        // event. Flushing those completed records must also work after cancellation.
+        internal void IncrementRecorded(BeamSearchCounter counter,long amount=1)
+        {
             if(counter==BeamSearchCounter.NumericalChecks || counter==BeamSearchCounter.RejectionChecks || counter==BeamSearchCounter.PreparedPrimaryCacheHits || counter==BeamSearchCounter.PrimaryLoadCacheHits || counter==BeamSearchCounter.UniformPrimaryCacheHits
-                || counter==BeamSearchCounter.TransferCandidates || counter==BeamSearchCounter.TransferLayoutsDeferred)
+                || counter==BeamSearchCounter.TransferCandidates || counter==BeamSearchCounter.TransferLayoutsDeferred
+                || counter==BeamSearchCounter.NetworkTransverseCacheHits || counter==BeamSearchCounter.LowerResponseCacheHits
+                || counter==BeamSearchCounter.CrossCacheHits || counter==BeamSearchCounter.GeometryCacheHits
+                || counter==BeamSearchCounter.SpanGeometryBuilds || counter==BeamSearchCounter.SpanGeometryHits
+                || counter==BeamSearchCounter.ResolvedStockCountsRejected || counter==BeamSearchCounter.ResolvedSpanGeometryRejected
+                || counter==BeamSearchCounter.ReceiverFrameMetadataRejected || counter==BeamSearchCounter.PreparedGeometryBoundsRejected
+                || counter==BeamSearchCounter.UniversalPrimaryGeometryRejected)
             {
                 var pending=pendingCounters.Value;int index=(int)counter;pending[index]+=amount;
                 if(pending[index]>=256)Interlocked.Add(ref counters[index],Interlocked.Exchange(ref pending[index],0));
@@ -122,6 +142,7 @@ namespace EngineeringDashboard
                 Interlocked.CompareExchange(ref firstCompleteNetworkTicks,timestamp(),-1);
         }
         internal void Work(string name) {CheckCancellation();Volatile.Write(ref work,name);}
+        internal void NetworkPhase(string name){CheckCancellation();Volatile.Write(ref networkPhase,name);}
         internal void Context(string name)=>Volatile.Write(ref context,name);
         internal void DerivedInputs(string text)=>Volatile.Write(ref derivedInputs,text);
         internal T RunPass<T>(bool custom,Func<T> search)
@@ -147,10 +168,18 @@ namespace EngineeringDashboard
         {
             get {long end=Interlocked.Read(ref ended);return ((end==0 ? timestamp() : end)-started)/(double)Stopwatch.Frequency;}
         }
+        private string workerProgress="",workerDiagnostics="",workerRuntime="";
+        private long[] workerCounters;
+        internal long[] ExportWorkerCounters()=>Enum.GetValues(typeof(BeamSearchCounter)).Cast<BeamSearchCounter>().Select(Count).ToArray();
+        internal void ImportWorkerCounters(long[] values)
+        {if(values==null || values.Length!=counters.Length || values.Any(v=>v<0))throw new InvalidOperationException("Invalid worker diagnostic counters.");Volatile.Write(ref workerCounters,(long[])values.Clone());}
+        internal void WorkerStatus(string progress,string diagnostics=null,bool runtime=false)
+        {if(runtime){Volatile.Write(ref workerRuntime,progress??"");Volatile.Write(ref workerProgress,"");}else if(progress!=null)Volatile.Write(ref workerProgress,progress);if(diagnostics!=null)Volatile.Write(ref workerDiagnostics,diagnostics);}
         internal string ProgressText
         {
             get
             {
+                string external=Volatile.Read(ref workerProgress);if(!string.IsNullOrEmpty(external))return external;
                 string current=Volatile.Read(ref work);
                 if(current.IndexOf("cross",StringComparison.OrdinalIgnoreCase)>=0)return "Checking crossing supports";
                 if(current.IndexOf("Separate slab",StringComparison.OrdinalIgnoreCase)>=0)return "Checking separate slab support options";
@@ -192,6 +221,7 @@ namespace EngineeringDashboard
                 text.AppendLine("Stage "+stage.Key+": "+(Interlocked.Read(ref stage.Value.Ticks)/(double)Stopwatch.Frequency).ToString("0.000",CultureInfo.InvariantCulture)+" seconds; calls="+Interlocked.Read(ref stage.Value.Calls));
             if(!HasTimeLimit)text.AppendLine("Per-member numerical timing is disabled for full searches; enclosing stage times and numerical counters are retained.");
             text.AppendLine("Stage times include completed calls only; nested stages and parallel worker times overlap and must not be added as wall time.");
+            text.AppendLine("Network search phase: "+Volatile.Read(ref networkPhase));
             text.AppendLine("Current/last pass: "+Volatile.Read(ref pass));text.AppendLine("Current/last work: "+Volatile.Read(ref work));
             text.AppendLine("Current/last context: "+Volatile.Read(ref context));
             if(!string.IsNullOrEmpty(Volatile.Read(ref crossingRejection)))text.AppendLine("Latest crossing rejection: "+Volatile.Read(ref crossingRejection));
@@ -202,7 +232,10 @@ namespace EngineeringDashboard
             text.AppendLine("Derived solver inputs:\n"+Volatile.Read(ref derivedInputs));
             text.AppendLine("Search result summary:\n"+Volatile.Read(ref result));
             text.AppendLine("Most recent rejected pass (may precede a successful fallback):\n"+Volatile.Read(ref rejectedPass));
-            text.AppendLine("Search error/failure details:\n"+Volatile.Read(ref error));return text.ToString();
+            text.AppendLine("Search error/failure details:\n"+Volatile.Read(ref error));
+            if(!string.IsNullOrEmpty(Volatile.Read(ref workerRuntime)))text.AppendLine("Solver runtime: "+Volatile.Read(ref workerRuntime));
+            if(!string.IsNullOrEmpty(Volatile.Read(ref workerDiagnostics)))text.AppendLine("--- .NET 10 worker diagnostics ---\n"+Volatile.Read(ref workerDiagnostics));
+            return text.ToString();
         }
     }
 }

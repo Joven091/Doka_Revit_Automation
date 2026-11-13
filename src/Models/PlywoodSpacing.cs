@@ -203,10 +203,16 @@ namespace EngineeringDashboard
             var anchors=coverageAnchors.ToList();
             // Only original coverage-end anchors are replaceable. Never remove a
             // previously inserted mandatory row: the transfer grid still maps its load.
-            // Mandatory slab feet can replace nearby primary-stock end rows, but never sheet joints.
+            // Mandatory slab feet can replace nearby primary-stock end rows, but
+            // never a distinct sheet joint outside the row identity tolerance.
             foreach(double x in mandatory)
             {
-                foreach(double a in coverageAnchors.Where(a=>Math.Abs(a-x)>1e-7 && Math.Abs(a-x)<80-1e-7))
+                // Retain the exact mandatory/source coordinate when a coverage
+                // anchor represents the same row within the existing tolerance.
+                // Exact Distinct alone would otherwise keep a second row only
+                // one floating-point step away and report a false flange clash.
+                foreach(double a in coverageAnchors.Where(a=>!mandatory.Contains(a) && Math.Abs(a-x)<=1e-7))anchors.Remove(a);
+                foreach(double a in coverageAnchors.Where(a=>!mandatory.Contains(a) && Math.Abs(a-x)>1e-7 && Math.Abs(a-x)<80-1e-7))
                 {
                     if(!customJoints && Math.Abs(a/SheetLengthMm-Math.Round(a/SheetLengthMm))<1e-7)
                         throw new ArgumentException("A slab support clashes with a mandatory beam sheet joint.");

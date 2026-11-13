@@ -26,6 +26,7 @@ namespace EngineeringDashboard
         }
         private async Task ReadRevit(bool refresh)
         {
+            if(!refresh&&!ConfirmDiscard())return;
             if(revitBusy||highlighting||model.IsBusy)return;revitBusy=true;revitStatus="Waiting for Revit…";UpdateBusy();
             try
             {
@@ -40,6 +41,25 @@ namespace EngineeringDashboard
                 if(!revitClosed){model.RecordDiagnosticError(refresh?"Refresh imported walls":"Use Revit selection",error);revitStatus=error.Message+" Open Tools → Diagnose for details.";}
             }
             finally{revitBusy=false;if(!revitClosed)UpdateBusy();}
+        }
+        private async Task AddWallFromSelection()
+        {
+            if(revit?.ReadSelection==null||model.Input!=null&&model.Input.RevitSource==null){AddManual();return;}
+            if(revitBusy||highlighting||model.IsBusy)return;revitBusy=true;UpdateBusy();
+            try{var snapshot=await revit.ReadSelection();if(!revitClosed){model.AddRevitWalls(snapshot);ShowPage(0);}}
+            catch(Exception error){if(!revitClosed)Error(error);}
+            finally{revitBusy=false;if(!revitClosed)UpdateBusy();}
+        }
+        private void HighlightImportedWalls()=>HighlightWallIds(model.Input?.Walls.Where(w=>w.Included).Select(w=>w.Id)??Array.Empty<string>(),false,"Highlight imported walls");
+        private void HighlightWallIds(System.Collections.Generic.IEnumerable<string> wallIds,bool locate,string operation)
+        {
+            if(revit?.Highlight==null||revitBusy||model.IsBusy||model.Input?.RevitSource==null)return;
+            var selectedIds=new System.Collections.Generic.HashSet<string>(wallIds,StringComparer.Ordinal);
+            var ids=model.Input.Walls.Where(w=>selectedIds.Contains(w.Id)&&w.Revit!=null).Select(w=>w.Revit.UniqueId).Distinct(StringComparer.Ordinal).ToArray();
+            if(ids.Length==0)return;
+            pendingHighlight=new RevitWallRequest{DocumentKey=model.Input.RevitSource.DocumentKey,UniqueIds=ids,Locate=locate};
+            model.RecordRevitOperation(operation,"Document: "+pendingHighlight.DocumentKey+"\nWall unique IDs: "+string.Join(", ",ids));
+            if(!highlighting)RunHighlights();
         }
         private RevitWallRequest SourceRequest()
         {

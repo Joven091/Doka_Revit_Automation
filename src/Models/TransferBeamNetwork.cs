@@ -1,8 +1,10 @@
 using System;
+using SupportVector=EngineeringDashboard.TransferredSlabOptimizer.SupportVector;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,8 +17,60 @@ namespace EngineeringDashboard
         internal bool Found=>Volatile.Read(ref found)!=0;
         internal void Complete()=>Interlocked.Exchange(ref found,1);
     }
+    internal sealed class SpanStockCoverKey : IEquatable<SpanStockCoverKey>
+    {
+        private readonly double[] values;private readonly int hash;
+        internal SpanStockCoverKey(TowerInput input)
+        {
+            values=new[] {input.LengthMm,input.MaximumConcreteEndOverhangMm,input.StockEndSetbackMm,(double)input.PrimaryMaterial,input.AllowCustomPrimaryLengths ? 1.0 : 0}
+                .Concat(input.PrimaryStockLengthsMm.OrderBy(x=>x)).ToArray();
+            unchecked{int h=17;foreach(double value in values)h=h*31+value.GetHashCode();hash=h;}
+        }
+        public override int GetHashCode()=>hash;
+        public override bool Equals(object other)=>Equals(other as SpanStockCoverKey);
+        public bool Equals(SpanStockCoverKey other)=>other!=null && hash==other.hash && values.SequenceEqual(other.values);
+    }
+    // Owned weakly by one network geometry cache, including its stock/spacing
+    // retries. Covers depend on span and stock policy, not secondary row pitch,
+    // receiving width, or the prefix's available leg budget.
+    internal sealed class NetworkSpanStockCoverCache
+    {
+        private readonly Dictionary<SpanStockCoverKey,Lazy<double[][]>> entries=new Dictionary<SpanStockCoverKey,Lazy<double[][]>>();
+        internal double[][] Get(TowerInput input)
+        {
+            input.Trace?.CheckCancellation();
+            var frozen=input.CopyForSearch();frozen.StockLengthsMm=(double[])input.StockLengthsMm.Clone();frozen.TransferredSlab=null;
+            var key=new SpanStockCoverKey(frozen);Lazy<double[][]> pending;
+            lock(entries)
+            {
+                if(!entries.TryGetValue(key,out pending))
+                {
+                    if(entries.Count>=64)entries.Clear();
+                    entries[key]=pending=new Lazy<double[][]>(()=>
+                    {
+                        var result=TransferredSlabOptimizer.StockCovers(frozen);
+                        frozen.Trace?.CheckCancellation();return result;
+                    },LazyThreadSafetyMode.ExecutionAndPublication);
+                }
+            }
+            try {var result=pending.Value;input.Trace?.CheckCancellation();return result;}
+            catch
+            {
+                lock(entries)if(entries.TryGetValue(key,out var current) && ReferenceEquals(current,pending))entries.Remove(key);
+                throw;
+            }
+        }
+    }
     // Owned by one network calculation, including its spacing retries. Completed
     // base layouts are immutable: crossing rechecks copy them before changing loads.
+    // Scoped provenance from one completed catalogue call. Its source input is
+    // the exact search context even when the result holds a terminal prefix copy.
+    internal sealed class NetworkCatalogueBound
+    {
+        internal readonly TransferNetworkInput SourceInput;
+        internal readonly TransferNetworkResult Result;
+        internal NetworkCatalogueBound(TransferNetworkInput sourceInput,TransferNetworkResult result){SourceInput=sourceInput;Result=result;}
+    }
     internal sealed class NetworkReceiverCache
     {
         internal sealed class Entry
@@ -25,15 +79,85 @@ namespace EngineeringDashboard
             internal Dictionary<double,TowerLayout> Alternatives;
             internal TowerSearchDiagnostics Diagnostics;
             internal double[] RowRegistry;
+            internal int LegCeiling;
+            internal bool CompleteFailure,MinimumLegCountProven,WiderCeilingStable,TighterFailureMinimumProven;
+            internal int MinimumRequiredLegs;
         }
-        private readonly TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Entry> entries=new TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Entry>(8192);
-        internal bool Get(ReceiverSolveKey key,out Entry value){lock(entries)return entries.TryGetValue(key,out value);}
-        internal void Store(ReceiverSolveKey key,Entry value){lock(entries)entries.Store(key,value);}
+        private sealed class Record {internal Entry Success,Failure,MinimumFailure;}
+        private readonly TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Record> entries=new TransferredSlabOptimizer.ResponseCache<ReceiverSolveKey,Record>(8192);
+        // Adaptive searches can legitimately select another receiver count at a
+        // tighter budget. Retain exact completed outcomes separately from the
+        // widest success; bound extra response graphs globally, not per key.
+        private readonly TransferredSlabOptimizer.ResponseCache<Tuple<ReceiverSolveKey,int>,Entry> exactSuccesses
+            =new TransferredSlabOptimizer.ResponseCache<Tuple<ReceiverSolveKey,int>,Entry>(1024);
+        internal bool Get(ReceiverSolveKey key,int ceiling,out Entry value)
+        {
+            lock(entries)
+            {
+                value=null;
+                entries.TryGetValue(key,out var record);
+                // A fully exhausted superset also excludes every smaller ceiling.
+                // Preserve this evidence separately: a positive winner above the
+                // requested ceiling must not erase a later failed tighter search.
+                if(record?.Failure!=null && record.Failure.LegCeiling>=ceiling)
+                {value=record.Failure;return true;}
+                if(record?.MinimumFailure!=null && record.MinimumFailure.LegCeiling>=ceiling)
+                {value=record.MinimumFailure;return true;}
+                if(exactSuccesses.TryGetValue(Tuple.Create(key,ceiling),out value))return true;
+                value=record?.Success;
+                if(value==null || value.LegCeiling<ceiling && !value.MinimumLegCountProven && !value.WiderCeilingStable)return false;
+                // A complete nonadaptive winner, or an adaptive winner from its
+                // first receiver count, is stable when the ceiling grows: added
+                // higher station counts cannot improve its legs-first rank or
+                // an already retained width winner. Missing widths still receive
+                // their ordinary fixed-width solves in Receivers. This wider-only
+                // proof does NOT exclude a tighter adaptive search: capping the
+                // stations can make it refine to another receiver count.
+                // A checked winner from a superset remains the winner if it fits
+                // the requested subset. Only nonadaptive engineer searches prove
+                // that every smaller leg tier failed: spreader receiver counts
+                // are otherwise refined only after a failed station search.
+                if(value.Best.LegCount<=ceiling)return true;
+                // Reaching the final adaptive receiver count exhausts counts
+                // 3 through 7 at this same station limit as well. Its winner
+                // therefore excludes every tighter budget below its legs, but
+                // does not determine which count a wider search reaches first.
+                if(!value.MinimumLegCountProven && !value.TighterFailureMinimumProven)return false;
+                value=new Entry {LegCeiling=ceiling,CompleteFailure=true,MinimumRequiredLegs=value.Best.LegCount,
+                    Diagnostics=value.Diagnostics,Alternatives=new Dictionary<double,TowerLayout>()};
+                return true;
+            }
+        }
+        internal void Store(ReceiverSolveKey key,Entry value)
+        {
+            lock(entries)
+            {
+                if(!entries.TryGetValue(key,out var record))record=new Record();
+                if(value.Best==null)
+                {
+                    if(!value.CompleteFailure || record.Failure!=null && record.Failure.LegCeiling>=value.LegCeiling)return;
+                    record.Failure=value;
+                }
+                else
+                {
+                    exactSuccesses.Store(Tuple.Create(key,value.LegCeiling),value);
+                    if(value.TighterFailureMinimumProven && value.Best.LegCount>0)
+                    {
+                        int through=Math.Min(value.LegCeiling,value.Best.LegCount-1);
+                        if(record.MinimumFailure==null || record.MinimumFailure.LegCeiling<through)
+                            record.MinimumFailure=new Entry {CompleteFailure=true,LegCeiling=through,MinimumRequiredLegs=value.Best.LegCount,
+                                Diagnostics=value.Diagnostics,Alternatives=new Dictionary<double,TowerLayout>()};
+                    }
+                    if(record.Success==null || record.Success.LegCeiling<value.LegCeiling)record.Success=value;
+                }
+                entries.Store(key,record);
+            }
+        }
     }
     internal sealed class ReceiverSolveKey : IEquatable<ReceiverSolveKey>
     {
         private readonly double[] values;private readonly string profile;private readonly int hash;
-        internal ReceiverSolveKey(TowerInput input,TransferNetworkInput network,int beam,bool alternatives,bool layoutIdentity=false)
+        internal ReceiverSolveKey(TowerInput input,TransferNetworkInput network,int beam,bool alternatives,bool layoutIdentity=false,bool shareLegCeilings=false)
         {
             var t=input.TransferredSlab;
             // The network has already selected these slab stocks and feet. With
@@ -43,7 +167,7 @@ namespace EngineeringDashboard
                 && (t.LeftBayMm==0 || t.LeftPlan!=null && !t.LeftPlan.IsCustomLength && input.StockLengthsMm.Contains(t.LeftPlan.StockLengthMm))
                 && (t.RightBayMm==0 || t.RightPlan!=null && !t.RightPlan.IsCustomLength && input.StockLengthsMm.Contains(t.RightPlan.StockLengthMm));
             var v=new List<double> {beam,!layoutIdentity && alternatives?1:0,(int)input.PrimaryMaterial,input.LengthMm,input.LongitudinalStartMm,input.LegCapacityKn,input.DeflectionDenominator,input.DeflectionLimitMm,
-                input.StockEndSetbackMm,input.MaximumConcreteEndOverhangMm,layoutIdentity?0:input.EngineerMinimumStations,layoutIdentity?0:input.EngineerStationLimit,layoutIdentity?0:input.NetworkLegCeiling,
+                input.StockEndSetbackMm,input.MaximumConcreteEndOverhangMm,layoutIdentity?0:input.ReceiverFailedThroughStations,layoutIdentity?0:input.EngineerMinimumStations,layoutIdentity?0:input.EngineerStationLimit,layoutIdentity || shareLegCeilings?0:input.NetworkLegCeiling,
                 input.ReceiverTransverseOffsetMm,(int)input.CustomH20Scope,network.HasIndividualSpacings ? 0 : network.UpperSpacingMm,network.LocalRowGapMm,
                 t.BeamWidthMm,t.BeamLineLoadKnM,t.UpperSpacingMm,t.LocalRowGapMm,t.PlywoodSheetLengthMm,t.PlywoodDeflectionDenominator,
                 t.LeftSlabSpacingMm,t.RightSlabSpacingMm,t.LeftBayMm,t.RightBayMm,t.LeftAreaLoadKnM2,t.RightAreaLoadKnM2,t.LeftSlabStartMm??-1,t.LeftSlabEndMm??-1,t.RightSlabStartMm??-1,t.RightSlabEndMm??-1,
@@ -111,8 +235,11 @@ namespace EngineeringDashboard
     {
         internal sealed class Entry {internal bool Passed;internal TowerSearchDiagnostics Diagnostics;}
         private readonly TransferredSlabOptimizer.ResponseCache<CheckedPrefixKey,Entry> entries=new TransferredSlabOptimizer.ResponseCache<CheckedPrefixKey,Entry>(4096);
-        internal bool Get(CheckedPrefixKey key,out Entry value){lock(entries)return entries.TryGetValue(key,out value);}
-        internal void Store(CheckedPrefixKey key,Entry value){lock(entries)entries.Store(key,value);}
+        internal bool Get(CheckedPrefixKey key,out Entry value)=>Get(key,false,out value);
+        internal bool Get(CheckedPrefixKey key,bool terminal,out Entry value)
+        {lock(entries)return entries.TryGetValue(key,out value) && (!terminal || !value.Passed);}
+        internal void Store(CheckedPrefixKey key,Entry value,bool terminal=false)
+        {if(!terminal || !value.Passed)lock(entries)entries.Store(key,value);}
     }
     internal sealed class CheckedPrefixKey : IEquatable<CheckedPrefixKey>
     {
@@ -458,7 +585,875 @@ namespace EngineeringDashboard
     }
     public static class TransferNetworkOptimizer
     {
+        private static readonly ConditionalWeakTable<TransferredSlabOptimizer.GeometryCache,NetworkSpanStockCoverCache> spanStockCovers
+            =new ConditionalWeakTable<TransferredSlabOptimizer.GeometryCache,NetworkSpanStockCoverCache>();
+        internal static double[][] CachedSpanStockCovers(TowerInput input,TransferredSlabOptimizer.GeometryCache geometry)
+        {
+            input.Trace?.CheckCancellation();
+            // Explicit restricted lists already define their own exact universe.
+            if(!input.ReuseSearchWork || geometry==null || input.TransferredSlab?.StockCovers!=null)return TransferredSlabOptimizer.StockCovers(input);
+            return spanStockCovers.GetValue(geometry,_=>new NetworkSpanStockCoverCache()).Get(input);
+        }
         private sealed class State { public TowerLayout[] Beams; public UpperTransferPlan[] Bays; public int Legs,Separate,Narrow,BaysCount;public double Timber,BracePenalty,Symmetry; }
+        internal sealed class ReceiverTopologyReserve
+        {
+            private readonly int[] pieces,current,legs,bays;
+            internal ReceiverTopologyReserve(TowerInput common,TransferNetworkInput network,double[][] sharedCovers,TransferredSlabOptimizer.GeometryCache geometryCache,ReceiverAggregateLoadBound aggregate=null)
+            {
+                int count=network.Beams.Length;pieces=new int[count];current=new int[count];legs=new int[count+1];bays=new int[count+1];
+                for(int beam=0;beam<count;beam++)
+                {
+                    var local=ReceiverStockCovers(common,network,beam,sharedCovers,geometryCache);
+                    // Empty local covers are rejected by the ordinary solve;
+                    // until then they supply no optimistic reservation.
+                    pieces[beam]=local.Select(c=>c.Length).DefaultIfEmpty(0).Min();
+                    current[beam]=Math.Max(4*pieces[beam],aggregate?.MinimumLegs(beam,local)??0);
+                }
+                for(int beam=count-1;beam>=0;beam--)
+                {legs[beam]=legs[beam+1]+current[beam];bays[beam]=bays[beam+1]+pieces[beam];}
+            }
+            internal int CurrentLegs(int beam)=>current[beam];
+            internal int FutureLegs(int beam)=>legs[beam+1];
+            internal int FutureBays(int beam)=>bays[beam+1];
+        }
+        // Terminal physical loads supply a reserve independent of the selected
+        // upper feet and later crossing reroutes. Sum both primary lines before
+        // discarding certified nonnegative crossing forces; either line alone
+        // can have negative reactions and does not supply this lower bound.
+        internal sealed class ReceiverAggregateLoadBound
+        {
+            private readonly TowerInput common;
+            private readonly TransferNetworkInput network;
+            private readonly double coverage;
+            private readonly double[] ledger;
+            private RetainedNormalPlans[] retainedNormalPlans;
+            private sealed class Profile
+            {
+                internal BeamDistributedLoad[][] Raw,Reduced;internal bool AveragePrepared,EarlyPrepared,PrimitivePrepared,NormalPrepared;internal BeamDistributedLoad[] Average,EarlyAverage;internal double[] Primitive;internal int Beam;internal NormalWitness Normal;
+                internal readonly System.Runtime.CompilerServices.ConditionalWeakTable<TowerSearchDiagnostics,HashSet<double>> EmptyReports=new System.Runtime.CompilerServices.ConditionalWeakTable<TowerSearchDiagnostics,HashSet<double>>();
+            }
+            // A complete view depends only on these exact numeric inputs after
+            // each caller independently establishes its physical certificate.
+            // Keep every atomic cut and load in order: even equal adjacent
+            // densities cannot be merged before the original tiny-load clipping.
+            internal sealed class UniversalProfileSignature : IEquatable<UniversalProfileSignature>
+            {
+                private readonly long[] bits;private readonly int hash;private readonly int loadCount;
+                internal long Weight=>64L+bits.Length*8L;
+                internal int LoadCount=>loadCount;
+                internal UniversalProfileSignature(BeamDistributedLoad[] average,double shear,double moment,double[] primitiveIntervals=null,BeamDistributedLoad[] normalWitness=null)
+                {
+                    loadCount=average.Length;int clipping=primitiveIntervals?.Length??0,witness=normalWitness?.Length??0;
+                    bits=new long[4+average.Length*3+clipping+witness*3];bits[0]=BitConverter.DoubleToInt64Bits(shear);bits[1]=BitConverter.DoubleToInt64Bits(moment);bits[2]=clipping;bits[3]=witness;
+                    int at=4;foreach(var q in average){bits[at++]=BitConverter.DoubleToInt64Bits(q.StartMm);bits[at++]=BitConverter.DoubleToInt64Bits(q.EndMm);bits[at++]=BitConverter.DoubleToInt64Bits(q.KnPerM);}
+                    if(primitiveIntervals!=null)foreach(double value in primitiveIntervals)bits[at++]=BitConverter.DoubleToInt64Bits(value);
+                    if(normalWitness!=null)foreach(var q in normalWitness){bits[at++]=BitConverter.DoubleToInt64Bits(q.StartMm);bits[at++]=BitConverter.DoubleToInt64Bits(q.EndMm);bits[at++]=BitConverter.DoubleToInt64Bits(q.KnPerM);}
+                    unchecked{int value=17;foreach(long item in bits)value=value*31+item.GetHashCode();hash=value;}
+                }
+                public override int GetHashCode()=>hash;
+                public override bool Equals(object other)=>Equals(other as UniversalProfileSignature);
+                public bool Equals(UniversalProfileSignature other)
+                {
+                    if(ReferenceEquals(this,other))return true;
+                    if(other==null || hash!=other.hash || bits.Length!=other.bits.Length)return false;
+                    for(int i=0;i<bits.Length;i++)if(bits[i]!=other.bits[i])return false;return true;
+                }
+            }
+            internal readonly struct UniversalViewKey : IEquatable<UniversalViewKey>
+            {
+                internal readonly UniversalProfileSignature Profile;internal readonly TransferredSlabOptimizer.Geometry[] Parent;private readonly long edge;
+                internal UniversalViewKey(UniversalProfileSignature profile,TransferredSlabOptimizer.Geometry[] parent,double value)
+                {Profile=profile;Parent=parent;edge=BitConverter.DoubleToInt64Bits(value);}
+                public override int GetHashCode(){unchecked{return (Profile.GetHashCode()*31+RuntimeHelpers.GetHashCode(Parent))*31+edge.GetHashCode();}}
+                public override bool Equals(object other)=>other is UniversalViewKey key && Equals(key);
+                public bool Equals(UniversalViewKey other)=>ReferenceEquals(Parent,other.Parent) && edge==other.edge && Profile.Equals(other.Profile);
+            }
+            internal sealed class UniversalView
+            {
+                internal UniversalViewKey Key;internal TransferredSlabOptimizer.Geometry[] Kept;
+                internal TransferredSlabOptimizer.Geometry FirstFailed;internal int FirstRun;internal BeamDistributedLoad[] FirstLoads;internal long Weight;
+                internal NormalWitnessFailure? FirstNormalFailure;
+                internal ulong[] Mask;internal ulong Counts;
+            }
+            // One search-pass GeometryCache owns the bounded history. Equivalent
+            // numeric profiles from other beams, phases or coverage trials may
+            // share a completed view without sharing their physical eligibility.
+            internal sealed class UniversalViewCache
+            {
+                private readonly long maximumWeight;private readonly int maximumEntries;
+                private readonly Dictionary<UniversalViewKey,LinkedListNode<UniversalView>> views=new Dictionary<UniversalViewKey,LinkedListNode<UniversalView>>();
+                private readonly LinkedList<UniversalView> order=new LinkedList<UniversalView>();private long weight;
+                internal UniversalViewCache(long maximumWeight=128L*1024*1024,int maximumEntries=int.MaxValue)
+                {
+                    if(maximumWeight<=0 || maximumEntries<=0)throw new ArgumentOutOfRangeException(nameof(maximumWeight));
+                    this.maximumWeight=maximumWeight;this.maximumEntries=maximumEntries;
+                }
+                internal long RetainedBytes{get{lock(views)return weight;}}
+                internal bool CanRetain(UniversalProfileSignature profile,int entries)
+                    =>512L+entries*16L+((entries+63L)/64)*8L+profile.Weight+profile.LoadCount*64L<=maximumWeight;
+                internal bool TryGet(UniversalViewKey key,BeamSearchTrace trace,out UniversalView view)
+                {
+                    lock(views)
+                    {
+                        trace?.CheckCancellation();
+                        if(views.TryGetValue(key,out var found))
+                        {
+                            order.Remove(found);order.AddLast(found);view=found.Value;
+                            if(!ReferenceEquals(view.Key.Profile,key.Profile))trace?.Increment(BeamSearchCounter.UniversalGeometrySharedProfileHits);
+                            return true;
+                        }
+                        view=null;return false;
+                    }
+                }
+                internal UniversalView Publish(UniversalView view,BeamSearchTrace trace)
+                {
+                    trace?.CheckCancellation();if(view.Weight>maximumWeight)return view;
+                    lock(views)
+                    {
+                        trace?.CheckCancellation();
+                        if(views.TryGetValue(view.Key,out var found)){order.Remove(found);order.AddLast(found);return found.Value;}
+                        while(order.Count>=maximumEntries || weight+view.Weight>maximumWeight)
+                        {var oldest=order.First;views.Remove(oldest.Value.Key);weight-=oldest.Value.Weight;order.RemoveFirst();}
+                        views.Add(view.Key,order.AddLast(view));weight+=view.Weight;trace?.ObserveMaximum(BeamSearchCounter.UniversalGeometryPeakBytes,weight);return view;
+                    }
+                }
+            }
+            private readonly Profile[] profiles;
+            private ReceiverAggregateLoadBound(TowerInput common,TransferNetworkInput network,double coverage,double[] ledger)
+            {this.common=common;this.network=network;this.coverage=coverage;this.ledger=ledger;profiles=new Profile[network.Beams.Length];}
+            private static bool Finite(double value)=>TowerBeamAnalysis.Finite(value);
+            internal static double LowerForce(double force,double scale)=>Math.Max(0,force-1e-6-Math.Max(Math.Abs(force),scale)*1e-6);
+            internal static double UpperLedger(double force)=>force>0 ? force+1e-6+Math.Abs(force)*1e-6 : 0;
+            internal static double MaximumLedgerHalf(double edgeLineLoad,double span)=>UpperLedger(Math.Max(0,edgeLineLoad*span/2000));
+            internal static ReceiverAggregateLoadBound TryCreate(TowerInput common,TransferNetworkInput network,double coverage,bool allSlabsCarried,TransferredSlabOptimizer.GeometryCache geometry)
+            {
+                if(!allSlabsCarried || !common.EngineerWorkflow || !common.CoordinateCrossingLayouts || !common.PruneNetworkBounds
+                    || !common.OptimizeCrossingSearch || common.Trace?.HasTimeLimit==true || geometry?.Fixed!=null
+                    || !network.HasIndividualSpacings || network.PlywoodSheetLengthMm!=PlywoodSpacing.SheetLengthMm
+                    || !CrossBeamSupportOptimizer.Modern(network) || network.CrossingBeams.Any(c=>c.SupportMode==CrossBeamSupportMode.LegacySlabRows)
+                    || !Finite(coverage) || coverage<=0)return null;
+                try
+                {
+                    // SlabEdgeLoads uses the first receiver's concrete length,
+                    // not the shared intersection or any primary stock length.
+                    var source=new TransferNetworkResult {Input=network,Beams=new[]{new TowerLayout {LengthMm=network.Beams[0].SpanLength(common.LengthMm)}},
+                        Bays=network.Bays.Select(_=>new UpperTransferPlan()).ToArray(),SlabCoveredLengthMm=coverage};
+                    var ledger=new double[network.Bays.Length];
+                    var centres=new double[network.Beams.Length];
+                    for(int beam=1;beam<centres.Length;beam++)centres[beam]=centres[beam-1]+network.Beams[beam-1].WidthMm/2+network.Bays[beam-1].WidthMm+network.Beams[beam].WidthMm/2;
+                    for(int index=0;index<network.CrossingBeams.Length;index++)
+                    {
+                        common.Trace?.CheckCancellation();var cross=network.CrossingBeams[index];int bay=cross.BayNumber-1;
+                        var edges=CrossBeamSupportOptimizer.SlabEdgeLoads(source,index);
+                        double edge=edges.Sum(p=>p.Kn),edgeScale=edges.Sum(p=>Math.Abs(p.Kn));
+                        double concrete=network.AreaLoad(cross.DepthMm)*cross.WidthMm/1000,total=concrete+edge;
+                        // Fixed ledger reactions can be signed. The combined
+                        // concrete/ledger total must be positive before its
+                        // receiver reaction may be omitted from this reserve.
+                        if(!Finite(edge) || !Finite(edgeScale) || !Finite(concrete) || !Finite(total) || concrete<=0
+                            || total<=1e-6+Math.Max(Math.Abs(concrete),edgeScale)*1e-6)return null;
+                        if(CrossBeamSupportOptimizer.PrimaryBearingPossible(common,network,cross)
+                            && !PrimaryAxesCertified(common,network,cross,centres))return null;
+                        double maximum=MaximumLedgerHalf(edge,network.Bays[bay].WidthMm);
+                        if(!Finite(maximum))return null;ledger[bay]+=maximum;
+                        if(!Finite(ledger[bay]))return null;
+                    }
+                    return new ReceiverAggregateLoadBound(common,network,coverage,ledger);
+                }
+                catch(ArgumentException){return null;}
+            }
+            // A stock between axes a<b, with nonnegative near/far end strips,
+            // has aggregate receiver reactions at least
+            // q*(s-(s-a)^2/(2*(b-a))) and q*(s-b^2/(2*(b-a))).
+            // Check the complete width/offset domain used by Receivers. Shared
+            // bearings have the stronger universal 150..350 mm axis restriction;
+            // dedicated junction end-zone totals are nonnegative by conservation.
+            internal static bool PrimaryAxesCertified(TowerInput common,TransferNetworkInput network,TransferCrossingBeamRow cross,double[] centres=null)
+            {
+                int bay=cross.BayNumber-1;double span=network.Bays[bay].WidthMm;
+                if(centres==null)
+                {
+                    centres=new double[network.Beams.Length];
+                    for(int beam=1;beam<centres.Length;beam++)centres[beam]=centres[beam-1]+network.Beams[beam-1].WidthMm/2+network.Bays[beam-1].WidthMm+network.Beams[beam].WidthMm/2;
+                }
+                var settings=new[]{Tuple.Create(600.0,0.0),Tuple.Create(1000.0,0.0),Tuple.Create(1500.0,0.0),Tuple.Create(1524.0,0.0),Tuple.Create(2000.0,0.0),Tuple.Create(1000.0,-25.0),Tuple.Create(1000.0,25.0)};
+                double face=centres[bay]+network.Beams[bay].WidthMm/2;
+                foreach(var left in settings)foreach(var right in settings)
+                {
+                    double near=centres[bay]+left.Item2+left.Item1/2,far=centres[bay+1]+right.Item2-right.Item1/2;
+                    double a=near-face,b=far-face,d=far-near;
+                    if(!Finite(a) || !Finite(b) || !Finite(d) || !Finite(span))return false;
+                    // These routes are rejected before stock enumeration by the
+                    // original reversed-axis or earliest/latest endpoint checks.
+                    if(far<=near+1e-7 || a<common.StockEndSetbackMm-1e-7 || b>span-common.StockEndSetbackMm+1e-7)continue;
+                    double limit=2*span*d,nearSquare=(span-a)*(span-a),farSquare=b*b;
+                    double margin=1e-6+Math.Max(Math.Abs(limit),Math.Max(nearSquare,farSquare))*1e-6;
+                    if(!Finite(limit) || nearSquare>limit-margin || farSquare>limit-margin)return false;
+                }
+                return true;
+            }
+            internal static double PrimaryConcreteCoefficient(TowerInput common,TransferNetworkInput network,TransferCrossingBeamRow cross,int side)
+            {
+                if(side<0 || side>1)throw new ArgumentOutOfRangeException(nameof(side));
+                int bay=cross.BayNumber-1;double span=network.Bays[bay].WidthMm,result=double.PositiveInfinity;
+                if(!Finite(span) || span<=0 || !Finite(common.StockEndSetbackMm) || common.StockEndSetbackMm<0)return 0;
+                var settings=NormalReceiverSettings();
+                var centres=new double[network.Beams.Length];
+                for(int beam=1;beam<centres.Length;beam++)centres[beam]=centres[beam-1]+network.Beams[beam-1].WidthMm/2+network.Bays[beam-1].WidthMm+network.Beams[beam].WidthMm/2;
+                double face=centres[bay]+network.Beams[bay].WidthMm/2;
+                foreach(var left in settings)foreach(var right in settings)
+                {
+                    // Preserve the actual absolute primary-axis association.
+                    double near=centres[bay]+left.Item2+left.Item1/2,far=centres[bay+1]+right.Item2-right.Item1/2;
+                    double a=near-face,b=far-face,d=far-near;
+                    if(!Finite(a) || !Finite(b) || !Finite(d))return 0;
+                    if(far<=near+1e-7)continue;
+                    // Include unenclosable stock/setback poses conservatively:
+                    // removing them at a separately associated ULP boundary
+                    // could omit an actual permitted route. Extra poses only
+                    // weaken this minimum; every real route is still covered.
+                    double square=side==0 ? (span-a)*(span-a) : b*b,term=square/(2*d),value=span-term;
+                    if(!Finite(value) || !Finite(term))return 0;
+                    result=Math.Min(result,LowerForce(value,Math.Abs(span)+Math.Abs(term)));
+                }
+                // No admitted axis pair supplies no stronger positive proof.
+                return Finite(result) ? result : 0;
+            }
+            internal static double DedicatedConcreteCoefficient(TowerInput common,double receiverBottom,double crossingBottom,bool carried)
+            {
+                // Full-span dedicated results have no receiving bearings. They
+                // are impossible only below EVERY permitted shutter allowance.
+                if(!Finite(common.MaximumConcreteEndOverhangMm) || common.MaximumConcreteEndOverhangMm>=175
+                    || !Finite(receiverBottom) || !Finite(crossingBottom) || receiverBottom>crossingBottom+1e-7)return 0;
+                double value=receiverBottom<crossingBottom-1e-7 ? 175 : carried ? 500 : 0;
+                return LowerForce(value,Math.Abs(value)+Math.Abs(receiverBottom)+Math.Abs(crossingBottom));
+            }
+            internal double PhysicalConcreteCoefficient(int beam,TransferCrossingBeamRow crossing)
+            {
+                int bay=crossing.BayNumber-1,side=beam==bay ? 0 : beam==bay+1 ? 1 : -1;if(side<0)return 0;
+                if(common.MaximumConcreteEndOverhangMm>=175 || crossing.SupportMode==CrossBeamSupportMode.LegacySlabRows)return 0;
+                double value=double.PositiveInfinity;
+                if(crossing.SupportMode!=CrossBeamSupportMode.DedicatedTowers)
+                {
+                    if(CrossBeamSupportOptimizer.PrimaryBearingPossible(common,network,crossing))
+                        value=Math.Min(value,PrimaryConcreteCoefficient(common,network,crossing,side));
+                    if(CrossBeamSupportOptimizer.ValidFillerGap(crossing.BottomElevationMm,network.Beams[bay].BottomElevationMm,out var near)
+                        && CrossBeamSupportOptimizer.ValidFillerGap(crossing.BottomElevationMm,network.Beams[bay+1].BottomElevationMm,out var far))
+                        value=Math.Min(value,SharedConcreteCoefficient(network.Bays[bay].WidthMm));
+                }
+                if(crossing.SupportMode!=CrossBeamSupportMode.ExistingSupportsOnly)
+                    // TryCreate certifies every slab option carried. Actual input
+                    // guards require this adjacent bay on the receiver too.
+                    value=Math.Min(value,DedicatedConcreteCoefficient(common,network.Beams[beam].BottomElevationMm,crossing.BottomElevationMm,true));
+                return Finite(value) ? value : 0;
+            }
+            private EngineerPrimaryPlan Plan(int beam,TowerInput local,bool deductLedger)
+            {
+                var plan=EngineerPrimaryPlan.Create(local,network,beam);
+                if(deductLedger)foreach(int bay in new[]{beam-1,beam}.Where(b=>b>=0 && b<network.Bays.Length))
+                {
+                    double reference=network.ReferenceLengthMm>0 ? network.ReferenceLengthMm : plan.StartMm+plan.LengthMm;
+                    double normal=network.BayEnd(bay,reference)-network.BayStart(bay,reference)-network.CrossingBeams.Where(c=>c.BayNumber==bay+1).Sum(c=>c.WidthMm);
+                    double source=network.AreaLoad(network.Bays[bay].ThicknessMm)*network.Bays[bay].WidthMm/2000;
+                    // An unattainable combination of maximal route ledgers may
+                    // exceed the source. Zero normal slab force is then safe.
+                    plan.SlabLedgerForces[bay]=Math.Max(0,Math.Min(ledger[bay],source*Math.Max(0,normal)/1000));
+                }
+                return plan;
+            }
+            private Profile ForBeam(int beam)
+            {
+                if(profiles[beam]!=null)return profiles[beam];
+                var local=common.CopyForSearch();local.LengthMm=network.Beams[beam].SpanLength(common.LengthMm);local.LongitudinalStartMm=network.Beams[beam].SpanStartMm;
+                // Build each fixed source profile once, before the stock-cover
+                // loop. Integrating another interval needs no zone preparation.
+                return profiles[beam]=new Profile {Beam=beam,Raw=Plan(beam,local,false).WithoutCrossingLoads(),Reduced=Plan(beam,local,true).WithoutCrossingLoads()};
+            }
+            private static double Force(BeamDistributedLoad[][] zones,double start,double length,double selfWeight)
+            {
+                double force=0;
+                foreach(var line in zones)
+                {
+                    double value=selfWeight*length/1000;
+                    foreach(var q in line)
+                    {
+                        // Preserve Loads' member-coordinate clipping and tiny
+                        // interval exclusion, using its original absolute cuts.
+                        double a=Math.Max(0,Math.Max(start,q.StartMm)-start),b=Math.Min(length,Math.Min(start+length,q.EndMm)-start);
+                        if(b>a+1e-7)value+=q.KnPerM*(b-a)/1000;
+                    }
+                    force+=value;
+                }
+                return force;
+            }
+            internal double StockForce(int beam,double start,double length)
+                =>StockForce(ForBeam(beam),start,length);
+            private double StockForce(Profile profile,double start,double length)
+            {
+                var primitive=UniversalClippingIntervals(profile.Beam);
+                if(primitive==null || !PrimitiveWindowSafe(primitive,start,length))return 0;
+                double self=common.Primary.SelfWeightKnM(length),before=Force(profile.Raw,start,length,self),after=Force(profile.Reduced,start,length,self);
+                // Scale the allowance to the raw sources, not a small residual
+                // after cancellation. All algebra changes only a necessary bound.
+                return LowerForce(after,Math.Abs(before)+Math.Abs(before-after));
+            }
+            // Atomic cells refine every possible source design cut, including
+            // cuts erased by equal-density merging in Raw/Reduced. The separate
+            // primitive-window guard protects signed source clipping at tiny cuts.
+            internal BeamDistributedLoad[] UniversalAverage(int beam)
+            {
+                var profile=ForBeam(beam);if(profile.AveragePrepared)return profile.Average;
+                var raw=profile.Raw.Select(line=>line.ToList()).ToArray();var lower=profile.Reduced.Select(line=>line.ToList()).ToArray();
+                var source=new TransferNetworkResult {Input=network,Beams=new[]{new TowerLayout {LengthMm=network.Beams[0].SpanLength(common.LengthMm)}},
+                    Bays=network.Bays.Select(_=>new UpperTransferPlan()).ToArray(),SlabCoveredLengthMm=coverage};
+                try
+                {
+                    foreach(var crossing in network.CrossingBeams.Where(c=>c.BayNumber==beam || c.BayNumber==beam+1))
+                    {
+                        common.Trace?.CheckCancellation();double coefficient=PhysicalConcreteCoefficient(beam,crossing);if(coefficient<=0)continue;
+                        int index=Array.IndexOf(network.CrossingBeams,crossing);var edges=CrossBeamSupportOptimizer.SlabEdgeLoads(source,index);
+                        if(edges.Any(p=>!Finite(p.PositionMm) || !Finite(p.Kn) || p.Kn<0))continue;
+                        double area=network.AreaLoad(crossing.DepthMm),span=network.Bays[crossing.BayNumber-1].WidthMm;
+                        double ledgerEnvelope=network.AreaLoad(network.Bays[crossing.BayNumber-1].ThicknessMm)*50,edgeScale=edges.Sum(p=>Math.Abs(p.Kn));
+                        if(!Finite(ledgerEnvelope) || ledgerEnvelope<0 || !Finite(edgeScale) || edgeScale>ledgerEnvelope)continue;
+                        double before=area*span/1000+ledgerEnvelope*span/crossing.WidthMm,after=area*coefficient/1000;
+                        if(!Finite(before) || !Finite(after) || before<after || after<=0)continue;
+                        double start=crossing.PositionMm-crossing.WidthMm/2,end=crossing.PositionMm+crossing.WidthMm/2;
+                        raw[0].Add(new BeamDistributedLoad {StartMm=start,EndMm=end,KnPerM=before});
+                        lower[0].Add(new BeamDistributedLoad {StartMm=start,EndMm=end,KnPerM=after});
+                    }
+                }
+                catch(ArgumentException){raw=profile.Raw.Select(line=>line.ToList()).ToArray();lower=profile.Reduced.Select(line=>line.ToList()).ToArray();}
+                var average=GuardedAverage(raw.Select(l=>l.ToArray()).ToArray(),lower.Select(l=>l.ToArray()).ToArray(),UniversalCuts(beam));common.Trace?.CheckCancellation();
+                profile.Average=average;profile.AveragePrepared=true;return average;
+            }
+            private double[] UniversalCuts(int beam)
+            {
+                var local=network.Beams[beam];double reference=network.ReferenceLengthMm>0 ? network.ReferenceLengthMm : local.SpanStartMm+local.SpanLength(common.LengthMm);
+                var cuts=new List<double> {local.SpanStartMm,local.SpanEnd(common.LengthMm)};
+                foreach(int bay in new[]{beam-1,beam}.Where(b=>b>=0 && b<network.Bays.Length))
+                {cuts.Add(network.BayStart(bay,reference));cuts.Add(network.BayEnd(bay,reference));}
+                foreach(var crossing in network.CrossingBeams.Where(c=>c.BayNumber==beam || c.BayNumber==beam+1))
+                {cuts.Add(crossing.PositionMm-crossing.WidthMm/2);cuts.Add(crossing.PositionMm+crossing.WidthMm/2);}
+                return cuts.ToArray();
+            }
+            // Resolved source lines only merge/remove these design cuts. A
+            // clipped positive actual atom can disappear only if a primitive
+            // subinterval also disappears. Keep zero-density primitive cells:
+            // they may hide opposing signed actual line contributions.
+            internal double[] UniversalClippingIntervals(int beam)
+            {
+                var profile=ForBeam(beam);if(profile.PrimitivePrepared)return profile.Primitive;
+                var primitive=PrimitiveIntervals(profile.Raw,profile.Reduced,UniversalCuts(beam));common.Trace?.CheckCancellation();
+                profile.Primitive=primitive;profile.PrimitivePrepared=true;return primitive;
+            }
+            internal static double[] PrimitiveIntervals(BeamDistributedLoad[][] raw,BeamDistributedLoad[][] reduced,double[] mandatory)
+            {
+                if(raw==null || reduced==null || raw.Any(l=>l==null) || reduced.Any(l=>l==null) || mandatory==null || mandatory.Any(x=>!Finite(x)))return null;
+                var all=raw.Concat(reduced).SelectMany(l=>l).ToArray();
+                if(all.Any(q=>q==null || !Finite(q.StartMm) || !Finite(q.EndMm) || q.EndMm<q.StartMm))return null;
+                var cuts=all.SelectMany(q=>new[]{q.StartMm,q.EndMm}).Concat(mandatory).Distinct().OrderBy(x=>x).ToArray();var result=new List<double>();
+                for(int i=1;i<cuts.Length;i++)if(cuts[i]>cuts[i-1]){result.Add(cuts[i-1]);result.Add(cuts[i]);}
+                return result.ToArray();
+            }
+            internal static bool PrimitiveWindowSafe(double[] primitive,double start,double length)
+            {
+                for(int i=0;i<primitive.Length;i+=2)
+                {
+                    double a=Math.Max(0,Math.Max(start,primitive[i])-start),b=Math.Min(length,Math.Min(start+length,primitive[i+1])-start);
+                    if(b>a && !(b>a+1e-7))return false;
+                }
+                return true;
+            }
+            internal readonly struct NormalWitnessFailure
+            {
+                internal readonly string Name,Unit;internal readonly double Demand,Limit,CellStart,CellEnd,Density;
+                internal NormalWitnessFailure(string name,string unit,double demand,double limit,BeamDistributedLoad cell)
+                {Name=name;Unit=unit;Demand=demand;Limit=limit;CellStart=cell.StartMm;CellEnd=cell.EndMm;Density=cell.KnPerM;}
+                internal void Record(TowerInput input,int run)
+                    =>input.Diagnostics?.Limit(input.DiagnosticScope+"Exterior slab-facing primary · P"+(run+1),Name,3,Demand,Limit,Unit,
+                        $"One normal cell {CellStart:0.###}–{CellEnd:0.###} mm; guaranteed slab-facing line load {Density:0.######} kN/m",
+                        "Reduce the primary support span or stock cantilever.",Limit*1e-6);
+            }
+            internal sealed class NormalWitness
+            {
+                internal readonly BeamDistributedLoad[] Cells;internal readonly double OwnLower,OwnUpper,SlabMinimum,CentroidLower,Scale;
+                private readonly Tuple<double,double>[] settings;private readonly double bay,beamWidth;private readonly bool last;
+                private readonly double? boundWidth;private readonly double boundOffset;
+                private readonly double[] knownUpper;
+                private readonly RetainedNormalPlans retainedUpper;
+                internal NormalWitness(BeamDistributedLoad[] cells,double ownLower,double ownUpper,double slabMinimum,double centroidLower,double scale,Tuple<double,double>[] settings,double bay,double beamWidth,bool last,double? boundWidth=null,double boundOffset=0,double[] knownUpper=null,RetainedNormalPlans retainedUpper=null)
+                {Cells=cells;OwnLower=ownLower;OwnUpper=ownUpper;SlabMinimum=slabMinimum;CentroidLower=centroidLower;Scale=scale;this.settings=settings;this.bay=bay;this.beamWidth=beamWidth;this.last=last;this.boundWidth=boundWidth;this.boundOffset=boundOffset;this.knownUpper=knownUpper;this.retainedUpper=retainedUpper;}
+                private bool WidthAllowed(double width,double offset)=>settings.Any(s=>s.Item1==width && s.Item2==offset);
+                internal NormalWitness ForKnownUpper(UpperTransferPlan plan)
+                {
+                    if(plan==null || !ValidNormalUpper(plan,bay))return null;
+                    // A symmetric upper member places half its stock load at
+                    // the foot and its edge shutter load 100 mm beyond the face.
+                    // NormalLoads scales both together when deducting ledgers.
+                    var snapshot=new[]{plan.StockLengthMm,plan.EdgeMm,plan.NearFootMm,plan.FarFootMm};
+                    double stockMoment=snapshot[0]*snapshot[2],edgeMoment=2*snapshot[1]*100,h=(stockMoment+edgeMoment)/bay;
+                    double scale=(Math.Abs(stockMoment)+Math.Abs(edgeMoment))/bay+Math.Abs(h);
+                    if(!Finite(h) || !Finite(scale))return null;h=Math.Max(CentroidLower,LowerForce(h,scale));
+                    double density=double.PositiveInfinity;
+                    foreach(var setting in settings)
+                    {
+                        double delta=last ? -setting.Item2 : setting.Item2;
+                        density=Math.Min(density,OwnLower*(.5-delta/setting.Item1)+SlabMinimum*(.5+(beamWidth/2+h-delta)/setting.Item1));
+                    }
+                    if(!Finite(density))return null;density=LowerForce(density,Scale);
+                    var cells=Cells.Select(c=>new BeamDistributedLoad {StartMm=c.StartMm,EndMm=c.EndMm,KnPerM=Math.Max(c.KnPerM,density)}).ToArray();
+                    return new NormalWitness(cells,OwnLower,OwnUpper,SlabMinimum,h,Scale,settings,bay,beamWidth,last,boundWidth,boundOffset,snapshot);
+                }
+                internal NormalWitness ForRetainedUpper(RetainedNormalPlans retained)
+                {
+                    if(retained==null || retained.Bay!=bay)return null;
+                    double h=Math.Max(CentroidLower,retained.CentroidLower),density=double.PositiveInfinity;
+                    foreach(var setting in settings)
+                    {
+                        double delta=last ? -setting.Item2 : setting.Item2;
+                        density=Math.Min(density,OwnLower*(.5-delta/setting.Item1)+SlabMinimum*(.5+(beamWidth/2+h-delta)/setting.Item1));
+                    }
+                    if(!Finite(density))return null;density=LowerForce(density,Scale);
+                    var cells=Cells.Select(c=>new BeamDistributedLoad {StartMm=c.StartMm,EndMm=c.EndMm,KnPerM=Math.Max(c.KnPerM,density)}).ToArray();
+                    return new NormalWitness(cells,OwnLower,OwnUpper,SlabMinimum,h,Scale,settings,bay,beamWidth,last,boundWidth,boundOffset,retainedUpper:retained);
+                }
+                internal NormalWitness ForSetting(double width,double offset)
+                {
+                    if(!WidthAllowed(width,offset))return null;double delta=last ? -offset : offset;
+                    double density=OwnLower*(.5-delta/width)+SlabMinimum*(.5+(beamWidth/2+CentroidLower-delta)/width);
+                    if(!Finite(density))return null;density=LowerForce(density,Scale);if(density<=0)return null;
+                    return new NormalWitness(Cells.Select(c=>new BeamDistributedLoad {StartMm=c.StartMm,EndMm=c.EndMm,KnPerM=density}).ToArray(),OwnLower,OwnUpper,SlabMinimum,CentroidLower,Scale,settings,bay,beamWidth,last,width,offset,knownUpper,retainedUpper);
+                }
+                internal bool Allows(TowerInput input)
+                {
+                    var t=input?.TransferredSlab;if(t==null || t.BeamWidthMm!=beamWidth || t.BeamCentreOffsetMm!=-input.ReceiverTransverseOffsetMm)return false;
+                    if(input.StockLengthsMm==null || input.StockLengthsMm.Length==0 || input.StockLengthsMm.Any(s=>!Finite(s) || s<300 || s>50000))return false;
+                    if(boundWidth.HasValue && (t.FixedTowerWidthMm!=boundWidth || input.ReceiverTransverseOffsetMm!=boundOffset))return false;
+                    if(t.FixedTowerWidthMm.HasValue)
+                    {if(!WidthAllowed(t.FixedTowerWidthMm.Value,input.ReceiverTransverseOffsetMm))return false;}
+                    else if(input.ReceiverTransverseOffsetMm!=0 || TowerOptimizer.BaysMm.Any(w=>!WidthAllowed(w,0)) || !WidthAllowed(1524,0))return false;
+                    var plan=last ? t.LeftPlan : t.RightPlan;
+                    if(knownUpper!=null && (plan==null || plan.StockLengthMm!=knownUpper[0] || plan.EdgeMm!=knownUpper[1] || plan.NearFootMm!=knownUpper[2] || plan.FarFootMm!=knownUpper[3]))return false;
+                    if(retainedUpper!=null && !retainedUpper.Contains(plan))return false;
+                    return ValidNormalUpper(plan,bay);
+                }
+            }
+            internal sealed class RetainedNormalPlans
+            {
+                private readonly struct PlanKey : IEquatable<PlanKey>
+                {
+                    private readonly double stock,edge,near,far;
+                    internal PlanKey(UpperTransferPlan plan){stock=plan.StockLengthMm;edge=plan.EdgeMm;near=plan.NearFootMm;far=plan.FarFootMm;}
+                    public bool Equals(PlanKey other)=>stock==other.stock && edge==other.edge && near==other.near && far==other.far;
+                    public override bool Equals(object value)=>value is PlanKey other && Equals(other);
+                    public override int GetHashCode(){unchecked{return ((stock.GetHashCode()*397^edge.GetHashCode())*397^near.GetHashCode())*397^far.GetHashCode();}}
+                }
+                private readonly HashSet<PlanKey> members;
+                internal readonly double Bay,CentroidLower;
+                private RetainedNormalPlans(double bay,double centroid,HashSet<PlanKey> members){Bay=bay;CentroidLower=centroid;this.members=members;}
+                internal bool Contains(UpperTransferPlan plan)=>plan!=null && members.Contains(new PlanKey(plan));
+                internal static RetainedNormalPlans TryCreate(double bay,UpperTransferPlan[] options)
+                {
+                    if(options==null || options.Length==0 || options.Any(p=>p==null || !ValidNormalUpper(p,bay)))return null;
+                    var members=new HashSet<PlanKey>();double minimum=double.PositiveInfinity;
+                    foreach(var plan in options)
+                    {
+                        double stockMoment=plan.StockLengthMm*plan.NearFootMm,edgeMoment=2*plan.EdgeMm*100,h=(stockMoment+edgeMoment)/bay;
+                        double scale=(Math.Abs(stockMoment)+Math.Abs(edgeMoment))/bay+Math.Abs(h);
+                        if(!Finite(h) || !Finite(scale))return null;
+                        minimum=Math.Min(minimum,LowerForce(h,scale));members.Add(new PlanKey(plan));
+                    }
+                    return Finite(minimum) ? new RetainedNormalPlans(bay,minimum,members) : null;
+                }
+            }
+            // Bind only the already-retained option universe. The immutable
+            // numeric membership guard is rechecked on every native header;
+            // reverse copies of symmetric left-hand plans need no reference key.
+            internal void BindRetainedNormalOptions(UpperTransferPlan[][] options)
+            {
+                if(retainedNormalPlans!=null)return;
+                var retained=new RetainedNormalPlans[network.Bays.Length];
+                if(options!=null && options.Length==network.Bays.Length)
+                    foreach(int bay in new[]{0,network.Bays.Length-1}.Distinct())
+                    {common.Trace?.CheckCancellation();retained[bay]=RetainedNormalPlans.TryCreate(network.Bays[bay].WidthMm,options[bay]);}
+                common.Trace?.CheckCancellation();retainedNormalPlans=retained;
+            }
+            internal static bool ValidNormalUpper(UpperTransferPlan plan,double bay)
+                =>plan==null || SymmetricPlan(plan,bay) && new[]{plan.StockLengthMm,plan.EdgeMm,plan.NearFootMm,plan.FarFootMm}.All(Finite)
+                    && plan.StockLengthMm>=600 && plan.EdgeMm>=200 && plan.NearFootMm>=Math.Max(250,plan.EdgeMm+150) && bay-plan.NearFootMm-plan.FarFootMm>=300;
+            internal static double NormalCentroidLower(double bay)
+            {
+                if(!Finite(bay) || bay<1000)return 0;
+                double term=100000/bay,value=350-term;return LowerForce(value,350+Math.Abs(term));
+            }
+            private static Tuple<double,double>[] NormalReceiverSettings()
+                =>TowerOptimizer.BaysMm.Concat(new[]{1000.0,1500,1524,2000}).Distinct().Select(w=>Tuple.Create(w,0.0))
+                    .Concat(new[]{Tuple.Create(1000.0,-25.0),Tuple.Create(1000.0,25.0)}).ToArray();
+            // For an outermost receiver, all normal slab points lie beyond one
+            // face. Symmetric upper stock with e>=200, f>=e+150 and a 300 mm
+            // foot span has centroid h>=350-100000/bay beyond that face.
+            internal NormalWitness ExteriorNormalWitness(int beam)
+            {
+                var profile=ForBeam(beam);if(profile.NormalPrepared)return profile.Normal;
+                NormalWitness result=null;
+                if(beam==0 || beam==network.Beams.Length-1)
+                {
+                    int bayIndex=beam==0 ? 0 : network.Bays.Length-1;var row=network.Beams[beam];var slab=network.Bays[bayIndex];double bay=slab.WidthMm;
+                    var average=UniversalAverage(beam);var primitive=UniversalClippingIntervals(beam);var settings=NormalReceiverSettings();double h=NormalCentroidLower(bay);
+                    if(average!=null && primitive!=null && h>0 && settings.All(s=>Finite(s.Item1) && s.Item1>0 && Finite(s.Item2) && Math.Abs(s.Item2)<s.Item1/2))
+                    {
+                        double own=network.AreaLoad(row.DepthMm)*row.WidthMm/1000,slabRaw=network.AreaLoad(slab.ThicknessMm)*bay/2000;
+                        double ownMargin=1e-6+Math.Abs(own)*1e-6,ownUpper=own+ownMargin,ownLower=Math.Max(0,own-ownMargin);
+                        double reference=network.ReferenceLengthMm>0 ? network.ReferenceLengthMm : row.SpanEnd(common.LengthMm);
+                        double bayStart=network.BayStart(bayIndex,reference),bayEnd=network.BayEnd(bayIndex,reference),spanEnd=row.SpanEnd(common.LengthMm);
+                        var crossings=network.CrossingBeams.Where(c=>c.BayNumber==bayIndex+1).ToArray();var cells=new List<BeamDistributedLoad>();double minimumSlab=double.PositiveInfinity,maximumScale=0;
+                        if(Finite(own) && own>=0 && Finite(slabRaw) && slabRaw>=0 && Finite(ownUpper) && Finite(bayStart) && Finite(bayEnd))
+                        for(int i=0;i<primitive.Length;i+=2)
+                        {
+                            common.Trace?.CheckCancellation();
+                            double a=primitive[i],b=primitive[i+1];
+                            if(a<row.SpanStartMm || b>spanEnd || a<bayStart || b>bayEnd || crossings.Any(c=>a<c.PositionMm+c.WidthMm/2 && b>c.PositionMm-c.WidthMm/2))continue;
+                            double q=average.Where(v=>v.StartMm<=a && v.EndMm>=b).Select(v=>v.KnPerM).DefaultIfEmpty(0).Sum();
+                            double slabMinimum=Math.Max(0,2*q-ownUpper),density=double.PositiveInfinity;
+                            foreach(var setting in settings)
+                            {
+                                double width=setting.Item1,offset=beam==0 ? setting.Item2 : -setting.Item2;
+                                density=Math.Min(density,ownLower*(.5-offset/width)+slabMinimum*(.5+(row.WidthMm/2+h-offset)/width));
+                            }
+                            double maximumLever=row.WidthMm/2+bay/2+100;
+                            double amplification=1+settings.Max(s=>Math.Abs(.5-s.Item2/s.Item1)+Math.Abs(.5+(maximumLever+Math.Abs(s.Item2))/s.Item1));
+                            double scale=(Math.Abs(own)+Math.Abs(slabRaw)+Math.Abs(slabRaw-slabMinimum))*amplification;
+                            if(!Finite(density) || !Finite(scale))continue;density=LowerForce(density,scale);
+                            if(density<=0)continue;cells.Add(new BeamDistributedLoad {StartMm=a,EndMm=b,KnPerM=density});minimumSlab=Math.Min(minimumSlab,slabMinimum);maximumScale=Math.Max(maximumScale,scale);
+                        }
+                        if(cells.Count>0)result=new NormalWitness(cells.ToArray(),ownLower,ownUpper,minimumSlab,h,maximumScale,settings,bay,row.WidthMm,beam!=0);
+                    }
+                }
+                common.Trace?.CheckCancellation();profile.Normal=result;profile.NormalPrepared=true;return result;
+            }
+            // A witness is local to one whole support span or free stock tail.
+            // It never combines different cells or fills unknown crossing zones.
+            internal static bool ExteriorNormalFits(TowerInput input,double start,double length,double[] supports,BeamDistributedLoad[] cells,out NormalWitnessFailure failure)
+                =>ExteriorNormalFitsSupports(input,start,length,new SupportVector(supports),cells,out failure);
+            internal static bool ExteriorNormalFitsSupports(TowerInput input,double start,double length,SupportVector supports,BeamDistributedLoad[] cells,out NormalWitnessFailure failure)
+            {
+                failure=default;double shear=input.Primary.ShearLimitKn,moment=input.Primary.MomentLimitKnM;
+                for(int kind=0;kind<3;kind++)
+                {
+                    int begin=kind==0 ? 1 : 0,end=kind==0 ? supports.Length : 1;
+                    for(int i=begin;i<end;i++)
+                    {
+                        double lo=kind==0 ? supports[i-1] : kind==1 ? 0 : supports[supports.Length-1],hi=kind==0 ? supports[i] : kind==1 ? supports[0] : length;
+                        if(!(hi>lo+1e-7))continue;
+                        foreach(var cell in cells)
+                        {
+                            double a=Math.Max(0,Math.Max(start,cell.StartMm)-start),b=Math.Min(length,Math.Min(start+length,cell.EndMm)-start);
+                            if(lo<a || hi>b)continue;
+                            double force=cell.KnPerM*Math.Max(0,Math.Min(hi,b)-Math.Max(lo,a))/1000;
+                            double v=kind==0 ? Math.Abs(force)/2 : Math.Abs(force);
+                            if(v>shear+shear*1e-6){failure=new NormalWitnessFailure(kind==0 ? "normal span shear lower bound" : "normal stock-tail shear", "kN",v,shear,cell);return false;}
+                            if(kind!=0)
+                            {
+                                double root=kind==1 ? hi : lo,m=Math.Abs(cell.KnPerM*(hi-lo)*((lo+hi)/2-root)/1e6);
+                                if(m>moment+moment*1e-6){failure=new NormalWitnessFailure("normal stock-tail moment","kNm",m,moment,cell);return false;}
+                            }
+                            break;
+                        }
+                    }
+                }
+                return true;
+            }
+            // Below refinement eight the native admission graph requires every
+            // eligible crossing to pass Shared, or a direct-primary OR arm which
+            // retains that crossing's half-span planning load. This is admission
+            // metadata only; the terminal physical reserve keeps its weaker loads.
+            internal static double SharedConcreteCoefficient(double span)
+            {
+                if(!Finite(span) || span<600)return 0;
+                double a=Math.Min(350,span/2-150),d0=span-2*a,d1=span-150-a;
+                if(d0<=0 || d1<=0)return 0;
+                double p=(span-a)*(span-a)/(2*d0),q=(span-150)*(span-150)/(2*d1);
+                double result=Math.Min(span/2,span-Math.Max(p,q)),scale=Math.Abs(span)+Math.Abs(p)+Math.Abs(q);
+                return Finite(result) && Finite(scale) ? LowerForce(result,scale) : 0;
+            }
+            internal BeamDistributedLoad[] UniversalEarlyAverage(int beam)
+            {
+                var profile=ForBeam(beam);if(profile.EarlyPrepared)return profile.EarlyAverage;
+                var raw=profile.Raw.Select(line=>line.ToList()).ToArray();var lower=profile.Raw.Select(line=>line.ToList()).ToArray();int added=0;
+                var source=new TransferNetworkResult {Input=network,Beams=new[]{new TowerLayout {LengthMm=network.Beams[0].SpanLength(common.LengthMm)}},
+                    Bays=network.Bays.Select(_=>new UpperTransferPlan()).ToArray(),SlabCoveredLengthMm=coverage};
+                try
+                {
+                    foreach(var crossing in EngineerPrimaryPlan.Adjacent(network,beam))
+                    {
+                        common.Trace?.CheckCancellation();if(CrossBeamSupportOptimizer.PrimaryBearingPossible(common,network,crossing))continue;
+                        int index=Array.IndexOf(network.CrossingBeams,crossing),bay=crossing.BayNumber-1;double span=network.Bays[bay].WidthMm;
+                        double coefficient=SharedConcreteCoefficient(span),area=network.AreaLoad(crossing.DepthMm);
+                        var edges=CrossBeamSupportOptimizer.SlabEdgeLoads(source,index);
+                        if(coefficient<=0 || !Finite(area) || area<=0 || edges.Any(p=>!Finite(p.Kn) || p.Kn<0))continue;
+                        // An input-only envelope keeps equivalent admission
+                        // profiles independent of coverage-specific ledger rows.
+                        // Check the actual source against it rather than assuming
+                        // a coverage or virtual-reaction bound for unusual inputs.
+                        double ledgerEnvelope=network.AreaLoad(network.Bays[bay].ThicknessMm)*50;
+                        double edgeScale=edges.Sum(p=>Math.Abs(p.Kn));
+                        if(!Finite(ledgerEnvelope) || ledgerEnvelope<0 || !Finite(edgeScale) || edgeScale>ledgerEnvelope)continue;
+                        double before=area*span/1000+ledgerEnvelope*span/crossing.WidthMm,after=area*coefficient/1000;
+                        if(!Finite(before) || !Finite(after) || before<after || after<=0)continue;
+                        double start=crossing.PositionMm-crossing.WidthMm/2,end=crossing.PositionMm+crossing.WidthMm/2;
+                        raw[0].Add(new BeamDistributedLoad {StartMm=start,EndMm=end,KnPerM=before});
+                        lower[0].Add(new BeamDistributedLoad {StartMm=start,EndMm=end,KnPerM=after});added++;
+                    }
+                }
+                catch(ArgumentException){added=0;}
+                var average=added==0 ? UniversalAverage(beam) : GuardedAverage(raw.Select(l=>l.ToArray()).ToArray(),lower.Select(l=>l.ToArray()).ToArray(),UniversalCuts(beam));
+                common.Trace?.CheckCancellation();profile.EarlyAverage=average??UniversalAverage(beam);profile.EarlyPrepared=true;return profile.EarlyAverage;
+            }
+            internal static BeamDistributedLoad[] GuardedAverage(BeamDistributedLoad[][] raw,BeamDistributedLoad[][] reduced,double[] mandatoryCuts)
+            {
+                if(raw==null || reduced==null || raw.Length!=2 || reduced.Length!=2 || raw.Any(l=>l==null) || reduced.Any(l=>l==null))return null;
+                var all=raw.Concat(reduced).SelectMany(l=>l).ToArray();
+                if(all.Any(q=>q==null || !Finite(q.StartMm) || !Finite(q.EndMm) || !Finite(q.KnPerM) || q.EndMm<q.StartMm || q.KnPerM<0)
+                    || mandatoryCuts==null || mandatoryCuts.Any(x=>!Finite(x)))return null;
+                var cuts=all.SelectMany(q=>new[]{q.StartMm,q.EndMm}).Concat(mandatoryCuts).Distinct().OrderBy(x=>x).ToArray();var result=new List<BeamDistributedLoad>();
+                for(int i=1;i<cuts.Length;i++)
+                {
+                    double a=cuts[i-1],b=cuts[i];if(b<=a)continue;
+                    double before=raw.SelectMany(l=>l).Where(q=>q.StartMm<=a && q.EndMm>=b).Sum(q=>q.KnPerM);
+                    double after=reduced.SelectMany(l=>l).Where(q=>q.StartMm<=a && q.EndMm>=b).Sum(q=>q.KnPerM);
+                    double scale=Math.Abs(before)+Math.Abs(before-after),allowance=1e-6+scale*1e-6;
+                    if(!Finite(before) || !Finite(after) || !Finite(scale) || after>before+allowance)return null;
+                    double lower=Math.Max(0,after-allowance)/2;if(!Finite(lower))return null;
+                    if(lower>0)result.Add(new BeamDistributedLoad {StartMm=a,EndMm=b,KnPerM=lower});
+                }
+                // Do not merge equal adjacent cells before member clipping.
+                return result.ToArray();
+            }
+            internal static bool SymmetricPlan(UpperTransferPlan plan,double bay)
+                =>plan==null || plan.NearFootMm==plan.FarFootMm && plan.EdgeMm==(bay-plan.StockLengthMm)/2 && plan.StockLengthMm+2*plan.EdgeMm==bay;
+            internal Func<TowerInput,TransferredSlabOptimizer.Geometry[],double,TransferredSlabOptimizer.Geometry[]> GeometryFilter(int beam)
+                =>GeometryFilterForAverage(beam,UniversalAverage(beam));
+            // The installation site must supply the native preparation/layout
+            // callbacks. Identity guards protect subsequent search copies; they
+            // do not authenticate arbitrary callbacks supplied by another caller.
+            internal Func<TowerInput,TransferredSlabOptimizer.Geometry[],double,TransferredSlabOptimizer.Geometry[]> GeometryFilterWithNativeChecks(int beam,
+                Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> preparation,Func<TowerLayout,bool> acceptance)
+                =>GeometryFilterForNativeReceiver(beam,preparation,acceptance,null,0);
+            internal Func<TowerInput,TransferredSlabOptimizer.Geometry[],double,TransferredSlabOptimizer.Geometry[]> GeometryFilterForNativeReceiver(int beam,
+                Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> preparation,Func<TowerLayout,bool> acceptance,double? fixedWidth,double offset)
+                =>GeometryFilterForKnownUpper(beam,preparation,acceptance,fixedWidth,offset,null);
+            internal Func<TowerInput,TransferredSlabOptimizer.Geometry[],double,TransferredSlabOptimizer.Geometry[]> GeometryFilterForKnownUpper(int beam,
+                Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> preparation,Func<TowerLayout,bool> acceptance,double? fixedWidth,double offset,UpperTransferPlan facingPlan)
+            {
+                if(preparation==null || acceptance==null)return GeometryFilter(beam);
+                var fallback=ExteriorNormalWitness(beam);
+                return GeometryFilterForNormalWitness(beam,preparation,acceptance,fixedWidth,offset,fallback?.ForKnownUpper(facingPlan),fallback);
+            }
+            internal Func<TowerInput,TransferredSlabOptimizer.Geometry[],double,TransferredSlabOptimizer.Geometry[]> GeometryFilterForRetainedOptions(int beam,
+                Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> preparation,Func<TowerLayout,bool> acceptance,double? fixedWidth,double offset)
+            {
+                if(preparation==null || acceptance==null)return GeometryFilter(beam);
+                var fallback=ExteriorNormalWitness(beam);int bay=beam==0 ? 0 : network.Bays.Length-1;
+                var retained=retainedNormalPlans!=null && (beam==0 || beam==network.Beams.Length-1) ? retainedNormalPlans[bay] : null;
+                return GeometryFilterForNormalWitness(beam,preparation,acceptance,fixedWidth,offset,fallback?.ForRetainedUpper(retained),fallback);
+            }
+            private Func<TowerInput,TransferredSlabOptimizer.Geometry[],double,TransferredSlabOptimizer.Geometry[]> GeometryFilterForNormalWitness(int beam,
+                Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> preparation,Func<TowerLayout,bool> acceptance,double? fixedWidth,double offset,NormalWitness normal,NormalWitness fallback)
+            {
+                if(preparation==null || acceptance==null)return GeometryFilter(beam);
+                bool NativeChecks(TowerInput input)=>input!=null && input.TransferredSlab?.EngineerReceiverCount>=3 && input.TransferredSlab.EngineerReceiverCount<=8
+                    && input.PrepareReceiverChecks && input.ReuseTransversePreparations && input.DeferTransferLayout && input.DeferCrossingChecks && input.FullLoadingOnly
+                    && ReferenceEquals(input.TransferReceiverPreparation,preparation) && ReferenceEquals(input.TransferLayoutAcceptance,acceptance)
+                    && ReferenceEquals(input.EngineerPlan?.Network,network) && input.EngineerPlan.Beam==beam;
+                if(fixedWidth.HasValue){fallback=fallback?.ForSetting(fixedWidth.Value,offset);normal=normal?.ForSetting(fixedWidth.Value,offset);}
+                if(normal==null){normal=fallback;fallback=null;}
+                var weak=GeometryFilterWithWitness(beam,UniversalAverage(beam),"Guaranteed minimum combined load",normal,NativeChecks,fallback);
+                var early=GeometryFilterWithWitness(beam,UniversalEarlyAverage(beam),"Early shared crossing trial lower load",normal,NativeChecks,fallback);if(early==null)return weak;
+                return (input,source,edge)=>
+                {
+                    bool native=NativeChecks(input) && input.TransferredSlab.EngineerReceiverCount<8
+                        && ReferenceEquals(input.TransferredSlab.EngineerNetwork,network) && input.TransferredSlab.EngineerBeam==beam;
+                    return native ? early(input,source,edge) : weak==null ? source : weak(input,source,edge);
+                };
+            }
+            private Func<TowerInput,TransferredSlabOptimizer.Geometry[],double,TransferredSlabOptimizer.Geometry[]> GeometryFilterForAverage(int beam,BeamDistributedLoad[] average,string explanation="Guaranteed minimum combined load")
+                =>GeometryFilterWithWitness(beam,average,explanation,null,null);
+            private Func<TowerInput,TransferredSlabOptimizer.Geometry[],double,TransferredSlabOptimizer.Geometry[]> GeometryFilterWithWitness(int beam,BeamDistributedLoad[] average,string explanation,NormalWitness normal,Func<TowerInput,bool> native,NormalWitness fallback=null)
+            {
+                if(average==null || average.Length==0)return null;
+                average=average.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM}).ToArray();
+                var primitive=UniversalClippingIntervals(beam);if(primitive==null)return null;primitive=primitive.ToArray();
+                var signature=new UniversalProfileSignature(average,common.Primary.ShearLimitKn,common.Primary.MomentLimitKnM,primitive);
+                var normalCells=normal?.Cells.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM}).ToArray();
+                var normalSignature=normalCells==null ? null : new UniversalProfileSignature(average,common.Primary.ShearLimitKn,common.Primary.MomentLimitKnM,primitive,normalCells);
+                var fallbackCells=fallback?.Cells.Select(q=>new BeamDistributedLoad {StartMm=q.StartMm,EndMm=q.EndMm,KnPerM=q.KnPerM}).ToArray();
+                var fallbackSignature=fallbackCells==null ? null : new UniversalProfileSignature(average,common.Primary.ShearLimitKn,common.Primary.MomentLimitKnM,primitive,fallbackCells);
+                var profile=ForBeam(beam);var row=network.Beams[beam];double start=row.SpanStartMm,length=row.SpanLength(common.LengthMm);
+                double left=beam==0 ? 0 : network.Bays[beam-1].WidthMm,right=beam==network.Bays.Length ? 0 : network.Bays[beam].WidthMm;
+                var material=common.PrimaryMaterial;
+                double endAllowance=common.MaximumConcreteEndOverhangMm,endSetback=common.StockEndSetbackMm;
+                double leftArea=left==0 ? 0 : network.AreaLoad(network.Bays[beam-1].ThicknessMm),rightArea=right==0 ? 0 : network.AreaLoad(network.Bays[beam].ThicknessMm);
+                double beamLoad=network.AreaLoad(row.DepthMm)*row.WidthMm/1000;
+                return (input,source,edge)=>
+                {
+                    if(input==null || !input.EngineerWorkflow || !input.PruneNetworkBounds || !input.OptimizeCrossingSearch || !input.ReuseSearchWork || input.Trace?.HasTimeLimit==true
+                        || input.TransferredSlab?.SharedGeometryCache?.Fixed!=null || input.PrimaryMaterial!=material || input.LengthMm!=length || input.LongitudinalStartMm!=start
+                        || input.MaximumConcreteEndOverhangMm!=endAllowance || input.StockEndSetbackMm!=endSetback
+                        || input.TransferredSlab?.LeftBayMm!=left || input.TransferredSlab?.RightBayMm!=right
+                        || input.TransferredSlab?.LeftAreaLoadKnM2!=leftArea || input.TransferredSlab?.RightAreaLoadKnM2!=rightArea || input.TransferredSlab?.BeamLineLoadKnM!=beamLoad
+                        || !SymmetricPlan(input.TransferredSlab.LeftPlan,left) || !SymmetricPlan(input.TransferredSlab.RightPlan,right)
+                        || input.EngineerPlan?.UseDesignZones!=true || input.EngineerPlan.Beam!=beam || beam>0 && !input.EngineerPlan.CarriesBay(beam-1)
+                        || beam<network.Bays.Length && !input.EngineerPlan.CarriesBay(beam) || !ReferenceEquals(input.EngineerPlan.Network,network))return source;
+                    input.Trace?.CheckCancellation();if(source==null)return source;
+                    var views=input.TransferredSlab.SharedGeometryCache?.UniversalPrimaryViews;
+                    bool certified=native?.Invoke(input)==true,useNormal=normalSignature!=null && certified && normal.Allows(input);
+                    bool useFallback=!useNormal && fallbackSignature!=null && certified && fallback.Allows(input);
+                    var activeSignature=useNormal ? normalSignature : useFallback ? fallbackSignature : signature;var activeCells=useNormal ? normalCells : useFallback ? fallbackCells : null;
+                    // Skip unretainable builds up front. Never repeatedly scan a
+                    // huge cold parent that cannot fit even its worst-case view.
+                    if(views==null || !views.CanRetain(activeSignature,source.Length)){input.Trace?.Increment(BeamSearchCounter.UniversalGeometryViewFallbacks);return source;}
+                    var key=new UniversalViewKey(activeSignature,source,edge);
+                    if(views.TryGet(key,input.Trace,out var cached))input.Trace?.Increment(BeamSearchCounter.UniversalGeometryViewHits);
+                    else
+                    {
+                        input.Trace?.Increment(BeamSearchCounter.UniversalGeometryViewBuilds);
+                        input.Trace?.Increment(BeamSearchCounter.UniversalGeometrySourceEntries,source.Length);
+                        cached=BuildUniversalView(input,source,edge,average,(origin,stock)=>PrimitiveWindowSafe(primitive,origin,stock),activeCells);
+                        if(cached==null){input.Trace?.Increment(BeamSearchCounter.UniversalGeometryViewFallbacks);return source;}
+                        input.Trace?.Increment(BeamSearchCounter.UniversalGeometrySurvivingEntries,cached.Kept.Length);
+                        cached.Key=key;cached.Weight+=activeSignature.Weight;cached=views.Publish(cached,input.Trace);
+                    }
+                    input.Trace?.CheckCancellation();int excluded=source.Length-cached.Kept.Length;
+                    if(excluded>0)
+                    {
+                        input.Trace?.Increment(BeamSearchCounter.UniversalPrimaryGeometryRejected,excluded);
+                        if(cached.Kept.Length==0 && cached.FirstFailed!=null && input.Diagnostics!=null)
+                        {
+                            var reported=profile.EmptyReports.GetValue(input.Diagnostics,_=>new HashSet<double>());bool first;
+                            lock(reported)first=reported.Add(edge);
+                            if(first)
+                            {
+                                if(cached.FirstNormalFailure.HasValue)cached.FirstNormalFailure.Value.Record(input,cached.FirstRun);
+                                else
+                                {
+                                    var member=cached.FirstFailed.Stock[cached.FirstRun];
+                                    CrossBeamSupportOptimizer.GenericPrimaryForcesFitSupports(input,member.StockLengthMm,cached.FirstFailed.Supports(cached.FirstRun),cached.FirstLoads,
+                                        explanation+" · P"+(cached.FirstRun+1),true);
+                                }
+                            }
+                        }
+                    }
+                    return cached.Kept;
+                };
+            }
+            private readonly struct UniversalWindowKey : IEquatable<UniversalWindowKey>
+            {
+                private readonly double start,length;
+                internal UniversalWindowKey(double start,double length){this.start=start;this.length=length;}
+                public bool Equals(UniversalWindowKey other)=>start.Equals(other.start) && length.Equals(other.length);
+                public override bool Equals(object other)=>other is UniversalWindowKey key && Equals(key);
+                public override int GetHashCode(){unchecked{int hash=start.GetHashCode();return ((hash<<5)+hash)^length.GetHashCode();}}
+            }
+            private static UniversalView BuildUniversalView(TowerInput input,TransferredSlabOptimizer.Geometry[] source,double edge,BeamDistributedLoad[] average,Func<double,double,bool> windowSafe=null,BeamDistributedLoad[] normalWitness=null)
+            {
+                if(source==null || !Finite(edge))return null;
+                int kept=0,index=0;var mask=new ulong[(int)((source.Length+63L)/64)];var windows=new Dictionary<UniversalWindowKey,BeamDistributedLoad[]>();
+                var members=new TransferredSlabOptimizer.ResponseCache<CrossBeamSupportOptimizer.NecessaryMemberKey,bool>(4096);
+                var result=new UniversalView();
+                foreach(var geometry in source)
+                {
+                    input.Trace?.CheckCancellation();bool fits=true;
+                    if(geometry?.Stock==null || !geometry.HasSupportMetadata || geometry.Stock.Length!=geometry.SupportRuns)return null;
+                    for(int run=0;run<geometry.Stock.Length;run++)
+                    {
+                        var member=geometry.Stock[run];var supports=geometry.Supports(run);if(member==null)return null;
+                        double start=member.StartMm+edge,length=member.StockLengthMm;
+                        if(!Finite(start) || !Finite(length) || length<=0 || supports.IsNull || supports.Length<2)return null;
+                        for(int i=0;i<supports.Length;i++){double value=supports[i];if(!Finite(value) || value<0 || value>length)return null;}
+                        for(int i=1;i<supports.Length;i++)if(supports[i]<=supports[i-1])return null;
+                        var window=new UniversalWindowKey(start,length);
+                        if(!windows.TryGetValue(window,out var loads))
+                        {
+                            if(windowSafe!=null && !windowSafe(start,length))windows[window]=loads=null;
+                            else
+                            {
+                                var clipped=new List<BeamDistributedLoad>();
+                                foreach(var q in average)
+                                {
+                                    double a=Math.Max(0,Math.Max(start,q.StartMm)-start),b=Math.Min(length,Math.Min(start+length,q.EndMm)-start);
+                                    if(b>a+1e-7)clipped.Add(new BeamDistributedLoad {StartMm=a,EndMm=b,KnPerM=q.KnPerM});
+                                }
+                                windows[window]=loads=clipped.ToArray();
+                            }
+                        }
+                        if(loads==null && normalWitness==null)continue;
+                        TransferredSlabOptimizer.NecessarySupportHash(geometry,run,input.Trace,out int polynomial,out int power);
+                        var key=new CrossBeamSupportOptimizer.NecessaryMemberKey(start,length,0,supports,polynomial,power);
+                        if(!members.TryGetValue(key,out bool memberFits))
+                        {
+                            NormalWitnessFailure normalFailure=default;
+                            memberFits=normalWitness==null || ExteriorNormalFitsSupports(input,start,length,supports,normalWitness,out normalFailure);
+                            if(!memberFits)
+                            {
+                                input.Trace?.Increment(BeamSearchCounter.ExteriorNormalMembersRejected);
+                                if(result.FirstFailed==null)result.FirstNormalFailure=normalFailure;
+                            }
+                            else memberFits=loads==null || CrossBeamSupportOptimizer.GenericPrimaryForcesFitSupports(input,length,supports,loads,null);
+                            input.Trace?.CheckCancellation();members.Store(key,memberFits);
+                        }
+                        if(memberFits)continue;
+                        fits=false;if(result.FirstFailed==null){result.FirstFailed=geometry;result.FirstRun=run;result.FirstLoads=loads;}break;
+                    }
+                    if(fits)
+                    {
+                        mask[index/64]|=1UL<<(index%64);kept++;
+                        int stations=geometry.Positions?.Length??0;
+                        if(geometry.Positions==null)checked{for(int run=0;run<geometry.SupportRuns;run++)stations+=geometry.Supports(run).Length;}
+                        result.Counts|=stations<64 ? 1UL<<stations : ulong.MaxValue;
+                    }
+                    index++;
+                }
+                input.Trace?.CheckCancellation();result.Mask=mask;
+                if(kept==source.Length)result.Kept=source;
+                else
+                {
+                    result.Kept=new TransferredSlabOptimizer.Geometry[kept];int at=0;
+                    for(int i=0;i<source.Length;i++)if((mask[i/64]&(1UL<<(i%64)))!=0)result.Kept[at++]=source[i];
+                }
+                result.Weight=512L+source.Length*8L+(ReferenceEquals(result.Kept,source) ? 0 : result.Kept.Length*8L)+mask.Length*8L+(result.FirstLoads?.Length??0)*64L;return result;
+            }
+            internal int MinimumLegs(int beam,double[][] covers)
+            {
+                try
+                {
+                    var local=common.CopyForSearch();local.LengthMm=network.Beams[beam].SpanLength(common.LengthMm);local.LongitudinalStartMm=network.Beams[beam].SpanStartMm;
+                    var profile=ForBeam(beam);
+                    bool independent=common.IndependentNetworkPrimaryCoverage || network.DifferentSpans(common.LengthMm);
+                    int minimum=int.MaxValue;var forces=new Dictionary<Tuple<double,double>,int>();
+                    foreach(var cover in covers)
+                    {
+                        common.Trace?.CheckCancellation();double covered=cover.Sum();
+                        if(independent ? covered<coverage-1e-7 : Math.Abs(covered-coverage)>1e-7)continue;
+                        double start=local.CoverStart(covered);int stations=0;
+                        foreach(double length in cover)
+                        {
+                            var key=Tuple.Create(start,length);
+                            if(!forces.TryGetValue(key,out int count))
+                            {
+                                double force=StockForce(profile,start,length);
+                                if(!Finite(force))return 0;
+                                forces[key]=count=Math.Max(2,CrossBeamSupportOptimizer.PrimarySupportCountFloor(common,force/2));
+                            }
+                            stations+=count;start+=length;
+                        }
+                        minimum=Math.Min(minimum,2*stations);
+                    }
+                    return minimum==int.MaxValue ? 0 : minimum;
+                }
+                catch(ArgumentException){return 0;}
+            }
+        }
         private static bool Better(bool engineer,int legs,int narrow,int bays,double penalty,double timber,int oldLegs,int oldNarrow,int oldBays,double oldPenalty,double oldTimber,double symmetry=0,double oldSymmetry=0)
         {
             if(engineer)
@@ -543,10 +1538,17 @@ namespace EngineeringDashboard
         private static string Pattern(TowerLayout layout)=>string.Join(";",layout.StockPlan.Pieces.Select(p=>p.StockLengthMm.ToString("R",System.Globalization.CultureInfo.InvariantCulture)))+"|"+string.Join(";",layout.PositionsMm.Select(p=>p.ToString("R",System.Globalization.CultureInfo.InvariantCulture)))+"|"+string.Join(";",layout.Joined)+"|"+layout.WidthMm.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+"|"+layout.TransverseOffsetMm.ToString("R",System.Globalization.CultureInfo.InvariantCulture);
         public static TransferNetworkResult Optimize(TowerInput common,TransferNetworkInput input)
         {
-            var result=OptimizeNetwork(common,input);
-            CrossBeamSupportOptimizer.BalanceSettingOut(common,result);
-            CalculateMovement(result,common.Trace);
-            return result;
+            var previous=common.NetworkReceiverWork;
+            common.NetworkReceiverWork=common.ReuseSearchWork && common.ReuseReceiverSearches ? previous??new NetworkReceiverCache() : null;
+            try
+            {
+                var result=OptimizeNetwork(common,input);
+                CrossBeamSupportOptimizer.BalanceSettingOut(common,result);
+                if(!CrossBeamSupportOptimizer.ExternalNetworkFits(common,result))throw new ArgumentException("The coordinated network still intersects a neighboring part.");
+                CalculateMovement(result,common.Trace);
+                return result;
+            }
+            finally {common.NetworkReceiverWork=previous;}
         }
         private static TransferNetworkResult OptimizeNetwork(TowerInput common,TransferNetworkInput input)
         {
@@ -623,7 +1625,7 @@ namespace EngineeringDashboard
                 var previousGeometry=common.NetworkGeometryWork;var previousNumerics=common.NetworkNumericalWork;
                 var previousReceivers=common.NetworkReceiverWork;
                 var previousPrefixes=common.NetworkPrefixWork;
-                common.NetworkReceiverWork=common.ReuseSearchWork && common.ReuseReceiverSearches ? new NetworkReceiverCache() : null;
+                common.NetworkReceiverWork=common.ReuseSearchWork && common.ReuseReceiverSearches ? previousReceivers??new NetworkReceiverCache() : null;
                 common.NetworkPrefixWork=common.ReuseSearchWork && common.ReuseReceiverSearches ? new NetworkPrefixCache() : null;
                 common.NetworkGeometryWork=common.ReuseSearchWork ? new TransferredSlabOptimizer.GeometryCache() : null;
                 using(var numericalWork=common.ReuseSearchWork ? new ThreadLocal<TransferredSlabOptimizer.SearchWorkCache>(()=>new TransferredSlabOptimizer.SearchWorkCache()) : null)
@@ -638,10 +1640,36 @@ namespace EngineeringDashboard
         private static TransferNetworkResult SearchSpacing(TowerInput common,TransferNetworkInput input)
         {
             common.Trace?.Increment(BeamSearchCounter.NetworkSpacingTrials);
-            return TowerStockPlanner.SearchWithCustom(common,()=>OptimizeCore(common,input,false),Better);
+            return SearchSpacingStockPasses(common,input,()=>OptimizeCore(common,input,false));
+        }
+        internal static TransferNetworkResult SearchSpacingStockPasses(TowerInput common,TransferNetworkInput input,Func<TransferNetworkResult> search)
+        {
+            if(!common.EngineerSearch || !common.LocalNetworkSearch || !common.PruneNetworkBounds || !common.AllowCustomH20Lengths
+                || common.FirstCompleteNetworkOnly || common.Trace?.HasTimeLimit==true)
+                return TowerStockPlanner.SearchWithCustom(common,search,Better);
+            var original=common.NetworkCatalogueBound;TransferNetworkResult catalogue=null;
+            try
+            {
+                return TowerStockPlanner.SearchWithCustom(common,()=>
+                {
+                    bool custom=common.AllowCustomH20Lengths;
+                    if(custom && catalogue!=null && !catalogue.SearchTimeLimitReached)
+                    {
+                        // A completed catalogue design remains permitted in the
+                        // custom-stock superset. Seed only its existing exact
+                        // prefix bound; every equal or better branch still runs.
+                        var previous=common.NetworkCatalogueBound;
+                        if(previous==null || !ReferenceEquals(previous.SourceInput,input) || Better(catalogue,previous.Result))
+                            common.NetworkCatalogueBound=new NetworkCatalogueBound(input,catalogue);
+                    }
+                    var result=search();if(!custom)catalogue=result;return result;
+                },Better);
+            }
+            finally{common.NetworkCatalogueBound=original;}
         }
         private static TransferNetworkResult IndividualTransfer(TowerInput common,TransferNetworkInput input)
         {
+            common.Trace?.NetworkPhase("Finding a complete starting arrangement");
             // Find a checked seed with the existing bounded descent, then recover
             // independent maxima. Never enumerate the Cartesian product of pitches.
             TowerOptimizationException failure=null;
@@ -752,11 +1780,23 @@ namespace EngineeringDashboard
             };
             try
             {
+                if(checkedSeedFirst && common.WarmStartNetwork && common.LocalNetworkSearch && !spacings(best.Input).SequenceEqual(maxima))
+                {
+                    // One checked local probe can restore every category without
+                    // launching another complete network enumeration. A failed
+                    // probe leaves the ordinary recovery trials available.
+                    var restored=TryWarmMaxima(worker,input,best);
+                    if(restored!=null)
+                    {best=restored;acceptedDiagnostics=worker.Diagnostics;attempted.Add(keyOf(best.Input));}
+                }
                 // Retain receiving-beam maxima first, then crossings and slab bays.
                 // Group successes cost one solve; failed groups split deterministically.
                 // At most 2N-1 group trials plus five intermediate trials per element.
+                common.Trace?.NetworkPhase("Restoring main-beam secondary spacings");
                 recover(Enumerable.Range(0,input.Beams.Length).ToArray());
+                common.Trace?.NetworkPhase("Restoring crossing-beam secondary spacings");
                 recover(Enumerable.Range(input.Beams.Length+input.Bays.Length,input.CrossingBeams.Length).ToArray());
+                common.Trace?.NetworkPhase("Restoring slab secondary spacings");
                 recover(Enumerable.Range(input.Beams.Length,input.Bays.Length).ToArray());
             }
             catch(BeamSearchDeadlineException)
@@ -768,6 +1808,11 @@ namespace EngineeringDashboard
             if(checkedSeedFirst && common.Trace?.BudgetReached!=true)
             {
                 worker.FirstCompleteNetworkOnly=false;
+                common.Trace?.NetworkPhase("Comparing the complete final design alternatives");
+                // Recovery can replace best after setting the previous warm start.
+                // Publish the exact recovered input's checked result so final ranking
+                // starts with a valid junction-wide bound, rather than rediscovering it.
+                worker.NetworkWarmStart=common.WarmStartNetwork ? best : null;
                 common.Trace?.Work("Optimizing final recovered network spacing");
                 try{best=SearchSpacing(worker,best.Input);acceptedDiagnostics=worker.Diagnostics;}
                 catch(TowerOptimizationException){ /* Keep the already checked complete seed. */ }
@@ -847,24 +1892,70 @@ namespace EngineeringDashboard
                     || c.SupportMode==CrossBeamSupportMode.Automatic && !CrossBeamSupportOptimizer.PrimaryBearingPossible(common,input,c) && (!CrossBeamSupportOptimizer.ValidFillerGap(c.BottomElevationMm,input.Beams[c.BayNumber-1].BottomElevationMm,out var near)
                         || !CrossBeamSupportOptimizer.ValidFillerGap(c.BottomElevationMm,input.Beams[c.BayNumber].BottomElevationMm,out var far)));
 
+        // A prefix fixes its selected primary axes. If an inner axis cannot
+        // retain the secondary-stock end setback inside the clear crossing bay,
+        // no opposite receiver, row count or load can repair the direct route.
+        // Count only automatic crossings whose stacked route is also impossible.
+        internal static int MinimumDedicatedLegsForPrefix(TowerInput common,TransferNetworkInput input,TowerLayout[] known)
+        {
+            int minimum=MinimumDedicatedLegs(common,input);
+            if(!common.EngineerWorkflow || !common.CoordinateCrossingLayouts || !common.OptimizeCrossingSearch || !common.ReuseSearchWork
+                || common.Trace?.HasTimeLimit==true || known==null || known.Length==0 || known.Length>input.Beams.Length)return minimum;
+            var centres=new double[input.Beams.Length];
+            for(int beam=1;beam<centres.Length;beam++)centres[beam]=centres[beam-1]+input.Beams[beam-1].WidthMm/2+input.Bays[beam-1].WidthMm+input.Beams[beam].WidthMm/2;
+            foreach(var cross in input.CrossingBeams)
+            {
+                common.Trace?.CheckCancellation();int bay=cross.BayNumber-1;
+                if(cross.SupportMode!=CrossBeamSupportMode.Automatic || !CrossBeamSupportOptimizer.PrimaryBearingPossible(common,input,cross)
+                    || CrossBeamSupportOptimizer.ValidFillerGap(cross.BottomElevationMm,input.Beams[bay].BottomElevationMm,out var near)
+                    && CrossBeamSupportOptimizer.ValidFillerGap(cross.BottomElevationMm,input.Beams[bay+1].BottomElevationMm,out var far))continue;
+                double face=centres[bay]+input.Beams[bay].WidthMm/2,span=input.Bays[bay].WidthMm;
+                bool Impossible(int beam,bool left)
+                {
+                    var receiver=beam<known.Length ? known[beam] : null;if(receiver==null)return false;
+                    double width=receiver.WidthMm,offset=receiver.TransverseOffsetMm,end=common.StockEndSetbackMm;
+                    double axis=centres[beam]+offset+(left ? width/2 : -width/2);
+                    double scale=1+Math.Abs(centres[beam])+Math.Abs(face)+Math.Abs(span)+Math.Abs(axis)+Math.Abs(width)+Math.Abs(offset)+Math.Abs(end)+50000;
+                    // Cover the original earliest/latest 1e-7 allowance, source
+                    // subtraction/cancellation and every validated stock length.
+                    if(!TowerBeamAnalysis.Finite(scale) || scale>1073741824 || width<=0 || span<=0 || end<=0)return false;
+                    double margin=1e-6+scale*1e-10,available=left ? axis-face : face+span-axis;
+                    return TowerBeamAnalysis.Finite(available) && available<end-margin;
+                }
+                if(Impossible(bay,true) || Impossible(bay+1,false))minimum+=4;
+            }
+            return minimum;
+        }
+
         private sealed class EngineerBound
         {
             private int legs=int.MaxValue;
             private readonly int minimumDedicatedLegs;
+            private readonly TowerInput common;private readonly TransferNetworkInput input;
             private readonly object improvementGate=new object();private TransferNetworkResult best;private readonly BeamSearchTrace trace;
             internal EngineerBound(TowerInput common,TransferNetworkInput input,BeamSearchTrace trace)
             {
-                this.trace=trace;
+                this.trace=trace;this.common=common;this.input=input;
                 // Reserve four legs only where neither stacked bearings nor the
                 // new direct-primary route can avoid a dedicated crossing tower.
                 minimumDedicatedLegs=MinimumDedicatedLegs(common,input);
             }
             internal int Ceiling(int used,int remaining,int minimum)=>Math.Max(0,Volatile.Read(ref legs)-used-remaining*minimum-minimumDedicatedLegs);
+            internal int Ceiling(int used,int reservedLegs)=>Math.Max(0,Volatile.Read(ref legs)-used-reservedLegs-minimumDedicatedLegs);
             internal bool MayImprove(State prefix,int remaining,int minimumLegs,int minimumBays)
             {
                 var incumbent=Volatile.Read(ref best);
-                return incumbent==null || EngineerPrefixMayImprove(incumbent,prefix.Legs+remaining*minimumLegs+minimumDedicatedLegs,
-                    prefix.Narrow,prefix.BaysCount+remaining*minimumBays+minimumDedicatedLegs/4,prefix.BracePenalty,
+                if(incumbent==null)return true;int dedicated=MinimumDedicatedLegsForPrefix(common,input,prefix.Beams);
+                return EngineerPrefixMayImprove(incumbent,prefix.Legs+remaining*minimumLegs+dedicated,
+                    prefix.Narrow,prefix.BaysCount+remaining*minimumBays+dedicated/4,prefix.BracePenalty,
+                    prefix.Beams.Sum(b=>b.CantileverImbalanceMm),prefix.Symmetry,prefix.Beams.Sum(b=>b.BraceLocationPenalty),prefix.Separate);
+            }
+            internal bool MayImprove(State prefix,int reservedLegs,int reservedBays)
+            {
+                var incumbent=Volatile.Read(ref best);
+                if(incumbent==null)return true;int dedicated=MinimumDedicatedLegsForPrefix(common,input,prefix.Beams);
+                return EngineerPrefixMayImprove(incumbent,prefix.Legs+reservedLegs+dedicated,
+                    prefix.Narrow,prefix.BaysCount+reservedBays+dedicated/4,prefix.BracePenalty,
                     prefix.Beams.Sum(b=>b.CantileverImbalanceMm),prefix.Symmetry,prefix.Beams.Sum(b=>b.BraceLocationPenalty),prefix.Separate);
             }
             internal void Publish(TransferNetworkResult result)
@@ -907,9 +1998,12 @@ namespace EngineeringDashboard
             // input, rather than waiting for each scenario to rediscover a seed.
             if(common.LocalNetworkSearch && engineerBound!=null && ReferenceEquals(common.NetworkWarmStart?.Input,input))
                 engineerBound.Publish(common.NetworkWarmStart);
+            var catalogueBound=common.NetworkCatalogueBound;
+            if(common.LocalNetworkSearch && engineerBound!=null && catalogueBound!=null && !catalogueBound.Result.SearchTimeLimitReached
+                && ReferenceEquals(catalogueBound.SourceInput,input))engineerBound.Publish(catalogueBound.Result);
             common.Trace?.Work("Network primary cover generation");
             double[][] stockCovers;
-            using(common.Trace?.Measure(BeamSearchStage.StockCovers))stockCovers=TransferredSlabOptimizer.StockCovers(input.DifferentSpans(common.LengthMm) ? SharedInput(common,input) : common);
+            using(common.Trace?.Measure(BeamSearchStage.StockCovers))stockCovers=CachedSpanStockCovers(input.DifferentSpans(common.LengthMm) ? SharedInput(common,input) : common,geometryCache);
             if(stockCovers.Length==0)
             {
                 diag.Geometry("primary coverage",$"Primary coverage: no available stock combination totals {common.LengthMm-2*common.MaximumConcreteEndOverhangMm:0.###}–{common.LengthMm:0.###} mm.","Review available primary stocks and the maximum concrete end allowance.");
@@ -1003,8 +2097,32 @@ namespace EngineeringDashboard
             internal TowerSearchDiagnostics Diagnostics;internal int Tested;
             internal readonly List<TransferNetworkResult> Improvements=new List<TransferNetworkResult>();
         }
+        private static TransferNetworkResult TryWarmMaxima(TowerInput common,TransferNetworkInput requested,TransferNetworkResult previous)
+        {
+            common.Trace?.CheckCancellation();common.Trace?.Increment(BeamSearchCounter.WarmMaximaProbes);
+            var probe=common.CopyForSearch();probe.FirstCompleteNetworkOnly=true;probe.NetworkWarmStart=previous;
+            // SearchWithCustom has restored the project permissions on common.
+            // Use that complete permitted cover family for this additional seed.
+            probe.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};
+            var candidate=requested.WithSpacings();candidate.UpperSpacingMm=candidate.BeamSpacingsMm.Min();
+            try
+            {
+                candidate.Validate(probe);
+                if(!CrossBeamSupportOptimizer.MandatoryStocksFit(probe,candidate))return null;
+                common.Trace?.Work("Warm-only restoration of requested secondary spacings");
+                double[][] covers;
+                using(common.Trace?.Measure(BeamSearchStage.StockCovers))
+                    covers=CachedSpanStockCovers(candidate.DifferentSpans(probe.LengthMm) ? SharedInput(probe,candidate) : probe,common.NetworkGeometryWork);
+                if(covers.Length==0)return null;
+                var result=TryWarmNetwork(probe,candidate,covers,common.NetworkGeometryWork);
+                if(result==null)return null;
+                common.Diagnostics=probe.Diagnostics;common.Trace?.Increment(BeamSearchCounter.WarmMaximaSuccesses);return result;
+            }
+            catch(ArgumentException){return null;}
+        }
         private static TransferNetworkResult TryWarmNetwork(TowerInput common,TransferNetworkInput input,double[][] covers,TransferredSlabOptimizer.GeometryCache geometryCache)
         {
+            common.Trace?.Increment(BeamSearchCounter.WarmNetworkAttempts);
             var previous=common.NetworkWarmStart;
             if(previous.Beams.Length!=input.Beams.Length || previous.Bays.Length!=input.Bays.Length || previous.Bays.Any(b=>b==null))return null;
             var worker=common.CopyForSearch();worker.NetworkNumerics=common.NetworkNumericalWork?.Value;
@@ -1017,14 +2135,30 @@ namespace EngineeringDashboard
                 var old=previous.Bays[bay];
                 bays[bay]=Options(worker,input,bay,Math.Max(widths.Max(),input.BaySpacing(bay)),"Spacing recovery").FirstOrDefault(p=>
                     p.StockLengthMm==old.StockLengthMm && p.EdgeMm==old.EdgeMm && p.NearFootMm==old.NearFootMm && p.FarFootMm==old.FarFootMm);
-                if(bays[bay]==null)return null;
+                if(bays[bay]==null){common.Trace?.Increment(BeamSearchCounter.WarmSlabOptionMissing);return null;}
             }
             var beams=new TowerLayout[input.Beams.Length];
             for(int beam=0;beam<beams.Length;beam++)
             {
+                common.Trace?.CheckCancellation();
                 var old=previous.Beams[beam];
                 beams[beam]=Solve(worker,input,beam,beam==0 ? null : bays[beam-1],beam==bays.Length ? null : bays[beam],cover,phase,covers,geometryCache,
                     int.MaxValue,old.WidthMm,old.TransverseOffsetMm,fixedLayout:old);
+                if(beams[beam]==null && common.FirstCompleteNetworkOnly && common.LocalNetworkSearch)
+                {
+                    common.Trace?.Increment(BeamSearchCounter.WarmReceiverRepairAttempts);
+                    // This is a feasibility seed. Retain already checked bays
+                    // and neighboring receivers while repairing only this beam.
+                    // Try new supports on its previous permitted stock sequence;
+                    // failed repairs still return to the ordinary network search.
+                    var stock=old.StockPlan.Pieces.Select(p=>p.StockLengthMm).ToArray();
+                    beams[beam]=SolveReceiver(worker,input,beam,beam==0 ? null : bays[beam-1],beam==bays.Length ? null : bays[beam],cover,phase,covers,geometryCache,
+                        int.MaxValue,old.WidthMm,old.TransverseOffsetMm,selectedStockCover:stock);
+                    if(beams[beam]==null)
+                        beams[beam]=SolveReceiver(worker,input,beam,beam==0 ? null : bays[beam-1],beam==bays.Length ? null : bays[beam],cover,phase,covers,geometryCache,
+                            int.MaxValue,selectedStockCover:stock);
+                    if(beams[beam]!=null){beams[beam].MinimumLegCountProven=false;common.Trace?.Increment(BeamSearchCounter.WarmReceiverRepairSuccesses);}
+                }
                 if(beams[beam]==null)return null;
             }
             var result=new TransferNetworkResult {Input=input,Beams=beams,Bays=bays,BeamCentresMm=previous.BeamCentresMm,SlabCoveredLengthMm=cover,RowPhaseMm=phase,SlabLoadKn=beams.Sum(b=>b.Transfer.SlabLoadKn)};
@@ -1110,6 +2244,141 @@ namespace EngineeringDashboard
             catch(BeamSearchDeadlineException) {common.Trace?.CheckUserCancellation();}
             outcome.Tested=tested;return outcome;
         }
+        // This attestation is minted only around SolveReceiverCore's native
+        // obstacle AND callback. It is local to one width collector: the whole
+        // receiver-search cache still excludes every external-obstacle scope.
+        // Native worker inputs are unchanged during a sequential solve. Snapshot
+        // revalidation guards publication/consumption; it does not authenticate
+        // an arbitrary caller's mutate-and-restore history during evaluation.
+        private sealed class NativeExternalWidthProof
+        {
+            private struct SolidSnapshot
+            {
+                internal FormworkSolid Solid;internal long X0,X1,Y0,Y1,Z0,Z1;
+                internal bool IsLeg,IsTowerEnvelope;internal string TowerOwner;
+                internal SolidSnapshot(FormworkSolid s)
+                {
+                    Solid=s;X0=Bits(s.X0);X1=Bits(s.X1);Y0=Bits(s.Y0);Y1=Bits(s.Y1);Z0=Bits(s.Z0);Z1=Bits(s.Z1);
+                    IsLeg=s.IsLeg;IsTowerEnvelope=s.IsTowerEnvelope;TowerOwner=s.TowerOwner;
+                }
+                internal bool Matches(FormworkSolid s)=>ReferenceEquals(Solid,s) && X0==Bits(s.X0) && X1==Bits(s.X1)
+                    && Y0==Bits(s.Y0) && Y1==Bits(s.Y1) && Z0==Bits(s.Z0) && Z1==Bits(s.Z1)
+                    && IsLeg==s.IsLeg && IsTowerEnvelope==s.IsTowerEnvelope && TowerOwner==s.TowerOwner;
+            }
+            private readonly TowerInput common,input;
+            private readonly FormworkSolid[] obstacles;
+            private readonly SolidSnapshot[] solids;
+            private readonly long[] transforms;
+            private readonly FormworkObstacleIndex commonIndex;
+            private readonly Dictionary<double,TowerLayout> collector;
+            private readonly Func<TowerLayout,bool> nativeAcceptance,lowerAcceptance;
+            private readonly Func<TowerLayout,Func<TransferredSlabOptimizer.Geometry,double,bool>> preparation;
+            private Func<TowerInput,TransferredSlabOptimizer.Geometry[],double,TransferredSlabOptimizer.Geometry[]> geometryFilter;
+            private FormworkObstacleIndex builtIndex;
+            private bool valid,sealedCallbacks;
+            internal readonly Func<TowerLayout,bool> Acceptance;
+            private static long Bits(double value)=>BitConverter.DoubleToInt64Bits(value);
+            private static long[] Transforms(TowerInput common,TowerInput input)=>new[] {Bits(common.ObstacleOriginXmm),Bits(common.ObstacleCentreYmm),Bits(common.ObstacleBottomMm),
+                Bits(input.ObstacleOriginXmm),Bits(input.ObstacleCentreYmm),Bits(input.ObstacleBottomMm)};
+            internal NativeExternalWidthProof(TowerInput common,TowerInput input)
+            {
+                this.common=common;this.input=input;obstacles=input.ExternalObstacles;commonIndex=common.ExternalObstacleIndex;collector=input.ReceiverAlternatives;
+                nativeAcceptance=input.TransferLayoutAcceptance;lowerAcceptance=input.TransferLowerAcceptance;preparation=input.TransferReceiverPreparation;
+                transforms=Transforms(common,input);solids=new SolidSnapshot[obstacles.Length];
+                valid=input.ExternalObstacleIndex==null && ReferenceEquals(common.ExternalObstacles,obstacles);
+                for(int i=0;i<solids.Length;i++)
+                {
+                    var s=obstacles[i];if(s==null){valid=false;continue;}
+                    solids[i]=new SolidSnapshot(s);
+                    if(!TowerBeamAnalysis.Finite(s.X0) || !TowerBeamAnalysis.Finite(s.X1) || s.X0>s.X1
+                        || !TowerBeamAnalysis.Finite(s.Y0) || !TowerBeamAnalysis.Finite(s.Y1) || s.Y0>s.Y1
+                        || !TowerBeamAnalysis.Finite(s.Z0) || !TowerBeamAnalysis.Finite(s.Z1) || s.Z0>s.Z1)valid=false;
+                }
+                Acceptance=Accept;
+            }
+            internal void SealCallbacks(){geometryFilter=input.TransferGeometryFilter;sealedCallbacks=true;}
+            private bool SameContext()=>ReferenceEquals(common.ExternalObstacles,obstacles) && ReferenceEquals(input.ExternalObstacles,obstacles)
+                && ReferenceEquals(common.ExternalObstacleIndex,commonIndex)
+                && transforms[0]==Bits(common.ObstacleOriginXmm) && transforms[1]==Bits(common.ObstacleCentreYmm) && transforms[2]==Bits(common.ObstacleBottomMm)
+                && transforms[3]==Bits(input.ObstacleOriginXmm) && transforms[4]==Bits(input.ObstacleCentreYmm) && transforms[5]==Bits(input.ObstacleBottomMm);
+            private bool SameCallbacks()=>sealedCallbacks && ReferenceEquals(input.TransferLayoutAcceptance,Acceptance)
+                && ReferenceEquals(input.ReceiverAlternatives,collector) && ReferenceEquals(input.TransferLowerAcceptance,lowerAcceptance)
+                && ReferenceEquals(input.TransferReceiverPreparation,preparation) && ReferenceEquals(input.TransferGeometryFilter,geometryFilter);
+            private bool SameSnapshot()
+            {
+                if(!SameContext())return false;
+                for(int i=0;i<solids.Length;i++)if(!solids[i].Matches(obstacles[i]))return false;
+                return true;
+            }
+            private bool Accept(TowerLayout layout)
+            {
+                // Observe index provenance at the native call, rather than
+                // trusting an arbitrary injected index with the same array.
+                var before=input.ExternalObstacleIndex;
+                if(valid && (!SameCallbacks() || !SameContext() || !ReferenceEquals(before,builtIndex) || builtIndex==null && !SameSnapshot()))valid=false;
+                bool fits=CrossBeamSupportOptimizer.ExternalLayoutFits(input,layout);
+                if(valid)
+                {
+                    var after=input.ExternalObstacleIndex;
+                    if(before==null && after!=null && SameSnapshot())builtIndex=after;
+                    else if(!ReferenceEquals(after,builtIndex))valid=false;
+                }
+                bool accepted=fits && (nativeAcceptance==null || nativeAcceptance(layout));
+                if(valid && (!SameCallbacks() || !SameContext() || !ReferenceEquals(input.ExternalObstacleIndex,builtIndex)))valid=false;
+                return accepted;
+            }
+            internal bool Matches(TowerInput common,TowerInput input)=>valid && sealedCallbacks && builtIndex!=null
+                && ReferenceEquals(this.common,common) && ReferenceEquals(this.input,input)
+                && ReferenceEquals(input.ExternalObstacleIndex,builtIndex) && SameCallbacks() && SameSnapshot();
+            internal bool Matches()=>Matches(common,input);
+        }
+        // Per-call collector, never serialized or retained as a complete search
+        // cache. A fresh normal count-eight completion certifies only the failed
+        // smaller station subset of missing widths; later tiers remain open.
+        internal sealed class ReceiverWidthAlternatives : Dictionary<double,TowerLayout>
+        {
+            private readonly HashSet<double> failedWidths=new HashSet<double>();
+            private int rawCeiling,throughLegs,effectiveCeiling;
+            private NativeExternalWidthProof nativeExternal,publishedExternal;
+            // The opaque value must be the private native callback binding;
+            // arbitrary external callbacks cannot mint that attestation.
+            internal void BindNativeExternal(object binding)=>nativeExternal=binding as NativeExternalWidthProof;
+            internal int ThroughLegs=>throughLegs;
+            internal bool Complete(TowerInput common,TowerInput input,TowerLayout result,bool fullSearchCompleted,bool restricted)
+            {
+                failedWidths.Clear();throughLegs=0;rawCeiling=0;effectiveCeiling=0;publishedExternal=null;
+                if(!fullSearchCompleted || restricted || result?.Transfer?.EngineerReceiverCount!=8
+                    || !common.EngineerSearch || !common.LocalNetworkSearch || !common.ReuseSearchWork || !common.ReuseReceiverSearches || !common.OptimizeCrossingSearch
+                    || common.FirstCompleteNetworkOnly || common.NetworkSeedCompletion?.Found==true || common.Trace?.HasTimeLimit==true || input.Trace?.HasTimeLimit==true
+                    || common.Trace?.BudgetReached==true || input.Trace?.BudgetReached==true || result.SearchTimeLimitReached
+                    || input.EngineerPlan==null
+                    || input.TransferredSlab==null || input.TransferredSlab.FixedTowerWidthMm.HasValue || input.ReceiverTransverseOffsetMm!=0 || result.TransverseOffsetMm!=0
+                    || !ReferenceEquals(input.ReceiverAlternatives,this))return false;
+                // All refinements through eight failed for each missing width
+                // at every station count through this winner. Higher station
+                // counts remain unproven and keep their original search order.
+                common.Trace?.CheckCancellation();input.Trace?.CheckCancellation();
+                if((common.ExternalObstacles.Length!=0 || input.ExternalObstacles.Length!=0 || nativeExternal!=null)
+                    && (nativeExternal==null || !nativeExternal.Matches(common,input)))return false;
+                foreach(double width in new[] {1000.0,1524,1500,2000})
+                    if(Math.Abs(result.WidthMm-width)>=1e-7 && !ContainsKey(width))failedWidths.Add(width);
+                if(failedWidths.Count==0)return false;
+                rawCeiling=input.NetworkLegCeiling;effectiveCeiling=EffectiveReceiverLegCeiling(input);throughLegs=result.LegCount;publishedExternal=nativeExternal;return true;
+            }
+            internal bool Rejects(double width,int ceiling,BeamSearchTrace trace)
+            {
+                trace?.CheckCancellation();
+                // The object belongs to this exact receiving call. A larger raw
+                // budget or another scope must not consume its failure proof.
+                return FailedThroughStations(width,ceiling,trace)>0 && Math.Min(ceiling/2*2,effectiveCeiling)<=throughLegs;
+            }
+            internal int FailedThroughStations(double width,int ceiling,BeamSearchTrace trace)
+            {
+                trace?.CheckCancellation();
+                return throughLegs>0 && ceiling<=rawCeiling && failedWidths.Contains(width) && !ContainsKey(width)
+                    && (publishedExternal==null || publishedExternal.Matches()) ? throughLegs/2 : 0;
+            }
+        }
         private sealed class ReceiverSearchResult
         {
             internal int Ceiling;internal TowerLayout Best;internal TowerLayout[] Choices;
@@ -1117,6 +2386,13 @@ namespace EngineeringDashboard
         private static ScenarioResult CoordinatedScenario(TowerInput common,TransferNetworkInput input,double[][] covers,TransferredSlabOptimizer.GeometryCache geometryCache,UpperTransferPlan[][] options,double cover,double phase,int rows,EngineerBound engineerBound=null,Dictionary<Tuple<int,UpperTransferPlan,UpperTransferPlan>,ReceiverSearchResult> baseReceivers=null)
         {
             var outcome=new ScenarioResult {Diagnostics=common.Diagnostics};
+            // Future reserves use actual local covers. The physical aggregate
+            // is independent of all upper-foot alternatives and terminal reroutes.
+            var aggregate=engineerBound==null ? null : ReceiverAggregateLoadBound.TryCreate(common,input,cover,
+                options.Select((o,bay)=>o.Length>0 && o.All(p=>p!=null && ReceiverAggregateLoadBound.SymmetricPlan(p,input.Bays[bay].WidthMm))).All(x=>x),geometryCache);
+            aggregate?.BindRetainedNormalOptions(options);
+            var topology=engineerBound!=null && (input.DifferentSpans(common.LengthMm) || aggregate!=null)
+                ? new ReceiverTopologyReserve(common,input,covers,geometryCache,aggregate) : null;
             var solveCache=new Dictionary<Tuple<int,UpperTransferPlan,UpperTransferPlan>,Tuple<int,TowerLayout[]>>();
             baseReceivers=baseReceivers??new Dictionary<Tuple<int,UpperTransferPlan,UpperTransferPlan>,ReceiverSearchResult>();
             var crossCaches=new Dictionary<int,Dictionary<string,DedicatedCrossSearch>>();
@@ -1136,21 +2412,23 @@ namespace EngineeringDashboard
                 {best=baseline.Best;choices.AddRange(baseline.Choices);}
                 else
                 {
-                var alternatives=common.EngineerSearch && common.ReuseSearchWork ? new Dictionary<double,TowerLayout>() : null;
-                best=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,alternatives:alternatives);if(best!=null)choices.Add(best);
+                var alternatives=common.EngineerSearch && common.ReuseSearchWork ? new ReceiverWidthAlternatives() : null;
+                best=SolveUniversal(aggregate,common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,alternatives:alternatives);if(best!=null)choices.Add(best);
                 // The unrestricted solve already searches all these widths. A failed
                 // solve proves each centred fixed-width subset fails too; offset searches
                 // below remain necessary because they change the receiving geometry.
                 if(best!=null || !common.ReuseSearchWork)foreach(double width in new[] {1000.0,1524,1500,2000})
                 {
                     if(best!=null && Math.Abs(best.WidthMm-width)<1e-7)continue;
+                    if(alternatives!=null && alternatives.Rejects(width,ceiling,common.Trace))
+                    {common.Trace?.Increment(BeamSearchCounter.ReceiverWidthFailuresReused);continue;}
                     TowerLayout alternative;
-                    if(alternatives==null || !alternatives.TryGetValue(width,out alternative))alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,width);
+                    if(alternatives==null || !alternatives.TryGetValue(width,out alternative))alternative=SolveUniversal(aggregate,common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,width,certifiedFailedStations:alternatives?.FailedThroughStations(width,ceiling,common.Trace)??0);
                     if(alternative!=null)choices.Add(alternative);
                 }
                 foreach(double offset in new[] {-25.0,25})
                 {
-                    var alternative=Solve(common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,1000,offset);
+                    var alternative=SolveUniversal(aggregate,common,input,beam,left,right,cover,phase,covers,geometryCache,ceiling,1000,offset);
                     if(alternative!=null)choices.Add(alternative);
                 }
                 if(common.OptimizeCrossingSearch && common.ReuseSearchWork)baseReceivers[key]=new ReceiverSearchResult {Ceiling=ceiling,Best=best,Choices=choices.ToArray()};
@@ -1162,7 +2440,7 @@ namespace EngineeringDashboard
                     foreach(int extra in Enumerable.Range(1,common.EngineerJunctionExtraTiers))
                     {
                         var larger=common.CopyForSearch();larger.EngineerMinimumStations=best.PositionsMm.Length+extra;
-                        var alternative=Solve(larger,input,beam,left,right,cover,phase,covers,geometryCache,larger.EngineerMinimumStations*2,best.WidthMm);
+                        var alternative=SolveUniversal(aggregate,larger,input,beam,left,right,cover,phase,covers,geometryCache,larger.EngineerMinimumStations*2,best.WidthMm);
                         if(alternative!=null)choices.Add(alternative);
                     }
                 }
@@ -1172,7 +2450,9 @@ namespace EngineeringDashboard
             {
                 common.Trace?.CheckCancellation();
                 outcome.Tested++;var candidate=new State {Beams=previous.Beams.Concat(new[] {receiver}).ToArray(),Bays=beam==input.Bays.Length ? previous.Bays : previous.Bays.Concat(new[] {right}).ToArray(),Separate=previous.Separate+(beam<input.Bays.Length && right==null ? 1 : 0),Legs=previous.Legs+receiver.LegCount,Narrow=previous.Narrow+receiver.Standalone600Count,BaysCount=previous.BaysCount+receiver.BayCount,BracePenalty=previous.BracePenalty+receiver.StandaloneBracePenalty,Symmetry=previous.Symmetry+receiver.SymmetryErrorMm,Timber=previous.Timber+LowerTimber(receiver)+(right==null ? 0 : right.StockLengthMm*EffectiveWidthsMm(common,input,beam,cover,phase).Count(x=>x>0))};
-                if(common.LocalNetworkSearch && engineerBound!=null && !engineerBound.MayImprove(candidate,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4,covers.Min(c=>c.Length)))
+                if(common.LocalNetworkSearch && engineerBound!=null && !(topology==null
+                    ? engineerBound.MayImprove(candidate,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4,covers.Min(c=>c.Length))
+                    : engineerBound.MayImprove(candidate,topology.FutureLegs(beam),topology.FutureBays(beam))))
                 {common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);return null;}
                 if(beam>0)
                 {
@@ -1184,9 +2464,12 @@ namespace EngineeringDashboard
                     if(!crossCaches.TryGetValue(beam,out var cache))crossCaches[beam]=cache=new Dictionary<string,DedicatedCrossSearch>();
                     var worker=common.CopyForSearch();worker.DedicatedCrossCache=sharedCrossCache ?? cache;
                     bool crossingPassed;
-                    var prefixCache=beam<input.Beams.Length-1 && common.ReuseReceiverSearches ? common.NetworkPrefixWork : null;
+                    bool terminal=beam==input.Beams.Length-1;
+                    var prefixCache=common.ReuseReceiverSearches ? common.NetworkPrefixWork : null;
                     var prefixKey=prefixCache==null ? null : new CheckedPrefixKey(common,partial);
-                    if(prefixCache!=null && prefixCache.Get(prefixKey,out var checkedPrefix))
+                    // A terminal failure needs no drawing result. Passing terminal
+                    // combinations still rebuild their resolved members and rows.
+                    if(prefixCache!=null && prefixCache.Get(prefixKey,terminal,out var checkedPrefix))
                     {
                         common.Trace?.Increment(BeamSearchCounter.CheckedPrefixCacheHits);crossingPassed=checkedPrefix.Passed;
                         common.Diagnostics.Merge(checkedPrefix.Diagnostics);
@@ -1196,7 +2479,11 @@ namespace EngineeringDashboard
                         worker.Diagnostics=new TowerSearchDiagnostics(common.DeflectionDenominator,trace:common.Trace,ignoreUplift:common.IgnoreUplift) {LazyLocations=common.LazySearchDiagnostics};
                         using(common.Trace?.Measure(BeamSearchStage.CrossingSupports))crossingPassed=CrossBeamSupportOptimizer.Complete(worker,partial,beam<input.Beams.Length-1);
                         common.Diagnostics.Merge(worker.Diagnostics);
-                        if(prefixCache!=null && common.Trace?.BudgetReached!=true)prefixCache.Store(prefixKey,new NetworkPrefixCache.Entry {Passed=crossingPassed,Diagnostics=worker.Diagnostics});
+                        if(prefixCache!=null && (!terminal || !crossingPassed) && common.Trace?.BudgetReached!=true && common.NetworkSeedCompletion?.Found!=true)
+                        {
+                            common.Trace?.CheckCancellation();
+                            prefixCache.Store(prefixKey,new NetworkPrefixCache.Entry {Passed=crossingPassed,Diagnostics=worker.Diagnostics},terminal);
+                        }
                     }
                     if(!crossingPassed)return null;
                     if(beam==input.Beams.Length-1) {outcome.Improvements.Add(partial);engineerBound?.Publish(partial);common.Trace?.Increment(BeamSearchCounter.CompleteNetworkCandidates);common.NetworkSeedCompletion?.Complete();return null;}
@@ -1215,7 +2502,9 @@ namespace EngineeringDashboard
                 {
                     if(common.NetworkSeedCompletion?.Found==true)return false;
                     common.Trace?.CheckCancellation();if(remaining--<=0)return false;
-                    int ceiling=engineerBound?.Ceiling(previous.Legs,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4)??int.MaxValue;
+                    int ceiling=engineerBound==null ? int.MaxValue : topology==null
+                        ? engineerBound.Ceiling(previous.Legs,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4)
+                        : engineerBound.Ceiling(previous.Legs,topology.FutureLegs(beam));
                     bool tightJunction=input.CrossingBeams.Any(c=>c.SupportMode!=CrossBeamSupportMode.LegacySlabRows && (c.BayNumber==beam || c.BayNumber==beam+1)
                         && input.Bays[c.BayNumber-1].WidthMm<2*CrossBeamSupportOptimizer.SideShutterClearanceMm+1524+2*common.StockEndSetbackMm+CrossBeamSupportOptimizer.H20WidthMm);
                     var receivers=Receivers(beam,previous.Bays.LastOrDefault(),right,ceiling).Where(r=>r.LegCount<=ceiling);
@@ -1279,8 +2568,10 @@ namespace EngineeringDashboard
                     {
                         if(common.NetworkSeedCompletion?.Found==true)break;
                         var left=previous.Bays.LastOrDefault();
-                        int ceiling=engineerBound?.Ceiling(previous.Legs,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4)??int.MaxValue;
-                        if(ceiling<covers.Min(c=>c.Length)*4){common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);continue;}
+                        int ceiling=engineerBound==null ? int.MaxValue : topology==null
+                            ? engineerBound.Ceiling(previous.Legs,input.Beams.Length-beam-1,covers.Min(c=>c.Length)*4)
+                            : engineerBound.Ceiling(previous.Legs,topology.FutureLegs(beam));
+                        if(ceiling<(topology?.CurrentLegs(beam)??covers.Min(c=>c.Length)*4)){common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);continue;}
                         var receivers=Receivers(beam,left,right,ceiling);
                         foreach(var receiver in receivers)
                         {
@@ -1408,15 +2699,62 @@ namespace EngineeringDashboard
             return all.Select(x=>Array.IndexOf(own,x)).Select(i=>i<0 ? 0 : widths[i]).ToArray();
         }
         private static TowerLayout Solve(TowerInput common,TransferNetworkInput network,int beam,UpperTransferPlan left,UpperTransferPlan right,double cover,double phase,double[][] stockCovers,TransferredSlabOptimizer.GeometryCache geometryCache,int ceiling,double? towerWidth=null,double transverseOffset=0,Dictionary<double,TowerLayout> alternatives=null,TowerLayout fixedLayout=null)
+            =>SolveReceiver(common,network,beam,left,right,cover,phase,stockCovers,geometryCache,ceiling,towerWidth,transverseOffset,alternatives,fixedLayout);
+        private static TowerLayout SolveUniversal(ReceiverAggregateLoadBound aggregate,TowerInput common,TransferNetworkInput network,int beam,UpperTransferPlan left,UpperTransferPlan right,double cover,double phase,double[][] stockCovers,TransferredSlabOptimizer.GeometryCache geometryCache,int ceiling,double? towerWidth=null,double transverseOffset=0,Dictionary<double,TowerLayout> alternatives=null,TowerLayout fixedLayout=null,int certifiedFailedStations=0)
+            =>SolveReceiverCore(common,network,beam,left,right,cover,phase,stockCovers,geometryCache,ceiling,towerWidth,transverseOffset,alternatives,fixedLayout,
+                certifiedFailedStations:certifiedFailedStations,universalAggregate:aggregate);
+        private static TowerLayout SolveCertified(TowerInput common,TransferNetworkInput network,int beam,UpperTransferPlan left,UpperTransferPlan right,double cover,double phase,double[][] stockCovers,TransferredSlabOptimizer.GeometryCache geometryCache,int ceiling,double? towerWidth=null,double transverseOffset=0,Dictionary<double,TowerLayout> alternatives=null,TowerLayout fixedLayout=null,int certifiedFailedStations=0)
+            =>SolveReceiverCore(common,network,beam,left,right,cover,phase,stockCovers,geometryCache,ceiling,towerWidth,transverseOffset,alternatives,fixedLayout,certifiedFailedStations:certifiedFailedStations);
+        internal static Func<TransferredSlabOptimizer.Geometry,double,bool> WithReceiverFrameChecks(TowerInput input,TransferNetworkInput network,int beam,TowerLayout layout,
+            Func<TransferredSlabOptimizer.Geometry,double,bool> prepared,TransferredSlabOptimizer.ResponseCache<Tuple<TransferredSlabOptimizer.Geometry,double,double>,bool> frameChecks=null)
+        {
+            // This cache belongs to one receiver solve with a fixed transverse
+            // offset. Both the early necessary query and the ordinary callback
+            // use the same exact geometry/edge/width frame result, in that order.
+            frameChecks=frameChecks??new TransferredSlabOptimizer.ResponseCache<Tuple<TransferredSlabOptimizer.Geometry,double,double>,bool>(4096);
+            double width=layout.WidthMm,offset=layout.TransverseOffsetMm;
+            bool FrameFits(TransferredSlabOptimizer.Geometry geometry,double edge)
+            {
+                input.Trace?.CheckCancellation();var key=Tuple.Create(geometry,edge,width);
+                if(!frameChecks.TryGetValue(key,out bool fits))
+                    frameChecks.Store(key,fits=CrossBeamSupportOptimizer.ReceiverFramesFit(input,network,beam,geometry,edge,width,offset));
+                return fits;
+            }
+            bool FrameMayFit(TransferredSlabOptimizer.Geometry geometry,double edge)
+            {
+                bool fits;try{fits=FrameFits(geometry,edge);}catch(ArgumentException){return true;}
+                if(!fits)input.Trace?.Increment(BeamSearchCounter.ReceiverFrameMetadataRejected);return fits;
+            }
+            Func<TransferredSlabOptimizer.Geometry,double,bool> frames=FrameFits;
+            var bounded=PreparedReceiverSupportBounds.Attach(frames,(stocks,edge)=>0,FrameMayFit);
+            return CrossBeamSupportOptimizer.BothReceivers(bounded,prepared);
+        }
+        internal static int EffectiveReceiverLegCeiling(TowerInput input)
+            =>input.EngineerSearch ? 2*Math.Min(EngineerTowerSearch.MaximumStations(input),input.NetworkLegCeiling/2) : input.NetworkLegCeiling;
+        internal static double[][] ReceiverStockCovers(TowerInput common,TransferNetworkInput network,int beam,double[][] stockCovers,TransferredSlabOptimizer.GeometryCache geometryCache)
+        {
+            if(!network.DifferentSpans(common.LengthMm))return stockCovers;
+            var local=common.CopyForSearch();local.LengthMm=network.Beams[beam].SpanLength(common.LengthMm);local.LongitudinalStartMm=network.Beams[beam].SpanStartMm;
+            var allowed=CachedSpanStockCovers(local,geometryCache);
+            // Protected geometries retain their exact restricted stock universe.
+            return geometryCache?.Fixed==null ? allowed : stockCovers.Where(c=>allowed.Any(a=>a.SequenceEqual(c))).ToArray();
+        }
+        private static TowerLayout SolveReceiver(TowerInput common,TransferNetworkInput network,int beam,UpperTransferPlan left,UpperTransferPlan right,double cover,double phase,double[][] stockCovers,TransferredSlabOptimizer.GeometryCache geometryCache,int ceiling,double? towerWidth=null,double transverseOffset=0,Dictionary<double,TowerLayout> alternatives=null,TowerLayout fixedLayout=null,double[] selectedStockCover=null)
+            =>SolveReceiverCore(common,network,beam,left,right,cover,phase,stockCovers,geometryCache,ceiling,towerWidth,transverseOffset,alternatives,fixedLayout,selectedStockCover);
+        private static TowerLayout SolveReceiverCore(TowerInput common,TransferNetworkInput network,int beam,UpperTransferPlan left,UpperTransferPlan right,double cover,double phase,double[][] stockCovers,TransferredSlabOptimizer.GeometryCache geometryCache,int ceiling,double? towerWidth=null,double transverseOffset=0,Dictionary<double,TowerLayout> alternatives=null,TowerLayout fixedLayout=null,double[] selectedStockCover=null,int certifiedFailedStations=0,ReceiverAggregateLoadBound universalAggregate=null)
         {
             common.Trace?.CheckCancellation();
             if(network.DifferentSpans(common.LengthMm))
             {
-                var local=common.CopyForSearch();local.LengthMm=network.Beams[beam].SpanLength(common.LengthMm);local.LongitudinalStartMm=network.Beams[beam].SpanStartMm;
-                var allowed=TransferredSlabOptimizer.StockCovers(local);
-                // A protected option has a matching fixed geometry. Never replace
-                // its stock list with another span's larger coverage family.
-                stockCovers=geometryCache?.Fixed==null ? allowed : stockCovers.Where(c=>allowed.Any(a=>a.SequenceEqual(c))).ToArray();
+                stockCovers=ReceiverStockCovers(common,network,beam,stockCovers,geometryCache);
+                if(stockCovers.Length==0)return null;
+            }
+            // Local warm repairs may reuse an old stock topology only when that
+            // exact sequence still belongs to this beam's current permitted
+            // cover universe. Apply this after local-span cover generation.
+            if(selectedStockCover!=null)
+            {
+                stockCovers=stockCovers.Where(c=>c.SequenceEqual(selectedStockCover)).ToArray();
                 if(stockCovers.Length==0)return null;
             }
             if(ceiling<stockCovers.Min(c=>c.Length)*4) {common.Trace?.Increment(BeamSearchCounter.NetworkBranchesPruned);return null;}
@@ -1439,9 +2777,23 @@ namespace EngineeringDashboard
                 if(plan.UseDesignZones || plan.HasCrossings)input.EngineerPlan=plan;
                 if(plan.HasCrossings){t.EngineerNetwork=network;t.EngineerBeam=beam;}
             }
+            // A certificate belongs only to the freshly searched centred width
+            // subset in this Receivers call. Do not alter minimum/maximum tiers.
+            input.ReceiverFailedThroughStations=towerWidth.HasValue && transverseOffset==0 && fixedLayout==null && selectedStockCover==null
+                && geometryCache?.Fixed==null && input.EngineerPlan!=null ? Math.Max(0,certifiedFailedStations) : 0;
+            input.ExternalObstacles=common.ExternalObstacles;
+            input.ObstacleBottomMm=b.BottomElevationMm;
+            for(int i=0;i<beam;i++)input.ObstacleCentreYmm+=network.Beams[i].WidthMm/2+network.Bays[i].WidthMm+network.Beams[i+1].WidthMm/2;
             input.CoordinateCrossingLayouts=common.CoordinateCrossingLayouts;
-            var receiverCache=fixedLayout==null && common.ReuseReceiverSearches && common.ReuseSearchWork ? common.NetworkReceiverWork : null;
-            var receiverKey=receiverCache==null ? null : new ReceiverSolveKey(input,network,beam,alternatives!=null);
+            // A fixed geometry cache narrows the candidate universe independently
+            // of fixedLayout. Its identity is absent from ReceiverSolveKey, so it
+            // cannot consume or publish a complete unrestricted search result.
+            var receiverCache=fixedLayout==null && geometryCache?.Fixed==null && common.ExternalObstacles.Length==0 && common.ReuseReceiverSearches && common.ReuseSearchWork ? common.NetworkReceiverWork : null;
+            var receiverKey=receiverCache==null ? null : new ReceiverSolveKey(input,network,beam,alternatives!=null,shareLegCeilings:common.EngineerSearch && common.LocalNetworkSearch);
+            // OptimizeEngineer uses this exact maximum station count regardless
+            // of its adaptive receiver-count refinement. Raw budgets above that
+            // physical cap, and adjacent odd/even budgets, have identical work.
+            int cacheCeiling=EffectiveReceiverLegCeiling(input);
             input.Diagnostics=new TowerSearchDiagnostics(input.DeflectionDenominator,trace:input.Trace,ignoreUplift:input.IgnoreUplift) {LazyLocations=input.LazySearchDiagnostics};
             if(common.CoordinateCrossingLayouts)
             {
@@ -1453,20 +2805,38 @@ namespace EngineeringDashboard
                     input.TransferReceiverPreparation=layout=>
                     {
                         var prepared=CrossBeamSupportOptimizer.PrepareReceiver(input,network,beam,layout);
-                        if(!input.OptimizeCrossingSearch || prepared==null || !checkFrames)return prepared;
-                        return (geometry,edge)=>
-                        {
-                            var key=Tuple.Create(geometry,edge,layout.WidthMm);
-                            if(!frameChecks.TryGetValue(key,out bool fits))
-                                frameChecks.Store(key,fits=CrossBeamSupportOptimizer.ReceiverFramesFit(input,network,beam,geometry,edge,layout.WidthMm,layout.TransverseOffsetMm));
-                            return fits && prepared(geometry,edge);
-                        };
+                        if(!input.OptimizeCrossingSearch || prepared==null || ReferenceEquals(prepared,CrossBeamSupportOptimizer.FailedReceiver) || !checkFrames)return prepared;
+                        return WithReceiverFrameChecks(input,network,beam,layout,prepared,frameChecks);
                     };
                 }
                 input.TransferLayoutAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout)) && CrossBeamSupportOptimizer.CheckJunctionReceiver(input,network,beam,layout);
                 if(common.EngineerSearch)input.TransferLowerAcceptance=layout=>(t.EngineerNetwork==null || CrossBeamSupportOptimizer.CheckEngineerReceiver(input,network,beam,layout,true)) && CrossBeamSupportOptimizer.CheckJunctionLowerReceiver(input,network,beam,layout);
             }
+            NativeExternalWidthProof externalWidthProof=null;
+            if(input.ExternalObstacles.Length>0)
+            {
+                if(alternatives is ReceiverWidthAlternatives widthCollector && fixedLayout==null && selectedStockCover==null && geometryCache?.Fixed==null
+                    && input.EngineerPlan!=null && !towerWidth.HasValue && transverseOffset==0
+                    && common.EngineerSearch && common.LocalNetworkSearch && common.ReuseSearchWork && common.ReuseReceiverSearches && common.OptimizeCrossingSearch
+                    && !common.FirstCompleteNetworkOnly && common.NetworkSeedCompletion?.Found!=true && common.Trace?.HasTimeLimit!=true && input.Trace?.HasTimeLimit!=true)
+                {
+                    externalWidthProof=new NativeExternalWidthProof(common,input);
+                    input.TransferLayoutAcceptance=externalWidthProof.Acceptance;widthCollector.BindNativeExternal(externalWidthProof);
+                }
+                else
+                {
+                    var existingAcceptance=input.TransferLayoutAcceptance;
+                    input.TransferLayoutAcceptance=layout=>CrossBeamSupportOptimizer.ExternalLayoutFits(input,layout) && (existingAcceptance==null || existingAcceptance(layout));
+                }
+            }
+            // Capture only the native callbacks just installed above, including
+            // the additional obstacle AND check. Copies retain these identities;
+            // another caller's callback always uses the physical weak profile.
+            if(universalAggregate!=null && fixedLayout==null && selectedStockCover==null && geometryCache?.Fixed==null)
+                input.TransferGeometryFilter=universalAggregate.GeometryFilterForRetainedOptions(beam,input.TransferReceiverPreparation,input.TransferLayoutAcceptance,t.FixedTowerWidthMm,input.ReceiverTransverseOffsetMm);
+            externalWidthProof?.SealCallbacks();
             TowerLayout result=null;
+            bool completeFailure=false,fullSearchStarted=false,fullSearchCompleted=false;
             ReceiverSolveKey identityInput=null;
             void Identify(TowerLayout layout)
             {
@@ -1476,13 +2846,15 @@ namespace EngineeringDashboard
             }
             try
             {
-                if(receiverCache!=null && receiverCache.Get(receiverKey,out var cachedReceiver))
+                if(receiverCache!=null && receiverCache.Get(receiverKey,cacheCeiling,out var cachedReceiver))
                 {
                     if(cachedReceiver.Best==null || (cachedReceiver.RowRegistry??new double[0]).SequenceEqual(t.SharedRowsMm??new double[0]))
                     {
                         common.Trace?.Increment(BeamSearchCounter.ReceiverSearchCacheHits);
                         input.Diagnostics.Merge(cachedReceiver.Diagnostics);
-                        if(alternatives!=null)foreach(var choice in cachedReceiver.Alternatives)alternatives[choice.Key]=choice.Value;
+                        if(cachedReceiver.MinimumRequiredLegs>ceiling)
+                            input.Diagnostics.Geometry("B"+(beam+1)+" minimum legs",$"B{beam+1}: the complete receiving-beam search requires at least {cachedReceiver.MinimumRequiredLegs} legs; this network branch permits {ceiling}.","Use another network branch or revise the receiving supports.");
+                        if(alternatives!=null)foreach(var choice in cachedReceiver.Alternatives.Where(choice=>choice.Value.LegCount<=ceiling))alternatives[choice.Key]=choice.Value;
                         return cachedReceiver.Best;
                     }
                     // Identical local mathematical problem, new global row IDs.
@@ -1491,7 +2863,7 @@ namespace EngineeringDashboard
                     var rebuilt=new Dictionary<double,TowerLayout>();
                     result=TransferredSlabOptimizer.TryFixedLayout(input,cachedReceiver.Best);
                     bool complete=result!=null;
-                    if(complete && alternatives!=null)foreach(var choice in cachedReceiver.Alternatives)
+                    if(complete && alternatives!=null)foreach(var choice in cachedReceiver.Alternatives.Where(choice=>choice.Value.LegCount<=ceiling))
                     {
                         var layout=ReferenceEquals(choice.Value,cachedReceiver.Best) ? result : TransferredSlabOptimizer.TryFixedLayout(input,choice.Value);
                         if(layout==null){complete=false;break;}rebuilt[choice.Key]=layout;
@@ -1505,14 +2877,28 @@ namespace EngineeringDashboard
                     }
                 }
                 common.Trace?.Increment(BeamSearchCounter.NetworkSolves);
-                using(common.Trace?.Measure(BeamSearchStage.ReceivingBeams))result=fixedLayout==null ? TransferredSlabOptimizer.Optimize(input,true) : TransferredSlabOptimizer.TryFixedLayout(input,fixedLayout);
+                using(common.Trace?.Measure(BeamSearchStage.ReceivingBeams))
+                {
+                    result=null;
+                    if(fixedLayout==null)
+                    {fullSearchStarted=true;result=TransferredSlabOptimizer.Optimize(input,true);fullSearchCompleted=true;}
+                    else result=TransferredSlabOptimizer.TryFixedLayout(input,fixedLayout);
+                }
             }
-            catch(TowerOptimizationException){ }
+            catch(TowerOptimizationException){completeFailure=fullSearchStarted;}
             catch(ArgumentException ex) {input.Diagnostics.Geometry("B"+(beam+1)+" geometry",$"B{beam+1}: {ex.Message}","Review this beam's geometry and transfer inputs.");}
             finally{common.Diagnostics?.Merge(input.Diagnostics);}
             Identify(result);if(alternatives!=null)foreach(var choice in alternatives)Identify(choice.Value);
-            if(receiverCache!=null && common.Trace?.BudgetReached!=true && result?.SearchTimeLimitReached!=true)
-                receiverCache.Store(receiverKey,new NetworkReceiverCache.Entry {Best=result,Alternatives=alternatives==null ? new Dictionary<double,TowerLayout>() : new Dictionary<double,TowerLayout>(alternatives),Diagnostics=input.Diagnostics,RowRegistry=t.SharedRowsMm});
+            if(alternatives is ReceiverWidthAlternatives widthEvidence)
+                widthEvidence.Complete(common,input,result,fullSearchCompleted,fixedLayout!=null || selectedStockCover!=null || geometryCache?.Fixed!=null);
+            if(receiverCache!=null && (result!=null || completeFailure) && common.Trace?.BudgetReached!=true && result?.SearchTimeLimitReached!=true && common.NetworkSeedCompletion?.Found!=true)
+            {
+                common.Trace?.CheckCancellation();
+                receiverCache.Store(receiverKey,new NetworkReceiverCache.Entry {Best=result,Alternatives=alternatives==null ? new Dictionary<double,TowerLayout>() : new Dictionary<double,TowerLayout>(alternatives),Diagnostics=input.Diagnostics,RowRegistry=t.SharedRowsMm,LegCeiling=cacheCeiling,
+                    CompleteFailure=completeFailure,MinimumLegCountProven=selectedStockCover==null && fullSearchCompleted && common.EngineerSearch && (t.EngineerNetwork==null || !EngineerPrimaryPlan.Adjacent(t.EngineerNetwork,t.EngineerBeam).Any()),
+                    WiderCeilingStable=selectedStockCover==null && fullSearchCompleted && common.EngineerSearch && result?.Transfer?.EngineerReceiverCount==3,
+                    TighterFailureMinimumProven=selectedStockCover==null && fullSearchCompleted && common.EngineerSearch && !common.FirstCompleteNetworkOnly && result?.Transfer?.EngineerReceiverCount==8});
+            }
             return result;
         }
         private static BeamDistributedLoad[] CrossingBands(TransferNetworkInput network,int bay,double length,double cover)
