@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$OutputDirectory,[string]$Version='1.2.4',[ValidateSet(2024,2027)][int]$RevitVersion=2024)
+param([Parameter(Mandatory)][string]$OutputDirectory,[string]$Version='1.2.6',[ValidateSet(2024,2027)][int]$RevitVersion=2024)
 $ErrorActionPreference='Stop'
 $env:DOKA_DASHBOARD_REVIT_VERSION=[string]$RevitVersion
 $requested=[version]$Version

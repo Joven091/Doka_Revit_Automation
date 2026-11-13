@@ -202,8 +202,8 @@ namespace EngineeringDashboard
                             change.Start();
                             try
                             {
-                                if(!parameters[0].Set(vm.PropSpacing/304.8) || !parameters[1].Set(vm.PrimaryBeamCantilever/304.8)
-                                    || !parameters[2].Set(vm.PrimaryBeamCantilever/304.8) || !parameters[3].Set(vm.SuggestedPrimaryBeamSpacing/304.8)) throw new InvalidOperationException("A parameter rejected its value.");
+                                if(!parameters[0].Set(vm.PropSpacing/304.8) || !parameters[1].Set(vm.PrimaryLeftCantilever/304.8)
+                                    || !parameters[2].Set(vm.PrimaryRightCantilever/304.8) || !parameters[3].Set(vm.SuggestedPrimaryBeamSpacing/304.8)) throw new InvalidOperationException("A parameter rejected its value.");
                                 if(change.Commit() != TransactionStatus.Committed) throw new InvalidOperationException("Instance update was not committed.");
                                 updated++;
                             }

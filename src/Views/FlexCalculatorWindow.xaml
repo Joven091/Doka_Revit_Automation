@@ -91,7 +91,7 @@
           </Border>
           <Border Style="{StaticResource Card}">
             <StackPanel>
-              <TextBlock Style="{StaticResource Subheading}" Text="Secondary H20"/>
+              <TextBlock Style="{StaticResource Subheading}" Text="Secondary H20"/><StackPanel Visibility="{Binding ShowExactPrimaryCount, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding ShowExactPrimaryCount}"><StackPanel><TextBlock Text="Actual primary support count"/><TextBox AutomationProperties.Name="Actual primary support count" Text="{Binding ExactPrimaryBeamCount, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/></StackPanel></StackPanel>
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition/>
@@ -119,8 +119,8 @@
                 </Grid.ColumnDefinitions>
                 <ContentControl Grid.Column="0" IsTabStop="False">
                   <StackPanel>
-                    <TextBlock Text="Overhang at each end (mm)"/>
-                    <TextBox AutomationProperties.Name="Overhang at each end (mm)" Text="{Binding SecondaryBeamCantilever, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                    <TextBlock Text="Left cantilever (mm)"/>
+                    <TextBox AutomationProperties.Name="Left cantilever (mm)" Text="{Binding SecondaryLeftCantilever, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                   </StackPanel>
                 </ContentControl>
                 <ContentControl Grid.Column="2" IsTabStop="False">
@@ -130,11 +130,21 @@
                   </StackPanel>
                 </ContentControl>
               </Grid>
+<StackPanel Margin="0,8,0,0">
+ <StackPanel><TextBlock Text="Right cantilever (mm)"/><TextBox AutomationProperties.Name="Right cantilever (mm)" Text="{Binding SecondaryRightCantilever, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/></StackPanel>
+ <TextBlock Style="{StaticResource Hint}" Text="Cantilever = last support to beam end."/>
+ <CheckBox Content="Access beyond slab edge" AutomationProperties.Name="Secondary access beyond slab edge" IsChecked="{Binding SecondaryHasAccess}" Margin="0,10,0,4"/>
+ <Border Background="#F0F2F3" BorderBrush="#FFD100" BorderThickness="3,0,0,0" Padding="10" Visibility="{Binding SecondaryHasAccess, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding SecondaryHasAccess}">
+ <StackPanel><TextBlock Text="Access end"/><ComboBox AutomationProperties.Name="Secondary access end" ItemsSource="{Binding AccessEndOptions}" SelectedItem="{Binding SecondaryAccessEnd, Mode=TwoWay}"/>
+ <StackPanel Visibility="{Binding ShowSecondaryAccessLeft, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding ShowSecondaryAccessLeft}"><StackPanel><TextBlock Text="Left access extension (mm)"/><TextBox AutomationProperties.Name="Left access extension (mm)" Text="{Binding SecondaryAccessLeftMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/></StackPanel></StackPanel>
+ <StackPanel Visibility="{Binding ShowSecondaryAccessRight, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding ShowSecondaryAccessRight}"><StackPanel><TextBlock Text="Right access extension (mm)"/><TextBox AutomationProperties.Name="Right access extension (mm)" Text="{Binding SecondaryAccessRightMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/></StackPanel></StackPanel>
+ <TextBlock Style="{StaticResource Hint}" Text="{Binding SecondarySlabEdgeText}" TextWrapping="Wrap"/>
+ </StackPanel></Border></StackPanel>
             </StackPanel>
           </Border>
           <Border Style="{StaticResource Card}">
             <StackPanel>
-              <TextBlock Style="{StaticResource Subheading}" Text="Primary H20 and props"/>
+              <TextBlock Style="{StaticResource Subheading}" Text="Primary H20 and props"/><StackPanel Visibility="{Binding ShowExactPropCount, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding ShowExactPropCount}"><StackPanel><TextBlock Text="Actual prop count"/><TextBox AutomationProperties.Name="Actual prop count" Text="{Binding ExactPropCount, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/></StackPanel></StackPanel>
                               <StackPanel>
                   <TextBlock Text="Prop count"/>
                   <ComboBox AutomationProperties.Name="Prop count" ItemsSource="{Binding PropCountOptions}" SelectedItem="{Binding PropCount, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
@@ -153,8 +163,8 @@
                 </ContentControl>
                 <ContentControl Grid.Column="2" IsTabStop="False">
                   <StackPanel>
-                    <TextBlock Text="Overhang at each end (mm)"/>
-                    <TextBox AutomationProperties.Name="Overhang at each end (mm)" Text="{Binding PrimaryBeamCantilever, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
+                    <TextBlock Text="Left cantilever (mm)"/>
+                    <TextBox AutomationProperties.Name="Left cantilever (mm)" Text="{Binding PrimaryLeftCantilever, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
                   </StackPanel>
                 </ContentControl>
               </Grid>
@@ -177,6 +187,16 @@
                   </StackPanel>
                 </ContentControl>
               </Grid>
+<StackPanel Margin="0,8,0,0">
+ <StackPanel><TextBlock Text="Right cantilever (mm)"/><TextBox AutomationProperties.Name="Right cantilever (mm)" Text="{Binding PrimaryRightCantilever, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/></StackPanel>
+ <TextBlock Style="{StaticResource Hint}" Text="Cantilever = last support to beam end."/>
+ <CheckBox Content="Access beyond slab edge" AutomationProperties.Name="Primary access beyond slab edge" IsChecked="{Binding PrimaryHasAccess}" Margin="0,10,0,4"/>
+ <Border Background="#F0F2F3" BorderBrush="#FFD100" BorderThickness="3,0,0,0" Padding="10" Visibility="{Binding PrimaryHasAccess, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding PrimaryHasAccess}">
+ <StackPanel><TextBlock Text="Access end"/><ComboBox AutomationProperties.Name="Primary access end" ItemsSource="{Binding AccessEndOptions}" SelectedItem="{Binding PrimaryAccessEnd, Mode=TwoWay}"/>
+ <StackPanel Visibility="{Binding ShowPrimaryAccessLeft, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding ShowPrimaryAccessLeft}"><StackPanel><TextBlock Text="Left access extension (mm)"/><TextBox AutomationProperties.Name="Left access extension (mm)" Text="{Binding PrimaryAccessLeftMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/></StackPanel></StackPanel>
+ <StackPanel Visibility="{Binding ShowPrimaryAccessRight, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding ShowPrimaryAccessRight}"><StackPanel><TextBlock Text="Right access extension (mm)"/><TextBox AutomationProperties.Name="Right access extension (mm)" Text="{Binding PrimaryAccessRightMm, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/></StackPanel></StackPanel>
+ <TextBlock Style="{StaticResource Hint}" Text="{Binding PrimarySlabEdgeText}" TextWrapping="Wrap"/>
+ </StackPanel></Border></StackPanel>
               <StackPanel>
                 <TextBlock Text="Outer tube position"/>
                 <ComboBox AutomationProperties.Name="Outer tube position" ItemsSource="{Binding PropOrientationOptions}" SelectedItem="{Binding PropOrientation, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/>
@@ -189,6 +209,11 @@
               </Border>
             </StackPanel>
           </Border>
+          <Border Style="{StaticResource Card}" Visibility="{Binding HasAccessExtensions, Converter={StaticResource BoolToVis}}" IsEnabled="{Binding HasAccessExtensions}"><StackPanel>
+            <TextBlock Style="{StaticResource Subheading}" Text="Access loading"/>
+            <StackPanel><TextBlock Text="Total access load (kN/m²)"/><TextBox AutomationProperties.Name="Total access load (kN/m²)" Text="{Binding TotalAccessLoadKnM2, UpdateSourceTrigger=PropertyChanged, NotifyOnValidationError=True, ValidatesOnExceptions=True}"/></StackPanel>
+            <TextBlock Style="{StaticResource Hint}" Text="Includes deck weight. Default 0.75 kN/m²; change to the project value. Applies to all access extensions." TextWrapping="Wrap"/>
+          </StackPanel></Border>
         </StackPanel>
       </ScrollViewer>
       <ScrollViewer x:Name="ReviewScroll" Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -225,7 +250,7 @@
                   <ColumnDefinition/>
                   <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="Load per prop" Margin="0,0,12,0"/>
+                <TextBlock Text="Maximum prop load" Margin="0,0,12,0"/>
                 <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding ActualPropLoad, StringFormat='{}{0:F2} kN'}"/>
               </Grid>
               <Grid Margin="0,5">
@@ -242,11 +267,17 @@
             <StackPanel>
               <TextBlock Style="{StaticResource Subheading}" Text="Slab and support section"/>
               <TextBlock Style="{StaticResource Hint}" Text="Slab cutaway · schematic, not to scale"/>
+              <StackPanel Visibility="{Binding UsesAccessAnalysis, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0">
+                <TextBlock Text="Show beam"/><ComboBox ItemsSource="{Binding AccessBeamOptions}" SelectedItem="{Binding AccessPreviewBeam, Mode=TwoWay}"/>
+                <TextBlock Text="Load case"/><ComboBox x:Name="AccessLoadCaseSelector" ItemsSource="{Binding AccessCaseOptions}" SelectedItem="{Binding SelectedAccessCase, Mode=TwoWay}"/>
+                <local:SlabAccessDiagram x:Name="AccessDiagram" Height="395"/>
+                <TextBlock Style="{StaticResource Hint}" Text="{Binding AccessGoverningSummary}" TextWrapping="Wrap"/>
+              </StackPanel>
               <local:SlabSupportDiagram x:Name="SupportDiagram" Margin="0,4" AutomationProperties.Name="Slab over perpendicular secondary and primary H20 beams, supported by props">
                 <local:SlabSupportDiagram.Style>
                   <Style TargetType="local:SlabSupportDiagram">
                     <Setter Property="Height" Value="300"/>
-                    <Style.Triggers><DataTrigger Binding="{Binding IsCalculationValid}" Value="False"><Setter Property="Height" Value="0"/></DataTrigger></Style.Triggers>
+                    <Style.Triggers><DataTrigger Binding="{Binding UsesAccessAnalysis}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger><DataTrigger Binding="{Binding IsCalculationValid}" Value="False"><Setter Property="Height" Value="0"/></DataTrigger></Style.Triggers>
                   </Style>
                 </local:SlabSupportDiagram.Style>
               </local:SlabSupportDiagram>

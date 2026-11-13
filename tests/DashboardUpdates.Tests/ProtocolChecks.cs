@@ -58,6 +58,10 @@ internal static class ProtocolChecks
 
         var helper=Helper();helper.Validate();check(true,"valid detached beam helper update admitted");
         helper=Helper();helper.Kind="slab";helper.SlabThicknessMm=300;helper.PrimarySpacingMm=1000;helper.Validate();check(true,"valid detached slab helper update admitted");
+        helper.PrimaryEndCantileverMm=750;helper.Validate();check(BridgeProtocol.FromJson<HelperApplyRequest>(BridgeProtocol.Json(helper)).PrimaryEndCantileverMm==750,"independent slab end cantilever survives bridge serialization");
+        helper.PrimaryEndCantileverMm=double.NaN;reject(helper.Validate,"non-finite independent slab cantilever rejected");
+        helper=Helper();helper.PrimaryEndCantileverMm=750;reject(helper.Validate,"independent slab cantilever is not silently applied to beam helpers");
+        check(!BridgeProtocol.FromJson<BridgeHello>("{\"ProtocolVersion\":1,\"BridgeVersion\":\"1.2.4\",\"Authorized\":true}").SupportsIndependentSlabCantilevers,"old bridge safely advertises no asymmetric slab-helper capability");
         helper=Helper();helper.DocumentKey="";reject(helper.Validate,"helper write requires original document identity");
         helper=Helper();helper.Kind="arbitrary";reject(helper.Validate,"unsupported helper write kind rejected");
         helper=Helper();helper.PropSpacingMm=0;reject(helper.Validate,"zero prop spacing rejected");

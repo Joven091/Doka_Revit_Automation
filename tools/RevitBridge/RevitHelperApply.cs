@@ -34,7 +34,7 @@ namespace EngineeringDashboard
                     sameDocument();
                     var parameters=new List<Parameter>{instance.LookupParameter("Max Prop spacing")??instance.LookupParameter("Max Prop Spacing"),instance.LookupParameter("Start Cantilever"),instance.LookupParameter("End Cantilever")};
                     var names=new List<string>{"Max Prop spacing","Start Cantilever","End Cantilever"};
-                    var settings=new List<double>{values.PropSpacingMm,values.PrimaryCantileverMm,values.PrimaryCantileverMm};
+                    var settings=new List<double>{values.PropSpacingMm,values.PrimaryCantileverMm,values.PrimaryEndCantileverMm??values.PrimaryCantileverMm};
                     if(values.Kind=="slab")
                     {parameters.Add(instance.LookupParameter("Primary Beam Spacing")??instance.LookupParameter("Primary Beam spacing")??instance.LookupParameter("Max Beam Spacing")??instance.LookupParameter("Max Beam spacing"));names.Add("Primary Beam Spacing");settings.Add(values.PrimarySpacingMm);}
                     var invalid=Enumerable.Range(0,parameters.Count).Where(i=>!IsLength(parameters[i])||parameters[i].IsReadOnly).Select(i=>names[i]).ToArray();

@@ -3,7 +3,6 @@
     <OutputType>WinExe</OutputType>
     <AssemblyName>Doka.EngineeringDashboard</AssemblyName>
     <TargetFramework>net48</TargetFramework>
-    <Version>1.2.0</Version>
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <LangVersion>latest</LangVersion>

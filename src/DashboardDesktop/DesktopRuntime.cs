@@ -71,6 +71,12 @@ namespace EngineeringDashboard.DesktopHost
                 EventHandler closed=(sender,args)=>cancelled.Cancel();owner.Closed+=closed;
                 try
                 {
+                    if(request.Kind=="slab" && request.PrimaryEndCantileverMm.HasValue && request.PrimaryEndCantileverMm.Value!=request.PrimaryCantileverMm)
+                    {
+                        var hello=await Client.CallAsync<object,BridgeHello>("hello",null,cancelled.Token);
+                        if(hello?.SupportsIndependentSlabCantilevers!=true)
+                            throw new InvalidOperationException("Apply the 1.2.6 or newer Revit integration installer before sending different left/right slab cantilevers to Revit. No helper values were changed.");
+                    }
                     var context=await Client.CallAsync<object,ActiveDocumentInfo>("context",null,cancelled.Token);
                     cancelled.Token.ThrowIfCancellationRequested();if(!owner.IsLoaded)throw new ObjectDisposedException("Calculator");
                     request.DocumentKey=context?.DocumentKey;request.Validate();

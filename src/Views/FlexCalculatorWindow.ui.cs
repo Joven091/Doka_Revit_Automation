@@ -29,16 +29,25 @@ namespace EngineeringDashboard
         }
         private void ModelChanged(object sender, PropertyChangedEventArgs e)
         {
-            if(e.PropertyName == nameof(FlexCalculatorViewModel.IsCalculationValid)) UpdateSupportDiagram();
-            if(e.PropertyName == nameof(FlexCalculatorViewModel.UseCustomLoads))
+            if(e.PropertyName == nameof(FlexCalculatorViewModel.IsCalculationValid) || e.PropertyName == nameof(FlexCalculatorViewModel.AccessPreviewAnalysis)) UpdateSupportDiagram();
+            if(e.PropertyName == nameof(FlexCalculatorViewModel.UseCustomLoads) || e.PropertyName == nameof(FlexCalculatorViewModel.UsesAccessAnalysis) ||
+                e.PropertyName == nameof(FlexCalculatorViewModel.PrimaryHasAccess) || e.PropertyName == nameof(FlexCalculatorViewModel.SecondaryHasAccess) ||
+                e.PropertyName == nameof(FlexCalculatorViewModel.PrimaryAccessEnd) || e.PropertyName == nameof(FlexCalculatorViewModel.SecondaryAccessEnd))
                 Dispatcher.BeginInvoke(new Action(RefreshInputValidity), DispatcherPriority.DataBind);
         }
         private void UpdateSupportDiagram()
         {
             SupportDiagram.SetModel(observedModel);
+            AccessDiagram.SetModel(observedModel);
             if (observedModel == null || !observedModel.IsCalculationValid)
             {
                 DiagramCaption.Text = "Enter valid inputs to show the slab and support arrangement.";
+                return;
+            }
+            if (observedModel.UsesAccessAnalysis)
+            {
+                DiagramCaption.Text = "Actual support counts and independent cantilevers are analyzed. Primary UDL = secondary reaction / secondary spacing.\n" +
+                    "The total access load includes deck weight. Slab/access, before-pour and omitted-access stability cases are checked.";
                 return;
             }
             bool envelope = observedModel.PrimaryBeamCount == "5+" || observedModel.PropCount == "5+";
@@ -76,7 +85,8 @@ namespace EngineeringDashboard
             RefreshInputValidity();
             return vm != null && vm.IsCalculationValid && !TextInputs(this).Any(t => t.IsEnabled && Validation.GetHasError(t));
         }
-        private const string FileInputs = "SlabThickness,FloorHeight,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad,PrimaryBeamCount,SecondaryBeamCantilever,DeflectionLimit,PropCount,PropSpacing,PrimaryBeamCantilever,PropModel,PropType,PropOrientation";
+        private const string FileInputs = "SlabThickness,FloorHeight,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad,PrimaryBeamCount,SecondaryBeamCantilever,DeflectionLimit,PropCount,PropSpacing,PrimaryBeamCantilever,PropModel,PropType,PropOrientation," +
+            "PrimaryRightCantilever,SecondaryRightCantilever,PrimaryHasAccess,SecondaryHasAccess,PrimaryAccessEnd,SecondaryAccessEnd,PrimaryAccessLeftMm,PrimaryAccessRightMm,SecondaryAccessLeftMm,SecondaryAccessRightMm,TotalAccessLoadKnM2,ExactPrimaryBeamCount,ExactPropCount";
         internal CalculationRecord CaptureCalculation()
         {
             if(!TryGetValidCalculation(out var vm)) throw new ArgumentException("Correct the inputs before saving or exporting.");
@@ -93,7 +103,7 @@ namespace EngineeringDashboard
             candidate.PlywoodDeflectionLimit=PlywoodSpacing.RestoreDeflectionLimit(record.Inputs.SingleOrDefault(f=>f.Name=="PlywoodDeflectionLimit")?.Value,candidate.DeflectionLimit);
             if(!candidate.IsCalculationValid) throw new ArgumentException("The loaded calculation is invalid: "+candidate.WarningMessage);
             var target=(FlexCalculatorViewModel)DataContext;
-            CalculationFiles.Apply(record,"Slab",target,FileInputs);
+            CalculationFiles.Apply(CalculationFiles.Capture("Slab",candidate,FileInputs),"Slab",target,FileInputs);
             target.SelectedPlywood=candidate.SelectedPlywood; target.PlywoodDeflectionLimit=candidate.PlywoodDeflectionLimit;
             foreach(var box in TextInputs(this)) box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
             RefreshInputValidity();
@@ -105,6 +115,15 @@ namespace EngineeringDashboard
         {
             var record=CaptureCalculation(); var vm=(FlexCalculatorViewModel)DataContext;
             var results=CalculationFiles.Capture("Slab",vm,"SecondaryBeamSpacing,PlywoodProfileId,PlywoodSpacingSummary,SuggestedPrimaryBeamSpacing,ActualPropLoad,PropCapacityLimit,UtilizationRate,PropExtensionMm,PropLookupExtensionMm,PrimaryDeflectionMm,H20Shear,H20Utilization,IsCalculationValid");
+            if (vm.UsesAccessAnalysis)
+            {
+                results.Inputs.Add(CalculationFiles.Field("Slab and access checks", vm.AccessReport()));
+                return CalculationFiles.Report("Slab", record.Inputs, results.Inputs,
+                    "Piecewise UDLs at the actual slab edges; independent end cantilevers; actual support counts. Total access load includes deck weight. " +
+                    "Slab/access and before-pour cases include conservative omission of access loads on either end for stability. " +
+                    "Primary UDLs use the corresponding secondary reactions divided by secondary spacing. Strength, span and cantilever deflection including support rotation, uplift and individual prop loads are checked. " +
+                    "The five/six-support full-load envelope is not used for partial or asymmetric loading.");
+            }
             double area=vm.UseCustomLoads ? 25*vm.SlabThickness/1000+vm.CustomLiveLoad+vm.CustomFormworkLoad : SlabLoadHelper.CalculateTotalLoad(vm.SlabThickness);
             int secondaryCount=vm.PrimaryBeamCount=="5+"?5:int.Parse(vm.PrimaryBeamCount), primaryCount=vm.PropCount=="5+"?5:int.Parse(vm.PropCount);
             double secondarySpan=vm.SuggestedPrimaryBeamSpacing/1000, primarySpan=vm.PropSpacing/1000;

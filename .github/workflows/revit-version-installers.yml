@@ -28,12 +28,24 @@ jobs:
         run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
       - name: Build the Revit-specific bridge and matching Dashboard
         shell: pwsh
-        run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/live -Version 1.2.4 -RevitVersion ${{ matrix.revit }}
+        run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/live -Version 1.2.6 -RevitVersion ${{ matrix.revit }}
       - name: Verify host isolation and actual bridge API/runtime metadata
         shell: pwsh
         run: |
           dotnet run --project tests/DashboardHostVersions.Tests -c Release -- artifacts/live/bootstrap/Doka.RevitBridge.dll ${{ matrix.revit }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify partial slab loads, actual support counts and live slab controls
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/evidence/slab-access | Out-Null
+          dotnet run --project tests/Slab.AccessTests -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Independent slab access analysis failed' }
+          dotnet run --project tests/Slab.CoreTests -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Slab core and access regression failed' }
+          dotnet build tests/Slab.Tests -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Slab UI test build failed' }
+          & tests/Slab.Tests/bin/Release/net10.0-windows/MyRevitAddin.exe artifacts/evidence/slab-access/slab.png access
+          if ($LASTEXITCODE -ne 0) { throw 'Slab UI, persistence and drawing regression failed' }
       - name: Verify pours, additive imports and retained planner behavior on both runtimes
         shell: pwsh
         run: |
@@ -85,13 +97,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: Revit${{ matrix.revit }}-1.2.4-installer-and-update-files
+          name: Revit${{ matrix.revit }}-1.2.6-installer-and-update-files
           path: artifacts/company-files/
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Revit${{ matrix.revit }}-1.2.4-validation
+          name: Revit${{ matrix.revit }}-1.2.6-validation
           path: |
             artifacts/evidence/
             artifacts/installer/installer-compile.log

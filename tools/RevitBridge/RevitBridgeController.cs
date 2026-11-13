@@ -165,7 +165,7 @@ namespace EngineeringDashboard
                 finally{if(acquired)mutex.ReleaseMutex();}
             }
         }
-        string Hello()=>BridgeProtocol.Json(new BridgeHello{ProtocolVersion=BridgeProtocol.Version,BridgeVersion=System.Diagnostics.FileVersionInfo.GetVersionInfo(typeof(RevitBridgeController).Assembly.Location).FileVersion,Authorized=AccessWindow.IsSessionApproved});
+        string Hello()=>BridgeProtocol.Json(new BridgeHello{ProtocolVersion=BridgeProtocol.Version,BridgeVersion=System.Diagnostics.FileVersionInfo.GetVersionInfo(typeof(RevitBridgeController).Assembly.Location).FileVersion,Authorized=AccessWindow.IsSessionApproved,SupportsIndependentSlabCantilevers=true});
         static void RequirePeer(CancellationToken cancellation,int id,long started)
         {cancellation.ThrowIfCancellationRequested();if(!Alive(id,started))throw new OperationCanceledException("The initiating Dashboard has closed.");}
         string Execute(UIApplication app,BridgeRequest request,CancellationToken cancellation,Action guard)

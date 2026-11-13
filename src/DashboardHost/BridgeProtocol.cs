@@ -27,7 +27,7 @@ namespace EngineeringDashboard.DesktopHost
         [DataMember] public string Payload;
         [DataMember] public string Error;
     }
-    public sealed class BridgeHello { public int ProtocolVersion {get;set;} public string BridgeVersion {get;set;} public bool Authorized {get;set;} }
+    public sealed class BridgeHello { public int ProtocolVersion {get;set;} public string BridgeVersion {get;set;} public bool Authorized {get;set;} public bool SupportsIndependentSlabCantilevers {get;set;} }
     public sealed class ActiveDocumentInfo { public string DocumentKey {get;set;} public string Title {get;set;} }
     public sealed class HelperApplyRequest
     {
@@ -35,11 +35,13 @@ namespace EngineeringDashboard.DesktopHost
         public string Kind {get;set;}
         public double WidthMm {get;set;} public double DepthMm {get;set;} public double SlabThicknessMm {get;set;}
         public double PropSpacingMm {get;set;} public double PrimaryCantileverMm {get;set;} public double PrimarySpacingMm {get;set;}
+        public double? PrimaryEndCantileverMm {get;set;}
         public void Validate()
         {
             if(string.IsNullOrWhiteSpace(DocumentKey)||(Kind!="beam"&&Kind!="slab"))throw new InvalidDataException("Invalid Revit helper request.");
             if(new[]{WidthMm,DepthMm,SlabThicknessMm,PropSpacingMm,PrimaryCantileverMm,PrimarySpacingMm}.Any(v=>double.IsNaN(v)||double.IsInfinity(v)||v<0||v>100000))throw new InvalidDataException("Invalid helper dimensions.");
             if(PropSpacingMm<=0||(Kind=="beam"&&(WidthMm<=0||DepthMm<=0))||(Kind=="slab"&&(SlabThicknessMm<=0||PrimarySpacingMm<=0)))throw new InvalidDataException("Calculate valid helper values before applying them.");
+            if(PrimaryEndCantileverMm.HasValue && (Kind!="slab" || double.IsNaN(PrimaryEndCantileverMm.Value) || double.IsInfinity(PrimaryEndCantileverMm.Value) || PrimaryEndCantileverMm.Value<0 || PrimaryEndCantileverMm.Value>100000))throw new InvalidDataException("Invalid slab end cantilever.");
         }
     }
     public sealed class HelperApplyResult { public bool Cancelled {get;set;} public int Updated {get;set;} public int Skipped {get;set;} public int Failed {get;set;} public string Message {get;set;} }
