@@ -3,6 +3,11 @@ on:
   pull_request:
     paths: ['src/Top50/**', 'src/ViewModels/Top50*', 'src/Views/Top50*', 'tests/Top50*/**', 'docs/top50-engineering-review/**', 'packaging/**', 'scripts/*Top50*.ps1', 'Directory.Build.props', 'installer-top50.iss', '.github/workflows/top50-engineering-review.yml']
   workflow_dispatch:
+    inputs:
+      build_top50_installer:
+        description: Request the dedicated Top50 installer after its separate release approval
+        type: boolean
+        default: false
 concurrency:
   group: top50-engineering-${{ github.ref }}
   cancel-in-progress: true
@@ -81,7 +86,11 @@ jobs:
           dotnet tests/Top50.RevitSource.Tests/bin/Release/net10.0/Top50.RevitSource.Tests.dll
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./scripts/Test-Top50StagedPayload.ps1 -EvidenceDirectory artifacts/top50-engineering-review/prepackage
+      # The historical Top50-only approval certificate is not a certificate for
+      # every later Dashboard release. Independent validation above always runs;
+      # its separate installer remains closed unless explicitly requested and approved.
       - name: Check supervisor release approval after validation
+        if: github.event_name == 'workflow_dispatch' && inputs.build_top50_installer == true
         id: release-gate
         shell: pwsh
         run: ./scripts/Test-Top50ReleaseGate.ps1

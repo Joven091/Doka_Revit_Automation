@@ -118,7 +118,9 @@ class Program
   var endChoice=Find<ComboBox>(window).Single(c=>c.GetBindingExpression(ComboBox.SelectedItemProperty)?.ParentBinding.Path.Path=="PrimaryAccessEnd");
   endChoice.SelectedItem="Both";Pump();Check(v.ShowPrimaryAccessLeft&&v.ShowPrimaryAccessRight&&v.IsCalculationValid,"Both ends selector activates independent access inputs");
   Equal(.75,v.TotalAccessLoadKnM2,"total access load default includes deck");
-  var accessSaved=window.CaptureCalculation();v.TotalAccessLoadKnM2=1;window.RestoreCalculation(accessSaved);Pump();Equal(.75,v.TotalAccessLoadKnM2,"access pressure persists");
+  var accessSaved=window.CaptureCalculation();Check(accessSaved.Kind=="SlabAccess","access files cannot be silently treated as fully loaded symmetric slabs by old versions");
+  bool oldReaderRejected=false;try{CalculationFiles.Apply(accessSaved,"Slab",new FlexCalculatorViewModel(),"SlabThickness");}catch(ArgumentException){oldReaderRejected=true;}Check(oldReaderRejected,"old slab reader rejects new access geometry");
+  v.TotalAccessLoadKnM2=1;window.RestoreCalculation(accessSaved);Pump();Equal(.75,v.TotalAccessLoadKnM2,"access pressure persists");
   Check(v.PrimaryHasAccess&&v.PrimaryAccessEnd=="Both"&&v.PrimaryAccessLeftMm==350&&v.PrimaryAccessRightMm==350,"both access lengths persist");
   Check(window.BuildReport().Contains("includes deck weight")&&window.BuildReport().Contains("UDLs"),"access report contains actual loads and assumptions");
   var accessVisual=(SlabAccessDiagram)window.FindName("AccessDiagram");accessVisual.Measure(new Size(440,395));accessVisual.Arrange(new Rect(0,0,440,395));accessVisual.UpdateLayout();
@@ -147,8 +149,9 @@ class Program
    SavePreview(args[0],1040,860);
    if(v.IsCalculationValid){
     int lines=v.PrimaryBeamCount=="5+"?5:int.Parse(v.PrimaryBeamCount), supports=v.PropCount=="5+"?5:int.Parse(v.PropCount);
-    Check(((SlabSupportDiagram)window.FindName("SupportDiagram")).DrawnPropCount==lines*supports,"live support schematic");
-    if(v.PrimaryBeamCount=="5+"||v.PropCount=="5+")Check(((TextBlock)window.FindName("DiagramCaption")).Text.Contains("five supports"),"five-plus schematic labelled");
+    if(v.UsesAccessAnalysis)Check(((SlabAccessDiagram)window.FindName("AccessDiagram")).DrawnSupports==(v.AccessPreviewBeam=="Secondary H20"?v.ActualPrimaryBeamCount:v.ActualPropCount),"live access support schematic");
+    else Check(((SlabSupportDiagram)window.FindName("SupportDiagram")).DrawnPropCount==lines*supports,"live support schematic");
+    if(!v.UsesAccessAnalysis&&(v.PrimaryBeamCount=="5+"||v.PropCount=="5+"))Check(((TextBlock)window.FindName("DiagramCaption")).Text.Contains("five supports"),"five-plus schematic labelled");
    }
    ((Expander)window.FindName("LoadInputsExpander")).IsExpanded=true;v.UseCustomLoads=true;Pump();
    SavePreview(Path.ChangeExtension(args[0],"loads.png"),1040,860);

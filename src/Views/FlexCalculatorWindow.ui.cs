@@ -88,18 +88,21 @@ namespace EngineeringDashboard
         private const string LegacyFileInputs = "SlabThickness,FloorHeight,UseCustomLoads,CustomLiveLoad,CustomFormworkLoad,PrimaryBeamCount,SecondaryBeamCantilever,DeflectionLimit,PropCount,PropSpacing,PrimaryBeamCantilever,PropModel,PropType,PropOrientation";
         private const string AccessFileInputs = "PrimaryRightCantilever,SecondaryRightCantilever,PrimaryHasAccess,SecondaryHasAccess,PrimaryAccessEnd,SecondaryAccessEnd,PrimaryAccessLeftMm,PrimaryAccessRightMm,SecondaryAccessLeftMm,SecondaryAccessRightMm,TotalAccessLoadKnM2,ExactPrimaryBeamCount,ExactPropCount";
         private const string FileInputs = LegacyFileInputs + "," + AccessFileInputs;
+        private const string AccessCalculationKind = "SlabAccess";
         private static void ApplySlabInputs(CalculationRecord record, FlexCalculatorViewModel model)
         {
-            CalculationFiles.Apply(record,"Slab",model,LegacyFileInputs);
+            string kind=record?.Kind==AccessCalculationKind?AccessCalculationKind:"Slab";
+            CalculationFiles.Apply(record,kind,model,LegacyFileInputs);
             // Before 1.2.6 none of the access fields existed. A new-format record
             // must contain the complete group; a partially missing group is corrupt.
             var names=AccessFileInputs.Split(',');
-            if(record.Inputs.Any(f=>names.Contains(f.Name))) CalculationFiles.Apply(record,"Slab",model,AccessFileInputs);
+            if(kind==AccessCalculationKind || record.Inputs.Any(f=>names.Contains(f.Name))) CalculationFiles.Apply(record,kind,model,AccessFileInputs);
+            if(kind=="Slab" && model.UsesAccessAnalysis)throw new ArgumentException("Save access or asymmetric slab layouts with the SlabAccess format in Dashboard 1.2.6 or newer.");
         }
         internal CalculationRecord CaptureCalculation()
         {
             if(!TryGetValidCalculation(out var vm)) throw new ArgumentException("Correct the inputs before saving or exporting.");
-            var record=CalculationFiles.Capture("Slab",vm,FileInputs);
+            var record=CalculationFiles.Capture(vm.UsesAccessAnalysis?AccessCalculationKind:"Slab",vm,FileInputs);
             record.Inputs.Add(CalculationFiles.Field("PlywoodProfileId",vm.PlywoodProfileId));
             record.Inputs.Add(CalculationFiles.Field("PlywoodDeflectionLimit",vm.PlywoodDeflectionLimit));
             record.Inputs.Add(CalculationFiles.Field("SecondaryBeamSpacing",vm.SecondaryBeamSpacing));

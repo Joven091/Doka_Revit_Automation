@@ -43,6 +43,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./baseline/scripts/Build-BeamSolverWorker.ps1 -OutputDirectory artifacts/baseline-worker
           Copy-Item artifacts/baseline-worker baseline/tests/Beam.Net48/bin/Release/net48/BeamSolver -Recurse
+      - name: Check out the accepted f2926ee source for unchanged-area comparisons
+        uses: actions/checkout@v4
+        with:
+          ref: a48634666856e280a89829c37e969c786ba23be2
+          path: validated
+      - name: Build the same harness on the accepted source and its matching worker
+        shell: pwsh
+        run: |
+          Copy-Item tests/Beam.Tests/* validated/tests/Beam.Tests/ -Recurse -Force
+          Copy-Item tests/Beam.Net48/Beam.Net48.csproj validated/tests/Beam.Net48/Beam.Net48.csproj
+          dotnet build validated/tests/Beam.Net48 -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./validated/scripts/Build-BeamSolverWorker.ps1 -OutputDirectory artifacts/validated-worker
+          Copy-Item artifacts/validated-worker validated/tests/Beam.Net48/bin/Release/net48/BeamSolver -Recurse
       - name: Replay the reported failure, then verify the fixed full drawing
         shell: pwsh
         run: |
@@ -53,7 +67,9 @@ jobs:
             if ((Get-Content "artifacts/evidence/baseline-$repeat.txt" -Raw) -notmatch 'valid=False.*Beam 523915') { throw 'Original reported clash was not reproduced' }
             & tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --combined-coordination --require-worker 2>&1 | Tee-Object "artifacts/evidence/fixed-$repeat.txt"
             if ($LASTEXITCODE -ne 0) { throw 'Coordinated eleven-part replay failed' }
-            $original=Get-Content "artifacts/evidence/baseline-$repeat.txt" | Where-Object { $_ -like 'NETWORK *' }
+            & validated/tests/Beam.Net48/bin/Release/net48/Beam.Net48.exe --combined-coordination --require-worker 2>&1 | Tee-Object "artifacts/evidence/validated-$repeat.txt"
+            if ($LASTEXITCODE -ne 0) { throw 'Accepted source replay failed' }
+            $original=Get-Content "artifacts/evidence/validated-$repeat.txt" | Where-Object { $_ -like 'NETWORK *' }
             $updated=Get-Content "artifacts/evidence/fixed-$repeat.txt" | Where-Object { $_ -like 'NETWORK *' }
             if (@(Compare-Object $original $updated).Count -ne 0) { throw 'Unchanged slab-area numerical results differ' }
           }

@@ -41,7 +41,7 @@ namespace EngineeringDashboard
         }
         internal static CalculationRecord CaptureRestartInputs(FlexCalculatorViewModel vm)
         {
-            var record=CalculationFiles.Capture("Slab",vm,FileInputs);
+            var record=CalculationFiles.Capture(vm.UsesAccessAnalysis?AccessCalculationKind:"Slab",vm,FileInputs);
             foreach(var field in CalculationFiles.Capture("Slab",vm,"PlywoodProfileId,PlywoodDeflectionLimit,SecondaryBeamSpacing").Inputs)record.Inputs.Add(field);
             return record;
         }

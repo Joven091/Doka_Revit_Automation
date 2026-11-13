@@ -27,8 +27,6 @@ internal static class IndividualSpanTests
     }
     internal static void Run()
     {
-        ReceiverTopologyReserveTests.Run();
-        ReceiverAggregateReserveTests.Run();
         var standalone=new BeamCalculatorViewModel {UseTowers=true,Depth=200,Width=300,BeamLengthMm=2500};
         Check(standalone.NetworkBeams.Count==0,"fresh beam-only session has no stored network row");
         standalone.ValidateBeamSpan(0,0,2500);

@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          ref: 6650347cd7b361a8b73f62cc4bc8dbebfd47b501
+          ref: a48634666856e280a89829c37e969c786ba23be2
           path: baseline
       - uses: actions/setup-dotnet@v4
         with:
@@ -36,7 +36,10 @@ jobs:
       - name: Build identical reported-input harness against both versions and runtimes
         shell: pwsh
         run: |
-          Copy-Item tests/Beam.Tests/ReportedCombinedTests.cs baseline/tests/Beam.Tests/ReportedCombinedTests.cs
+          # Compare against the accepted f2926ee solver, with the identical current
+          # portable harness on both source trees. Production solver sources stay pinned.
+          Copy-Item tests/Beam.Tests/* baseline/tests/Beam.Tests/ -Recurse -Force
+          Copy-Item tests/Beam.Net48/Beam.Net48.csproj baseline/tests/Beam.Net48/Beam.Net48.csproj
           foreach ($project in @('tests/Beam.Net48/Beam.Net48.csproj','tests/Beam.Tests/Beam.Tests.csproj','baseline/tests/Beam.Net48/Beam.Net48.csproj')) {
             dotnet build $project -c Release --warnaserror
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

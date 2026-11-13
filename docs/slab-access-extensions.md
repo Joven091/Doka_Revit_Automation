@@ -39,6 +39,9 @@ The section and red/blue equivalent-UDL diagram share the same slab-edge and
 support coordinates. Saved calculations and Dashboard restart checkpoints retain
 the access inputs. Loading an older file over an active access layout resets new
 inputs to their legacy defaults, avoiding a mixture of old and retained geometry.
+Access/asymmetric files use the distinct `SlabAccess` kind so older Dashboard
+versions reject them instead of silently loading them as symmetric, fully loaded
+slabs. The ordinary full-load `Slab` format remains backward compatible.
 
 The Revit helper now receives independent Start and End Cantilever values. The
 bridge advertises this optional capability; an older integration is rejected before
