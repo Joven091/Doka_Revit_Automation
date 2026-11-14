@@ -120,8 +120,32 @@ service-role key to Edge Functions; no custom secret needs to be shipped to user
 
 ## Approve and revoke users
 
+A teammate can be pre-approved before their first sign-in. Administrators manage
+`public.tool_email_access`; enter the exact email in lowercase:
+
+```sql
+insert into public.tool_email_access (email, enabled, admin_note)
+values ('teammate@example.com', true, 'Pre-approved by tool administrator')
+on conflict (email) do update set enabled = true, expires_at = null;
+```
+
+This does not create an Auth account or send an email. The teammate still uses
+the existing installer to request and verify their email code. After Auth
+validates that verified email, the server checks the pre-approval if no
+`tool_access` row exists for their account. A disabled or expired account row
+always takes precedence over an email pre-approval. Neither client-supplied
+emails nor editable user metadata can grant access. All other emails remain
+blocked. No installer update is needed for these server-side approvals.
+
+To revoke an email pre-approval, set its `enabled` to false. If that account also
+has a separate enabled `tool_access` row, disable that row too. The existing
+process approval cache still applies until the next explicit check or Revit
+restart. Both approval tables have RLS enabled, no client policies, revoked
+client privileges, and server-only SELECT access.
+
 A first email-code request may create a user in Supabase Auth, but grants no
-tool access. After the teammate verifies their email, find their UUID in
+tool access unless their verified email was pre-approved. To manage access by
+account instead, after the teammate verifies their email, find their UUID in
 Authentication → Users. In the SQL
 editor, approve that UUID:
 
@@ -251,7 +275,15 @@ The function's security tests run without network access:
 
 ```sh
 node --test supabase/functions/authorize-tool/handler.test.js
+node --test supabase/functions/authorize-tool/email-access.test.js
 ```
+
+Email pre-approvals were deployed on 23 October 2026 as `authorize-tool`
+version 2 and migration `20261023072457_tool_email_preapprovals.sql`. The 21
+original authorization tests and 17 pre-approval tests pass. The new table's
+client privileges and RLS were verified on the deployed project. The verified
+UUID approval path remains unchanged, and the existing installer calls the same
+endpoint. Pre-approved teammates must still verify their own email codes.
 
 Use `node supabase/functions/authorize-tool/handler.test.js` to see the individual
 21 tests when the installed Node test runner reports only a file-level summary.

@@ -24,8 +24,10 @@ try {
         }
     }
 
-    & node supabase/functions/authorize-tool/handler.test.js
-    if ($LASTEXITCODE -ne 0) { throw 'Backend access tests failed.' }
+    foreach ($testFile in Get-ChildItem 'supabase/functions/authorize-tool/*.test.js') {
+        & node $testFile.FullName
+        if ($LASTEXITCODE -ne 0) { throw "Backend access tests failed: $($testFile.Name)" }
+    }
     & dotnet build tests/Access.Tests/Access.Tests.csproj -c Release
     if ($LASTEXITCODE -ne 0) { throw 'Access client test build failed.' }
     & './tests/Access.Tests/bin/Release/net48/Access.Tests.exe'

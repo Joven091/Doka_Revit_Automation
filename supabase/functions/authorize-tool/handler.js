@@ -1,5 +1,5 @@
 // Dependency injection lets the security boundary be tested without live users.
-export function createHandler({ getUser, getAccess, now = () => Date.now() }) {
+export function createHandler({ getUser, getAccess, getEmailAccess, now = () => Date.now() }) {
   const reply = (status, body) => new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -33,7 +33,14 @@ export function createHandler({ getUser, getAccess, now = () => Date.now() }) {
         return reply(403, { allowed: false, reason: "verified_email_required" });
       }
 
-      const { data: access, error: accessError } = await getAccess(user.id);
+      let { data: access, error: accessError } = await getAccess(user.id);
+      // A per-account approval (including an explicit denial or expiry) wins.
+      // Only a missing account row may use a pre-approved, Auth-verified email.
+      if (!accessError && access == null && getEmailAccess) {
+        const emailAccess = await getEmailAccess(user.email.trim().toLowerCase());
+        access = emailAccess.data;
+        accessError = emailAccess.error;
+      }
       if (accessError) return reply(503, { allowed: false, reason: "service_unavailable" });
       if (!access || access.enabled !== true) {
         return reply(403, { allowed: false, reason: "access_not_granted" });
