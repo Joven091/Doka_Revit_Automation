@@ -241,36 +241,41 @@ namespace EngineeringDashboard
                 }
                 info.Children.Add(new Border { Background = Yellow, Padding = new Thickness(5), Margin = new Thickness(0,6,0,0), Child = Text(row == null ? (s.IsRaft ? "No backprop reaction reaches raft" : "Outside required support stack") : s.IsRaft ? $"{row.Incoming:0.000} kN/m² received" : "↓ " + F(row.DownwardLoad) + " kN/m²") });
                 grid.Children.Add(info);
-                // The final floor's spanning label can enlarge its row. Keep the slab's
-                // top face at the storey boundary instead of centering it below the props.
-                var slab = new Rectangle { Height = 16, VerticalAlignment = VerticalAlignment.Top,
-                    Fill = editing == i ? Brushes.Goldenrod : Brushes.DarkGray }; Grid.SetColumn(slab,1); grid.Children.Add(slab);
-                if (i < slabs.Count-1)
-                {
-                    var support = new Grid { MinHeight = 112 }; Grid.SetColumn(support,1); Grid.SetRow(support,1);
-                    support.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); support.RowDefinitions.Add(new RowDefinition());
-                    if (i == 0)
-                    {
-                        var beams = new StackPanel(); var ends = new System.Windows.Controls.Primitives.UniformGrid { Columns = 4, Height = 22 };
-                        for (int b = 0; b < 4; b++)
-                        {
-                            var end = new Grid { Width = 16, Height = 22 };
-                            end.Children.Add(new Rectangle { Width = 5, Fill = Brushes.Goldenrod });
-                            end.Children.Add(new Rectangle { Height = 5, VerticalAlignment = VerticalAlignment.Top, Fill = Brushes.Goldenrod });
-                            end.Children.Add(new Rectangle { Height = 5, VerticalAlignment = VerticalAlignment.Bottom, Fill = Brushes.Goldenrod }); ends.Children.Add(end);
-                        }
-                        beams.Children.Add(ends); beams.Children.Add(new Border { Background = Brushes.Goldenrod, BorderBrush = Brushes.DarkGoldenrod, BorderThickness = new Thickness(0,4,0,4), Child = new TextBlock { Text = "Primary H20", TextAlignment = TextAlignment.Center, FontSize = 11 } }); support.Children.Add(beams);
-                    }
-                    var props = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3, MinHeight = 76 }; Grid.SetRow(props,1);
-                    for (int p = 0; p < 3; p++)
-                    {
-                        var prop = new Grid { Width = 20 }; prop.Children.Add(new Rectangle { Width = 7, Fill = Brushes.SlateGray });
-                        prop.Children.Add(new Rectangle { Height = 4, Fill = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Top });
-                        prop.Children.Add(new Rectangle { Height = 4, Fill = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Bottom }); props.Children.Add(prop);
-                    }
-                    support.Children.Add(props); grid.Children.Add(support);
-                }
+                AddSectionDrawing(grid, 1, i == 0, i < slabs.Count-1, editing == i ? Brushes.Goldenrod : Brushes.DarkGray);
                 panel.Children.Add(grid);
+            }
+        }
+
+        internal static void AddSectionDrawing(Grid grid, int column, bool mainShores, bool showSupports, Brush slabBrush)
+        {
+            // The final floor's spanning label can enlarge its row. Keep the slab's
+            // top face at the storey boundary instead of centering it below the props.
+            var slab = new Rectangle { Height = 16, VerticalAlignment = VerticalAlignment.Top,
+                Fill = slabBrush }; Grid.SetColumn(slab,column); grid.Children.Add(slab);
+            if (showSupports)
+            {
+                var support = new Grid { MinHeight = 112 }; Grid.SetColumn(support,column); Grid.SetRow(support,1);
+                support.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); support.RowDefinitions.Add(new RowDefinition());
+                if (mainShores)
+                {
+                    var beams = new StackPanel(); var ends = new System.Windows.Controls.Primitives.UniformGrid { Columns = 4, Height = 22 };
+                    for (int b = 0; b < 4; b++)
+                    {
+                        var end = new Grid { Width = 16, Height = 22 };
+                        end.Children.Add(new Rectangle { Width = 5, Fill = Brushes.Goldenrod });
+                        end.Children.Add(new Rectangle { Height = 5, VerticalAlignment = VerticalAlignment.Top, Fill = Brushes.Goldenrod });
+                        end.Children.Add(new Rectangle { Height = 5, VerticalAlignment = VerticalAlignment.Bottom, Fill = Brushes.Goldenrod }); ends.Children.Add(end);
+                    }
+                    beams.Children.Add(ends); beams.Children.Add(new Border { Background = Brushes.Goldenrod, BorderBrush = Brushes.DarkGoldenrod, BorderThickness = new Thickness(0,4,0,4), Child = new TextBlock { Text = "Primary H20", TextAlignment = TextAlignment.Center, FontSize = 11 } }); support.Children.Add(beams);
+                }
+                var props = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3, MinHeight = 76 }; Grid.SetRow(props,1);
+                for (int p = 0; p < 3; p++)
+                {
+                    var prop = new Grid { Width = 20 }; prop.Children.Add(new Rectangle { Width = 7, Fill = Brushes.SlateGray });
+                    prop.Children.Add(new Rectangle { Height = 4, Fill = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Top });
+                    prop.Children.Add(new Rectangle { Height = 4, Fill = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Bottom }); props.Children.Add(prop);
+                }
+                support.Children.Add(props); grid.Children.Add(support);
             }
         }
 
@@ -440,12 +445,7 @@ namespace EngineeringDashboard
             var document = CaptureCalculation();
             var loads = BackproppingCalculator.CalculateLoads(document.Slabs, document.Curve);
             if (!loads.Complete) throw new ArgumentException("Complete the supporting slab stack before exporting a report.");
-            var printSection = new StackPanel();
-            PopulateSection(printSection, loads);
-            printSection.Measure(new Size(640, double.PositiveInfinity));
-            printSection.Arrange(new Rect(0, 0, 640, printSection.DesiredSize.Height));
-            printSection.UpdateLayout();
-            return BackproppingPdf.Report(document, loads, printSection);
+            return BackproppingPdf.Report(document, loads);
         }
         private void Close_Click(object sender, RoutedEventArgs e) => Close();
     }

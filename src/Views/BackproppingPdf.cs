@@ -21,19 +21,19 @@ namespace EngineeringDashboard
         private static string Cells(params string[] values) => "<tr>" + string.Concat(values.Select(v => "<td>" + H(v) + "</td>")) + "</tr>";
         private static string Table(params string[] titles) => "<table><thead><tr>" + string.Concat(titles.Select(v => "<th>" + H(v) + "</th>")) + "</tr></thead><tbody>";
 
-        // Crop the drawing column from the same laid-out WPF section used on screen.
-        private static string SectionImage(Grid row, bool final)
+        private static string SectionImage(bool mainShores, bool final)
         {
-            double x = row.ColumnDefinitions[0].ActualWidth;
-            double width = row.ActualWidth - x;
-            double height = final ? 16 : row.ActualHeight;
-            if (width <= 0 || height <= 0) throw new InvalidOperationException("The slab section could not be rendered.");
-            var crop = new Rect(x, 0, width, height);
-            var visual = new DrawingVisual();
-            using (var drawing = visual.RenderOpen())
-                drawing.DrawRectangle(new VisualBrush(row) { ViewboxUnits = BrushMappingMode.Absolute, Viewbox = crop, Stretch = Stretch.Fill }, null, new Rect(0, 0, width, height));
-            var bitmap = new RenderTargetBitmap((int)Math.Ceiling(width * 2), (int)Math.Ceiling(height * 2), 192, 192, PixelFormats.Pbgra32);
-            bitmap.Render(visual);
+            // Render each storey at its own origin, independent of its offset in the screen stack.
+            var drawing = new Grid();
+            drawing.RowDefinitions.Add(new RowDefinition { Height = new GridLength(16) });
+            drawing.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            BackproppingWindow.AddSectionDrawing(drawing, 0, mainShores, !final, Brushes.DarkGray);
+            drawing.Measure(new Size(320, double.PositiveInfinity));
+            var size = new Size(320, drawing.DesiredSize.Height);
+            drawing.Arrange(new Rect(size));
+            drawing.UpdateLayout();
+            var bitmap = new RenderTargetBitmap(640, (int)Math.Ceiling(size.Height * 2), 192, 192, PixelFormats.Pbgra32);
+            bitmap.Render(drawing);
             var png = new PngBitmapEncoder();
             png.Frames.Add(BitmapFrame.Create(bitmap));
             using (var stream = new MemoryStream())
@@ -43,7 +43,7 @@ namespace EngineeringDashboard
             }
         }
 
-        internal static string Report(BackproppingDocument doc, LoadResult loads, StackPanel section)
+        internal static string Report(BackproppingDocument doc, LoadResult loads)
         {
             var html = new StringBuilder(@"<!doctype html><meta charset='utf-8'><title>Backpropping calculation</title><style>
 @page{size:A4;margin:13mm}*{box-sizing:border-box}body{font:10pt 'Segoe UI',sans-serif;color:#263741;margin:0}
@@ -66,12 +66,12 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
                 bool final = row.Index == loads.Slabs.Count - 1;
                 if (slab.IsRaft)
                 {
-                    html.Append($"<div class='level'><div class='info'><b>{H(slab.Name)} · Raft foundation</b><small>Backpropping terminates at raft</small><mark>{N(row.Incoming)} kN/m² received</mark><small>{raftReaction}</small></div><div class='drawing last'><img src='data:image/png;base64,{SectionImage((Grid)section.Children[row.Index],true)}'></div></div>");
+                    html.Append($"<div class='level'><div class='info'><b>{H(slab.Name)} · Raft foundation</b><small>Backpropping terminates at raft</small><mark>{N(row.Incoming)} kN/m² received</mark><small>{raftReaction}</small></div><div class='drawing last'><img src='data:image/png;base64,{SectionImage(false,true)}'></div></div>");
                     breakdown.Append(Cells(slab.Name+" · raft",N(row.Incoming),"—","—","—","—","—","—"));
                     continue;
                 }
                 html.Append($"<div class='level'><div class='info'><b>{H(slab.Name)}</b><small>{N(slab.ThicknessMm,"0.##")} mm · {N(slab.AgeDays,"0.##")} days</small><small>SIDL {N(slab.Sidl)} · final live {N(slab.FinalLiveLoad)} kN/m²</small><mark>↓ {N(row.DownwardLoad)} kN/m²{(final ? " · transfer stops" : "")}</mark></div>");
-                html.Append($"<div class='drawing {(final ? "last" : "")}'><img src='data:image/png;base64,{SectionImage((Grid)section.Children[row.Index],final)}'>");
+                html.Append($"<div class='drawing {(final ? "last" : "")}'><img src='data:image/png;base64,{SectionImage(row.Index == 0,final)}'>");
                 html.Append(final ? "</div></div>" : "<span class='arrow'>↓</span></div></div>");
                 if (row.Index == 0) continue;
                 breakdown.Append(Cells(slab.Name,N(row.Incoming),N(row.SelfWeight),N(row.ConstructionLive),N(row.Demand),N(row.Capacity),N(row.Transfer),N(row.DownwardLoad)));
@@ -85,6 +85,11 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
                 spacing.Append(Cells(slab.Name+" → "+doc.Slabs[row.Index+1].Name,slab.PropId,
                     N(slab.PropExtensionMm,"0.##"),N(grid.CapacityKn,"0.##"),limit.HasValue ? N(limit.Value,"0.##") : "—",
                     N(grid.SpacingMm,"0")+" × "+N(grid.SpacingMm,"0"),N(grid.PropLoadKn),N(grid.UtilizationPercent,"0.##")+"%"));
+            }
+            foreach (var lower in doc.Slabs.Skip(loads.Slabs.Count))
+            {
+                string label = lower.IsRaft ? "Raft foundation · no backprop reaction reaches raft" : "Outside required support stack";
+                html.Append($"<div class='level'><div class='info'><b>{H(lower.Name)}</b><small>{label}</small></div><div class='drawing last'><img src='data:image/png;base64,{SectionImage(false,true)}'></div></div>");
             }
             html.Append($"<h2>Load breakdown</h2><p>Active pour (kN/m²): {N(loads.Slabs[0].SelfWeight)} concrete + 0.500 formwork + 0.750 working + {N(loads.Heaping)} heaping = <b>{N(loads.PourLoad)}</b>.</p><p>All table values are in kN/m².</p>");
             html.Append(breakdown).Append("</tbody></table><p>Positive excess passes down with a 0.400 kN/m² allowance per required backprop storey.</p>");
