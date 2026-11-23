@@ -72,6 +72,9 @@ internal static class Program
   Assert(window.BuildReport().Contains("Load") || window.BuildReport().Contains("load"));
   var arguments=Environment.GetCommandLineArgs();
   if(arguments.Length>1) {
+   var pdfPath=System.IO.Path.GetFullPath(System.IO.Path.ChangeExtension(arguments[1],"pdf"));
+   BackproppingPdf.Save(null,window.BuildReport(),pdfPath);
+   Assert(System.Text.Encoding.ASCII.GetString(System.IO.File.ReadAllBytes(pdfPath),0,5)=="%PDF-");
    System.IO.File.WriteAllText(System.IO.Path.ChangeExtension(arguments[1],"report.html"),window.BuildReport());
    var root=(FrameworkElement)window.Content;var size=new Size(940,860);root.Measure(size);root.Arrange(new Rect(size));root.UpdateLayout();
    var bmp=new System.Windows.Media.Imaging.RenderTargetBitmap(940,860,96,96,PixelFormats.Pbgra32);var background=new DrawingVisual();using(var dc=background.RenderOpen())dc.DrawRectangle(window.Background,null,new Rect(size));bmp.Render(background);bmp.Render(root);

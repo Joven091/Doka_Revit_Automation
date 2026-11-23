@@ -4,6 +4,8 @@
   <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all"/>
   <Compile Include="../../src/Models/Backpropping*.cs" Link="Models/%(Filename)%(Extension)"/>
   <Compile Include="../../src/Views/BackproppingWindow.xaml.cs" Link="BackproppingWindow.xaml.cs"/>
+  <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35"/>
+  <Compile Include="../../src/Views/BackproppingPdf.cs" Link="BackproppingPdf.cs"/>
   <Page Include="../../src/Views/BackproppingWindow.xaml" Link="BackproppingWindow.xaml"/>
  </ItemGroup>
 <ItemGroup><Compile Include="../../src/Models/CalculationFiles.cs" Link="CalculationFiles.cs"/></ItemGroup><ItemGroup><Compile Include="../../src/Views/DashboardToolbar.cs" Link="Views/DashboardToolbar.cs"/><Page Include="../../src/Views/CalculatorStyles.xaml" Link="Views/CalculatorStyles.xaml"/></ItemGroup></Project>

@@ -28,7 +28,17 @@ jobs:
         run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
       - name: Build the Revit-specific bridge and matching Dashboard
         shell: pwsh
-        run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/live -Version 1.2.6 -RevitVersion ${{ matrix.revit }}
+        run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/live -Version 1.2.7 -RevitVersion ${{ matrix.revit }}
+      - name: Exercise backpropping loads and export the actual PDF
+        shell: pwsh
+        run: |
+          dotnet run --project tests/Backpropping.Tests -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build tests/Backpropping.UiSmoke -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force artifacts/evidence/backpropping | Out-Null
+          & tests/Backpropping.UiSmoke/bin/Release/net48/Backpropping.UiSmoke.exe artifacts/evidence/backpropping/section.png
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify host isolation and actual bridge API/runtime metadata
         shell: pwsh
         run: |
@@ -97,14 +107,43 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: Revit${{ matrix.revit }}-1.2.6-installer-and-update-files
+          name: Revit${{ matrix.revit }}-1.2.7-installer-and-update-files
           path: artifacts/company-files/
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Revit${{ matrix.revit }}-1.2.6-validation
+          name: Revit${{ matrix.revit }}-1.2.7-validation
           path: |
             artifacts/evidence/
             artifacts/installer/installer-compile.log
           if-no-files-found: warn
+
+  combined:
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Revit*-1.2.7-installer-and-update-files
+          merge-multiple: true
+          path: release
+      - name: Verify both feeds and archive checksums
+        working-directory: release
+        shell: python
+        run: |
+          import hashlib, json, pathlib
+          for year, folder in [(2024, pathlib.Path('.')), (2027, pathlib.Path('Revit2027'))]:
+              for manifest, key in [('latest.json', 'installerFile'), ('dashboard-latest.json', 'archiveFile')]:
+                  item = json.loads((folder / manifest).read_text(encoding='utf-8-sig'))
+                  assert item['revitVersion'] == year and item['version'] in ('1.2.7', '1.2.7.0')
+                  payload = folder / item[key]
+                  assert payload.stat().st_size == item['sizeBytes']
+                  with payload.open('rb') as stream:
+                      assert hashlib.file_digest(stream, 'sha256').hexdigest() == item['sha256'].lower()
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Doka-Dashboard-1.2.7-Revit-2024-and-2027
+          path: release/
+          compression-level: 0
+          if-no-files-found: error

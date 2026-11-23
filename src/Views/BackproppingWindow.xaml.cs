@@ -387,19 +387,24 @@ namespace EngineeringDashboard
             }
             results.Add(CalculationFiles.Field("Stack check","Complete under the adopted load-transfer stopping rule.")); return results;
         }
-        private void ExportReport_Click(object sender,RoutedEventArgs e) => CalculationFiles.Run(this,()=>CalculationFiles.ExportHtml(this,"Backpropping",BuildReport()));
+        private void ExportReport_Click(object sender, RoutedEventArgs e)
+        {
+            CalculationFiles.Run(this, () =>
+            {
+                var html = BuildReport();
+                var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "PDF report (*.pdf)|*.pdf", DefaultExt = ".pdf", FileName = "Backpropping calculation.pdf" };
+                if (dialog.ShowDialog(this) == true)
+                    BackproppingPdf.Save(this, html, dialog.FileName);
+            });
+        }
+
         internal string BuildReport()
         {
-            var document=CaptureCalculation(); var results=ReportResults(document);
-            var inputs=new List<CalculationField> { CalculationFiles.Field("Temperature curve",document.Curve), CalculationFiles.Field("Project maximum spacing (mm)",document.ProjectMaximumMm?.ToString(CultureInfo.InvariantCulture) ?? "Not supplied") };
-            foreach(var slab in document.Slabs)
-                inputs.Add(CalculationFiles.Field(slab.Name,$"Thickness {slab.ThicknessMm:0.##} mm; height below {slab.FloorHeightBelowMm:0.##} mm; age {slab.AgeDays:0.##} days; SIDL {slab.Sidl:0.###} kN/m²; final live {slab.FinalLiveLoad:0.###} kN/m²; prop {slab.PropId ?? "Not selected"}; maximum override {slab.MaximumSpacingMm?.ToString(CultureInfo.InvariantCulture) ?? "None"} mm"));
-            return CalculationFiles.Report("Backpropping",inputs,results,
-                "Adopted capacity approximation, not an official Doka load-distribution formula or structural verification. Repeated aligned uniform slab zone. Capacity = strength fraction × (self-weight + SIDL + final live). Transfer = max(0, demand - capacity). Add 0.40 kN/m² per required reprop storey.\n"+
-                "Concrete 25 kN/m³; main formwork 0.50; working 0.75; heaping min(1.75,max(0.75,10% concrete weight)); construction live 0.75 at the first supporting slab and zero below (area loads in kN/m²).\n"+
-                "Strength anchors day/%: A 0/0,2/50,4/70,12/80,20/90,28/100; B 0/0,4/50,8/70,28/100; C 0/0,6/50,12/70,28/100. Linear interpolation, cap 100%.\n"+
-                "Square spacing = floor(min(1000 sqrt(prop capacity/downward load), supplied maximum)/25) × 25 mm. Storey maximum overrides project maximum. Without a maximum, spacing checks prop capacity only.\n"+
-                "Prop extension = height below - upper slab thickness, direct head/base contact and restrained temporary reshoring table conditions. Main shores are not sized. Slab punching, local bearing, edges, offsets, stiffness/settlement, lateral stability and stripping sequence are excluded.");
+            var document = CaptureCalculation();
+            var loads = BackproppingCalculator.CalculateLoads(document.Slabs, document.Curve);
+            if (!loads.Complete) throw new ArgumentException("Complete the supporting slab stack before exporting a report.");
+            SectionPanel.UpdateLayout();
+            return BackproppingPdf.Report(document, loads, SectionPanel);
         }
         private void Close_Click(object sender, RoutedEventArgs e) => Close();
     }

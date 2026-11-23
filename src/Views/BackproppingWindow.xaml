@@ -14,7 +14,7 @@
   <ContentControl x:Name="CalculatorToolbarHost" DockPanel.Dock="Top"/>
 
   <StackPanel DockPanel.Dock="Bottom">
-   <WrapPanel><Button x:Name="NewCalculation" Content="New calculation" Click="NewCalculation_Click"/></WrapPanel>
+   <WrapPanel><Button x:Name="PdfReport" Content="Generate PDF report" Click="ExportReport_Click"/><Button x:Name="NewCalculation" Content="New calculation" Click="NewCalculation_Click"/></WrapPanel>
 
    <TextBlock x:Name="ErrorText" Foreground="#B42318" Margin="0,6" AutomationProperties.LiveSetting="Polite"/>
    <DockPanel><Button Content="Close" Click="Close_Click" DockPanel.Dock="Right"/><Button x:Name="CalculateButton" Content="Calculate spacing" Background="#F2CD24" FontWeight="Bold" Click="Calculate_Click" DockPanel.Dock="Right"/><TextBlock x:Name="ResultState" VerticalAlignment="Center"/></DockPanel>
