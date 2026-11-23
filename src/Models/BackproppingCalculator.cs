@@ -45,6 +45,7 @@ namespace EngineeringDashboard.Backpropping
 
     public sealed class SpacingResult
     {
+        public BackproppingTower Tower { get; set; }
         public double CapacityKn { get; set; }
         public double LookupExtensionMm { get; set; }
         public double CapacitySpacingMm { get; set; }
@@ -151,19 +152,33 @@ namespace EngineeringDashboard.Backpropping
 
         public static SpacingResult CalculateSpacing(double downwardLoad, string propId, double extensionMm, double? maximumMm)
         {
-            RequireNumber(downwardLoad, "Downward load", true);
-            if (maximumMm.HasValue) { RequireNumber(maximumMm.Value, "Maximum spacing", true);
-                if (maximumMm.Value < 25) throw new ArgumentException("Maximum spacing must be at least 25 mm."); }
             double lookup;
             double capacity = BackproppingPropCatalog.Capacity(propId, extensionMm, out lookup);
-            double raw = 1000 * Math.Sqrt(capacity / downwardLoad);
+            return GridSpacing(downwardLoad, maximumMm, capacity, lookup, null);
+        }
+
+        public static SpacingResult SupportSpacing(double load, SlabInput slab, double? maximum)
+        {
+            if (slab.PropId != BackproppingTower.Name)
+                return CalculateSpacing(load, slab.PropId, slab.PropExtensionMm, maximum);
+            var tower = BackproppingTower.Fit(slab.PropExtensionMm);
+            return GridSpacing(load, maximum, tower.Capacity, 0, tower);
+        }
+
+        private static SpacingResult GridSpacing(double downwardLoad, double? maximumMm, double capacity, double lookup, BackproppingTower tower)
+        {
+            RequireNumber(downwardLoad, "Downward load", true);
+            if (maximumMm.HasValue) RequireNumber(maximumMm.Value, "Maximum spacing", true);
+            int legs = tower == null ? 1 : 4;
+            double raw = 1000 * Math.Sqrt(capacity * legs / downwardLoad);
             RequireNumber(raw, "Calculated spacing", true);
             double limited = maximumMm.HasValue ? Math.Min(raw, maximumMm.Value) : raw;
             double spacing = Math.Floor(limited / 25) * 25;
             if (spacing < 25) throw new ArgumentException("No spacing of at least 25 mm satisfies this load.");
-            return new SpacingResult { CapacityKn = capacity, LookupExtensionMm = lookup, CapacitySpacingMm = raw,
-                SpacingMm = spacing, PropLoadKn = downwardLoad * Math.Pow(spacing / 1000, 2),
-                UtilizationPercent = 100 * downwardLoad * Math.Pow(spacing / 1000, 2) / capacity,
+            if (tower != null && spacing <= BackproppingTower.FrameLength) throw new ArgumentException("Available tower pitch does not clear the 1.524 m footprint.");
+            return new SpacingResult { Tower=tower, CapacityKn = capacity, LookupExtensionMm = lookup, CapacitySpacingMm = raw,
+                SpacingMm = spacing, PropLoadKn = downwardLoad * Math.Pow(spacing / 1000, 2) / legs,
+                UtilizationPercent = 100 * downwardLoad * Math.Pow(spacing / 1000, 2) / (legs * capacity),
                 HasProjectLimit = maximumMm.HasValue,
                 GoverningLimit = maximumMm.HasValue && maximumMm.Value <= raw ? "Maximum spacing" : "Prop capacity" };
         }

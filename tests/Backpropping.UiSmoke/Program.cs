@@ -117,10 +117,31 @@ internal static class Program
   Get<TextBox>("ProjectMaximum").Text="2010"; Click("CalculateButton");
   Assert(Section().Contains("4.625 kN/m² received"));
   Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text.Contains("18.50 kN per interior prop")));
-  var raftDoc=window.CaptureCalculation(); Assert(raftDoc.Version==2 && raftDoc.Slabs.Last().IsRaft);
+  var raftDoc=window.CaptureCalculation(); Assert(raftDoc.Version==3 && raftDoc.Slabs.Last().IsRaft);
   window.RestoreCalculation(raftDoc);
   var raftReport=window.BuildReport(); Assert(raftReport.Contains("18.50 kN per interior prop foot") && raftReport.Contains("Backpropping terminates at raft"));
   if(arguments.Length>1) BackproppingPdf.Save(null,raftReport,System.IO.Path.GetFullPath(System.IO.Path.ChangeExtension(arguments[1],"raft.pdf")));
+  raftDoc.Slabs[1].FloorHeightBelowMm=4200;
+  raftDoc.Details=new BackproppingReportDetails { Project="Test project",Client="Test client",Contractor="Test contractor",Title="Tower-supported slab pour",Author="Prepared by A",Checker="Checked by B" };
+  raftDoc.ProjectMaximumMm=4000;
+  window.RestoreCalculation(raftDoc);
+  Children<ComboBox>(Get<StackPanel>("StoreyPanel")).Single().SelectedItem="D3 shoring tower";
+  Click("CalculateButton");
+  var towerDoc=window.CaptureCalculation();
+  Assert(towerDoc.Slabs[1].PropId=="D3 shoring tower");
+  string saved=System.IO.Path.GetTempFileName();
+  try
+  {
+   CalculationFiles.Write(saved,towerDoc);
+   Click("NewCalculation");
+   window.RestoreCalculation(CalculationFiles.Read<BackproppingDocument>(saved));
+   var towerReport=window.BuildReport();
+   Assert(towerReport.Contains("18.50 kN per interior tower leg") && towerReport.Contains("4.200 m floor to floor"));
+   Assert(towerReport.Contains("35.0 kN") && towerReport.Contains("Typical tower layout"));
+   Assert(towerReport.Contains("Test client") && towerReport.Contains("Prepared by A") && towerReport.Contains("Checked by B"));
+   if(arguments.Length>1) BackproppingPdf.Save(null,towerReport,System.IO.Path.GetFullPath(System.IO.Path.ChangeExtension(arguments[1],"d3.pdf")));
+  }
+  finally { System.IO.File.Delete(saved); }
   Click("NewCalculation");window.Close();Console.WriteLine($"Passed {checks} WPF workflow checks.");
  }
 }

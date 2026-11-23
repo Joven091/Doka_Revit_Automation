@@ -74,4 +74,5 @@
   <Target Name="CopySteelShapeBrowserLoader" AfterTargets="Build">
     <Copy SourceFiles="$(PkgMicrosoft_Web_WebView2)/runtimes/win-x64/native/WebView2Loader.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
+<ItemGroup><EmbeddedResource Include="Views/BackproppingAssets/*.png" LogicalName="Backpropping.%(Filename)%(Extension)" /></ItemGroup>
 </Project>

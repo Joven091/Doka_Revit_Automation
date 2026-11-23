@@ -21,13 +21,13 @@ namespace EngineeringDashboard
         private static string Cells(params string[] values) => "<tr>" + string.Concat(values.Select(v => "<td>" + H(v) + "</td>")) + "</tr>";
         private static string Table(params string[] titles) => "<table><thead><tr>" + string.Concat(titles.Select(v => "<th>" + H(v) + "</th>")) + "</tr></thead><tbody>";
 
-        private static string SectionImage(bool mainShores, bool final)
+        private static string SectionImage(bool mainShores, bool final, bool tower=false)
         {
             // Render each storey at its own origin, independent of its offset in the screen stack.
             var drawing = new Grid();
             drawing.RowDefinitions.Add(new RowDefinition { Height = new GridLength(16) });
             drawing.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            BackproppingWindow.AddSectionDrawing(drawing, 0, mainShores, !final, Brushes.DarkGray);
+            BackproppingWindow.AddSectionDrawing(drawing, 0, mainShores, !final, Brushes.DarkGray, tower);
             drawing.Measure(new Size(320, double.PositiveInfinity));
             var size = new Size(320, drawing.DesiredSize.Height);
             drawing.Arrange(new Rect(size));
@@ -43,6 +43,109 @@ namespace EngineeringDashboard
             }
         }
 
+        private static string Asset(string name)
+        {
+            using (var source = typeof(BackproppingPdf).Assembly.GetManifestResourceStream("Backpropping."+name+".png"))
+            using (var data = new MemoryStream())
+            {
+                if (source == null) throw new IOException("Missing report artwork: "+name);
+                source.CopyTo(data);
+                return "data:image/png;base64,"+Convert.ToBase64String(data.ToArray());
+            }
+        }
+
+        private static string Cover(BackproppingDocument doc, LoadResult loads)
+        {
+            var d = doc.Details ?? new BackproppingReportDetails();
+            var systems = loads.Slabs.Where(r=>r.Index>0 && r.Transfer>0)
+                .Select(r=>doc.Slabs[r.Index].PropId).Where(p=>!string.IsNullOrEmpty(p)).Distinct();
+            var html = new StringBuilder($"<section class='cover'><img class='brand' src='{Asset("doka")}'><p>ENGINEERING CALCULATION</p><h1>Repropping calculation</h1><h2>{H(d.Title)}</h2><p>{H(string.Join(" / ",systems))}</p><dl>");
+            foreach (var field in new[]{Tuple.Create("Project",d.Project),Tuple.Create("Client",d.Client),Tuple.Create("Contractor",d.Contractor),Tuple.Create("Author",d.Author),Tuple.Create("Checker",d.Checker)})
+                html.Append($"<dt>{field.Item1}</dt><dd>{H(field.Item2)}</dd>");
+            return html.Append("</dl></section>").ToString();
+        }
+
+        private static string Check(SpacingResult grid)
+        {
+            string member=grid.Tower==null?"Prop":"Leg";
+            bool safe=grid.PropLoadKn<=grid.CapacityKn;
+            string comparison=grid.PropLoadKn==grid.CapacityKn?"=":safe?"&lt;":"&gt;";
+            return $"<p class='{(safe?"safe":"exceeded")}'>{member} demand {N(grid.PropLoadKn,"0.00")} kN {comparison} permitted {member.ToLowerInvariant()} load {N(grid.CapacityKn,"0.0")} kN · {(safe?"SAFE":"EXCEEDED")}</p>";
+        }
+
+        private static string LayoutPlan(string storey, SlabInput slab, double load, SpacingResult grid)
+        {
+            bool tower=grid.Tower!=null;
+            double pitch=grid.SpacingMm, scale=120/pitch;
+            double hx=tower?BackproppingTower.FrameLength*scale/2:0, hy=tower?BackproppingTower.InterFrame*scale/2:0;
+            var html=new StringBuilder($"<section class='sheet'><h1>Typical {(tower?"tower":"prop")} layout</h1><p>{H(storey)} · {H(slab.PropId)} · Interior repeating grid</p>");
+            html.Append("<svg class='plan' viewBox='0 0 440 350' xmlns='http://www.w3.org/2000/svg'>");
+            for(int i=0;i<3;i++)
+            {
+                int pos=95+i*120;
+                html.Append($"<path d='M{pos} 37v285 M59 {pos-25}h321' stroke='#aabcc2' stroke-dasharray='3 3'/>");
+            }
+            html.Append(tower?"<rect x='215' y='130' width='60' height='60' fill='#ffe176'/>":"<rect x='155' y='130' width='120' height='120' fill='#ffe176'/>");
+            for(int j=0;j<3;j++)
+            for(int i=0;i<3;i++)
+            {
+                double x=95+i*120,y=70+j*120;
+                if(tower)
+                {
+                    html.Append($"<rect x='{N(x-hx)}' y='{N(y-hy)}' width='{N(2*hx)}' height='{N(2*hy)}' fill='none' stroke='#123657' stroke-width='1.5'/>");
+                    foreach(int dx in new[]{-1,1}) foreach(int dy in new[]{-1,1})
+                        html.Append($"<rect x='{N(x+dx*hx-2)}' y='{N(y+dy*hy-2)}' width='4' height='4' fill='#123657'/>");
+                }
+                else html.Append($"<circle cx='{x}' cy='{y}' r='4' fill='#123657'/>");
+            }
+            string dim=N(pitch/1000,"0.000")+" m c/c";
+            html.Append($"<g stroke='#196373'><path d='M95 29h120 M95 25v8 M215 25v8 M43 70v120 M39 70h8 M39 190h8'/></g><g fill='#196373' font-size='11' text-anchor='middle'><text x='155' y='22'>{dim}</text><text transform='translate(36 130) rotate(-90)'>{dim}</text></g></svg>");
+            if(tower) html.Append($"<p>Internal leg centres: 1.524 × 1.500 m. Nearest leg centres between towers: {N((pitch-1524)/1000)} × {N((pitch-1500)/1000)} m.</p>");
+            double side=pitch/1000/(tower?2:1), area=side*side;
+            html.Append($"<p>Shaded tributary area: {N(side)} × {N(side)} = {N(area)} m².</p><p>Demand = {N(load)} kN/m² × {N(area)} m² = {N(grid.PropLoadKn,"0.00")} kN.</p>");
+            return html.Append(Check(grid)).Append("</section>").ToString();
+        }
+
+        private static string TowerElevation(string storey, SlabInput slab, SpacingResult grid)
+        {
+            var t=grid.Tower;
+            double height=slab.PropExtensionMm, scale=285/height, y=30+t.Opening*scale;
+            var html=new StringBuilder($"<section class='sheet'><h1>D3 component capacity</h1><p>{H(storey)} · Top-held tower · restrained head units · inter-frame spacing 1.50 m</p><h2>Tower elevation</h2><svg class='elevation' viewBox='0 0 520 340' xmlns='http://www.w3.org/2000/svg'><path d='M60 30v285 M150 30v285 M50 30h20 M140 30h20 M50 315h20 M140 315h20' stroke='#123657' stroke-width='3'/>");
+            foreach(var pair in new[]{Tuple.Create(t.Large,1800),Tuple.Create(t.Medium,1200),Tuple.Create(t.Small,900)})
+            for(int i=0;i<pair.Item1;i++)
+            {
+                double next=y+pair.Item2*scale;
+                html.Append($"<path d='M60 {N(y)}H150L60 {N(next)}H150L60 {N(y)}' fill='none' stroke='#718799'/>");
+                y=next;
+            }
+            html.Append($"<g fill='#123657' font-size='14'><text x='186' y='43'>Upper jack {N(t.Opening,"0.###")} mm</text><text x='186' y='145'>Vertical frames</text><text x='186' y='168'>{H(t.Stack)}</text><text x='186' y='211'>{(t.Braced?"Brace both jacks":"Unbraced jacks")}</text><text x='186' y='310'>Lower jack {N(t.Opening,"0.###")} mm</text></g></svg>");
+            html.Append($"<p>Clear tower height {N(height/1000)} m. Jack openings include the plates.</p><p>Tallest-frame group up to {(t.Large>0?"1.80":"1.20")} m · at least two connected frame planes · maximum height in selected row {N(t.HeightLimit/1000,"0.0")} m.</p>");
+            return html.Append(Check(grid)).Append("</section>").ToString();
+        }
+
+        private static string References(BackproppingDocument doc, LoadResult loads)
+        {
+            var html=new StringBuilder();
+            foreach (var name in loads.Slabs.Where(r=>r.Index>0 && r.Transfer>0).Select(r=>doc.Slabs[r.Index].PropId).Distinct())
+            {
+                if(name==BackproppingTower.Name || name.Contains(" eco ")) continue;
+                var prop=BackproppingPropCatalog.All.Single(p=>p.Name==name);
+                html.Append($"<section class='sheet'><h1>Component capacity reference</h1><h2>{H(name)}</h2>").Append(Table("Installed length (mm)","Restrained prop capacity (kN)"));
+                for(int mm=prop.MinimumMm;mm<=prop.MaximumMm;mm+=100) html.Append(Cells(N(mm,"0"),N(prop.CapacityAt(mm),"0.0")));
+                html.Append("</tbody></table></section>");
+            }
+            html.Append($"<section class='sheet'><h1>Eurex eco props</h1><p>Component capacity reference</p><img class='eco' src='{Asset("eco")}'></section>");
+            html.Append($"<section class='sheet landscape'><h1>D3 shoring towers</h1><p>Component capacity reference · top-held systems</p><div class='reference'><img src='{Asset("d3")}'>");
+            foreach(var row in loads.Slabs.Where(r=>r.Index>0 && r.Transfer>0 && doc.Slabs[r.Index].PropId==BackproppingTower.Name))
+            {
+                var s=doc.Slabs[row.Index]; var tower=BackproppingTower.Fit(s.PropExtensionMm);
+                int y=tower.Large>0 ? (tower.Opening<=150?158:245) : (tower.Opening<=150?417:504);
+                if(tower.HeightLimit==20000) y+=21;
+                html.Append($"<span style='top:{N(100.0*y/685)}%'></span>");
+            }
+            return html.Append("</div></section>").ToString();
+        }
+
         internal static string Report(BackproppingDocument doc, LoadResult loads)
         {
             var html = new StringBuilder(@"<!doctype html><meta charset='utf-8'><title>Backpropping calculation</title><style>
@@ -55,7 +158,14 @@ p{margin:1.5mm 0;line-height:1.35}.level{display:grid;grid-template-columns:48% 
 mark{display:inline-block;background:#ffe06a;padding:1mm 2mm;margin-top:1mm;font-weight:bold}
 table{border-collapse:collapse;width:100%;font-size:8.5pt;margin:2mm 0}td,th{text-align:right;padding:1.4mm;border-bottom:1px solid #d4dfe1;overflow-wrap:anywhere}
 th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-inside:avoid}thead{display:table-header-group}
-.capacity{break-before:page}svg{width:100%;max-height:62mm}.note{color:#455f68;font-size:9pt}</style><h1>Backpropping calculation</h1><h2>Slab and support section</h2>");
+.capacity{break-before:page}svg{width:100%;max-height:62mm}.note{color:#455f68;font-size:9pt}
+.cover{min-height:245mm;break-after:page}.brand{width:42mm;display:block;margin:0 0 16mm auto}.cover h1{margin-top:20mm;border-top:4px solid #ffda00;padding-top:6mm}.cover dl{display:grid;grid-template-columns:32% 68%;margin:25mm 0 0}.cover dt,.cover dd{margin:0;padding:4mm;border-bottom:1px solid #c7d5d9;overflow-wrap:anywhere}.sheet{break-before:page}.safe,.exceeded{font-weight:bold;padding:3mm}.safe{color:#165d32;background:#eaf6ec}.exceeded{color:#9c2224}.sheet .plan,.sheet .elevation{max-height:145mm;height:auto}.eco{display:block;max-width:100%;height:217mm;margin:auto}@page wide{size:A4 landscape}.landscape{page:wide}.reference{position:relative;width:fit-content;margin:auto}.reference img{display:block;height:151mm;max-width:100%}.reference span{position:absolute;left:77%;width:9%;height:3.1%;border:1.5px solid #196373}.drawing .height{position:absolute;right:0;top:2%;bottom:0;writing-mode:vertical-rl;border-left:1px solid #196373;text-align:center;background:white;font-size:8pt;color:#196373}.drawing .tag{position:absolute;left:28%;top:20%;font-size:8pt;color:#123657;background:white}.drawing img{width:93%}
+</style>");
+            html.Append(Cover(doc,loads)).Append("<h1>Load-transfer section</h1>");
+            var plans=new StringBuilder(); var elevations=new StringBuilder();
+            var arrangements=new System.Collections.Generic.Dictionary<string,System.Collections.Generic.List<string>>();
+            var layouts=new System.Collections.Generic.Dictionary<string,Tuple<SlabInput,double,SpacingResult>>();
+
             var breakdown = new StringBuilder(Table("Slab", "Incoming", "Self-weight", "Working", "Demand", "Capacity", "Excess", "Passed down"));
             var spacing = new StringBuilder();
             var capacity = new StringBuilder(Table("Slab", "Age (d)", "Self-weight + SIDL + final live (kN/m²)", "Strength", "Adopted capacity (kN/m²)"));
@@ -71,20 +181,24 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
                     continue;
                 }
                 html.Append($"<div class='level'><div class='info'><b>{H(slab.Name)}</b><small>{N(slab.ThicknessMm,"0.##")} mm · {N(slab.AgeDays,"0.##")} days</small><small>SIDL {N(slab.Sidl)} · final live {N(slab.FinalLiveLoad)} kN/m²</small><mark>↓ {N(row.DownwardLoad)} kN/m²{(final ? " · transfer stops" : "")}</mark></div>");
-                html.Append($"<div class='drawing {(final ? "last" : "")}'><img src='data:image/png;base64,{SectionImage(row.Index == 0,final)}'>");
-                html.Append(final ? "</div></div>" : "<span class='arrow'>↓</span></div></div>");
+                html.Append($"<div class='drawing {(final ? "last" : "")}'><img src='data:image/png;base64,{SectionImage(row.Index == 0,final,slab.PropId==BackproppingTower.Name && row.Index>0)}'>");
+                html.Append(final ? "</div></div>" : $"<small class='tag'>{(row.Index==0?"Main shores":"Repropping")}</small><span class='arrow'>↓</span><small class='height'>{N(slab.FloorHeightBelowMm/1000)} m floor to floor</small></div></div>");
                 if (row.Index == 0) continue;
                 breakdown.Append(Cells(slab.Name,N(row.Incoming),N(row.SelfWeight),N(row.ConstructionLive),N(row.Demand),N(row.Capacity),N(row.Transfer),N(row.DownwardLoad)));
                 double basis = row.SelfWeight + slab.Sidl + slab.FinalLiveLoad;
                 capacity.Append(Cells(slab.Name,N(slab.AgeDays,"0.##"),$"{N(row.SelfWeight)} + {N(slab.Sidl)} + {N(slab.FinalLiveLoad)} = {N(basis)}",N(row.StrengthPercent,"0.###")+"%",N(row.Capacity)));
                 if (row.Transfer <= 0) continue;
                 double? limit = slab.MaximumSpacingMm ?? doc.ProjectMaximumMm;
-                var grid = BackproppingCalculator.CalculateSpacing(row.DownwardLoad, slab.PropId, slab.PropExtensionMm, limit);
+                var grid = BackproppingCalculator.SupportSpacing(row.DownwardLoad,slab,limit);
+                string storey=slab.Name+" → "+doc.Slabs[row.Index+1].Name;
+                string key=string.Join("|",slab.PropId,N(slab.PropExtensionMm,"R"),N(row.DownwardLoad,"R"),N(grid.SpacingMm,"R"));
+                if(!arrangements.ContainsKey(key)) { arrangements[key]=new System.Collections.Generic.List<string>(); layouts[key]=Tuple.Create(slab,row.DownwardLoad,grid); }
+                arrangements[key].Add(storey);
                 if (doc.Slabs[row.Index+1].IsRaft)
-                    raftReaction = $"{N(grid.PropLoadKn,"0.00")} kN per interior prop foot";
+                    raftReaction = $"{N(grid.PropLoadKn,"0.00")} kN per interior {(grid.Tower==null?"prop foot":"tower leg")}";
                 spacing.Append(Cells(slab.Name+" → "+doc.Slabs[row.Index+1].Name,slab.PropId,
                     N(slab.PropExtensionMm,"0.##"),N(grid.CapacityKn,"0.##"),limit.HasValue ? N(limit.Value,"0.##") : "—",
-                    N(grid.SpacingMm,"0")+" × "+N(grid.SpacingMm,"0"),N(grid.PropLoadKn),N(grid.UtilizationPercent,"0.##")+"%"));
+                    N(grid.SpacingMm,"0")+" × "+N(grid.SpacingMm,"0"),N(grid.PropLoadKn),grid.PropLoadKn<=grid.CapacityKn?"SAFE":"EXCEEDED"));
             }
             foreach (var lower in doc.Slabs.Skip(loads.Slabs.Count))
             {
@@ -94,23 +208,30 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
             html.Append($"<h2>Load breakdown</h2><p>Active pour (kN/m²): {N(loads.Slabs[0].SelfWeight)} concrete + 0.500 formwork + 0.750 working + {N(loads.Heaping)} heaping = <b>{N(loads.PourLoad)}</b>.</p><p>All table values are in kN/m².</p>");
             html.Append(breakdown).Append("</tbody></table><p>Positive excess passes down with a 0.400 kN/m² allowance per required backprop storey.</p>");
             if (spacing.Length > 0)
-                html.Append("<h2>Backprop spacing</h2>").Append(Table("Storey","Prop","Extension (mm)","Capacity (kN)","Max. (mm)","Square grid (mm)","Load/prop (kN)","Use")).Append(spacing).Append("</tbody></table>");
+                html.Append("<h2>Reprop spacing</h2>").Append(Table("Storey","Support","Clear height (mm)","Per leg/prop (kN)","Max. (mm)","Square grid (mm)","Demand (kN)","Check")).Append(spacing).Append("</tbody></table>");
             if (doc.Slabs.Last().IsRaft)
             {
                 html.Append(doc.Slabs[loads.Slabs.Last().Index].IsRaft
                     ? "<p>Foundation capacity, local bearing and ground or pile support require a separate check.</p>"
                     : "<p>No backprop reaction reaches the raft.</p>");
                 if (loads.Slabs.Count == 2 && doc.Slabs[1].IsRaft)
-                    return html.Append("<p>Main shores deliver the active pour load directly to the raft. Main shore reactions are outside this calculation.</p>").ToString();
+                    return html.Append("<p>Main shores deliver the active pour load directly to the raft. Main shore reactions are outside this calculation.</p>").Append(References(doc,loads)).ToString();
             }
-            html.Append("<section class='capacity'><h1>Slab capacity</h1><p>Concrete self-weight = thickness in metres × 25 kN/m³.</p><p><b>Adopted capacity = (self-weight + SIDL + final live load) × strength fraction at slab age.</b></p><p class='note'>This capacity approximation requires project engineering acceptance.</p><h2>Concrete strength development</h2>");
+            foreach(var arrangement in arrangements)
+            {
+                var data=layouts[arrangement.Key]; string storeys=string.Join(", ",arrangement.Value);
+                plans.Append(LayoutPlan(storeys,data.Item1,data.Item2,data.Item3));
+                if(data.Item3.Tower!=null) elevations.Append(TowerElevation(storeys,data.Item1,data.Item3));
+            }
+            html.Append(plans);
+            html.Append("<section class='capacity'><h1>Slab capacity</h1><p>Concrete self-weight = thickness in metres × 25 kN/m³.</p><p><b>Slab capacity = (self-weight + SIDL + final live load) × strength fraction at slab age.</b></p><h2>Concrete strength development</h2>");
             html.Append(StrengthGraph(doc, loads)).Append(capacity).Append("</tbody></table><h2>Load passed down</h2>");
             foreach (var row in loads.Slabs.Skip(1).Where(r => !doc.Slabs[r.Index].IsRaft))
             {
                 html.Append($"<p><b>{H(doc.Slabs[row.Index].Name)}</b> · Demand {N(row.Demand)} kN/m², adopted capacity {N(row.Capacity)} kN/m². ");
                 html.Append(row.Transfer > 0 ? $"Excess {N(row.Transfer)} + 0.400 = <b>{N(row.DownwardLoad)} kN/m²</b> to {H(doc.Slabs[row.Index+1].Name)}.</p>" : "Capacity covers demand. Transfer stops.</p>");
             }
-            return html.Append("</section>").ToString();
+            return html.Append("</section>").Append(elevations).Append(References(doc,loads)).ToString();
         }
 
         private static string StrengthGraph(BackproppingDocument doc, LoadResult loads)

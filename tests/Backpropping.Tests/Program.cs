@@ -10,6 +10,20 @@ internal static class Program
     private static SlabInput Slab(double age, double sidl=3, double live=3) => new SlabInput { Name="Level", ThicknessMm=200, FloorHeightBelowMm=3200, AgeDays=age, Sidl=sidl, FinalLiveLoad=live };
     private static void Main()
     {
+        var towerSlab=Slab(10);
+        towerSlab.PropId=BackproppingTower.Name; towerSlab.FloorHeightBelowMm=4200;
+        var d3=BackproppingCalculator.SupportSpacing(4.625,towerSlab,4000);
+        Equal(2,d3.Tower.Large); Equal(200,d3.Tower.Opening); Equal(35,d3.CapacityKn);
+        Equal(4000,d3.SpacingMm); Equal(18.5,d3.PropLoadKn);
+        Equal(125,BackproppingTower.Fit(1150).Opening);
+        Equal(150,BackproppingTower.Fit(1200).Opening);
+        Equal(300,BackproppingTower.Fit(1800).Opening);
+        True(!BackproppingTower.Fit(1800).Braced);
+        True(BackproppingTower.Fit(1801).Braced);
+        Equal(500,BackproppingTower.Fit(2800).Opening);
+        True(BackproppingTower.Fit(2800).Braced);
+        Reject(()=>BackproppingTower.Fit(1149)); Reject(()=>BackproppingTower.Fit(20001));
+        Reject(()=>BackproppingCalculator.SupportSpacing(4.625,towerSlab,1524));
         var raft = new SlabInput { Name = "Raft", IsRaft = true };
         var onRaft = BackproppingCalculator.CalculateLoads(new[]{Slab(0), Slab(10), raft}, TemperatureCurve.A);
         True(onRaft.Complete);

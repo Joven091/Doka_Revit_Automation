@@ -57,6 +57,14 @@ namespace EngineeringDashboard.Backpropping
                 p.Add(new BackproppingProp(family+" 450",2500,4500,41.2));
                 p.Add(new BackproppingProp(family+" 550",3100,5500,41.2));
             }
+            // Eurex eco table. Each 20 eco model has four declining rows at full extension.
+            int[] sizes = {250,300,350,400,450,550};
+            int[] minimum = {1500,1800,2000,2300,2500,3000};
+            for(int i=0;i<sizes.Length;i++)
+            {
+                p.Add(new BackproppingProp("Eurex 20 eco "+sizes[i],minimum[i],sizes[i]*10,36.7,30,32,34,sizes[i]==550 ? 36.7 : 36));
+                if(sizes[i]!=550) p.Add(new BackproppingProp("Eurex 30 eco "+sizes[i],minimum[i],sizes[i]*10,41.2));
+            }
             return p;
         }
         public static double Capacity(string name, double extensionMm, out double lookupMm)
