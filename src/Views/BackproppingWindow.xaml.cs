@@ -196,10 +196,12 @@ namespace EngineeringDashboard
             if (rebuildStoreys) RenderStoreys(loads);
         }
 
-        private void RenderSection(LoadResult loads)
+        private void RenderSection(LoadResult loads) => PopulateSection(SectionPanel, loads);
+
+        private void PopulateSection(StackPanel panel, LoadResult loads)
         {
-            SectionPanel.Children.Clear();
-            if (slabs.Count == 0) { SectionPanel.Children.Add(Text("Your floor stack will appear here.")); return; }
+            panel.Children.Clear();
+            if (slabs.Count == 0) { panel.Children.Add(Text("Your floor stack will appear here.")); return; }
             for (int i = 0; i < slabs.Count; i++)
             {
                 int index = i; var s = slabs[i]; var row = loads.Slabs.FirstOrDefault(r => r.Index == i);
@@ -241,7 +243,7 @@ namespace EngineeringDashboard
                     }
                     support.Children.Add(props); grid.Children.Add(support);
                 }
-                SectionPanel.Children.Add(grid);
+                panel.Children.Add(grid);
             }
         }
 
@@ -403,8 +405,12 @@ namespace EngineeringDashboard
             var document = CaptureCalculation();
             var loads = BackproppingCalculator.CalculateLoads(document.Slabs, document.Curve);
             if (!loads.Complete) throw new ArgumentException("Complete the supporting slab stack before exporting a report.");
-            SectionPanel.UpdateLayout();
-            return BackproppingPdf.Report(document, loads, SectionPanel);
+            var printSection = new StackPanel();
+            PopulateSection(printSection, loads);
+            printSection.Measure(new Size(640, double.PositiveInfinity));
+            printSection.Arrange(new Rect(0, 0, 640, printSection.DesiredSize.Height));
+            printSection.UpdateLayout();
+            return BackproppingPdf.Report(document, loads, printSection);
         }
         private void Close_Click(object sender, RoutedEventArgs e) => Close();
     }
