@@ -59,10 +59,17 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
             var breakdown = new StringBuilder(Table("Slab", "Incoming", "Self-weight", "Working", "Demand", "Capacity", "Excess", "Passed down"));
             var spacing = new StringBuilder();
             var capacity = new StringBuilder(Table("Slab", "Age (d)", "Self-weight + SIDL + final live (kN/m²)", "Strength", "Adopted capacity (kN/m²)"));
+            string raftReaction = "";
             foreach (var row in loads.Slabs)
             {
                 var slab = doc.Slabs[row.Index];
                 bool final = row.Index == loads.Slabs.Count - 1;
+                if (slab.IsRaft)
+                {
+                    html.Append($"<div class='level'><div class='info'><b>{H(slab.Name)} · Raft foundation</b><small>Backpropping terminates at raft</small><mark>{N(row.Incoming)} kN/m² received</mark><small>{raftReaction}</small></div><div class='drawing last'><img src='data:image/png;base64,{SectionImage((Grid)section.Children[row.Index],true)}'></div></div>");
+                    breakdown.Append(Cells(slab.Name+" · raft",N(row.Incoming),"—","—","—","—","—","—"));
+                    continue;
+                }
                 html.Append($"<div class='level'><div class='info'><b>{H(slab.Name)}</b><small>{N(slab.ThicknessMm,"0.##")} mm · {N(slab.AgeDays,"0.##")} days</small><small>SIDL {N(slab.Sidl)} · final live {N(slab.FinalLiveLoad)} kN/m²</small><mark>↓ {N(row.DownwardLoad)} kN/m²{(final ? " · transfer stops" : "")}</mark></div>");
                 html.Append($"<div class='drawing {(final ? "last" : "")}'><img src='data:image/png;base64,{SectionImage((Grid)section.Children[row.Index],final)}'>");
                 html.Append(final ? "</div></div>" : "<span class='arrow'>↓</span></div></div>");
@@ -73,6 +80,8 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
                 if (row.Transfer <= 0) continue;
                 double? limit = slab.MaximumSpacingMm ?? doc.ProjectMaximumMm;
                 var grid = BackproppingCalculator.CalculateSpacing(row.DownwardLoad, slab.PropId, slab.PropExtensionMm, limit);
+                if (doc.Slabs[row.Index+1].IsRaft)
+                    raftReaction = $"{N(grid.PropLoadKn,"0.00")} kN per interior prop foot";
                 spacing.Append(Cells(slab.Name+" → "+doc.Slabs[row.Index+1].Name,slab.PropId,
                     N(slab.PropExtensionMm,"0.##"),N(grid.CapacityKn,"0.##"),limit.HasValue ? N(limit.Value,"0.##") : "—",
                     N(grid.SpacingMm,"0")+" × "+N(grid.SpacingMm,"0"),N(grid.PropLoadKn),N(grid.UtilizationPercent,"0.##")+"%"));
@@ -81,9 +90,17 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
             html.Append(breakdown).Append("</tbody></table><p>Positive excess passes down with a 0.400 kN/m² allowance per required backprop storey.</p>");
             if (spacing.Length > 0)
                 html.Append("<h2>Backprop spacing</h2>").Append(Table("Storey","Prop","Extension (mm)","Capacity (kN)","Max. (mm)","Square grid (mm)","Load/prop (kN)","Use")).Append(spacing).Append("</tbody></table>");
+            if (doc.Slabs.Last().IsRaft)
+            {
+                html.Append(doc.Slabs[loads.Slabs.Last().Index].IsRaft
+                    ? "<p>Foundation capacity, local bearing and ground or pile support require a separate check.</p>"
+                    : "<p>No backprop reaction reaches the raft.</p>");
+                if (loads.Slabs.Count == 2 && doc.Slabs[1].IsRaft)
+                    return html.Append("<p>Main shores deliver the active pour load directly to the raft. Main shore reactions are outside this calculation.</p>").ToString();
+            }
             html.Append("<section class='capacity'><h1>Slab capacity</h1><p>Concrete self-weight = thickness in metres × 25 kN/m³.</p><p><b>Adopted capacity = (self-weight + SIDL + final live load) × strength fraction at slab age.</b></p><p class='note'>This capacity approximation requires project engineering acceptance.</p><h2>Concrete strength development</h2>");
             html.Append(StrengthGraph(doc, loads)).Append(capacity).Append("</tbody></table><h2>Load passed down</h2>");
-            foreach (var row in loads.Slabs.Skip(1))
+            foreach (var row in loads.Slabs.Skip(1).Where(r => !doc.Slabs[r.Index].IsRaft))
             {
                 html.Append($"<p><b>{H(doc.Slabs[row.Index].Name)}</b> · Demand {N(row.Demand)} kN/m², adopted capacity {N(row.Capacity)} kN/m². ");
                 html.Append(row.Transfer > 0 ? $"Excess {N(row.Transfer)} + 0.400 = <b>{N(row.DownwardLoad)} kN/m²</b> to {H(doc.Slabs[row.Index+1].Name)}.</p>" : "Capacity covers demand. Transfer stops.</p>");
@@ -103,7 +120,7 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
             }
             var points = Enumerable.Range(0,29).Select(day => N(48+day*500.0/28)+","+N(149-1.2*BackproppingCalculator.Strength(day,curve)));
             svg.Append("<polyline fill='none' stroke='#126c78' stroke-width='3' points='").Append(string.Join(" ",points)).Append("'/>");
-            foreach (double age in loads.Slabs.Skip(1).Select(r => Math.Min(28,doc.Slabs[r.Index].AgeDays)).Distinct())
+            foreach (double age in loads.Slabs.Skip(1).Where(r => !doc.Slabs[r.Index].IsRaft).Select(r => Math.Min(28,doc.Slabs[r.Index].AgeDays)).Distinct())
                 svg.Append($"<circle cx='{N(48+age*500/28)}' cy='{N(149-1.2*BackproppingCalculator.Strength(age,curve))}' r='4' fill='#126c78'/>");
             for (int day = 0; day <= 28; day += 4)
                 svg.Append($"<text x='{N(48+day*500.0/28)}' y='167' text-anchor='middle'>{day}</text>");

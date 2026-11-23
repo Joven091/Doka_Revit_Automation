@@ -108,6 +108,19 @@ internal static class Program
   window.RestoreCalculation(accepted);accepted.Version=999;bool rejected=false;try{window.RestoreCalculation(accepted);}catch(ArgumentException){rejected=true;}Assert(rejected && Get<DataGrid>("SlabGrid").Items.Count==2);
   Click("NewCalculation");Get<TextBox>("FloorName").Text="Unfinished <floor>";Get<TextBox>("Thickness").Text="bad";
   window.Close();window=new BackproppingWindow();Assert(Get<TextBox>("FloorName").Text=="Unfinished <floor>");Assert(Get<TextBox>("Thickness").Text=="bad");Assert(Get<Button>("CancelEdit").Visibility==Visibility.Visible);
+  Click("NewCalculation"); Get<TextBox>("FloorName").Text="Pour";
+  Get<TextBox>("Thickness").Text="200"; Get<TextBox>("FloorHeight").Text="3200";
+  Get<TextBox>("Sidl").Text="3"; Get<TextBox>("LiveLoad").Text="3"; Click("SaveSlab");
+  Get<TextBox>("Age").Text="10"; Click("SaveSlab");
+  Get<CheckBox>("Raft").IsChecked=true; Get<TextBox>("FloorName").Text="Foundation"; Click("SaveSlab"); Layout();
+  Children<ComboBox>(Get<StackPanel>("StoreyPanel")).Single().SelectedIndex=0;
+  Get<TextBox>("ProjectMaximum").Text="2010"; Click("CalculateButton");
+  Assert(Section().Contains("4.625 kN/m² received"));
+  Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text.Contains("18.50 kN per interior prop")));
+  var raftDoc=window.CaptureCalculation(); Assert(raftDoc.Version==2 && raftDoc.Slabs.Last().IsRaft);
+  window.RestoreCalculation(raftDoc);
+  var raftReport=window.BuildReport(); Assert(raftReport.Contains("18.50 kN per interior prop foot") && raftReport.Contains("Backpropping terminates at raft"));
+  if(arguments.Length>1) BackproppingPdf.Save(null,raftReport,System.IO.Path.GetFullPath(System.IO.Path.ChangeExtension(arguments[1],"raft.pdf")));
   Click("NewCalculation");window.Close();Console.WriteLine($"Passed {checks} WPF workflow checks.");
  }
 }

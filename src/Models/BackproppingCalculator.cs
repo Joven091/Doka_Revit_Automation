@@ -8,6 +8,7 @@ namespace EngineeringDashboard.Backpropping
 
     public sealed class SlabInput
     {
+        public bool IsRaft { get; set; }
         public string Name { get; set; }
         public double ThicknessMm { get; set; }
         public double FloorHeightBelowMm { get; set; }
@@ -99,6 +100,12 @@ namespace EngineeringDashboard.Backpropping
             {
                 var s = slabs[i];
                 if (s == null || string.IsNullOrWhiteSpace(s.Name)) throw new ArgumentException("Every slab needs a name.");
+                if (s.IsRaft)
+                {
+                    if (i == 0 || i != slabs.Count - 1)
+                        throw new ArgumentException("A raft must be the lowest supporting level.");
+                    continue;
+                }
                 RequireNumber(s.ThicknessMm, s.Name + " thickness", true);
                 RequireNumber(s.FloorHeightBelowMm, s.Name + " floor-to-floor height", true);
                 RequireNumber(s.PropExtensionMm, s.Name + " floor height minus slab thickness", true);
@@ -119,6 +126,12 @@ namespace EngineeringDashboard.Backpropping
             for (int i = 1; i < slabs.Count; i++)
             {
                 var s = slabs[i];
+                if (s.IsRaft)
+                {
+                    result.Slabs.Add(new SlabResult { Index = i, Incoming = incoming });
+                    result.Complete = true;
+                    break;
+                }
                 var row = new SlabResult { Index = i, SelfWeight = s.ThicknessMm / 1000 * ConcreteUnitWeight,
                     StrengthPercent = Strength(s.AgeDays, curve), Incoming = incoming, ConstructionLive = i == 1 ? 0.75 : 0 };
                 row.Demand = row.SelfWeight + row.Incoming + row.ConstructionLive;

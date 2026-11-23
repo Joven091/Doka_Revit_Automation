@@ -32,8 +32,9 @@
      <StackPanel Margin="0,0,14,0">
       <Border Style="{StaticResource Step}"><TextBlock x:Name="EntryTitle" FontWeight="Bold"/></Border>
       <StackPanel x:Name="EntryForm">
+       <CheckBox x:Name="Raft" Content="Raft foundation (lowest supporting level)" Margin="0,2,0,8" Checked="Raft_Changed" Unchecked="Raft_Changed"/>
        <TextBlock Text="Floor name"/><TextBox x:Name="FloorName" TextChanged="Draft_Changed"/>
-       <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+       <StackPanel x:Name="SuspendedInputs"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
         <StackPanel><TextBlock Text="Slab thickness (mm)"/><TextBox x:Name="Thickness" TextChanged="Draft_Changed"/></StackPanel>
         <StackPanel Grid.Column="1"><TextBlock Text="Floor-to-floor height below (mm)"/><TextBox x:Name="FloorHeight" TextChanged="Draft_Changed"/></StackPanel>
        </Grid>
@@ -45,7 +46,7 @@
          <StackPanel Grid.Column="1"><TextBlock Text="Final live load (kN/m²)"/><TextBox x:Name="LiveLoad" TextChanged="Draft_Changed"/></StackPanel>
         </Grid>
        </GroupBox>
-       <TextBlock x:Name="EntryHint" FontSize="12" Foreground="#555555"/>
+       </StackPanel><TextBlock x:Name="EntryHint" FontSize="12" Foreground="#555555"/>
        <WrapPanel><Button x:Name="SaveSlab" Background="#F2CD24" Click="SaveSlab_Click"/><Button x:Name="CancelEdit" Content="Cancel edit" Click="CancelEdit_Click"/></WrapPanel>
       </StackPanel>
      </StackPanel>
@@ -57,7 +58,8 @@
     </Grid>
     <Border Style="{StaticResource Step}"><TextBlock Text="3  Review slabs" FontWeight="Bold"/></Border>
     <DataGrid x:Name="SlabGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserSortColumns="False" CanUserReorderColumns="False" SelectionMode="Single" HeadersVisibility="Column" MaxHeight="230" Margin="0,0,0,8">
-     <DataGrid.Columns><DataGridTextColumn Header="Floor" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="SIDL (kN/m²)" Binding="{Binding Sidl}" Width="*"/><DataGridTextColumn Header="Live (kN/m²)" Binding="{Binding FinalLiveLoad}" Width="*"/><DataGridTextColumn Header="Age (days)" Binding="{Binding AgeDays}" Width="*"/></DataGrid.Columns>
+     <DataGrid.Resources><Style TargetType="TextBlock" x:Key="LoadCell"><Style.Triggers><DataTrigger Binding="{Binding IsRaft}" Value="True"><Setter Property="Visibility" Value="Hidden"/></DataTrigger></Style.Triggers></Style></DataGrid.Resources>
+     <DataGrid.Columns><DataGridTextColumn Header="Floor" Binding="{Binding Name}" Width="*"/><DataGridTextColumn ElementStyle="{StaticResource LoadCell}" Header="SIDL (kN/m²)" Binding="{Binding Sidl}" Width="*"/><DataGridTextColumn ElementStyle="{StaticResource LoadCell}" Header="Live (kN/m²)" Binding="{Binding FinalLiveLoad}" Width="*"/><DataGridTextColumn ElementStyle="{StaticResource LoadCell}" Header="Age (days)" Binding="{Binding AgeDays}" Width="*"/></DataGrid.Columns>
     </DataGrid>
     <WrapPanel><Button Content="Edit selected slab" Click="EditSelected_Click"/><Button x:Name="RemoveLowest" Content="Remove lowest slab" Click="RemoveLowest_Click"/></WrapPanel>
     <Border Style="{StaticResource Step}" Margin="0,10,0,10"><TextBlock Text="4  Backpropping storeys" FontWeight="Bold"/></Border>

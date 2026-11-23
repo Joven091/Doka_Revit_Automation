@@ -19,7 +19,7 @@ if((Get-FileHash $archive).Hash -ine $feed.sha256 -or (Get-Item $archive).Length
 Copy-Item $installer.FullName $destination
 Copy-Item $archive $destination
 Copy-Item (Join-Path $build 'feed/dashboard-latest.json') $destination
-@{schemaVersion=1;productId='Doka.RevitAutomation';revitVersion=$year;version=$info.version;installerFile=$installer.Name;sha256=$info.installerSha256;sizeBytes=$installer.Length;publishedUtc=[DateTime]::UtcNow.ToString('O');releaseNotes='Engineering Dashboard update: backpropping PDF reports with the load-transfer section, slab capacity, and curing-strength graph. Save your work and close Revit for this integration installer.'} | ConvertTo-Json | Set-Content (Join-Path $destination 'latest.json') -Encoding utf8
+@{schemaVersion=1;productId='Doka.RevitAutomation';revitVersion=$year;version=$info.version;installerFile=$installer.Name;sha256=$info.installerSha256;sizeBytes=$installer.Length;publishedUtc=[DateTime]::UtcNow.ToString('O');releaseNotes='Engineering Dashboard update: raft foundation termination and backprop reactions in the calculator and PDF report. Save your work and close Revit for this integration installer.'} | ConvertTo-Json | Set-Content (Join-Path $destination 'latest.json') -Encoding utf8
 $subfolder=if($year -eq 2024){''}else{'\Revit2027'}
 @"
 Revit $year - Engineering Dashboard $($info.version)

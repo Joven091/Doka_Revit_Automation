@@ -10,6 +10,21 @@ internal static class Program
     private static SlabInput Slab(double age, double sidl=3, double live=3) => new SlabInput { Name="Level", ThicknessMm=200, FloorHeightBelowMm=3200, AgeDays=age, Sidl=sidl, FinalLiveLoad=live };
     private static void Main()
     {
+        var raft = new SlabInput { Name = "Raft", IsRaft = true };
+        var onRaft = BackproppingCalculator.CalculateLoads(new[]{Slab(0), Slab(10), raft}, TemperatureCurve.A);
+        True(onRaft.Complete);
+        Equal(3, onRaft.Slabs.Count);
+        Equal(4.625, onRaft.Slabs[2].Incoming);
+        Equal(0, onRaft.Slabs[2].DownwardLoad);
+        Equal(18.5, BackproppingCalculator.CalculateSpacing(onRaft.Slabs[2].Incoming, "DokaFit Prop 300", 3000, 2010).PropLoadKn);
+        var direct = BackproppingCalculator.CalculateLoads(new[]{Slab(0), raft}, TemperatureCurve.A);
+        True(direct.Complete);
+        Equal(7, direct.Slabs[1].Incoming);
+        var stopsAbove = BackproppingCalculator.CalculateLoads(new[]{Slab(0), Slab(28,10,10), raft}, TemperatureCurve.A);
+        True(stopsAbove.Complete);
+        Equal(2, stopsAbove.Slabs.Count);
+        Reject(()=>BackproppingCalculator.CalculateLoads(new[]{raft},TemperatureCurve.A));
+        Reject(()=>BackproppingCalculator.CalculateLoads(new[]{Slab(0),raft,Slab(28)},TemperatureCurve.A));
         var geometry=Slab(10);
         Equal(3000,geometry.PropExtensionMm);
         geometry.ThicknessMm=250; Equal(2950,geometry.PropExtensionMm);
