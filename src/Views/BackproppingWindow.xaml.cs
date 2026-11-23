@@ -15,7 +15,7 @@ namespace EngineeringDashboard
     public sealed class BackproppingReportDetails
     {
         public string Project { get; set; }
-        public string Client { get; set; }
+        public string DocumentNumber { get; set; }
         public string Contractor { get; set; }
         public string Title { get; set; }
         public string Author { get; set; }
@@ -486,8 +486,8 @@ namespace EngineeringDashboard
             var window = new Window { Title="Report details", Owner=this, Width=460, SizeToContent=SizeToContent.Height, WindowStartupLocation=WindowStartupLocation.CenterOwner };
             var panel = new StackPanel { Margin=new Thickness(18) };
             var fields = new List<TextBox>();
-            var values = new[]{reportDetails.Project,reportDetails.Client,reportDetails.Contractor,reportDetails.Title,reportDetails.Author,reportDetails.Checker};
-            foreach(string label in new[]{"Project","Client","Contractor","Report title","Author","Checker"})
+            var values = new[]{reportDetails.Project,reportDetails.Contractor,reportDetails.Title,reportDetails.Author,reportDetails.Checker,reportDetails.DocumentNumber};
+            foreach(string label in new[]{"Project","Contractor","Report title","Author","Checker","Document no."})
             {
                 panel.Children.Add(Text(label));
                 var field=new TextBox { Text=values[fields.Count] ?? "", MaxLength=180, Margin=new Thickness(0,2,0,7) };
@@ -505,7 +505,7 @@ namespace EngineeringDashboard
             buttons.Children.Add(cancel); buttons.Children.Add(save); panel.Children.Add(buttons);
             window.Content=panel;
             if(window.ShowDialog()!=true) return null;
-            return new BackproppingReportDetails { Project=fields[0].Text.Trim(),Client=fields[1].Text.Trim(),Contractor=fields[2].Text.Trim(),Title=fields[3].Text.Trim(),Author=fields[4].Text.Trim(),Checker=fields[5].Text.Trim() };
+            return new BackproppingReportDetails { Project=fields[0].Text.Trim(),Contractor=fields[1].Text.Trim(),Title=fields[2].Text.Trim(),Author=fields[3].Text.Trim(),Checker=fields[4].Text.Trim(),DocumentNumber=fields[5].Text.Trim() };
         }
 
         internal string BuildReport()

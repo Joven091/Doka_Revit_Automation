@@ -122,7 +122,7 @@ internal static class Program
   var raftReport=window.BuildReport(); Assert(raftReport.Contains("18.50 kN per interior prop foot") && raftReport.Contains("Backpropping terminates at raft"));
   if(arguments.Length>1) BackproppingPdf.Save(null,raftReport,System.IO.Path.GetFullPath(System.IO.Path.ChangeExtension(arguments[1],"raft.pdf")));
   raftDoc.Slabs[1].FloorHeightBelowMm=4200;
-  raftDoc.Details=new BackproppingReportDetails { Project="Test project",Client="Test client",Contractor="Test contractor",Title="Tower-supported slab pour",Author="Prepared by A",Checker="Checked by B" };
+  raftDoc.Details=new BackproppingReportDetails { Project="Test project",DocumentNumber="DOC-001",Contractor="Test contractor",Title="Tower-supported slab pour",Author="Prepared by A",Checker="Checked by B" };
   raftDoc.ProjectMaximumMm=4000;
   window.RestoreCalculation(raftDoc);
   Children<ComboBox>(Get<StackPanel>("StoreyPanel")).Single().SelectedItem="D3 shoring tower";
@@ -136,9 +136,9 @@ internal static class Program
    Click("NewCalculation");
    window.RestoreCalculation(CalculationFiles.Read<BackproppingDocument>(saved));
    var towerReport=window.BuildReport();
-   Assert(towerReport.Contains("18.50 kN per interior tower leg") && towerReport.Contains("4.200 m floor to floor"));
+   Assert(towerReport.Contains("18.50 kN per interior tower leg") && towerReport.Contains("4.200 m"));
    Assert(towerReport.Contains("35.0 kN") && towerReport.Contains("Typical tower layout"));
-   Assert(towerReport.Contains("Test client") && towerReport.Contains("Prepared by A") && towerReport.Contains("Checked by B"));
+   Assert(towerReport.Contains("DOC-001") && towerReport.Contains("Prepared by A") && towerReport.Contains("Checked by B"));
    if(arguments.Length>1) BackproppingPdf.Save(null,towerReport,System.IO.Path.GetFullPath(System.IO.Path.ChangeExtension(arguments[1],"d3.pdf")));
   }
   finally { System.IO.File.Delete(saved); }

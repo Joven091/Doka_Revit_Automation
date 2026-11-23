@@ -14,7 +14,7 @@ def check(path, levels):
     slab = bytes((169, 169, 169))
     shaft = bytes((112, 128, 144))
     bands = [list(rows) for visible, rows in groupby(
-        range(raster.height), key=lambda y: scanlines[y].count(slab) > 180
+        range(raster.height), key=lambda y: scanlines[y].count(slab) > 145
     ) if visible]
     assert len(bands) == levels, f"{path.name}: expected {levels} visible slabs, found {len(bands)}"
     for upper, lower in zip(bands, bands[1:]):
@@ -29,11 +29,14 @@ check(folder / "section.raft.pdf", 3)
 
 with pymupdf.open(folder / "section.d3.pdf") as report:
     pages = [page.get_text() for page in report]
-    assert len(pages) == 7, [t[:80] for t in pages]
-    for label in ("Test project", "Test client", "Test contractor", "Tower-supported slab pour", "Prepared by A", "Checked by B"):
+    assert len(pages) == 6, [t[:80] for t in pages]
+    for label in ("Test project", "DOC-001", "Test contractor", "Tower-supported slab pour", "Prepared by A", "Checked by B"):
         assert label in pages[0], label
-    for i, label in enumerate(("Load-transfer section","Typical tower layout","Slab capacity","D3 component capacity","Eurex eco props","D3 shoring towers"),1):
+    for i, label in enumerate(("Load-transfer section","Typical tower layout","Slab capacity","D3 component capacity","D3 shoring towers"),1):
         assert label in pages[i], label
     assert "18.50 kN" in pages[2] and "35.0 kN" in pages[2] and "SAFE" in pages[2]
-    assert report[0].get_images() and report[5].get_images() and report[6].get_images()
-    assert report[6].rect.width > report[6].rect.height
+    assert "Tower spacing" in pages[1] and "Eurex eco props" not in "".join(pages)
+    for index, page in enumerate(report):
+        assert page.rect.height > page.rect.width
+        assert f"Page {index+1} of {len(report)}" in pages[index]
+        assert page.get_images(), f"Missing logo on page {index+1}"

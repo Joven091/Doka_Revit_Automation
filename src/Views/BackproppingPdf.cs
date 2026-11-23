@@ -59,10 +59,11 @@ namespace EngineeringDashboard
             var d = doc.Details ?? new BackproppingReportDetails();
             var systems = loads.Slabs.Where(r=>r.Index>0 && r.Transfer>0)
                 .Select(r=>doc.Slabs[r.Index].PropId).Where(p=>!string.IsNullOrEmpty(p)).Distinct();
-            var html = new StringBuilder($"<section class='cover'><img class='brand' src='{Asset("doka")}'><p>ENGINEERING CALCULATION</p><h1>Repropping calculation</h1><h2>{H(d.Title)}</h2><p>{H(string.Join(" / ",systems))}</p><dl>");
-            foreach (var field in new[]{Tuple.Create("Project",d.Project),Tuple.Create("Client",d.Client),Tuple.Create("Contractor",d.Contractor),Tuple.Create("Author",d.Author),Tuple.Create("Checker",d.Checker)})
-                html.Append($"<dt>{field.Item1}</dt><dd>{H(field.Item2)}</dd>");
-            return html.Append("</dl></section>").ToString();
+            string Field(string label, string value) => $"<div><dt>{label}</dt><dd>{H(value)}</dd></div>";
+            return $"<section class='cover'><header>ENGINEERING CALCULATION<img class='brand' src='{Asset("doka")}'></header>" +
+                $"<h1>Repropping calculation</h1><h2>{H(d.Title)}</h2><p>{H(string.Join(" / ",systems))}</p>" +
+                $"<dl>{Field("Project",d.Project)}{Field("Contractor",d.Contractor)}</dl>" +
+                $"<dl class='signoff'>{Field("Author",d.Author)}{Field("Checker",d.Checker)}{Field("Document no.",d.DocumentNumber)}</dl></section>";
         }
 
         private static string Check(SpacingResult grid)
@@ -126,7 +127,8 @@ namespace EngineeringDashboard
         private static string References(BackproppingDocument doc, LoadResult loads)
         {
             var html=new StringBuilder();
-            foreach (var name in loads.Slabs.Where(r=>r.Index>0 && r.Transfer>0).Select(r=>doc.Slabs[r.Index].PropId).Distinct())
+            var systems = loads.Slabs.Where(r=>r.Index>0 && r.Transfer>0).Select(r=>doc.Slabs[r.Index].PropId).Distinct().ToArray();
+            foreach (var name in systems)
             {
                 if(name==BackproppingTower.Name || name.Contains(" eco ")) continue;
                 var prop=BackproppingPropCatalog.All.Single(p=>p.Name==name);
@@ -134,8 +136,10 @@ namespace EngineeringDashboard
                 for(int mm=prop.MinimumMm;mm<=prop.MaximumMm;mm+=100) html.Append(Cells(N(mm,"0"),N(prop.CapacityAt(mm),"0.0")));
                 html.Append("</tbody></table></section>");
             }
-            html.Append($"<section class='sheet'><h1>Eurex eco props</h1><p>Component capacity reference</p><img class='eco' src='{Asset("eco")}'></section>");
-            html.Append($"<section class='sheet landscape'><h1>D3 shoring towers</h1><p>Component capacity reference · top-held systems</p><div class='reference'><img src='{Asset("d3")}'>");
+            if (systems.Any(name=>name.Contains(" eco ")))
+                html.Append($"<section class='sheet'><h1>Eurex eco props</h1><p>Component capacity reference</p><img class='eco' src='{Asset("eco")}'></section>");
+            if (!systems.Contains(BackproppingTower.Name)) return html.ToString();
+            html.Append($"<section class='sheet'><h1>D3 shoring towers</h1><p>Component capacity reference · top-held systems</p><div class='reference'><img src='{Asset("d3")}'>");
             foreach(var row in loads.Slabs.Where(r=>r.Index>0 && r.Transfer>0 && doc.Slabs[r.Index].PropId==BackproppingTower.Name))
             {
                 var s=doc.Slabs[row.Index]; var tower=BackproppingTower.Fit(s.PropExtensionMm);
@@ -159,8 +163,15 @@ mark{display:inline-block;background:#ffe06a;padding:1mm 2mm;margin-top:1mm;font
 table{border-collapse:collapse;width:100%;font-size:8.5pt;margin:2mm 0}td,th{text-align:right;padding:1.4mm;border-bottom:1px solid #d4dfe1;overflow-wrap:anywhere}
 th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-inside:avoid}thead{display:table-header-group}
 .capacity{break-before:page}svg{width:100%;max-height:62mm}.note{color:#455f68;font-size:9pt}
-.cover{min-height:245mm;break-after:page}.brand{width:42mm;display:block;margin:0 0 16mm auto}.cover h1{margin-top:20mm;border-top:4px solid #ffda00;padding-top:6mm}.cover dl{display:grid;grid-template-columns:32% 68%;margin:25mm 0 0}.cover dt,.cover dd{margin:0;padding:4mm;border-bottom:1px solid #c7d5d9;overflow-wrap:anywhere}.sheet{break-before:page}.safe,.exceeded{font-weight:bold;padding:3mm}.safe{color:#165d32;background:#eaf6ec}.exceeded{color:#9c2224}.sheet .plan,.sheet .elevation{max-height:145mm;height:auto}.eco{display:block;max-width:100%;height:217mm;margin:auto}@page wide{size:A4 landscape}.landscape{page:wide}.reference{position:relative;width:fit-content;margin:auto}.reference img{display:block;height:151mm;max-width:100%}.reference span{position:absolute;left:77%;width:9%;height:3.1%;border:1.5px solid #196373}.drawing .height{position:absolute;right:0;top:2%;bottom:0;writing-mode:vertical-rl;border-left:1px solid #196373;text-align:center;background:white;font-size:8pt;color:#196373}.drawing .tag{position:absolute;left:28%;top:20%;font-size:8pt;color:#123657;background:white}.drawing img{width:93%}
-</style>");
+@page{margin:22mm 13mm 17mm;@bottom-right{content:'Page ' counter(page) ' of ' counter(pages);font:9pt sans-serif;color:#455f68}
+@top-right{content:'';width:29mm;background: url(LOGO) right center / 29mm auto no-repeat}}
+@page:first{@top-right{background:none}}
+.cover{break-after:page}.cover header{display:flex;justify-content:space-between;align-items:center;padding-bottom:4mm;margin-bottom:9mm;border-bottom:3px solid #ffda00}.brand{width:42mm}
+.cover dl{margin:18mm 0}.cover dl div{padding:3mm 0;border-bottom:1px solid #c7d5d9;overflow-wrap:anywhere}.cover dt{color:#455f68}.cover dd{margin:1.5mm 0;font-weight:600}.signoff{display:grid;grid-template-columns:1fr 1fr;column-gap:7mm}
+.sheet{break-before:page}.safe,.exceeded{font-weight:bold;padding:3mm}.safe{color:#165d32;background:#eaf6ec}.exceeded{color:#9c2224}.sheet .plan,.sheet .elevation{max-height:145mm;height:auto}.eco{display:block;max-width:100%;height:auto;max-height:210mm;margin:auto}.reference{position:relative;width:100%;margin:auto}.reference img{display:block;width:100%;height:auto}.reference span{position:absolute;left:77%;width:9%;height:3.1%;border:2px solid #d00000}
+.level{grid-template-columns:37% 63%}.drawing{display:grid;grid-template-columns:19% 72% 9%;align-items:start}.level .drawing img{position:static;grid-column:2;grid-row:1;width:100%;height:auto}.drawing .tag{grid-row:1;grid-column:1;text-align:center;align-self:center;font-size:8pt}.drawing .arrow{display:block;position:static;font-size:20pt}.drawing .height{grid-column:3;grid-row:1;align-self:stretch;writing-mode:vertical-rl;text-align:center;border-left:1px solid #196373;color:#196373;font-size:8pt}
+.spacing td,.spacing th{overflow-wrap:normal;padding:1mm}.spacing td:last-child,.spacing th:last-child{white-space:nowrap}
+</style>".Replace("LOGO",Asset("doka")));
             html.Append(Cover(doc,loads)).Append("<h1>Load-transfer section</h1>");
             var plans=new StringBuilder(); var elevations=new StringBuilder();
             var arrangements=new System.Collections.Generic.Dictionary<string,System.Collections.Generic.List<string>>();
@@ -182,7 +193,7 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
                 }
                 html.Append($"<div class='level'><div class='info'><b>{H(slab.Name)}</b><small>{N(slab.ThicknessMm,"0.##")} mm · {N(slab.AgeDays,"0.##")} days</small><small>SIDL {N(slab.Sidl)} · final live {N(slab.FinalLiveLoad)} kN/m²</small><mark>↓ {N(row.DownwardLoad)} kN/m²{(final ? " · transfer stops" : "")}</mark></div>");
                 html.Append($"<div class='drawing {(final ? "last" : "")}'><img src='data:image/png;base64,{SectionImage(row.Index == 0,final,slab.PropId==BackproppingTower.Name && row.Index>0)}'>");
-                html.Append(final ? "</div></div>" : $"<small class='tag'>{(row.Index==0?"Main shores":"Repropping")}</small><span class='arrow'>↓</span><small class='height'>{N(slab.FloorHeightBelowMm/1000)} m floor to floor</small></div></div>");
+                html.Append(final ? "</div></div>" : $"<small class='tag'>{(row.Index==0?"Main shores":"Repropping")}<span class='arrow'>↓</span></small><small class='height'>{N(slab.FloorHeightBelowMm/1000)} m</small></div></div>");
                 if (row.Index == 0) continue;
                 breakdown.Append(Cells(slab.Name,N(row.Incoming),N(row.SelfWeight),N(row.ConstructionLive),N(row.Demand),N(row.Capacity),N(row.Transfer),N(row.DownwardLoad)));
                 double basis = row.SelfWeight + slab.Sidl + slab.FinalLiveLoad;
@@ -196,7 +207,7 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
                 arrangements[key].Add(storey);
                 if (doc.Slabs[row.Index+1].IsRaft)
                     raftReaction = $"{N(grid.PropLoadKn,"0.00")} kN per interior {(grid.Tower==null?"prop foot":"tower leg")}";
-                spacing.Append(Cells(slab.Name+" → "+doc.Slabs[row.Index+1].Name,slab.PropId,
+                spacing.Append(Cells(slab.Name.Replace(" ","\u00a0")+" → "+doc.Slabs[row.Index+1].Name.Replace(" ","\u00a0"),slab.PropId,
                     N(slab.PropExtensionMm,"0.##"),N(grid.CapacityKn,"0.##"),limit.HasValue ? N(limit.Value,"0.##") : "—",
                     N(grid.SpacingMm,"0")+" × "+N(grid.SpacingMm,"0"),N(grid.PropLoadKn),grid.PropLoadKn<=grid.CapacityKn?"SAFE":"EXCEEDED"));
             }
@@ -208,7 +219,12 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
             html.Append($"<h2>Load breakdown</h2><p>Active pour (kN/m²): {N(loads.Slabs[0].SelfWeight)} concrete + 0.500 formwork + 0.750 working + {N(loads.Heaping)} heaping = <b>{N(loads.PourLoad)}</b>.</p><p>All table values are in kN/m².</p>");
             html.Append(breakdown).Append("</tbody></table><p>Positive excess passes down with a 0.400 kN/m² allowance per required backprop storey.</p>");
             if (spacing.Length > 0)
-                html.Append("<h2>Reprop spacing</h2>").Append(Table("Storey","Support","Clear height (mm)","Per leg/prop (kN)","Max. (mm)","Square grid (mm)","Demand (kN)","Check")).Append(spacing).Append("</tbody></table>");
+            {
+                bool towers = layouts.Values.All(v=>v.Item3.Tower!=null);
+                html.Append(towers?"<h2>Tower spacing</h2>":"<h2>Reprop spacing</h2>").Append("<div class='spacing'>")
+                    .Append(Table("Storey","Support","Clear height (mm)",towers?"Per leg (kN)":"Per leg/prop (kN)","Max. (mm)","Square grid (mm)","Demand (kN)","Check"))
+                    .Append(spacing).Append("</tbody></table></div>");
+            }
             if (doc.Slabs.Last().IsRaft)
             {
                 html.Append(doc.Slabs[loads.Slabs.Last().Index].IsRaft
