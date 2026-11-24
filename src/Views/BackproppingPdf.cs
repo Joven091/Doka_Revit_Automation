@@ -133,16 +133,24 @@ namespace EngineeringDashboard
         {
             int? stripping = BackproppingCalculator.InitialStripping(slab,curve).ProposedDay;
             double pourAge = slab.AgeDays - upper.AgeDays;
-            var html = new StringBuilder($"<section class='sheet sequence'><h1>Stripping and repropping sequence</h1><p>Programme measured from the {H(slab.Name)} pour</p>");
+            var html = new StringBuilder($"<section class='sheet sequence'><h1>Stripping and repropping sequence</h1><p>{H(slab.Name)} to {H(upper.Name)} · Programme measured from the {H(slab.Name)} pour</p>");
             string day = stripping.HasValue ? $"Day {stripping.Value} after the {H(slab.Name)} pour" : "Strength target exceeds the selected curve";
-            html.Append($"<h2>Proposed initial stripping</h2><p class='timing'>{day}</p>");
+            html.Append($"<div class='timing'><b>Proposed initial stripping &nbsp;/&nbsp; {H(slab.Name)}</b><h2>{day}</h2></div>");
             if (!stripping.HasValue || stripping.Value >= pourAge)
                 html.Append("<p>Review the programme: the calculated timing does not establish an interval for stripping and repropping before the upper pour.</p>");
-            html.Append($"<h2>Release original {H(slab.Name)} shores</h2><p>Verify in-place strength against the approved stripping target and obtain release for the load-transfer sequence in the zone.</p>")
-                .Append("<h2>Install D3 repropping</h2><p>After stripping, complete the towers, jack bracing where required and head restraint in the released zone. Check the assembly before loading from above.</p>")
-                .Append($"<h2>Erect {H(upper.Name)} shoring</h2><p>Confirm the supporting slab can carry the erection loads at its actual age, including local shore reactions and material stacks.</p>")
-                .Append($"<h2>Day {N(pourAge,"0.##")} · planned {H(upper.Name)} pour</h2><p>Verify the slab strength and the tower configuration used in the pour-stage check.</p>")
-                .Append("<div class='removal'><h2>D3 removal after the upper pour</h2><p>Retain the towers until the removal-stage check covers the actual loads, remaining upper shores and verified slab strengths. Obtain release for the zone and dismantling sequence.</p></div>");
+            string Step(string timing, string title, string instruction) =>
+                $"<div class='step'><b>{H(timing)}</b><div><h3>{H(title)}</h3><p>{H(instruction)}</p></div></div>";
+            string pourDay = $"Day {N(pourAge,"0.##")}";
+            html.Append(Step(stripping.HasValue ? $"Day {stripping.Value}" : "Await review",
+                $"Release original {slab.Name} shores",
+                "Before releasing shores in a zone, verify the in-place concrete strength meets the project-approved stripping target and obtain release for the load-transfer sequence."))
+                .Append(Step("After stripping", $"Install D3 towers beneath {slab.Name}",
+                    "Complete the towers, jack bracing where required and head restraint for that zone. Check the installed arrangement against the approved assembly detail."))
+                .Append(Step($"Before {pourDay}", $"Erect {upper.Name} shoring in released zones",
+                    $"Confirm {slab.Name} can carry the erection loads at its actual age, including local shore reactions and material stacks. Begin erection once the zone is released for those loads."))
+                .Append(Step(pourDay, $"Planned {upper.Name} pour",
+                    $"Verify the {slab.Name} concrete strength and the D3 configuration assumed in the pour-stage calculation before the pour is released."))
+                .Append($"<div class='removal'><h3>D3 removal after the {H(upper.Name)} pour</h3><p>Retain the towers until the removal-stage check accounts for the actual loads, remaining upper shores and verified slab strengths. Obtain a written release for the zone and dismantling sequence. A D3 removal date has yet to be established.</p></div>");
             return html.Append("</section>").ToString();
         }
 
@@ -195,7 +203,11 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
 .spacing td,.spacing th{overflow-wrap:normal;padding:1mm}.spacing td:last-child,.spacing th:last-child{white-space:nowrap}
 .cover .signoff div{border:0}
 .loadpage.spacious h1{margin-bottom:9mm}.loadpage.spacious h2{margin-top:11mm}.loadpage.spacious p{margin:3mm 0}.loadpage.spacious td,.loadpage.spacious th{padding-top:3mm;padding-bottom:3mm}
-.tower .elevation{display:block;height:78mm}.sequence h2{margin-top:10mm}.sequence p{line-height:1.5}.sequence .removal{margin-top:9mm;background:#fbf4da;padding:3mm}.sequence .removal h2{margin-top:0}.timing{background:#e8eff1;font-weight:bold;padding:3mm}
+.tower .elevation{display:block;height:78mm}.sequence{overflow-wrap:anywhere}.sequence .timing{background:#e8eff1;padding:4mm;margin:6mm 0 9mm}.sequence .timing h2{margin:2mm 0 0;font-size:19pt}
+.sequence .step{display:grid;grid-template-columns:23% 1fr;column-gap:2%;border-top:1px solid #c8d6d9;padding:5mm 0;break-inside:avoid}
+.sequence .step>b,.sequence .timing>b{font-size:9pt;text-transform:uppercase;color:#176475}
+.sequence h3{margin:0 0 2mm;font-size:12pt}.sequence .step p,.sequence .removal p{margin:0;line-height:1.4}
+.sequence .removal{margin-top:5mm;background:#f5f2e5;padding:5mm;break-inside:avoid}
 </style>".Replace("LOGO",Asset("doka")));
             html.Append(Cover(doc,loads)).Append(doc.Slabs.Count<=3 ? "<section class='loadpage spacious'>" : "<section class='loadpage'>").Append("<h1>Load-transfer section</h1>");
             var plans=new StringBuilder(); var elevations=new StringBuilder();

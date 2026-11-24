@@ -37,7 +37,10 @@ with pymupdf.open(folder / "section.d3.pdf") as report:
     assert "18.50 kN" in pages[2] and "35.0 kN" in pages[2] and "SAFE" in pages[2]
     assert "Proposed initial stripping" in pages[3] and "after this slab" in pages[3]
     assert "No inter-tower bracing" in pages[4]
-    assert "D3 removal after the upper pour" in pages[5]
+    assert "D3 removal after the" in pages[5] and "A D3 removal date" in pages[5]
+    label = report[5].search_for("AFTER STRIPPING")[0]
+    heading = report[5].search_for("Install D3 towers beneath")[0]
+    assert label.x1 < heading.x0 and abs(label.y0 - heading.y0) < 5
     assert "Tower spacing" in pages[1] and "Eurex eco props" not in "".join(pages)
     for index, page in enumerate(report):
         assert page.rect.height > page.rect.width
