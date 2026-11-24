@@ -14,9 +14,10 @@ namespace EngineeringDashboard
         private double primaryAccessLeft = 250, primaryAccessRight = 250, secondaryAccessLeft = 250, secondaryAccessRight = 250;
         private double totalAccessLoad = .75;
         private int exactPrimaryCount = 5, exactPropCount = 5;
-        private string selectedAccessCase, accessPreviewBeam = "Primary H20";
-        private List<AccessCase> accessCases = new List<AccessCase>();
-        private sealed class AccessCase
+        private string accessPreviewBeam = "Primary H20";
+        private List<PrimaryLine> primaryLines = new List<PrimaryLine>();
+        private PrimaryLine governingLine;
+        private sealed class PrimaryLine
         {
             public string Name;
             public SlabBeamAnalysis Secondary, Primary;
@@ -55,12 +56,10 @@ namespace EngineeringDashboard
         public double SecondaryRightAccess => ShowSecondaryAccessRight ? SecondaryAccessRightMm / 1000 : 0;
         public string PrimarySlabEdgeText => EdgeText(PrimaryHasAccess, PrimaryAccessEnd, PrimaryLeftCantilever - PrimaryAccessLeftMm, PrimaryRightCantilever - PrimaryAccessRightMm);
         public string SecondarySlabEdgeText => EdgeText(SecondaryHasAccess, SecondaryAccessEnd, SecondaryLeftCantilever - SecondaryAccessLeftMm, SecondaryRightCantilever - SecondaryAccessRightMm);
-        public IReadOnlyList<string> AccessCaseOptions => accessCases.Select(c => c.Name).ToArray();
         public string AccessGoverningSummary { get; private set; }
-        public string SelectedAccessCase { get => selectedAccessCase; set { if (!accessCases.Any(c => c.Name == value)) return; selectedAccessCase = value; UpdateAccessDiagrams(); OnPropertyChanged(); OnPropertyChanged(nameof(AccessPreviewAnalysis)); } }
         public string AccessPreviewBeam { get => accessPreviewBeam; set { accessPreviewBeam = value; OnPropertyChanged(); OnPropertyChanged(nameof(AccessPreviewAnalysis)); } }
-        public SlabBeamAnalysis PrimaryAccessAnalysis => accessCases.FirstOrDefault(c => c.Name == SelectedAccessCase)?.Primary;
-        public SlabBeamAnalysis SecondaryAccessAnalysis => accessCases.FirstOrDefault(c => c.Name == SelectedAccessCase)?.Secondary;
+        public SlabBeamAnalysis PrimaryAccessAnalysis => governingLine?.Primary;
+        public SlabBeamAnalysis SecondaryAccessAnalysis => governingLine?.Secondary;
         public SlabBeamAnalysis AccessPreviewAnalysis => AccessPreviewBeam == "Secondary H20" ? SecondaryAccessAnalysis : PrimaryAccessAnalysis;
         private void AccessChanged([CallerMemberName] string property = null) { OnPropertyChanged(property); Calculate(); }
         private static string EdgeText(bool enabled, string end, double left, double right)
@@ -74,7 +73,7 @@ namespace EngineeringDashboard
             foreach (string name in new[] { nameof(PrimaryLeftCantilever), nameof(PrimaryRightCantilever), nameof(SecondaryLeftCantilever), nameof(SecondaryRightCantilever),
                 nameof(PrimaryHasAccess), nameof(SecondaryHasAccess), nameof(PrimaryAccessEnd), nameof(SecondaryAccessEnd), nameof(HasAccessExtensions), nameof(UsesAccessAnalysis),
                 nameof(ShowExactPrimaryCount), nameof(ShowExactPropCount), nameof(ShowPrimaryAccessLeft), nameof(ShowPrimaryAccessRight), nameof(ShowSecondaryAccessLeft), nameof(ShowSecondaryAccessRight),
-                nameof(PrimarySlabEdgeText), nameof(SecondarySlabEdgeText), nameof(AccessCaseOptions), nameof(SelectedAccessCase), nameof(AccessGoverningSummary), nameof(AccessPreviewAnalysis) }) OnPropertyChanged(name);
+                nameof(PrimarySlabEdgeText), nameof(SecondarySlabEdgeText), nameof(AccessGoverningSummary), nameof(AccessPreviewAnalysis) }) OnPropertyChanged(name);
         }
         private void ValidateAccessInputs()
         {
@@ -92,14 +91,10 @@ namespace EngineeringDashboard
         }
         private void ClearAccessResults()
         {
-            accessCases.Clear(); AccessGoverningSummary = null;
+            primaryLines.Clear();
+            governingLine = null;
+            AccessGoverningSummary = null;
         }
-        private static int[] AccessMasks(bool left, bool right)
-        {
-            int all = (left ? 1 : 0) | (right ? 2 : 0);
-            return all == 3 ? new[] { 3, 1, 2, 0 } : all == 0 ? new[] { 0 } : new[] { all, 0 };
-        }
-        private static string MaskName(int mask) => mask == 3 ? "both ends" : mask == 1 ? "left end" : mask == 2 ? "right end" : "access omitted";
         private void CalculateAccessInputs(double slabPressure, double capacity)
         {
             double divisor = double.Parse(DeflectionLimit.Substring(2), System.Globalization.CultureInfo.InvariantCulture);
@@ -109,76 +104,59 @@ namespace EngineeringDashboard
             double primaryLength = primLeft + (primaryCount - 1.0) * primarySpan + primRight;
             // Validate fixed primary geometry before searching the secondary span.
             SlabBeamAnalysis.Zones(primaryLength, PrimaryLeftAccess, PrimaryRightAccess, 1, 1, 1);
-            double bareDeck = UseCustomLoads ? CustomFormworkLoad : .4;
+            double accessLoad = HasAccessExtensions ? TotalAccessLoadKnM2 * rowWidth : 0;
             string failure = null;
-            List<AccessCase> best = null;
+            List<PrimaryLine> best = null;
             double selectedSpacing = 0;
             for (int spacingMm = 4000; spacingMm >= 100; spacingMm -= 25)
             {
                 double secondarySpan = spacingMm / 1000.0, secondaryLength = secLeft + (secondaryCount - 1.0) * secondarySpan + secRight;
                 if (SecondaryLeftAccess + SecondaryRightAccess >= secondaryLength) continue;
-                var candidates = new List<AccessCase>(); bool failed = false;
-                foreach (bool beforePour in HasAccessExtensions ? new[] { false, true } : new[] { false })
+                var secondary = SlabBeamAnalysis.Analyze(secondaryCount, secondarySpan, secLeft, secRight,
+                    SlabBeamAnalysis.Zones(secondaryLength, SecondaryLeftAccess, SecondaryRightAccess, slabPressure * rowWidth, accessLoad, accessLoad), H20_EI, divisor);
+                var accessSecondary = PrimaryHasAccess ? SlabBeamAnalysis.Analyze(secondaryCount, secondarySpan, secLeft, secRight,
+                    new[] { new SlabBeamLoad { End = secondaryLength, Load = accessLoad, IsAccess = true } }, H20_EI, divisor) : null;
+                const string loadCase = "All loads present";
+                failure = Failure(secondary, "Secondary H20", loadCase);
+                if (failure == null && accessSecondary != null) failure = Failure(accessSecondary, "Secondary H20 over the primary access zone", loadCase);
+                if (failure != null) continue;
+
+                var candidates = new List<PrimaryLine>();
+                for (int line = 0; line < secondaryCount; line++)
                 {
-                    foreach (int primaryMask in AccessMasks(ShowPrimaryAccessLeft, ShowPrimaryAccessRight))
-                    {
-                        foreach (int secondaryMask in AccessMasks(ShowSecondaryAccessLeft, ShowSecondaryAccessRight))
-                        {
-                            string name = beforePour ? "Before pouring" : "Slab + access";
-                            if (PrimaryHasAccess) name += " · primary " + MaskName(primaryMask);
-                            if (SecondaryHasAccess) name += " · secondary " + MaskName(secondaryMask);
-                            double middle = beforePour ? bareDeck : slabPressure;
-                            var secondary = SlabBeamAnalysis.Analyze(secondaryCount, secondarySpan, secLeft, secRight,
-                                SlabBeamAnalysis.Zones(secondaryLength, SecondaryLeftAccess, SecondaryRightAccess, middle * rowWidth,
-                                    (secondaryMask & 1) != 0 ? TotalAccessLoadKnM2 * rowWidth : 0,
-                                    (secondaryMask & 2) != 0 ? TotalAccessLoadKnM2 * rowWidth : 0), H20_EI, divisor);
-                            SlabBeamAnalysis accessSecondary = primaryMask == 0 ? null : SlabBeamAnalysis.Analyze(secondaryCount, secondarySpan, secLeft, secRight,
-                                new[] { new SlabBeamLoad { End = secondaryLength, Load = TotalAccessLoadKnM2 * rowWidth, IsAccess = true } }, H20_EI, divisor);
-                            string issue = Failure(secondary, "Secondary H20", name);
-                            if (issue == null && accessSecondary != null) issue = Failure(accessSecondary, "Secondary H20 over the primary access zone", name);
-                            if (issue != null) { failure = issue; failed = true; break; }
-                            // Pair the reactions on each receiving primary: independent maxima
-                            // would distort the slab/access load ratio and could hide uplift.
-                            for (int line = 0; line < secondaryCount; line++)
-                            {
-                                string lineName = name + " · primary P" + (line + 1);
-                                double accessLineLoad = accessSecondary == null ? 0 : Math.Max(0, accessSecondary.Reactions[line]) / rowWidth;
-                                var primary = SlabBeamAnalysis.Analyze(primaryCount, primarySpan, primLeft, primRight,
-                                    SlabBeamAnalysis.Zones(primaryLength, PrimaryLeftAccess, PrimaryRightAccess, Math.Max(0, secondary.Reactions[line]) / rowWidth,
-                                        (primaryMask & 1) != 0 ? accessLineLoad : 0, (primaryMask & 2) != 0 ? accessLineLoad : 0), H20_EI, divisor);
-                                issue = Failure(primary, "Primary H20 P" + (line + 1), lineName);
-                                if (issue == null && primary.Reaction > capacity + 1e-8)
-                                    issue = $"Primary prop load {primary.Reaction:0.00} kN exceeds {capacity:0.00} kN ({lineName}).";
-                                if (issue != null) { failure = issue; failed = true; break; }
-                                candidates.Add(new AccessCase { Name = lineName, Secondary = secondary, Primary = primary });
-                            }
-                            if (failed) break;
-                        }
-                        if (failed) break;
-                    }
-                    if (failed) break;
+                    string lineName = loadCase + " · primary P" + (line + 1);
+                    // Keep both secondary reactions paired to the same receiving primary.
+                    double slabLineLoad = Math.Max(0, secondary.Reactions[line]) / rowWidth;
+                    double accessLineLoad = accessSecondary == null ? 0 : Math.Max(0, accessSecondary.Reactions[line]) / rowWidth;
+                    var primary = SlabBeamAnalysis.Analyze(primaryCount, primarySpan, primLeft, primRight,
+                        SlabBeamAnalysis.Zones(primaryLength, PrimaryLeftAccess, PrimaryRightAccess, slabLineLoad, accessLineLoad, accessLineLoad), H20_EI, divisor);
+                    failure = Failure(primary, "Primary H20", lineName);
+                    if (failure == null && primary.Reaction > capacity + 1e-8)
+                        failure = $"Primary prop load {primary.Reaction:0.00} kN exceeds {capacity:0.00} kN ({lineName}).";
+                    if (failure != null) break;
+                    candidates.Add(new PrimaryLine { Name = lineName, Secondary = secondary, Primary = primary });
                 }
-                if (failed) continue;
+                if (failure != null) continue;
                 selectedSpacing = spacingMm; best = candidates; break;
             }
             if (best == null)
             {
                 WarningMessage = (failure == null ? "Check the slab edge and access-extension dimensions." : failure) +
-                    " No primary beam spacing on the 25 mm grid passes all slab/access cases. Revise the cantilevers or support arrangement.";
+                    " No primary beam spacing on the 25 mm grid passes the fully loaded check. Revise the cantilevers or support arrangement.";
                 return;
             }
-            accessCases = best;
+            primaryLines = best;
             SuggestedPrimaryBeamSpacing = selectedSpacing;
-            var governing = best.OrderByDescending(c => Math.Max(c.Primary.Reaction / capacity,
+            governingLine = best.OrderByDescending(c => Math.Max(c.Primary.Reaction / capacity,
                 Math.Max(c.Primary.Moment / MAX_H20_MOMENT_KNM, Math.Max(c.Primary.Shear / MAX_H20_SHEAR_KN, c.Primary.DeflectionUtilization)))).First();
             ActualPropLoad = Math.Round(best.Max(c => c.Primary.Reaction), 2);
             H20Shear = Math.Round(best.Max(c => c.Primary.Shear), 2);
             H20Utilization = Math.Round(best.Max(c => c.Primary.Shear) / MAX_H20_SHEAR_KN * 100, 1);
             UtilizationRate = Math.Round(best.Max(c => c.Primary.Reaction) / capacity * 100, 1);
             PrimaryDeflectionMm = best.Max(c => c.Primary.SpanDeflection) * 1000;
-            AccessGoverningSummary = $"{best.Count} load cases checked · governing primary check: {governing.Name}. Total access load {TotalAccessLoadKnM2:0.###} kN/m² includes deck weight.";
-            if (!best.Any(c => c.Name == selectedAccessCase)) selectedAccessCase = best.Take(secondaryCount).OrderByDescending(c => c.Primary.Reaction).First().Name;
-            UpdateAccessDiagrams();
+            AccessGoverningSummary = $"Governing check: {governingLine.Name}.";
+            PrimaryDiagramViewModel = DiagramWindowViewModel.ForAccess(governingLine.Primary, "Primary H20", governingLine.Name);
+            SecondaryDiagramViewModel = DiagramWindowViewModel.ForAccess(governingLine.Secondary, "Secondary H20", governingLine.Name);
         }
         private static string Failure(SlabBeamAnalysis result, string layer, string name)
         {
@@ -188,16 +166,9 @@ namespace EngineeringDashboard
             if (result.DeflectionUtilization > 1 + 1e-8) return $"{layer} deflection, including cantilever support rotation, exceeds the selected limit ({name}).";
             return null;
         }
-        private void UpdateAccessDiagrams()
-        {
-            var current = accessCases.FirstOrDefault(c => c.Name == selectedAccessCase);
-            if (current == null) return;
-            PrimaryDiagramViewModel = DiagramWindowViewModel.ForAccess(current.Primary, "Primary H20", current.Name);
-            SecondaryDiagramViewModel = DiagramWindowViewModel.ForAccess(current.Secondary, "Secondary H20", current.Name);
-        }
         public string AccessReport()
         {
-            return string.Join("\n", accessCases.Select(c => c.Name + ": " +
+            return string.Join("\n", primaryLines.Select(c => c.Name + ": " +
                 string.Join("; ", new[] { new { Name = "Secondary", Beam = c.Secondary }, new { Name = "Primary", Beam = c.Primary } }.Select(v =>
                     v.Name + $" moment {v.Beam.Moment:0.000}/5 kNm; shear {v.Beam.Shear:0.000}/11 kN; deflection use {v.Beam.DeflectionUtilization * 100:0.0}%; " +
                     "UDLs " + string.Join(", ", v.Beam.Loads.Select(q => $"{q.Start * 1000:0.##}–{q.End * 1000:0.##} mm: {q.Load:0.000} kN/m")) +

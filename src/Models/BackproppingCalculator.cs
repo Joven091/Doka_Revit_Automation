@@ -8,6 +8,7 @@ namespace EngineeringDashboard.Backpropping
 
     public sealed class SlabInput
     {
+        public bool IsRaft { get; set; }
         public string Name { get; set; }
         public double ThicknessMm { get; set; }
         public double FloorHeightBelowMm { get; set; }
@@ -19,6 +20,19 @@ namespace EngineeringDashboard.Backpropping
         public double PropExtensionMm => FloorHeightBelowMm - ThicknessMm;
         public double? MaximumSpacingMm { get; set; }
         public SlabInput Copy() => (SlabInput)MemberwiseClone();
+    }
+
+    public sealed class InitialStrippingPlan
+    {
+        public double TargetPercent { get; }
+        public double? EstimatedDays { get; }
+        public int? ProposedDay => EstimatedDays.HasValue ? (int)Math.Ceiling(EstimatedDays.Value) + 2 : (int?)null;
+
+        internal InitialStrippingPlan(double target, double? days)
+        {
+            TargetPercent = target;
+            EstimatedDays = days;
+        }
     }
 
     public sealed class SlabResult
@@ -44,6 +58,7 @@ namespace EngineeringDashboard.Backpropping
 
     public sealed class SpacingResult
     {
+        public BackproppingTower Tower { get; set; }
         public double CapacityKn { get; set; }
         public double LookupExtensionMm { get; set; }
         public double CapacitySpacingMm { get; set; }
@@ -61,6 +76,7 @@ namespace EngineeringDashboard.Backpropping
     /// </summary>
     public static class BackproppingCalculator
     {
+        private const double StrippingLiveLoad = 1.5; // kN/m² during initial stripping
         public const double ConcreteUnitWeight = 25;
         public const double RepropWeight = 0.40;
         private static readonly double[,] A = { {0,0}, {2,50}, {4,70}, {12,80}, {20,90}, {28,100} };
@@ -78,11 +94,42 @@ namespace EngineeringDashboard.Backpropping
             RequireNumber(days, "Concrete age");
             if (!Enum.IsDefined(typeof(TemperatureCurve), curve)) throw new ArgumentException("Select temperature A, B or C.");
             if (days >= 28) return 100;
-            var points = curve == TemperatureCurve.A ? A : curve == TemperatureCurve.B ? B : C;
+            var points = CurvePoints(curve);
             for (int i = 1; i < points.GetLength(0); i++)
                 if (days <= points[i, 0])
                     return points[i-1,1] + (points[i,1]-points[i-1,1]) * (days-points[i-1,0]) / (points[i,0]-points[i-1,0]);
             throw new InvalidOperationException("Strength curve has no matching segment.");
+        }
+
+        private static double[,] CurvePoints(TemperatureCurve curve)
+        {
+            switch (curve)
+            {
+                case TemperatureCurve.A: return A;
+                case TemperatureCurve.B: return B;
+                case TemperatureCurve.C: return C;
+                default: throw new ArgumentException("Select temperature A, B or C.");
+            }
+        }
+
+        public static InitialStrippingPlan InitialStripping(SlabInput slab, TemperatureCurve curve)
+        {
+            if (slab.IsRaft) throw new ArgumentException("Initial stripping applies to suspended slabs.");
+            RequireNumber(slab.ThicknessMm, "Slab thickness", true);
+            RequireNumber(slab.Sidl, "SIDL");
+            RequireNumber(slab.FinalLiveLoad, "Final live load");
+            double self = slab.ThicknessMm / 1000 * ConcreteUnitWeight;
+            double target = (self + StrippingLiveLoad) / (self + slab.Sidl + slab.FinalLiveLoad) * 100;
+            RequireNumber(target, "Stripping strength target", true);
+            var points = CurvePoints(curve);
+            for (int i = 1; i < points.GetLength(0); i++)
+            {
+                if (target > points[i,1]) continue;
+                double fraction = (target - points[i-1,1]) / (points[i,1] - points[i-1,1]);
+                double days = points[i-1,0] + fraction * (points[i,0] - points[i-1,0]);
+                return new InitialStrippingPlan(target, days);
+            }
+            return new InitialStrippingPlan(target, null);
         }
 
         public static double HeapingLoad(double slabSelfWeight)
@@ -99,6 +146,12 @@ namespace EngineeringDashboard.Backpropping
             {
                 var s = slabs[i];
                 if (s == null || string.IsNullOrWhiteSpace(s.Name)) throw new ArgumentException("Every slab needs a name.");
+                if (s.IsRaft)
+                {
+                    if (i == 0 || i != slabs.Count - 1)
+                        throw new ArgumentException("A raft must be the lowest supporting level.");
+                    continue;
+                }
                 RequireNumber(s.ThicknessMm, s.Name + " thickness", true);
                 RequireNumber(s.FloorHeightBelowMm, s.Name + " floor-to-floor height", true);
                 RequireNumber(s.PropExtensionMm, s.Name + " floor height minus slab thickness", true);
@@ -119,6 +172,12 @@ namespace EngineeringDashboard.Backpropping
             for (int i = 1; i < slabs.Count; i++)
             {
                 var s = slabs[i];
+                if (s.IsRaft)
+                {
+                    result.Slabs.Add(new SlabResult { Index = i, Incoming = incoming });
+                    result.Complete = true;
+                    break;
+                }
                 var row = new SlabResult { Index = i, SelfWeight = s.ThicknessMm / 1000 * ConcreteUnitWeight,
                     StrengthPercent = Strength(s.AgeDays, curve), Incoming = incoming, ConstructionLive = i == 1 ? 0.75 : 0 };
                 row.Demand = row.SelfWeight + row.Incoming + row.ConstructionLive;
@@ -138,19 +197,33 @@ namespace EngineeringDashboard.Backpropping
 
         public static SpacingResult CalculateSpacing(double downwardLoad, string propId, double extensionMm, double? maximumMm)
         {
-            RequireNumber(downwardLoad, "Downward load", true);
-            if (maximumMm.HasValue) { RequireNumber(maximumMm.Value, "Maximum spacing", true);
-                if (maximumMm.Value < 25) throw new ArgumentException("Maximum spacing must be at least 25 mm."); }
             double lookup;
             double capacity = BackproppingPropCatalog.Capacity(propId, extensionMm, out lookup);
-            double raw = 1000 * Math.Sqrt(capacity / downwardLoad);
+            return GridSpacing(downwardLoad, maximumMm, capacity, lookup, null);
+        }
+
+        public static SpacingResult SupportSpacing(double load, SlabInput slab, double? maximum)
+        {
+            if (slab.PropId != BackproppingTower.Name)
+                return CalculateSpacing(load, slab.PropId, slab.PropExtensionMm, maximum);
+            var tower = BackproppingTower.Fit(slab.PropExtensionMm);
+            return GridSpacing(load, maximum, tower.Capacity, 0, tower);
+        }
+
+        private static SpacingResult GridSpacing(double downwardLoad, double? maximumMm, double capacity, double lookup, BackproppingTower tower)
+        {
+            RequireNumber(downwardLoad, "Downward load", true);
+            if (maximumMm.HasValue) RequireNumber(maximumMm.Value, "Maximum spacing", true);
+            int legs = tower == null ? 1 : 4;
+            double raw = 1000 * Math.Sqrt(capacity * legs / downwardLoad);
             RequireNumber(raw, "Calculated spacing", true);
             double limited = maximumMm.HasValue ? Math.Min(raw, maximumMm.Value) : raw;
             double spacing = Math.Floor(limited / 25) * 25;
             if (spacing < 25) throw new ArgumentException("No spacing of at least 25 mm satisfies this load.");
-            return new SpacingResult { CapacityKn = capacity, LookupExtensionMm = lookup, CapacitySpacingMm = raw,
-                SpacingMm = spacing, PropLoadKn = downwardLoad * Math.Pow(spacing / 1000, 2),
-                UtilizationPercent = 100 * downwardLoad * Math.Pow(spacing / 1000, 2) / capacity,
+            if (tower != null && spacing <= BackproppingTower.FrameLength) throw new ArgumentException("Available tower pitch does not clear the 1.524 m footprint.");
+            return new SpacingResult { Tower=tower, CapacityKn = capacity, LookupExtensionMm = lookup, CapacitySpacingMm = raw,
+                SpacingMm = spacing, PropLoadKn = downwardLoad * Math.Pow(spacing / 1000, 2) / legs,
+                UtilizationPercent = 100 * downwardLoad * Math.Pow(spacing / 1000, 2) / (legs * capacity),
                 HasProjectLimit = maximumMm.HasValue,
                 GoverningLimit = maximumMm.HasValue && maximumMm.Value <= raw ? "Maximum spacing" : "Prop capacity" };
         }

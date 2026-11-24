@@ -40,7 +40,13 @@ internal static class HelperUpdateChecks
                 Check(back.Current.Name=="Backpropping Calculator","old production payload opens the seeded active calculator");
                 SetValue(ById(back,"FloorName"),"QA helper update – unsaved");SetValue(ById(back,"Thickness"),"4e");SetValue(ById(back,"ProjectMaximum"),"12.");
                 SignalUpdate();var updateWindow=WaitWindow(old.Id,w=>w.Current.Name=="Engineering Dashboard updates");
-                var apply=ByName(updateWindow,"Update Dashboard");Wait(()=>apply.Current.IsEnabled,"candidate feed available");Invoke(apply);
+                // The starting payload can predate the Yes/No prompt.
+                var installButton = new OrCondition(new PropertyCondition(AutomationElement.NameProperty,"Yes"),
+                    new PropertyCondition(AutomationElement.NameProperty,"Update Dashboard"));
+                AutomationElement apply=null;
+                Wait(()=>{apply=updateWindow.FindFirst(TreeScope.Descendants,installButton);return apply!=null && apply.Current.IsEnabled;},
+                    "candidate feed available");
+                Invoke(apply);
                 string planPath=null;
                 Wait(()=>{planPath=Directory.GetFiles(Path.Combine(root,"handoffs"),"update-plan.json",SearchOption.AllDirectories).SingleOrDefault();return planPath!=null||old.HasExited;},"real updater handoff plan",180);
                 Check(planPath!=null,"old production update UI creates its actual handoff plan");

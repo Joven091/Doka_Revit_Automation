@@ -17,13 +17,14 @@ namespace EngineeringDashboard
         internal MenuItem FileMenu {get;}=new MenuItem{Header="_File",Padding=new Thickness(10,6,10,6)};
         internal MenuItem ToolsMenu {get;}=new MenuItem{Header="_Tools",Padding=new Thickness(10,6,10,6)};
         internal MenuItem SaveItem {get;}
-        internal DashboardToolbar(Window owner,string title,Action open,Action save,Action diagnose=null,Action changeSystem=null)
+        internal DashboardToolbar(Window owner,string title,Action open,Action save,Action diagnose=null,Action changeSystem=null,Action newCalculation=null)
         {
             Margin=new Thickness(0,0,0,12);LastChildFill=true;
             Resources.MergedDictionaries.Add(new ResourceDictionary{Source=new Uri("pack://application:,,,/"+typeof(DashboardToolbar).Assembly.GetName().Name+";component/Views/CalculatorStyles.xaml",UriKind.Absolute)});
             var commands=new StackPanel{Orientation=Orientation.Horizontal};var menus=new Menu{Background=Brushes.Transparent,VerticalAlignment=VerticalAlignment.Center};
             var name=new MenuItem{Header=title+(changeSystem==null?"":" ▾"),FontSize=18,FontWeight=FontWeights.SemiBold,Padding=new Thickness(3,6,12,6)};
             if(changeSystem!=null)name.Items.Add(Item("Change system…",changeSystem));menus.Items.Add(name);
+            if(newCalculation!=null)FileMenu.Items.Add(Item("New",newCalculation));
             if(open!=null)FileMenu.Items.Add(Item("Open inputs…",open));
             if(save!=null){SaveItem=Item("Save inputs…",save);FileMenu.Items.Add(SaveItem);}
             if(FileMenu.Items.Count>0)FileMenu.Items.Add(new Separator());FileMenu.Items.Add(Item("Close",owner.Close));

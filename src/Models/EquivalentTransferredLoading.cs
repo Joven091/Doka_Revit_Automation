@@ -5,15 +5,6 @@ using System.Globalization;
 
 namespace EngineeringDashboard
 {
-    internal static class LoadValue
-    {
-        internal static string Format(double value,int decimals=3)
-        {
-            double step=Math.Pow(10,-decimals);
-            if(value!=0 && Math.Abs(value)<step/2)return (value<0 ? "−<" : "<")+step.ToString("0."+new string('0',decimals),CultureInfo.CurrentCulture);
-            return value.ToString("0."+new string('#',decimals),CultureInfo.CurrentCulture);
-        }
-    }
     // A representative slice of verified primary UDL, never a secondary design case.
     public sealed class EquivalentLoadingComponent
     {

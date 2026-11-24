@@ -17,6 +17,20 @@ internal static class Program
  { foreach(var item in LogicalTreeHelper.GetChildren(obj)){ if(!(item is DependencyObject c)) continue; if(c is T value) yield return value; foreach(var descendant in Children<T>(c)) yield return descendant;} }
  private static void Layout() { window.Measure(new Size(940,860)); window.Arrange(new Rect(0,0,940,860));window.UpdateLayout(); }
  private static string Section() => string.Join(" ",Children<TextBlock>(Get<StackPanel>("SectionPanel")).Select(t=>t.Text));
+ private static void NewCalculation()
+ {
+  var toolbar=(DashboardToolbar)Get<ContentControl>("CalculatorToolbarHost").Content;
+  var item=toolbar.FileMenu.Items.OfType<MenuItem>().Single(m=>Equals(m.Header,"New"));
+  item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+ }
+ private static ComboBox Picker(GroupBox storey,string name)=>Children<ComboBox>(storey).Single(c=>c.Name==name);
+ private static void SelectProp(GroupBox storey)
+ {
+  var system=Picker(storey,"SupportSystem");var family=Picker(storey,"PropFamily");var size=Picker(storey,"PropSize");
+  system.SelectedItem="Props"; family.SelectedItem="DokaFit Prop";
+  Assert(size.Items.Count==3);
+  size.SelectedIndex=0;
+ }
  private static void CheckPropBearing()
  {
   var section=Get<StackPanel>("SectionPanel");
@@ -53,7 +67,7 @@ internal static class Program
   Get<TextBox>("Age").Text="35";Click("SaveSlab");Layout();
   Assert(Get<DataGrid>("SlabGrid").Items.Count==4);Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Collapsed);Assert(Section().Contains("28+ days"));
   CheckPropBearing();
-  var combos=Children<ComboBox>(Get<StackPanel>("StoreyPanel")).ToList();Assert(combos.Count==2);foreach(var combo in combos)combo.SelectedIndex=0;
+  var storeys=Get<StackPanel>("StoreyPanel").Children.OfType<GroupBox>().ToArray();Assert(storeys.Length==2);foreach(var storey in storeys)SelectProp(storey);
   Assert(Children<TextBox>(Get<StackPanel>("StoreyPanel")).Count()==2);
   Assert(Children<TextBlock>(Get<StackPanel>("StoreyPanel")).Count(t=>t.Text.Contains("Prop extension: 3000 mm (automatic)"))==2);
   Click("CalculateButton");Layout();Assert(Get<TextBlock>("ErrorText").Text=="");Assert(Get<StackPanel>("ResultsPanel").Children.Count==2);
@@ -72,19 +86,22 @@ internal static class Program
   Assert(window.BuildReport().Contains("Load") || window.BuildReport().Contains("load"));
   var arguments=Environment.GetCommandLineArgs();
   if(arguments.Length>1) {
+   var pdfPath=System.IO.Path.GetFullPath(System.IO.Path.ChangeExtension(arguments[1],"pdf"));
+   BackproppingPdf.Save(null,window.BuildReport(),pdfPath);
+   Assert(System.Text.Encoding.ASCII.GetString(System.IO.File.ReadAllBytes(pdfPath),0,5)=="%PDF-");
    System.IO.File.WriteAllText(System.IO.Path.ChangeExtension(arguments[1],"report.html"),window.BuildReport());
    var root=(FrameworkElement)window.Content;var size=new Size(940,860);root.Measure(size);root.Arrange(new Rect(size));root.UpdateLayout();
    var bmp=new System.Windows.Media.Imaging.RenderTargetBitmap(940,860,96,96,PixelFormats.Pbgra32);var background=new DrawingVisual();using(var dc=background.RenderOpen())dc.DrawRectangle(window.Background,null,new Rect(size));bmp.Render(background);bmp.Render(root);
    var encoder=new System.Windows.Media.Imaging.PngBitmapEncoder();encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));using(var stream=System.IO.File.Create(arguments[1]))encoder.Save(stream);
   }
   Assert(window.ReportResults(fullDocument).Any(f=>f.Value.Contains("2000 × 2000 mm")));
-  string path=System.IO.Path.GetTempFileName();try { CalculationFiles.Write(path,fullDocument);Click("NewCalculation");window.RestoreCalculation(CalculationFiles.Read<BackproppingDocument>(path));Assert(Get<DataGrid>("SlabGrid").Items.Count==4);Assert(Get<TextBox>("ProjectMaximum").Text=="2010"); }finally{System.IO.File.Delete(path);}
+  string path=System.IO.Path.GetTempFileName();try { CalculationFiles.Write(path,fullDocument);NewCalculation();window.RestoreCalculation(CalculationFiles.Read<BackproppingDocument>(path));Assert(Get<DataGrid>("SlabGrid").Items.Count==4);Assert(Get<TextBox>("ProjectMaximum").Text=="2010"); }finally{System.IO.File.Delete(path);}
   Click("RemoveLowest");Assert(Get<DataGrid>("SlabGrid").Items.Count==3);Assert(Get<StackPanel>("EntryForm").Visibility==Visibility.Visible);
   CheckPropBearing();
   Click("RemoveLowest");Click("RemoveLowest");Click("RemoveLowest");Assert(Get<DataGrid>("SlabGrid").Items.Count==0);
   window.Close();
   window=new BackproppingWindow();
-  Click("NewCalculation");
+  NewCalculation();
   Get<ComboBox>("Temperature").SelectedIndex=1;
   Get<TextBox>("FloorName").Text="Level 5";Get<TextBox>("Thickness").Text="200";
   Get<TextBox>("FloorHeight").Text="3200";Get<TextBox>("Sidl").Text="6";Get<TextBox>("LiveLoad").Text="6";Click("SaveSlab");
@@ -101,10 +118,56 @@ internal static class Program
   Get<DataGrid>("SlabGrid").SelectedIndex=1; // Preserve an unfinished edit across window instances.
   Get<TextBox>("ProjectMaximum").Text="2100";
   window.Close();window=new BackproppingWindow();Assert(Get<DataGrid>("SlabGrid").Items.Count==2);Assert(Get<TextBox>("ProjectMaximum").Text=="2100");
-  Click("NewCalculation");Assert(Get<DataGrid>("SlabGrid").Items.Count==0);Assert(Get<TextBox>("FloorName").Text=="");Assert(Get<ComboBox>("Temperature").SelectedIndex==0);
+  NewCalculation();Assert(Get<DataGrid>("SlabGrid").Items.Count==0);Assert(Get<TextBox>("FloorName").Text=="");Assert(Get<ComboBox>("Temperature").SelectedIndex==0);
   window.RestoreCalculation(accepted);accepted.Version=999;bool rejected=false;try{window.RestoreCalculation(accepted);}catch(ArgumentException){rejected=true;}Assert(rejected && Get<DataGrid>("SlabGrid").Items.Count==2);
-  Click("NewCalculation");Get<TextBox>("FloorName").Text="Unfinished <floor>";Get<TextBox>("Thickness").Text="bad";
+  NewCalculation();Get<TextBox>("FloorName").Text="Unfinished <floor>";Get<TextBox>("Thickness").Text="bad";
   window.Close();window=new BackproppingWindow();Assert(Get<TextBox>("FloorName").Text=="Unfinished <floor>");Assert(Get<TextBox>("Thickness").Text=="bad");Assert(Get<Button>("CancelEdit").Visibility==Visibility.Visible);
-  Click("NewCalculation");window.Close();Console.WriteLine($"Passed {checks} WPF workflow checks.");
+  NewCalculation(); Get<TextBox>("FloorName").Text="Pour";
+  Get<TextBox>("Thickness").Text="200"; Get<TextBox>("FloorHeight").Text="3200";
+  Get<TextBox>("Sidl").Text="3"; Get<TextBox>("LiveLoad").Text="3"; Click("SaveSlab");
+  Get<TextBox>("Age").Text="10"; Click("SaveSlab");
+  Get<CheckBox>("Raft").IsChecked=true; Get<TextBox>("FloorName").Text="Foundation"; Click("SaveSlab"); Layout();
+  SelectProp(Get<StackPanel>("StoreyPanel").Children.OfType<GroupBox>().Single());
+  Get<TextBox>("ProjectMaximum").Text="2010"; Click("CalculateButton");
+  Assert(Section().Contains("4.625 kN/m² received"));
+  Assert(Children<TextBlock>(Get<StackPanel>("ResultsPanel")).Any(t=>t.Text.Contains("18.50 kN per interior prop")));
+  var raftDoc=window.CaptureCalculation(); Assert(raftDoc.Version==3 && raftDoc.Slabs.Last().IsRaft);
+  window.RestoreCalculation(raftDoc);
+  var raftReport=window.BuildReport(); Assert(raftReport.Contains("18.50 kN per interior prop foot") && raftReport.Contains("Backpropping terminates at raft"));
+  if(arguments.Length>1) BackproppingPdf.Save(null,raftReport,System.IO.Path.GetFullPath(System.IO.Path.ChangeExtension(arguments[1],"raft.pdf")));
+  raftDoc.Slabs[1].FloorHeightBelowMm=4200;
+  raftDoc.Details=null; // Older input files can have no cover information.
+  raftDoc.ProjectMaximumMm=4000;
+  window.RestoreCalculation(raftDoc);
+  var towerStorey=Get<StackPanel>("StoreyPanel").Children.OfType<GroupBox>().Single();
+  Assert(Equals(Picker(towerStorey,"PropFamily").SelectedItem,"DokaFit Prop") && Picker(towerStorey,"PropSize").SelectedItem.ToString()=="DokaFit Prop 300");
+  Picker(towerStorey,"SupportSystem").SelectedItem="D3 shoring tower";
+  Assert(((FrameworkElement)Picker(towerStorey,"PropFamily").Parent).Visibility==Visibility.Collapsed);
+  Assert(((FrameworkElement)Picker(towerStorey,"PropSize").Parent).Visibility==Visibility.Collapsed);
+  Click("CalculateButton");
+  Click("PdfReport");
+  Assert(Get<Expander>("ReportDetailsPanel").IsExpanded && Get<TextBox>("ReportProject").Text=="");
+  var fieldNames=new[]{"ReportProject","ReportContractor","ReportTitle","ReportAuthor","ReportChecker","ReportDocumentNumber"};
+  var values=new[]{"Test project","Test contractor","Tower-supported slab pour","Prepared by A","Checked by B","DOC-001"};
+  for(int i=0;i<fieldNames.Length;i++) Get<TextBox>(fieldNames[i]).Text=values[i];
+  var towerDoc=window.CaptureCalculation();
+  Assert(towerDoc.Slabs[1].PropId=="D3 shoring tower");
+  string saved=System.IO.Path.GetTempFileName();
+  try
+  {
+   CalculationFiles.Write(saved,towerDoc);
+   NewCalculation();
+   Assert(fieldNames.All(name=>Get<TextBox>(name).Text==""));
+   window.RestoreCalculation(CalculationFiles.Read<BackproppingDocument>(saved));
+   for(int i=0;i<fieldNames.Length;i++) Assert(Get<TextBox>(fieldNames[i]).Text==values[i]);
+   var towerReport=window.BuildReport();
+   Assert(towerReport.Contains("18.50 kN per interior tower leg") && towerReport.Contains("4.200 m"));
+   Assert(towerReport.Contains("35.0 kN") && towerReport.Contains("Typical tower layout"));
+   Assert(towerReport.Contains("stroke-dasharray='5 4'") && towerReport.Contains("Proposed initial stripping"));
+   Assert(towerReport.Contains("DOC-001") && towerReport.Contains("Prepared by A") && towerReport.Contains("Checked by B"));
+   if(arguments.Length>1) BackproppingPdf.Save(null,towerReport,System.IO.Path.GetFullPath(System.IO.Path.ChangeExtension(arguments[1],"d3.pdf")));
+  }
+  finally { System.IO.File.Delete(saved); }
+  NewCalculation();window.Close();Console.WriteLine($"Passed {checks} WPF workflow checks.");
  }
 }

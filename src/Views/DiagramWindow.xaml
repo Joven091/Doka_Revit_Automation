@@ -1,15 +1,23 @@
 <Window x:Class="MyRevitAddin.Views.DiagramWindow"
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- xmlns:oxy="http://oxyplot.org/wpf"
- Title="{Binding WindowTitle, RelativeSource={RelativeSource AncestorType=Window}}"
+ xmlns:views="clr-namespace:MyRevitAddin.Views"
+ Background="WhiteSmoke"
  Height="800" Width="900" MinWidth="850" MinHeight="500"
  WindowStartupLocation="CenterOwner" ShowInTaskbar="True">
+ <Window.Resources>
+  <ResourceDictionary>
+   <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="pack://application:,,,/MyRevitAddin;component/Views/CalculatorStyles.xaml"/>
+   </ResourceDictionary.MergedDictionaries>
+   <views:SlabPlotConverter x:Key="SlabPlot"/>
+  </ResourceDictionary>
+ </Window.Resources>
  <ScrollViewer Margin="16" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
   <ItemsControl ItemsSource="{Binding DiagramRows}">
    <ItemsControl.ItemTemplate>
     <DataTemplate>
-     <Border Background="White" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,16">
+     <Border Style="{StaticResource Card}">
       <StackPanel>
        <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Foreground="#333333" TextWrapping="Wrap"/>
        <TextBlock Text="{Binding CaseText}" FontSize="13" Foreground="#333333" TextWrapping="Wrap" Margin="0,4,0,6"/>
@@ -17,7 +25,7 @@
         <TextBlock Text="{Binding MaxValueText}" FontSize="14" Foreground="#D32F2F" Margin="0,0,24,4"/>
         <TextBlock Text="{Binding MinValueText}" FontSize="14" Foreground="#1976D2" Margin="0,0,0,4"/>
        </WrapPanel>
-       <oxy:PlotView Model="{Binding ChartModel}" Height="250" Background="Transparent"/>
+       <ContentControl Content="{Binding Converter={StaticResource SlabPlot}}" HorizontalContentAlignment="Stretch"/>
        <TextBlock Text="{Binding GeometryText}" FontSize="12" Foreground="#555555" TextWrapping="Wrap" Margin="0,6,0,0"/>
       </StackPanel>
      </Border>

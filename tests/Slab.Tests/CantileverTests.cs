@@ -1,8 +1,6 @@
 using System;
 using System.Linq;
 using EngineeringDashboard;
-using MyRevitAddin.Models;
-using OxyPlot.Series;
 
 internal static class CantileverTests
 {
@@ -35,10 +33,10 @@ internal static class CantileverTests
             foreach (int n in new[] { 2, 3, 4, 5, 6 })
             {
                 var response = ContinuousBeamResponse.Analyze(n, 1, a, 3, ei);
-                var plots = DiagramDataGenerator.GeneratePlots(n, 1, a, a, 3, ei, "Tip check");
-                var points = ((LineSeries)plots.deflectionPlot.Series[0]).Points;
-                equal(-response.SignedTipDeflection * 1000, points.First().Y, "independent Macaulay left tip");
-                equal(-response.SignedTipDeflection * 1000, points.Last().Y, "independent Macaulay right tip");
+                var diagrams = MyRevitAddin.ViewModels.DiagramWindowViewModel.ForSelection(n, 1, a, 3, ei, "Tip check");
+                var deflection = diagrams.DiagramRows[3];
+                equal(-response.SignedTipDeflection * 1000, deflection.ResponseAt(0, true), "diagram left tip");
+                equal(-response.SignedTipDeflection * 1000, deflection.ResponseAt(deflection.Beam.Length * 1000, false), "diagram right tip");
             }
         }
         // Both layers must satisfy their adopted a/denominator limit in every returned layout.

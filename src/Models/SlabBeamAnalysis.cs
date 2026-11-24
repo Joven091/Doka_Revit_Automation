@@ -28,6 +28,7 @@ namespace EngineeringDashboard
         public double Span { get; private set; }
         public double LeftCantilever { get; private set; }
         public double RightCantilever { get; private set; }
+        public double DeflectionDenominator { get; private set; }
         public double Rigidity { get; private set; }
         public double TotalLoad { get; private set; }
         public double Reaction => Reactions.Max();
@@ -62,7 +63,7 @@ namespace EngineeringDashboard
             if (!Finite(length)) throw new ArgumentException("The beam length must be finite.");
             var result = new SlabBeamAnalysis
             {
-                Length = length, Span = span, LeftCantilever = left, RightCantilever = right, Rigidity = ei,
+                Length = length, Span = span, DeflectionDenominator = denominator, LeftCantilever = left, RightCantilever = right, Rigidity = ei,
                 Supports = Enumerable.Range(0, count).Select(i => left + i * span).ToArray(),
                 Loads = (loads ?? Enumerable.Empty<SlabBeamLoad>()).Select(q => q == null ? null :
                     new SlabBeamLoad { Start = q.Start, End = q.End, Load = q.Load, IsAccess = q.IsAccess }).ToArray()

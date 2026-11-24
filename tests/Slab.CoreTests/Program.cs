@@ -41,6 +41,15 @@ internal static class Program
             vm.SlabThickness=150;Check(vm.IsCalculationValid && vm.SecondaryBeamSpacing==275,"9 mm slab recovers at lower loading");
             vm.SetTextInputErrors(true);Check(vm.SecondaryBeamSpacing==0,"invalid text clears derived spacing");vm.SetTextInputErrors(false);Check(vm.SecondaryBeamSpacing==275,"spacing recovers after input repair");
             vm.SelectedPlywood=null;Check(!vm.IsCalculationValid && vm.SecondaryBeamSpacing==0,"missing plywood invalidates slab");
+            var cases = MyRevitAddin.ViewModels.DiagramWindowViewModel.ForSelection(5, 1, 0, 5, 449.8756, "Secondary H20", 270);
+            Check(cases.DiagramRows.Count == 8 && cases.DiagramRows[0].CaseText.Contains("Governing reaction"), "Five-support reaction governs");
+            var six = cases.DiagramRows[7];
+            Check(six.Beam.Supports.Length == 6 && six.CaseText.Contains("Governing magnitude")
+                && !cases.DiagramRows[3].CaseText.Contains("Governing magnitude"), "Six-support deflection governs");
+            Check(six.MaxValueText.Contains("0.07 mm") && six.ResponseAt(500, true) < 0, "Downward deflection plots below zero in mm");
+            Equal(270, six.Beam.DeflectionDenominator, "Plot uses selected H20 deflection limit");
+            var shear = cases.DiagramRows[1];
+            Equal(shear.Beam.Reactions[1], shear.ResponseAt(1000, true) - shear.ResponseAt(1000, false), "Shear diagram retains support jump");
             UpliftTests.Run(Check,Equal);CantileverTests.Run(Check,Equal);FivePlusTests.Run(Check,Equal);
             AccessTests.Run(Check,Equal);
             Console.WriteLine($"Passed {checks} slab core and plywood checks.");return 0;

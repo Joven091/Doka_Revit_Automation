@@ -4,8 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
-using OxyPlot;
-using MyRevitAddin.Models;
+
 using MyRevitAddin.ViewModels;
 
 namespace EngineeringDashboard;
@@ -13,8 +12,8 @@ namespace EngineeringDashboard;
 public partial class FlexCalculatorViewModel : INotifyPropertyChanged
 {
     // --- Constants ---
-    private const double MAX_H20_SHEAR_KN = 11.00;
-    private const double MAX_H20_MOMENT_KNM = 5.00;
+    internal const double MAX_H20_SHEAR_KN = 11.00;
+    internal const double MAX_H20_MOMENT_KNM = 5.00;
     private const double H20_E_KN_M2 = 10760000; // 1076 kN/cm2 = 10760000 kN/m2
     private const double H20_I_M4 = 0.00004181;  // 4181 cm4 = 0.00004181 m4
     private const double H20_EI = H20_E_KN_M2 * H20_I_M4;
@@ -253,9 +252,7 @@ public partial class FlexCalculatorViewModel : INotifyPropertyChanged
         CheckNumber(w_sb, "Secondary beam line load"); 
 
         // Deflection Limit parsing
-        double limit_denom = 350.0;
-        if (DeflectionLimit == "L/500") limit_denom = 500.0;
-        else if (DeflectionLimit == "L/270") limit_denom = 270.0;
+        int limit_denom = int.Parse(DeflectionLimit.Substring(2), System.Globalization.CultureInfo.InvariantCulture);
 
         // 3. Initial Cantilever Absolute Limits
         double v_cantilever_sec = w_sb * a_s;
@@ -373,7 +370,7 @@ public partial class FlexCalculatorViewModel : INotifyPropertyChanged
             WarningMessage = string.Join(" | ", warnings);
         }
 
-        UpdateDiagrams(pbcInt, pcInt, w_sb, w_slab, a_s, a_p, SuggestedPrimaryBeamSpacing / 1000.0, L_p);
+        UpdateDiagrams(pbcInt, pcInt, w_sb, w_slab, a_s, a_p, SuggestedPrimaryBeamSpacing / 1000.0, L_p, limit_denom);
     }
 
     private static string UpliftLocation(string beam, string support, SlabSupportEnvelope response, bool envelope)
@@ -382,7 +379,7 @@ public partial class FlexCalculatorViewModel : INotifyPropertyChanged
         return $"Uplift: {beam} loses contact at {support} {response.MinimumReactionSupport} (numbered from the left){caseLabel}.";
     }
 
-    private void UpdateDiagrams(int pbcInt, int pcInt, double w_sb, double w_slab, double a_s, double a_p, double final_L_s, double L_p)
+    private void UpdateDiagrams(int pbcInt, int pcInt, double w_sb, double w_slab, double a_s, double a_p, double final_L_s, double L_p, int denominator)
     {
         if (SuggestedPrimaryBeamSpacing <= 0)
         {
@@ -392,8 +389,8 @@ public partial class FlexCalculatorViewModel : INotifyPropertyChanged
         }
 
         var secondaryEnvelope = SlabSupportEnvelope.ForSelection(pbcInt, final_L_s, a_s, 1, H20_EI);
-        SecondaryDiagramViewModel = DiagramWindowViewModel.ForSelection(pbcInt, final_L_s, a_s, w_sb, H20_EI, "Secondary beam");
-        PrimaryDiagramViewModel = DiagramWindowViewModel.ForSelection(pcInt, L_p, a_p, w_slab * secondaryEnvelope.Reaction, H20_EI, "Primary beam");
+        SecondaryDiagramViewModel = DiagramWindowViewModel.ForSelection(pbcInt, final_L_s, a_s, w_sb, H20_EI, "Secondary beam", denominator);
+        PrimaryDiagramViewModel = DiagramWindowViewModel.ForSelection(pcInt, L_p, a_p, w_slab * secondaryEnvelope.Reaction, H20_EI, "Primary beam", denominator);
     }
 
     public event PropertyChangedEventHandler PropertyChanged;

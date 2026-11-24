@@ -12,9 +12,20 @@ using EngineeringDashboard.Backpropping;
 
 namespace EngineeringDashboard
 {
+    public sealed class BackproppingReportDetails
+    {
+        public string Project { get; set; }
+        public string DocumentNumber { get; set; }
+        public string Contractor { get; set; }
+        public string Title { get; set; }
+        public string Author { get; set; }
+        public string Checker { get; set; }
+    }
+
     public sealed class BackproppingDocument
     {
         public int Version { get; set; } = 1;
+        public BackproppingReportDetails Details { get; set; } = new BackproppingReportDetails();
         public string Kind { get; set; } = "Backpropping";
         public TemperatureCurve Curve { get; set; }
         public double? ProjectMaximumMm { get; set; }
@@ -23,15 +34,17 @@ namespace EngineeringDashboard
     public partial class BackproppingWindow : Window
     {
         private readonly List<SlabInput> slabs = new List<SlabInput>();
-        private readonly Dictionary<int, StoreyControls> storeyControls = new Dictionary<int, StoreyControls>();
+        private readonly Dictionary<int, TextBox> storeyMaximums = new Dictionary<int, TextBox>();
         private readonly Dictionary<int, string> extensionDrafts = new Dictionary<int, string>();
         private readonly Dictionary<int, string> maximumDrafts = new Dictionary<int, string>();
         private sealed class SessionState
         {
+            public BackproppingReportDetails Details;
             public List<SlabInput> Slabs;
             public Dictionary<int,string> Maximums;
             public string ProjectMaximum;
             public string[] Draft;
+            public bool RaftDraft;
             public int Curve, Editing;
             public bool Dirty, HadResults;
         }
@@ -41,13 +54,13 @@ namespace EngineeringDashboard
         private bool draftDirty;
         private int editing = -1;
         private TemperatureCurve Curve => (TemperatureCurve)Math.Max(0, Temperature.SelectedIndex);
-        private sealed class StoreyControls { public ComboBox Prop; public TextBox Maximum; }
+
         private static readonly Brush Yellow = new SolidColorBrush(Color.FromRgb(255, 242, 191));
 
         public BackproppingWindow()
         {
             InitializeComponent();
-            CalculatorToolbarHost.Content=new DashboardToolbar(this,"Backpropping",()=>LoadCalculation_Click(null,null),()=>SaveCalculation_Click(null,null));
+            CalculatorToolbarHost.Content=new DashboardToolbar(this,"Backpropping",()=>LoadCalculation_Click(null,null),()=>SaveCalculation_Click(null,null),newCalculation:StartNewCalculation);
             updating = true; Temperature.SelectedIndex = 0; updating = false;
             ready = true; NewDraft(); Refresh();
             if(retained != null) RestoreSession(retained);
@@ -78,6 +91,13 @@ namespace EngineeringDashboard
         {
             if (!ready || updating) return;
             draftDirty = true; CancelEdit.Visibility = Visibility.Visible; InvalidateResults();
+        }
+        private void Raft_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!ready || updating) return;
+            draftDirty = true;
+            InvalidateResults();
+            Refresh(false);
         }
         private void Age_Changed(object sender, TextChangedEventArgs e)
         {
@@ -116,6 +136,7 @@ namespace EngineeringDashboard
         private void FillDraft(SlabInput input)
         {
             updating = true;
+            Raft.IsChecked = input?.IsRaft == true;
             FloorName.Text = input?.Name ?? ""; Thickness.Text = input?.ThicknessMm.ToString(CultureInfo.CurrentCulture) ?? "";
             FloorHeight.Text = input?.FloorHeightBelowMm.ToString(CultureInfo.CurrentCulture) ?? "";
             Age.Text = input?.AgeDays.ToString(CultureInfo.CurrentCulture) ?? "0";
@@ -130,9 +151,14 @@ namespace EngineeringDashboard
                 int index = editing < 0 ? slabs.Count : editing;
                 if (string.IsNullOrWhiteSpace(FloorName.Text)) throw new ArgumentException("Enter a floor name.");
                 var input = editing >= 0 ? slabs[editing].Copy() : new SlabInput();
-                input.Name = FloorName.Text.Trim(); input.ThicknessMm = Number(Thickness, "slab thickness", true);
-                input.FloorHeightBelowMm = Number(FloorHeight, "floor-to-floor height", true); input.AgeDays = index == 0 ? 0 : Number(Age, "concrete age");
-                input.Sidl = Number(Sidl, "SIDL"); input.FinalLiveLoad = Number(LiveLoad, "final live load");
+                input.Name = FloorName.Text.Trim();
+                input.IsRaft = Raft.IsChecked == true;
+                if (!input.IsRaft)
+                {
+                    input.ThicknessMm = Number(Thickness, "slab thickness", true);
+                    input.FloorHeightBelowMm = Number(FloorHeight, "floor-to-floor height", true); input.AgeDays = index == 0 ? 0 : Number(Age, "concrete age");
+                    input.Sidl = Number(Sidl, "SIDL"); input.FinalLiveLoad = Number(LiveLoad, "final live load");
+                }
                 var proposed = slabs.Select(s => s.Copy()).ToList();
                 if (editing < 0) proposed.Add(input); else proposed[index] = input;
                 BackproppingCalculator.CalculateLoads(proposed, Curve); // Validate age order before changing saved state.
@@ -179,9 +205,18 @@ namespace EngineeringDashboard
             CancelEdit.Visibility = editing >= 0 || draftDirty ? Visibility.Visible : Visibility.Collapsed;
             Age.IsReadOnly = editing == 0 || editing < 0 && slabs.Count == 0;
             EntryHint.Text = slabs.Count == 0 ? "Enter the active pour first." : "Suggested name is editable. Loads and dimensions carry forward. Age cannot decrease down the stack.";
+            Raft.Visibility = slabs.Count > 0 && (editing < 0 || (editing > 0 && editing == slabs.Count - 1)) ? Visibility.Visible : Visibility.Collapsed;
+            SuspendedInputs.Visibility = Raft.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
+            if (Raft.IsChecked == true)
+            {
+                EntryHint.Text = "The raft receives the support load. Foundation capacity requires a separate check.";
+                SaveSlab.Content = editing >= 0 ? "Save changes" : "Add raft foundation";
+            }
+            if (draftDirty) CancelEdit.Visibility = Visibility.Visible;
             UpdateStrength(); ProgressText.Inlines.Clear();
             if (slabs.Count == 0) ProgressText.Text = "Start with the slab being cast.";
             else if (slabs.Count == 1) ProgressText.Text = "Add the first supporting slab to check load transfer.";
+            else if (complete && slabs[loads.Slabs.Last().Index].IsRaft) ProgressText.Text = $"Backpropping terminates at raft · {loads.Slabs.Last().Incoming:0.000} kN/m² received.";
             else if (complete) ProgressText.Text = "No further backpropping required below " + slabs[loads.Slabs.Last().Index].Name + " under the adopted assumptions.";
             else
             {
@@ -196,10 +231,12 @@ namespace EngineeringDashboard
             if (rebuildStoreys) RenderStoreys(loads);
         }
 
-        private void RenderSection(LoadResult loads)
+        private void RenderSection(LoadResult loads) => PopulateSection(SectionPanel, loads);
+
+        private void PopulateSection(StackPanel panel, LoadResult loads)
         {
-            SectionPanel.Children.Clear();
-            if (slabs.Count == 0) { SectionPanel.Children.Add(Text("Your floor stack will appear here.")); return; }
+            panel.Children.Clear();
+            if (slabs.Count == 0) { panel.Children.Add(Text("Your floor stack will appear here.")); return; }
             for (int i = 0; i < slabs.Count; i++)
             {
                 int index = i; var s = slabs[i]; var row = loads.Slabs.FirstOrDefault(r => r.Index == i);
@@ -208,63 +245,139 @@ namespace EngineeringDashboard
                 var info = new StackPanel { Margin = new Thickness(0,0,10,14) }; Grid.SetRowSpan(info,2);
                 var select = new Button { Content = s.Name, Padding = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Left, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Margin = new Thickness(0,0,0,4) };
                 select.Click += (a,b) => Edit(index); info.Children.Add(select);
-                info.Children.Add(Text($"{s.ThicknessMm:0.##} mm · {(s.AgeDays > 28 ? "28+" : s.AgeDays.ToString("0.##"))} days · {F(BackproppingCalculator.Strength(s.AgeDays, Curve))}%"));
-                info.Children.Add(Text($"SIDL {s.Sidl:0.##} · LL {s.FinalLiveLoad:0.##} kN/m²"));
-                info.Children.Add(new Border { Background = Yellow, Padding = new Thickness(5), Margin = new Thickness(0,6,0,0), Child = Text(row == null ? "Outside required support stack" : "↓ " + F(row.DownwardLoad) + " kN/m²") });
-                grid.Children.Add(info);
-                // The final floor's spanning label can enlarge its row. Keep the slab's
-                // top face at the storey boundary instead of centering it below the props.
-                var slab = new Rectangle { Height = 16, VerticalAlignment = VerticalAlignment.Top,
-                    Fill = editing == i ? Brushes.Goldenrod : Brushes.DarkGray }; Grid.SetColumn(slab,1); grid.Children.Add(slab);
-                if (i < slabs.Count-1)
+                if (s.IsRaft) info.Children.Add(Text("Raft foundation", true));
+                else
                 {
-                    var support = new Grid { MinHeight = 112 }; Grid.SetColumn(support,1); Grid.SetRow(support,1);
-                    support.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); support.RowDefinitions.Add(new RowDefinition());
-                    if (i == 0)
-                    {
-                        var beams = new StackPanel(); var ends = new System.Windows.Controls.Primitives.UniformGrid { Columns = 4, Height = 22 };
-                        for (int b = 0; b < 4; b++)
-                        {
-                            var end = new Grid { Width = 16, Height = 22 };
-                            end.Children.Add(new Rectangle { Width = 5, Fill = Brushes.Goldenrod });
-                            end.Children.Add(new Rectangle { Height = 5, VerticalAlignment = VerticalAlignment.Top, Fill = Brushes.Goldenrod });
-                            end.Children.Add(new Rectangle { Height = 5, VerticalAlignment = VerticalAlignment.Bottom, Fill = Brushes.Goldenrod }); ends.Children.Add(end);
-                        }
-                        beams.Children.Add(ends); beams.Children.Add(new Border { Background = Brushes.Goldenrod, BorderBrush = Brushes.DarkGoldenrod, BorderThickness = new Thickness(0,4,0,4), Child = new TextBlock { Text = "Primary H20", TextAlignment = TextAlignment.Center, FontSize = 11 } }); support.Children.Add(beams);
-                    }
-                    var props = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3, MinHeight = 76 }; Grid.SetRow(props,1);
-                    for (int p = 0; p < 3; p++)
-                    {
-                        var prop = new Grid { Width = 20 }; prop.Children.Add(new Rectangle { Width = 7, Fill = Brushes.SlateGray });
-                        prop.Children.Add(new Rectangle { Height = 4, Fill = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Top });
-                        prop.Children.Add(new Rectangle { Height = 4, Fill = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Bottom }); props.Children.Add(prop);
-                    }
-                    support.Children.Add(props); grid.Children.Add(support);
+                    info.Children.Add(Text($"{s.ThicknessMm:0.##} mm · {(s.AgeDays > 28 ? "28+" : s.AgeDays.ToString("0.##"))} days · {F(BackproppingCalculator.Strength(s.AgeDays, Curve))}%"));
+                    info.Children.Add(Text($"SIDL {s.Sidl:0.##} · LL {s.FinalLiveLoad:0.##} kN/m²"));
                 }
-                SectionPanel.Children.Add(grid);
+                info.Children.Add(new Border { Background = Yellow, Padding = new Thickness(5), Margin = new Thickness(0,6,0,0), Child = Text(row == null ? (s.IsRaft ? "No backprop reaction reaches raft" : "Outside required support stack") : s.IsRaft ? $"{row.Incoming:0.000} kN/m² received" : "↓ " + F(row.DownwardLoad) + " kN/m²") });
+                grid.Children.Add(info);
+                AddSectionDrawing(grid, 1, i == 0, i < slabs.Count-1, editing == i ? Brushes.Goldenrod : Brushes.DarkGray, s.PropId==BackproppingTower.Name && i>0 && row?.Transfer>0);
+                panel.Children.Add(grid);
+            }
+        }
+
+        internal static void AddSectionDrawing(Grid grid, int column, bool mainShores, bool showSupports, Brush slabBrush, bool tower=false)
+        {
+            // The final floor's spanning label can enlarge its row. Keep the slab's
+            // top face at the storey boundary instead of centering it below the props.
+            var slab = new Rectangle { Height = 16, VerticalAlignment = VerticalAlignment.Top,
+                Fill = slabBrush }; Grid.SetColumn(slab,column); grid.Children.Add(slab);
+            if (showSupports)
+            {
+                var support = new Grid { MinHeight = 112 }; Grid.SetColumn(support,column); Grid.SetRow(support,1);
+                support.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); support.RowDefinitions.Add(new RowDefinition());
+                if (mainShores)
+                {
+                    var beams = new StackPanel(); var ends = new System.Windows.Controls.Primitives.UniformGrid { Columns = 4, Height = 22 };
+                    for (int b = 0; b < 4; b++)
+                    {
+                        var end = new Grid { Width = 16, Height = 22 };
+                        end.Children.Add(new Rectangle { Width = 5, Fill = Brushes.Goldenrod });
+                        end.Children.Add(new Rectangle { Height = 5, VerticalAlignment = VerticalAlignment.Top, Fill = Brushes.Goldenrod });
+                        end.Children.Add(new Rectangle { Height = 5, VerticalAlignment = VerticalAlignment.Bottom, Fill = Brushes.Goldenrod }); ends.Children.Add(end);
+                    }
+                    beams.Children.Add(ends); beams.Children.Add(new Border { Background = Brushes.Goldenrod, BorderBrush = Brushes.DarkGoldenrod, BorderThickness = new Thickness(0,4,0,4), Child = new TextBlock { Text = "Primary H20", TextAlignment = TextAlignment.Center, FontSize = 11 } }); support.Children.Add(beams);
+                }
+                if (tower)
+                {
+                    var towers = new System.Windows.Controls.Primitives.UniformGrid { Columns=2, MinHeight=112 };
+                    for (int n=0;n<2;n++)
+                    {
+                        var frame=new Grid { Margin=new Thickness(12,0,12,0) };
+                        foreach (var edge in new[]{HorizontalAlignment.Left, HorizontalAlignment.Right})
+                            frame.Children.Add(new Rectangle { Width=5, Fill=Brushes.SlateGray, HorizontalAlignment=edge });
+                        foreach (var slope in new[]{0,1})
+                            frame.Children.Add(new Line { X1=0, X2=1, Y1=slope, Y2=1-slope, Stretch=Stretch.Fill, Margin=new Thickness(2,5,2,5), Stroke=Brushes.SlateGray, StrokeThickness=2 });
+                        towers.Children.Add(frame);
+                    }
+                    support.Children.Add(towers); grid.Children.Add(support); return;
+                }
+                var props = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3, MinHeight = 76 }; Grid.SetRow(props,1);
+                for (int p = 0; p < 3; p++)
+                {
+                    var prop = new Grid { Width = 20 }; prop.Children.Add(new Rectangle { Width = 7, Fill = Brushes.SlateGray });
+                    prop.Children.Add(new Rectangle { Height = 4, Fill = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Top });
+                    prop.Children.Add(new Rectangle { Height = 4, Fill = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Bottom }); props.Children.Add(prop);
+                }
+                support.Children.Add(props); grid.Children.Add(support);
             }
         }
 
         private void RenderStoreys(LoadResult loads)
         {
-            StoreyPanel.Children.Clear(); storeyControls.Clear();
+            StoreyPanel.Children.Clear(); storeyMaximums.Clear();
             foreach (var row in loads.Slabs.Where(r => r.Index > 0 && r.Transfer > 0 && r.Index < slabs.Count-1))
             {
                 int index = row.Index; var slab = slabs[index];
                 var group = new GroupBox { Header = slab.Name + " → " + slabs[index+1].Name, Padding = new Thickness(8), Margin = new Thickness(0,0,0,8) };
-                var panel = new StackPanel(); var grid = new Grid(); for (int c=0;c<2;c++) grid.ColumnDefinitions.Add(new ColumnDefinition());
-                var controls = new StoreyControls { Prop = new ComboBox { ItemsSource = BackproppingPropCatalog.All, SelectedItem = BackproppingPropCatalog.All.FirstOrDefault(p => p.Name == slab.PropId) },
-                    Maximum = new TextBox { Text = maximumDrafts.TryGetValue(index, out string max) ? max : slab.MaximumSpacingMm?.ToString(CultureInfo.CurrentCulture) ?? "" } };
-                storeyControls[index] = controls;
-                string[] labels = { "Selected prop type", "Maximum override (mm)" };
-                Control[] inputs = { controls.Prop, controls.Maximum };
-                for (int c=0;c<2;c++) { var field = new StackPanel(); field.Children.Add(Text(labels[c])); field.Children.Add(inputs[c]); Grid.SetColumn(field,c); grid.Children.Add(field); }
-                panel.Children.Add(grid); panel.Children.Add(Text($"Prop extension: {slab.PropExtensionMm:0.##} mm (automatic). Blank maximum uses the project limit."));
+                var panel = new StackPanel();
+                var fields = new WrapPanel();
+                var system = new ComboBox { Name="SupportSystem", ItemsSource = new[] { "Props", BackproppingTower.Name },
+                    SelectedItem = slab.PropId == BackproppingTower.Name ? BackproppingTower.Name : "Props" };
+                var selected = BackproppingPropCatalog.All.FirstOrDefault(p => p.Name == slab.PropId);
+                var family = new ComboBox { Name="PropFamily", ItemsSource = BackproppingPropCatalog.All.Select(p => p.Family).Distinct().ToArray(),
+                    SelectedItem = selected?.Family };
+                var size = new ComboBox { Name="PropSize", DisplayMemberPath = nameof(BackproppingProp.Size) };
+                var maximum = new TextBox { Text = maximumDrafts.TryGetValue(index, out string max) ? max : slab.MaximumSpacingMm?.ToString(CultureInfo.CurrentCulture) ?? "" };
+                storeyMaximums[index] = maximum;
+                StackPanel Field(string label, Control input)
+                {
+                    var field = new StackPanel { MinWidth = 135 };
+                    field.Children.Add(Text(label));
+                    field.Children.Add(input);
+                    System.Windows.Automation.AutomationProperties.SetName(input, label);
+                    fields.Children.Add(field);
+                    return field;
+                }
+                Field("System", system);
+                var familyField = Field("Prop family", family);
+                var sizeField = Field("Prop size", size);
+                Field("Maximum override (mm)", maximum);
+                void SetSizes(BackproppingProp current)
+                {
+                    size.ItemsSource = BackproppingPropCatalog.All.Where(p => p.Family == (string)family.SelectedItem).ToArray();
+                    size.SelectedItem = current;
+                    size.IsEnabled = family.SelectedItem != null;
+                }
+                SetSizes(selected);
+                panel.Children.Add(fields);
+                var geometryHint = Text("");
+                Action updateHint = () => geometryHint.Text = slab.PropId == BackproppingTower.Name
+                    ? $"D3 clear height: {slab.PropExtensionMm:0.##} mm · restrained heads · 1.50 m inter-frame spacing"
+                    : $"Prop extension: {slab.PropExtensionMm:0.##} mm (automatic). Blank maximum uses the project limit.";
+                void ShowSystem()
+                {
+                    bool isTower = Equals(system.SelectedItem, BackproppingTower.Name);
+                    familyField.Visibility = sizeField.Visibility = isTower ? Visibility.Collapsed : Visibility.Visible;
+                    slab.PropId = isTower ? BackproppingTower.Name : (size.SelectedItem as BackproppingProp)?.Name;
+                    updateHint();
+                }
+                void SelectionChanged()
+                {
+                    ShowSystem();
+                    RenderSection(loads);
+                    InvalidateResults();
+                }
+                ShowSystem();
+                panel.Children.Add(geometryHint);
                 group.Content = panel; StoreyPanel.Children.Add(group);
-                controls.Prop.SelectionChanged += (a,b) => { slabs[index].PropId = (controls.Prop.SelectedItem as BackproppingProp)?.Name; InvalidateResults(); };
-                controls.Maximum.TextChanged += (a,b) => { maximumDrafts[index] = controls.Maximum.Text; InvalidateResults(); };
+                bool changingSizes = false;
+                system.SelectionChanged += (a,b) => SelectionChanged();
+                family.SelectionChanged += (a,b) =>
+                {
+                    var previous = size.SelectedItem as BackproppingProp;
+                    changingSizes = true;
+                    var sizes = BackproppingPropCatalog.All.Where(p => p.Family == (string)family.SelectedItem);
+                    SetSizes(sizes.FirstOrDefault(p => p.Size == previous?.Size) ?? sizes.FirstOrDefault());
+                    changingSizes = false;
+                    SelectionChanged();
+                };
+                size.SelectionChanged += (a,b) => { if (!changingSizes) SelectionChanged(); };
+                maximum.TextChanged += (a,b) => { maximumDrafts[index] = maximum.Text; InvalidateResults(); };
             }
-            if (storeyControls.Count == 0) StoreyPanel.Children.Add(Text(loads.Complete ? "No backpropping storey required." : "Add the next supporting slab to configure backpropping."));
+            if (storeyMaximums.Count == 0) StoreyPanel.Children.Add(Text(loads.Complete ? "No backpropping storey required." : "Add the next supporting slab to configure backpropping."));
         }
         private void UpdateLimitHints() { ResultState.Text = "Spacing limit changed — calculate spacing."; }
         private void RenderBreakdown(LoadResult loads)
@@ -272,7 +385,7 @@ namespace EngineeringDashboard
             BreakdownPanel.Children.Clear();
             foreach (var row in loads.Slabs)
             {
-                string detail = row.Index == 0 ? $"Concrete {F(row.SelfWeight)} + formwork 0.50 + working 0.75 + heaping {F(loads.Heaping)} = {F(loads.PourLoad)}"
+                string detail = slabs[row.Index].IsRaft ? $"Backpropping terminates at raft. Received {row.Incoming:0.000} kN/m² from above. Foundation capacity requires a separate check." : row.Index == 0 ? $"Concrete {F(row.SelfWeight)} + formwork 0.50 + working 0.75 + heaping {F(loads.Heaping)} = {F(loads.PourLoad)}"
                     : $"Incoming {F(row.Incoming)} + self-weight {F(row.SelfWeight)} + construction live {F(row.ConstructionLive)} = demand {F(row.Demand)}\nAdopted capacity {F(row.Capacity)}; required transfer {F(row.Transfer)}; downward load {F(row.DownwardLoad)}";
                 BreakdownPanel.Children.Add(new TextBlock { Text = slabs[row.Index].Name + "\n" + detail, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap });
             }
@@ -288,16 +401,19 @@ namespace EngineeringDashboard
                 if (!loads.Complete) throw new ArgumentException("Add the next supporting slab before calculating final spacing.");
                 foreach (var row in loads.Slabs.Where(r => r.Index > 0 && r.Transfer > 0))
                 {
-                    var s = slabs[row.Index]; var controls = storeyControls[row.Index];
+                    var s = slabs[row.Index]; var maximumInput = storeyMaximums[row.Index];
                     var panel = new StackPanel(); panel.Children.Add(Text(s.Name + " → " + slabs[row.Index+1].Name, true));
                     try
                     {
-                        string prop = (controls.Prop.SelectedItem as BackproppingProp)?.Name;
-                        double extension = s.PropExtensionMm;
-                        double? maximum = OptionalMaximum(controls.Maximum) ?? projectMax;
-                        var result = BackproppingCalculator.CalculateSpacing(row.DownwardLoad, prop, extension, maximum);
+                        double? maximum = OptionalMaximum(maximumInput) ?? projectMax;
+                        var result = BackproppingCalculator.SupportSpacing(row.DownwardLoad, s, maximum);
                         panel.Children.Add(new TextBlock { Text = $"{result.SpacingMm:0} × {result.SpacingMm:0} mm", FontSize = 32, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap });
-                        panel.Children.Add(Text($"Load per prop: {F(result.PropLoadKn)} kN"));
+                        string member = result.Tower == null ? "prop" : "tower leg";
+                        if (result.Tower != null)
+                            panel.Children.Add(Text($"{result.Tower.Stack} · {result.Tower.Opening:0.###} mm at each jack · {(result.Tower.Braced ? "Brace both jacks" : "Unbraced jacks")} · {result.CapacityKn:0.0} kN/leg"));
+                        panel.Children.Add(Text($"Load per {member}: {F(result.PropLoadKn)} kN"));
+                        if (slabs[row.Index+1].IsRaft)
+                            panel.Children.Add(Text($"Raft reaction: {result.PropLoadKn:0.00} kN per interior {member} · {row.DownwardLoad:0.000} kN/m² received"));
                         panel.Children.Add(Text($"Utilization: {F(result.UtilizationPercent)}%"));
                     }
                     catch (ArgumentException ex) { panel.Children.Add(new TextBlock { Text = "— × — mm", FontSize = 32, FontWeight = FontWeights.Bold }); panel.Children.Add(new TextBlock { Text = ex.Message, Foreground = Brushes.Firebrick, TextWrapping = TextWrapping.Wrap }); }
@@ -310,16 +426,18 @@ namespace EngineeringDashboard
             catch (ArgumentException ex) { ErrorText.Text = ex.Message; ResultState.Text = "Calculation incomplete."; }
         }
         private SessionState CaptureSession() => new SessionState {
-            Slabs=slabs.Select(s=>s.Copy()).ToList(), Maximums=new Dictionary<int,string>(maximumDrafts),
+            Details=ReadReportDetails(), Slabs=slabs.Select(s=>s.Copy()).ToList(), Maximums=new Dictionary<int,string>(maximumDrafts),
             ProjectMaximum=ProjectMaximum.Text, Curve=Temperature.SelectedIndex, Editing=editing, Dirty=draftDirty,
             HadResults=ResultsPanel.Children.Count>0,
-            Draft=new[]{FloorName.Text,Thickness.Text,FloorHeight.Text,Age.Text,Sidl.Text,LiveLoad.Text}
+            Draft=new[]{FloorName.Text,Thickness.Text,FloorHeight.Text,Age.Text,Sidl.Text,LiveLoad.Text}, RaftDraft=Raft.IsChecked == true
         };
         private void RestoreSession(SessionState state)
         {
             updating=true; slabs.Clear(); slabs.AddRange(state.Slabs.Select(s=>s.Copy()));
             maximumDrafts.Clear(); foreach(var pair in state.Maximums) maximumDrafts[pair.Key]=pair.Value;
             Temperature.SelectedIndex=state.Curve; ProjectMaximum.Text=state.ProjectMaximum;
+            Raft.IsChecked=state.RaftDraft;
+            SetReportDetails(state.Details);
             editing=state.Editing; draftDirty=state.Dirty;
             TextBox[] boxes={FloorName,Thickness,FloorHeight,Age,Sidl,LiveLoad};
             for(int i=0;i<boxes.Length;i++) boxes[i].Text=state.Draft[i];
@@ -328,15 +446,15 @@ namespace EngineeringDashboard
         }
         internal void StartNewCalculation()
         {
-            slabs.Clear(); maximumDrafts.Clear(); extensionDrafts.Clear(); retained=null;
+            slabs.Clear(); maximumDrafts.Clear(); extensionDrafts.Clear(); retained=null; SetReportDetails(null);
             updating=true; Temperature.SelectedIndex=0; ProjectMaximum.Text=""; updating=false;
             ErrorText.Text=""; NewDraft(); Refresh(); InvalidateResults(); ResultState.Text="New calculation — enter the slab being cast.";
         }
-        private void NewCalculation_Click(object sender,RoutedEventArgs e) => StartNewCalculation();
+
         internal BackproppingDocument CaptureCalculation()
         {
             if(editing>=0 || draftDirty) throw new ArgumentException("Save or cancel the current slab entry before saving or exporting the calculation.");
-            var document=new BackproppingDocument { Curve=Curve, ProjectMaximumMm=OptionalMaximum(ProjectMaximum), Slabs=slabs.Select(s=>s.Copy()).ToList() };
+            var document=new BackproppingDocument { Version=3, Details=ReadReportDetails(), Curve=Curve, ProjectMaximumMm=OptionalMaximum(ProjectMaximum), Slabs=slabs.Select(s=>s.Copy()).ToList() };
             foreach(var pair in maximumDrafts)
                 if(pair.Key>=0 && pair.Key<document.Slabs.Count)
                     document.Slabs[pair.Key].MaximumSpacingMm=OptionalMaximum(new TextBox{Text=pair.Value});
@@ -344,7 +462,7 @@ namespace EngineeringDashboard
         }
         private static void ValidateDocument(BackproppingDocument document)
         {
-            if(document==null || document.Version!=1 || document.Kind!="Backpropping" || document.Slabs==null) throw new ArgumentException("This is not a supported backpropping calculation file.");
+            if(document==null || (document.Version<1 || document.Version>3) || document.Kind!="Backpropping" || document.Slabs==null) throw new ArgumentException("This is not a supported backpropping calculation file.");
             if(!Enum.IsDefined(typeof(TemperatureCurve),document.Curve)) throw new ArgumentException("Invalid temperature curve.");
             Action<double?> validateMaximum = value => { if(value.HasValue) { BackproppingCalculator.RequireNumber(value.Value,"Maximum spacing",true); if(value.Value<25)throw new ArgumentException("Maximum spacing must be at least 25 mm."); } };
             validateMaximum(document.ProjectMaximumMm);
@@ -352,7 +470,7 @@ namespace EngineeringDashboard
             foreach(var slab in document.Slabs)
             {
                 validateMaximum(slab.MaximumSpacingMm);
-                if(slab.PropId!=null && !BackproppingPropCatalog.All.Any(p=>p.Name==slab.PropId))throw new ArgumentException("Unknown prop configuration: "+slab.PropId);
+                if(slab.PropId!=null && slab.PropId!=BackproppingTower.Name && !BackproppingPropCatalog.All.Any(p=>p.Name==slab.PropId))throw new ArgumentException("Unknown prop configuration: "+slab.PropId);
             }
         }
         internal void RestoreCalculation(BackproppingDocument document)
@@ -360,6 +478,7 @@ namespace EngineeringDashboard
             ValidateDocument(document); // Preserve the current calculation if the file is invalid.
             updating=true; slabs.Clear(); slabs.AddRange(document.Slabs.Select(s=>s.Copy()));
             maximumDrafts.Clear(); extensionDrafts.Clear(); Temperature.SelectedIndex=(int)document.Curve;
+            SetReportDetails(document.Details);
             ProjectMaximum.Text=document.ProjectMaximumMm?.ToString(CultureInfo.CurrentCulture) ?? "";
             updating=false; ErrorText.Text=""; NewDraft(); Refresh(); InvalidateResults();
             ResultState.Text="Calculation loaded — calculate spacing to review results.";
@@ -375,31 +494,75 @@ namespace EngineeringDashboard
             foreach(var row in loads.Slabs)
             {
                 var slab=document.Slabs[row.Index];
+                if (slab.IsRaft)
+                {
+                    results.Add(CalculationFiles.Field(slab.Name + " · raft load received (kN/m²)", row.Incoming));
+                    continue;
+                }
                 results.Add(CalculationFiles.Field(slab.Name + " · load breakdown (kN/m²)", $"Incoming {row.Incoming:0.000}; self-weight {row.SelfWeight:0.000}; construction live {row.ConstructionLive:0.000}; demand {row.Demand:0.000}; adopted capacity {row.Capacity:0.000}; transfer {row.Transfer:0.000}; downward {row.DownwardLoad:0.000}"));
                 if(row.Index==0) results.Add(CalculationFiles.Field("Pour components (kN/m²)",$"Concrete {row.SelfWeight:0.000} + formwork 0.50 + working 0.75 + heaping {loads.Heaping:0.000} = {loads.PourLoad:0.000}"));
                 else results.Add(CalculationFiles.Field(slab.Name+" · strength (%)",row.StrengthPercent));
                 if(row.Index>0 && row.Transfer>0)
                 {
-                    var spacing=BackproppingCalculator.CalculateSpacing(row.DownwardLoad,slab.PropId,slab.PropExtensionMm,slab.MaximumSpacingMm ?? document.ProjectMaximumMm);
+                    var spacing=BackproppingCalculator.SupportSpacing(row.DownwardLoad,slab,slab.MaximumSpacingMm ?? document.ProjectMaximumMm);
                     results.Add(CalculationFiles.Field(slab.Name+" → "+document.Slabs[row.Index+1].Name,
                         $"Spacing {spacing.SpacingMm:0} × {spacing.SpacingMm:0} mm; load/prop {spacing.PropLoadKn:0.000} kN; capacity {spacing.CapacityKn:0.000} kN; utilization {spacing.UtilizationPercent:0.00}%; extension {slab.PropExtensionMm:0.##} mm; table row {spacing.LookupExtensionMm:0} mm; governing: {spacing.GoverningLimit}"));
                 }
             }
             results.Add(CalculationFiles.Field("Stack check","Complete under the adopted load-transfer stopping rule.")); return results;
         }
-        private void ExportReport_Click(object sender,RoutedEventArgs e) => CalculationFiles.Run(this,()=>CalculationFiles.ExportHtml(this,"Backpropping",BuildReport()));
+        private void ExportReport_Click(object sender, RoutedEventArgs e)
+        {
+            CalculationFiles.Run(this, () =>
+            {
+                var document = CaptureCalculation();
+                var loads = BackproppingCalculator.CalculateLoads(document.Slabs, document.Curve);
+                if (!loads.Complete) throw new ArgumentException("Complete the supporting slab stack before exporting a report.");
+                var missing = new[] { ReportProject, ReportContractor, ReportTitle, ReportAuthor, ReportChecker, ReportDocumentNumber }
+                    .FirstOrDefault(field => string.IsNullOrWhiteSpace(field.Text));
+                if (missing != null)
+                {
+                    ReportDetailsPanel.IsExpanded = true;
+                    ErrorText.Text = "Complete the report details before generating the PDF.";
+                    ReportDetailsPanel.UpdateLayout();
+                    missing.BringIntoView();
+                    missing.Focus();
+                    return;
+                }
+                ErrorText.Text = "";
+                var html = BackproppingPdf.Report(document, loads);
+                var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "PDF report (*.pdf)|*.pdf", DefaultExt = ".pdf", FileName = "Backpropping calculation.pdf" };
+                if (dialog.ShowDialog(this) == true)
+                    BackproppingPdf.Save(this, html, dialog.FileName);
+            });
+        }
+
+        private BackproppingReportDetails ReadReportDetails() => new BackproppingReportDetails
+        {
+            Project = ReportProject.Text.Trim(),
+            Contractor = ReportContractor.Text.Trim(),
+            Title = ReportTitle.Text.Trim(),
+            Author = ReportAuthor.Text.Trim(),
+            Checker = ReportChecker.Text.Trim(),
+            DocumentNumber = ReportDocumentNumber.Text.Trim()
+        };
+
+        private void SetReportDetails(BackproppingReportDetails details)
+        {
+            ReportProject.Text = details?.Project ?? "";
+            ReportContractor.Text = details?.Contractor ?? "";
+            ReportTitle.Text = details?.Title ?? "";
+            ReportAuthor.Text = details?.Author ?? "";
+            ReportChecker.Text = details?.Checker ?? "";
+            ReportDocumentNumber.Text = details?.DocumentNumber ?? "";
+        }
+
         internal string BuildReport()
         {
-            var document=CaptureCalculation(); var results=ReportResults(document);
-            var inputs=new List<CalculationField> { CalculationFiles.Field("Temperature curve",document.Curve), CalculationFiles.Field("Project maximum spacing (mm)",document.ProjectMaximumMm?.ToString(CultureInfo.InvariantCulture) ?? "Not supplied") };
-            foreach(var slab in document.Slabs)
-                inputs.Add(CalculationFiles.Field(slab.Name,$"Thickness {slab.ThicknessMm:0.##} mm; height below {slab.FloorHeightBelowMm:0.##} mm; age {slab.AgeDays:0.##} days; SIDL {slab.Sidl:0.###} kN/m²; final live {slab.FinalLiveLoad:0.###} kN/m²; prop {slab.PropId ?? "Not selected"}; maximum override {slab.MaximumSpacingMm?.ToString(CultureInfo.InvariantCulture) ?? "None"} mm"));
-            return CalculationFiles.Report("Backpropping",inputs,results,
-                "Adopted capacity approximation, not an official Doka load-distribution formula or structural verification. Repeated aligned uniform slab zone. Capacity = strength fraction × (self-weight + SIDL + final live). Transfer = max(0, demand - capacity). Add 0.40 kN/m² per required reprop storey.\n"+
-                "Concrete 25 kN/m³; main formwork 0.50; working 0.75; heaping min(1.75,max(0.75,10% concrete weight)); construction live 0.75 at the first supporting slab and zero below (area loads in kN/m²).\n"+
-                "Strength anchors day/%: A 0/0,2/50,4/70,12/80,20/90,28/100; B 0/0,4/50,8/70,28/100; C 0/0,6/50,12/70,28/100. Linear interpolation, cap 100%.\n"+
-                "Square spacing = floor(min(1000 sqrt(prop capacity/downward load), supplied maximum)/25) × 25 mm. Storey maximum overrides project maximum. Without a maximum, spacing checks prop capacity only.\n"+
-                "Prop extension = height below - upper slab thickness, direct head/base contact and restrained temporary reshoring table conditions. Main shores are not sized. Slab punching, local bearing, edges, offsets, stiffness/settlement, lateral stability and stripping sequence are excluded.");
+            var document = CaptureCalculation();
+            var loads = BackproppingCalculator.CalculateLoads(document.Slabs, document.Curve);
+            if (!loads.Complete) throw new ArgumentException("Complete the supporting slab stack before exporting a report.");
+            return BackproppingPdf.Report(document, loads);
         }
         private void Close_Click(object sender, RoutedEventArgs e) => Close();
     }

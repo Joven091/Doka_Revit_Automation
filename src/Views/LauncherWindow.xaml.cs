@@ -18,6 +18,7 @@ namespace EngineeringDashboard
         {
             InitializeComponent();
 #if DASHBOARD_DESKTOP
+            MoreUpdates.Visibility=Visibility.Visible;
             DesktopHost.DashboardSessionController.Register(this);
 #endif
             Closing+=(s,e)=>closing=true;
@@ -55,6 +56,21 @@ namespace EngineeringDashboard
             ShowTool(new MyRevitAddin.Updates.UpdateWindow());
 #endif
         }
+        private void MoreUpdates_Click(object sender,RoutedEventArgs e)
+        {
+            MoreUpdates.ContextMenu.PlacementTarget=MoreUpdates;
+            MoreUpdates.ContextMenu.Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            MoreUpdates.ContextMenu.IsOpen=true;
+        }
+#if DASHBOARD_DESKTOP
+        private async void IntegrationUpdates_Click(object sender,RoutedEventArgs e)
+        {
+            try { await DesktopHost.DashboardUpdateEntry.OpenIntegrationAsync(); }
+            catch(Exception error){MessageBox.Show(this,error.Message,"Revit integration updates",MessageBoxButton.OK,MessageBoxImage.Information);}
+        }
+#else
+        private void IntegrationUpdates_Click(object sender,RoutedEventArgs e) => BtnUpdates_Click(sender,e);
+#endif
         private void BtnClose_Click(object sender,RoutedEventArgs e)=>Close();
         private void BtnDomeCalculator_Click(object sender,RoutedEventArgs e)
         {

@@ -19,7 +19,7 @@ if((Get-FileHash $archive).Hash -ine $feed.sha256 -or (Get-Item $archive).Length
 Copy-Item $installer.FullName $destination
 Copy-Item $archive $destination
 Copy-Item (Join-Path $build 'feed/dashboard-latest.json') $destination
-@{schemaVersion=1;productId='Doka.RevitAutomation';revitVersion=$year;version=$info.version;installerFile=$installer.Name;sha256=$info.installerSha256;sizeBytes=$installer.Length;publishedUtc=[DateTime]::UtcNow.ToString('O');releaseNotes='Engineering Dashboard update: slab access extensions on either or both ends, editable total access load defaulting to 0.75 kN/m², and independent slab helper cantilevers. Save your work and close Revit for this integration installer.'} | ConvertTo-Json | Set-Content (Join-Path $destination 'latest.json') -Encoding utf8
+@{schemaVersion=1;productId='Doka.RevitAutomation';revitVersion=$year;version=$info.version;installerFile=$installer.Name;sha256=$info.installerSha256;sizeBytes=$installer.Length;publishedUtc=[DateTime]::UtcNow.ToString('O');releaseNotes='Engineering Dashboard 1.2.14 saves backpropping cover details, groups support selections by system and family, and opens fully loaded Dokaflex diagrams from the schematic. Save your work and close Revit for this integration installer.'} | ConvertTo-Json | Set-Content (Join-Path $destination 'latest.json') -Encoding utf8
 $subfolder=if($year -eq 2024){''}else{'\Revit2027'}
 @"
 Revit $year - Engineering Dashboard $($info.version)
@@ -33,7 +33,7 @@ Copy the EXE and inner Dashboard ZIP first. Leave the inner ZIP compressed.
 Copy latest.json and dashboard-latest.json last, after those two files finish copying.
 
 Existing external Dashboard users: Check for updates reads dashboard-latest.json and restarts only the Dashboard for compatible calculator changes.
-Revit integration updates: open Check for updates, then click Revit integration updates. This reads latest.json, stages this installer and waits for Revit to close.
+Revit integration updates: on the Dashboard launcher, open the arrow beside Check for updates and choose Revit integration updates. This reads latest.json, stages this installer and waits for Revit to close.
 First installation, or a 2024 user still on 1.1.x: run the Revit-specific EXE directly with Revit closed. This one-time migration is not supported by the old in-process update helper.
 
 Revit2027 uses the published 2027 API and .NET 10. The calculator desktop and numerical policies are shared with the 2024 release. Your project/settings files are retained. Runtime folders, registration and update feeds are separated by Revit version.

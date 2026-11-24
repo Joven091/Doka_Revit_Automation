@@ -1,0 +1,48 @@
+"""Verify the printed drawing itself, including each slab and the props between slabs."""
+from itertools import groupby
+from pathlib import Path
+import sys
+
+import pymupdf
+
+
+def check(path, levels):
+    with pymupdf.open(path) as pdf:
+        raster = next(page for page in pdf if "Load-transfer section" in page.get_text()).get_pixmap(alpha=False)
+    pixels = raster.samples
+    scanlines = [pixels[y*raster.stride:(y+1)*raster.stride] for y in range(raster.height)]
+    slab = bytes((169, 169, 169))
+    shaft = bytes((112, 128, 144))
+    bands = [list(rows) for visible, rows in groupby(
+        range(raster.height), key=lambda y: scanlines[y].count(slab) > 145
+    ) if visible]
+    assert len(bands) == levels, f"{path.name}: expected {levels} visible slabs, found {len(bands)}"
+    for upper, lower in zip(bands, bands[1:]):
+        shaft_rows = sum(scanlines[y].count(shaft) >= 6 for y in range(upper[-1]+1, lower[0]))
+        assert shaft_rows >= 5, f"{path.name}: missing props between slab bands {upper[0]} and {lower[0]}"
+    print(f"{path.name}: {levels} visible slab bands, {levels-1} supported storeys")
+
+
+folder = Path(sys.argv[1])
+check(folder / "section.pdf", 4)
+check(folder / "section.raft.pdf", 3)
+
+with pymupdf.open(folder / "section.d3.pdf") as report:
+    pages = [page.get_text() for page in report]
+    assert len(pages) == 7, [t[:80] for t in pages]
+    for label in ("Test project", "DOC-001", "Test contractor", "Tower-supported slab pour", "Prepared by A", "Checked by B"):
+        assert label in pages[0], label
+    for i, label in enumerate(("Load-transfer section","Typical tower layout","Slab capacity","D3 tower assembly and capacity","Stripping and repropping sequence","D3 shoring towers"),1):
+        assert label in pages[i], label
+    assert "18.50 kN" in pages[2] and "35.0 kN" in pages[2] and "SAFE" in pages[2]
+    assert "Proposed initial stripping" in pages[3] and "after this slab" in pages[3]
+    assert "No inter-tower bracing" in pages[4]
+    assert "D3 removal after the" in pages[5] and "A D3 removal date" in pages[5]
+    label = report[5].search_for("AFTER STRIPPING")[0]
+    heading = report[5].search_for("Install D3 towers beneath")[0]
+    assert label.x1 < heading.x0 and abs(label.y0 - heading.y0) < 5
+    assert "Tower spacing" in pages[1] and "Eurex eco props" not in "".join(pages)
+    for index, page in enumerate(report):
+        assert page.rect.height > page.rect.width
+        assert f"Page {index+1} of {len(report)}" in pages[index]
+        assert page.get_images(), f"Missing logo on page {index+1}"

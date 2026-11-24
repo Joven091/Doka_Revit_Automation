@@ -16,6 +16,7 @@ namespace EngineeringDashboard.DesktopHost
         static RevitBridgeClient bridge;
         static DesktopUpdateWindow current;
         public static void Configure(RevitBridgeClient client){bridge=client??throw new ArgumentNullException(nameof(client));}
+        internal static Task<bool> OpenIntegrationAsync() => bridge.CallAsync<object,bool>("updates.integration", null, CancellationToken.None);
         public static Window Open(Window owner)
         {
             if(bridge==null)throw new InvalidOperationException("Open the Dashboard from Revit before checking for updates.");
@@ -35,23 +36,22 @@ namespace EngineeringDashboard.DesktopHost
     {
         readonly RevitBridgeClient bridge;readonly CancellationTokenSource cancel=new CancellationTokenSource();
         readonly TextBlock status=new TextBlock{TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,14,0,12)};
-        readonly TextBlock notes=new TextBlock{TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,12)};
-        readonly Button check=new Button{Content="Check again",Margin=new Thickness(0,0,8,0)};
-        readonly Button update=new Button{Content="Update Dashboard",Visibility=Visibility.Collapsed,Margin=new Thickness(0,0,8,0)};
-        readonly Button integration=new Button{Content="Revit integration updates",Margin=new Thickness(0,0,8,0)};
+        readonly Button check=new Button{Content="Retry",Visibility=Visibility.Collapsed,Margin=new Thickness(0,0,8,0)};
+        readonly Button update=new Button{Content="Yes",Visibility=Visibility.Collapsed,Margin=new Thickness(0,0,8,0)};
+        readonly Button integration=new Button{Content="Revit integration updates",Visibility=Visibility.Collapsed,Margin=new Thickness(0,0,8,0)};
+        readonly Button close=new Button{Content="Close",IsCancel=true};
         readonly Version installed;DashboardFeed feed;string source;bool busy,closed;
         Task<DashboardFeed> checking;
         public DesktopUpdateWindow(RevitBridgeClient client)
         {
-            bridge=client;Title="Engineering Dashboard updates";Width=620;SizeToContent=SizeToContent.Height;MaxHeight=720;WindowStartupLocation=WindowStartupLocation.CenterOwner;
+            bridge=client;Title="Engineering Dashboard updates";Width=370;SizeToContent=SizeToContent.Height;MaxHeight=720;WindowStartupLocation=WindowStartupLocation.CenterOwner;
             Background=Brushes.WhiteSmoke;FontFamily=new FontFamily("Segoe UI");FontSize=13;
             Resources.MergedDictionaries.Add(new ResourceDictionary{Source=new Uri("pack://application:,,,/MyRevitAddin;component/Views/CalculatorStyles.xaml",UriKind.Absolute)});
             installed=DashboardPackages.ParseVersion(FileVersionInfo.GetVersionInfo(typeof(DesktopUpdateWindow).Assembly.Location).FileVersion);
-            var panel=new StackPanel{Margin=new Thickness(24)};panel.Children.Add(new TextBlock{Text="Dashboard updates",FontSize=22,FontWeight=FontWeights.SemiBold});
-            panel.Children.Add(new TextBlock{Text="Installed version "+installed.ToString(3)+" · Revit stays open",Foreground=Brushes.SlateGray,Margin=new Thickness(0,6,0,0)});
-            panel.Children.Add(status);panel.Children.Add(new ScrollViewer{Content=notes,MaxHeight=240,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});
+            var panel=new StackPanel{Margin=new Thickness(24)};
+            panel.Children.Add(status);
             var buttons=new WrapPanel{HorizontalAlignment=HorizontalAlignment.Right};update.SetResourceReference(StyleProperty,"PrimaryAction");
-            buttons.Children.Add(integration);buttons.Children.Add(check);buttons.Children.Add(update);var close=new Button{Content="Close",IsCancel=true};buttons.Children.Add(close);panel.Children.Add(buttons);Content=panel;
+            buttons.Children.Add(integration);buttons.Children.Add(check);buttons.Children.Add(update);buttons.Children.Add(close);panel.Children.Add(buttons);Content=panel;
             check.Click+=async(s,e)=>await CheckAsync();update.Click+=async(s,e)=>await UpdateAsync();close.Click+=(s,e)=>Close();
             integration.Click+=async(s,e)=>{if(busy)return;SetBusy(true);try{await bridge.CallAsync<object,bool>("updates.integration",null,cancel.Token);}catch(Exception error){if(!closed)status.Text=error.Message;}finally{SetBusy(false);}};
             Closed+=(s,e)=>{closed=true;cancel.Cancel();};Loaded+=async(s,e)=>await CheckAsync();
@@ -59,23 +59,26 @@ namespace EngineeringDashboard.DesktopHost
         void SetBusy(bool value){busy=value;if(!closed){check.IsEnabled=!value;update.IsEnabled=!value;integration.IsEnabled=!value;}}
         async Task CheckAsync()
         {
-            if(busy)return;SetBusy(true);update.Visibility=Visibility.Collapsed;notes.Text="";status.Text="Checking the company Dashboard update folder…";
+            if(busy)return;SetBusy(true);update.Visibility=Visibility.Collapsed;check.Visibility=integration.Visibility=Visibility.Collapsed;close.Content="Close";feed=null;status.Text="Checking for updates…";
             try
             {
                 if(checking==null||checking.IsCompleted)checking=Task.Run(()=>{source=MyRevitAddin.Updates.UpdateSettings.Load(DashboardPaths.SettingsRoot).SourceDirectory;return DashboardPackages.ReadFeed(source,installed,BridgeProtocol.Version);});
-                if(await Task.WhenAny(checking,Task.Delay(8000,cancel.Token))!=checking){if(!closed)status.Text="The company folder is not responding. Connect to the company network or VPN, then check again.";return;}
+                if(await Task.WhenAny(checking,Task.Delay(8000,cancel.Token))!=checking){if(!closed){status.Text="Update check timed out. Connect to the company network or VPN and retry.";check.Visibility=Visibility.Visible;}return;}
                 feed=await checking;if(closed)return;
-                status.Text=feed==null?"Your Dashboard is up to date.":"Dashboard "+feed.Version+" is available.";
-                if(feed!=null){notes.Text=(feed.ReleaseNotes??"")+"\n\nOnly the Dashboard will close and reopen. Your work will be captured first. Revit and its models stay open; updated calculation results may need recalculation.";update.Visibility=Visibility.Visible;}
+                status.Text=feed==null?"No Dashboard update is available.":"A Dashboard update is available. Update now?";
+                if(feed!=null){update.Visibility=Visibility.Visible;close.Content="No";}
             }
-            catch(FileNotFoundException){if(!closed)status.Text="No Dashboard-only update has been published yet. Revit integration updates use the separate button.";}
-            catch(DirectoryNotFoundException){if(!closed)status.Text="Connect to the company network or VPN to check for updates.";}
-            catch(Exception error){if(!closed)status.Text=error.Message;}
+            catch(FileNotFoundException ex) when (string.Equals(Path.GetFileName(ex.FileName), "dashboard-latest.json", StringComparison.OrdinalIgnoreCase))
+            {
+                if(!closed)status.Text="No Dashboard update is available.";
+            }
+            catch(DirectoryNotFoundException){if(!closed){status.Text="Update folder unavailable. Connect to the company network or VPN and retry.";check.Visibility=Visibility.Visible;}}
+            catch(Exception error){if(!closed){status.Text=error.Message;check.Visibility=Visibility.Visible;if(error is InvalidDataException)integration.Visibility=Visibility.Visible;}}
             finally{SetBusy(false);}
         }
         async Task UpdateAsync()
         {
-            if(busy||feed==null)return;SetBusy(true);Process helper=null;bool captured=false;string handoffDirectory=null;
+            if(busy||feed==null)return;SetBusy(true);update.Visibility=Visibility.Collapsed;close.Content="Close";Process helper=null;bool captured=false;string handoffDirectory=null;
             try
             {
                 if(bridge.IsBusy||DashboardSessionController.HasBusyWork)throw new InvalidOperationException("Finish or cancel the current calculation or Revit operation before updating.");
@@ -115,7 +118,7 @@ namespace EngineeringDashboard.DesktopHost
                 if(captured)DashboardSessionController.CancelUpdateRestart();
                 if(handoffDirectory!=null){try{File.WriteAllText(Path.Combine(handoffDirectory,"cancel.json"),"cancelled");}catch(Exception markerError)when(markerError is IOException||markerError is UnauthorizedAccessException){}}
                 if(helper!=null){try{if(!helper.HasExited)helper.CloseMainWindow();}catch(InvalidOperationException){}}
-                if(!closed)status.Text=error is OperationCanceledException?"Update cancelled. Your work is retained.":error.Message;
+                if(!closed){status.Text=error is OperationCanceledException?"Update cancelled.":error.Message;check.Visibility=Visibility.Visible;}
             }
             finally{helper?.Dispose();SetBusy(false);}
         }

@@ -7,12 +7,17 @@ namespace EngineeringDashboard.Backpropping
     public sealed class BackproppingProp
     {
         public string Name { get; }
+        public string Family { get; }
+        public string Size { get; }
         public int MinimumMm { get; }
         public int MaximumMm { get; }
         private readonly double standardCapacity;
         private readonly Dictionary<int, double> endRows;
         public BackproppingProp(string name, int minimum, int maximum, double capacity, params double[] fromMaximum)
         {
+            int separator = name.LastIndexOf(' ');
+            Family = name.Substring(0, separator);
+            Size = name.Substring(separator + 1);
             Name = name; MinimumMm = minimum; MaximumMm = maximum; standardCapacity = capacity;
             endRows = new Dictionary<int, double>();
             for (int i = 0; i < fromMaximum.Length; i++) endRows[maximum - i * 100] = fromMaximum[i];
@@ -56,6 +61,14 @@ namespace EngineeringDashboard.Backpropping
                 p.Add(new BackproppingProp(family+" 400",2300,4000,41.2));
                 p.Add(new BackproppingProp(family+" 450",2500,4500,41.2));
                 p.Add(new BackproppingProp(family+" 550",3100,5500,41.2));
+            }
+            // Eurex eco table. Each 20 eco model has four declining rows at full extension.
+            int[] sizes = {250,300,350,400,450,550};
+            int[] minimum = {1500,1800,2000,2300,2500,3000};
+            for(int i=0;i<sizes.Length;i++)
+            {
+                p.Add(new BackproppingProp("Eurex 20 eco "+sizes[i],minimum[i],sizes[i]*10,36.7,30,32,34,sizes[i]==550 ? 36.7 : 36));
+                if(sizes[i]!=550) p.Add(new BackproppingProp("Eurex 30 eco "+sizes[i],minimum[i],sizes[i]*10,41.2));
             }
             return p;
         }

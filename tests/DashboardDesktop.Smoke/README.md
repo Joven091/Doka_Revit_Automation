@@ -18,7 +18,7 @@ Each folder must contain `dashboard-package.json` matching every file, including
 the production entry, resource DLL, update helper, native solver and beam worker.
 The harness independently verifies and archives these files, creates an isolated
 old installation and local candidate feed, then uses the old Dashboard's actual
-**Update Dashboard** button. It checks the real helper readiness, old process
+**Yes** button on the update prompt. It checks the real helper readiness, old process
 exit, candidate activation, exact new process receipt and restored live unsaved
 Backpropping inputs while the same local bridge peer remains alive. It closes the
 helper and candidate cooperatively after success. `helper-update-evidence.txt`
