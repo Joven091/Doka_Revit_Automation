@@ -22,6 +22,19 @@ namespace EngineeringDashboard.Backpropping
         public SlabInput Copy() => (SlabInput)MemberwiseClone();
     }
 
+    public sealed class InitialStrippingPlan
+    {
+        public double TargetPercent { get; }
+        public double? EstimatedDays { get; }
+        public int? ProposedDay => EstimatedDays.HasValue ? (int)Math.Ceiling(EstimatedDays.Value) + 2 : (int?)null;
+
+        internal InitialStrippingPlan(double target, double? days)
+        {
+            TargetPercent = target;
+            EstimatedDays = days;
+        }
+    }
+
     public sealed class SlabResult
     {
         public int Index { get; set; }
@@ -63,6 +76,7 @@ namespace EngineeringDashboard.Backpropping
     /// </summary>
     public static class BackproppingCalculator
     {
+        private const double StrippingLiveLoad = 1.5; // kN/m² during initial stripping
         public const double ConcreteUnitWeight = 25;
         public const double RepropWeight = 0.40;
         private static readonly double[,] A = { {0,0}, {2,50}, {4,70}, {12,80}, {20,90}, {28,100} };
@@ -80,11 +94,42 @@ namespace EngineeringDashboard.Backpropping
             RequireNumber(days, "Concrete age");
             if (!Enum.IsDefined(typeof(TemperatureCurve), curve)) throw new ArgumentException("Select temperature A, B or C.");
             if (days >= 28) return 100;
-            var points = curve == TemperatureCurve.A ? A : curve == TemperatureCurve.B ? B : C;
+            var points = CurvePoints(curve);
             for (int i = 1; i < points.GetLength(0); i++)
                 if (days <= points[i, 0])
                     return points[i-1,1] + (points[i,1]-points[i-1,1]) * (days-points[i-1,0]) / (points[i,0]-points[i-1,0]);
             throw new InvalidOperationException("Strength curve has no matching segment.");
+        }
+
+        private static double[,] CurvePoints(TemperatureCurve curve)
+        {
+            switch (curve)
+            {
+                case TemperatureCurve.A: return A;
+                case TemperatureCurve.B: return B;
+                case TemperatureCurve.C: return C;
+                default: throw new ArgumentException("Select temperature A, B or C.");
+            }
+        }
+
+        public static InitialStrippingPlan InitialStripping(SlabInput slab, TemperatureCurve curve)
+        {
+            if (slab.IsRaft) throw new ArgumentException("Initial stripping applies to suspended slabs.");
+            RequireNumber(slab.ThicknessMm, "Slab thickness", true);
+            RequireNumber(slab.Sidl, "SIDL");
+            RequireNumber(slab.FinalLiveLoad, "Final live load");
+            double self = slab.ThicknessMm / 1000 * ConcreteUnitWeight;
+            double target = (self + StrippingLiveLoad) / (self + slab.Sidl + slab.FinalLiveLoad) * 100;
+            RequireNumber(target, "Stripping strength target", true);
+            var points = CurvePoints(curve);
+            for (int i = 1; i < points.GetLength(0); i++)
+            {
+                if (target > points[i,1]) continue;
+                double fraction = (target - points[i-1,1]) / (points[i,1] - points[i-1,1]);
+                double days = points[i-1,0] + fraction * (points[i,0] - points[i-1,0]);
+                return new InitialStrippingPlan(target, days);
+            }
+            return new InitialStrippingPlan(target, null);
         }
 
         public static double HeapingLoad(double slabSelfWeight)

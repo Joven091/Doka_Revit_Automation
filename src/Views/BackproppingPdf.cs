@@ -111,7 +111,7 @@ namespace EngineeringDashboard
         {
             var t=grid.Tower;
             double height=slab.PropExtensionMm, scale=285/height, y=30+t.Opening*scale;
-            var html=new StringBuilder($"<section class='sheet'><h1>D3 component capacity</h1><p>{H(storey)} · Top-held tower · restrained head units · inter-frame spacing 1.50 m</p><h2>Tower elevation</h2><svg class='elevation' viewBox='0 0 520 340' xmlns='http://www.w3.org/2000/svg'><path d='M60 30v285 M150 30v285 M50 30h20 M140 30h20 M50 315h20 M140 315h20' stroke='#123657' stroke-width='3'/>");
+            var html=new StringBuilder($"<section class='sheet tower'><h1>D3 tower assembly and capacity</h1><p>{H(storey)} · Top-held tower · restrained head units · inter-frame spacing 1.50 m</p><h2>Tower elevation</h2><svg class='elevation' viewBox='0 0 520 340' xmlns='http://www.w3.org/2000/svg'><path d='M60 30v285 M150 30v285 M50 30h20 M140 30h20 M50 315h20 M140 315h20' stroke='#123657' stroke-width='3'/>");
             foreach(var pair in new[]{Tuple.Create(t.Large,1800),Tuple.Create(t.Medium,1200),Tuple.Create(t.Small,900)})
             for(int i=0;i<pair.Item1;i++)
             {
@@ -121,7 +121,29 @@ namespace EngineeringDashboard
             }
             html.Append($"<g fill='#123657' font-size='14'><text x='186' y='43'>Upper jack {N(t.Opening,"0.###")} mm</text><text x='186' y='145'>Vertical frames</text><text x='186' y='168'>{H(t.Stack)}</text><text x='186' y='211'>{(t.Braced?"Brace both jacks":"Unbraced jacks")}</text><text x='186' y='310'>Lower jack {N(t.Opening,"0.###")} mm</text></g></svg>");
             html.Append($"<p>Clear tower height {N(height/1000)} m. Jack openings include the plates.</p><p>Tallest-frame group up to {(t.Large>0?"1.80":"1.20")} m · at least two connected frame planes · maximum height in selected row {N(t.HeightLimit/1000,"0.0")} m.</p>");
-            return html.Append(Check(grid)).Append("</section>").ToString();
+            html.Append(Check(grid)).Append("<h2>Frame connections</h2><p>For each tower use the project head-restraint detail. Connect the two frame planes with diagonal crosses at every lift. Engage the cross safety catches and connect successive lifts with the D3 frame connections.</p><p><b>Adjacent towers:</b> No inter-tower bracing for the specified individual top-held towers. Provide the internal bracing and head restraint detailed for each tower.</p>");
+            html.Append("<h2>Component schedule</h2>").Append(Table("Vertical frame (hot-dip galvanised steel)", "Doka article", "Diagonal cross for 1.50 m spacing"));
+            if (t.Large > 0) html.Append(Cells("1.80 m","582942000","18.150"));
+            if (t.Medium > 0) html.Append(Cells("1.20 m","582941000","12.150"));
+            if (t.Small > 0) html.Append(Cells("0.90 m","582940000","9.150"));
+            return html.Append("</tbody></table></section>").ToString();
+        }
+
+        private static string TowerSequence(SlabInput slab, SlabInput upper, TemperatureCurve curve)
+        {
+            int? stripping = BackproppingCalculator.InitialStripping(slab,curve).ProposedDay;
+            double pourAge = slab.AgeDays - upper.AgeDays;
+            var html = new StringBuilder($"<section class='sheet sequence'><h1>Stripping and repropping sequence</h1><p>Programme measured from the {H(slab.Name)} pour</p>");
+            string day = stripping.HasValue ? $"Day {stripping.Value} after the {H(slab.Name)} pour" : "Strength target exceeds the selected curve";
+            html.Append($"<h2>Proposed initial stripping</h2><p class='timing'>{day}</p>");
+            if (!stripping.HasValue || stripping.Value >= pourAge)
+                html.Append("<p>Review the programme: the calculated timing does not establish an interval for stripping and repropping before the upper pour.</p>");
+            html.Append($"<h2>Release original {H(slab.Name)} shores</h2><p>Verify in-place strength against the approved stripping target and obtain release for the load-transfer sequence in the zone.</p>")
+                .Append("<h2>Install D3 repropping</h2><p>After stripping, complete the towers, jack bracing where required and head restraint in the released zone. Check the assembly before loading from above.</p>")
+                .Append($"<h2>Erect {H(upper.Name)} shoring</h2><p>Confirm the supporting slab can carry the erection loads at its actual age, including local shore reactions and material stacks.</p>")
+                .Append($"<h2>Day {N(pourAge,"0.##")} · planned {H(upper.Name)} pour</h2><p>Verify the slab strength and the tower configuration used in the pour-stage check.</p>")
+                .Append("<div class='removal'><h2>D3 removal after the upper pour</h2><p>Retain the towers until the removal-stage check covers the actual loads, remaining upper shores and verified slab strengths. Obtain release for the zone and dismantling sequence.</p></div>");
+            return html.Append("</section>").ToString();
         }
 
         private static string References(BackproppingDocument doc, LoadResult loads)
@@ -171,8 +193,11 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
 .sheet{break-before:page}.safe,.exceeded{font-weight:bold;padding:3mm}.safe{color:#165d32;background:#eaf6ec}.exceeded{color:#9c2224}.sheet .plan,.sheet .elevation{max-height:145mm;height:auto}.eco{display:block;max-width:100%;height:auto;max-height:210mm;margin:auto}.reference{position:relative;width:100%;margin:auto}.reference img{display:block;width:100%;height:auto}.reference span{position:absolute;left:77%;width:9%;height:3.1%;border:2px solid #d00000}
 .level{grid-template-columns:37% 63%}.drawing{display:grid;grid-template-columns:19% 72% 9%;align-items:start}.level .drawing img{position:static;grid-column:2;grid-row:1;width:100%;height:auto}.drawing .tag{grid-row:1;grid-column:1;text-align:center;align-self:center;font-size:8pt}.drawing .arrow{display:block;position:static;font-size:20pt}.drawing .height{grid-column:3;grid-row:1;align-self:stretch;writing-mode:vertical-rl;text-align:center;border-left:1px solid #196373;color:#196373;font-size:8pt}
 .spacing td,.spacing th{overflow-wrap:normal;padding:1mm}.spacing td:last-child,.spacing th:last-child{white-space:nowrap}
+.cover .signoff div{border:0}
+.loadpage.spacious h1{margin-bottom:9mm}.loadpage.spacious h2{margin-top:11mm}.loadpage.spacious p{margin:3mm 0}.loadpage.spacious td,.loadpage.spacious th{padding-top:3mm;padding-bottom:3mm}
+.tower .elevation{display:block;height:78mm}.sequence h2{margin-top:10mm}.sequence p{line-height:1.5}.sequence .removal{margin-top:9mm;background:#fbf4da;padding:3mm}.sequence .removal h2{margin-top:0}.timing{background:#e8eff1;font-weight:bold;padding:3mm}
 </style>".Replace("LOGO",Asset("doka")));
-            html.Append(Cover(doc,loads)).Append("<h1>Load-transfer section</h1>");
+            html.Append(Cover(doc,loads)).Append(doc.Slabs.Count<=3 ? "<section class='loadpage spacious'>" : "<section class='loadpage'>").Append("<h1>Load-transfer section</h1>");
             var plans=new StringBuilder(); var elevations=new StringBuilder();
             var arrangements=new System.Collections.Generic.Dictionary<string,System.Collections.Generic.List<string>>();
             var layouts=new System.Collections.Generic.Dictionary<string,Tuple<SlabInput,double,SpacingResult>>();
@@ -231,7 +256,7 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
                     ? "<p>Foundation capacity, local bearing and ground or pile support require a separate check.</p>"
                     : "<p>No backprop reaction reaches the raft.</p>");
                 if (loads.Slabs.Count == 2 && doc.Slabs[1].IsRaft)
-                    return html.Append("<p>Main shores deliver the active pour load directly to the raft. Main shore reactions are outside this calculation.</p>").Append(References(doc,loads)).ToString();
+                    return html.Append(InitialStrippingSection(doc)).Append("<p>Main shores deliver the active pour load directly to the raft. Main shore reactions are outside this calculation.</p></section>").Append(References(doc,loads)).ToString();
             }
             foreach(var arrangement in arrangements)
             {
@@ -239,7 +264,7 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
                 plans.Append(LayoutPlan(storeys,data.Item1,data.Item2,data.Item3));
                 if(data.Item3.Tower!=null) elevations.Append(TowerElevation(storeys,data.Item1,data.Item3));
             }
-            html.Append(plans);
+            html.Append("</section>").Append(plans);
             html.Append("<section class='capacity'><h1>Slab capacity</h1><p>Concrete self-weight = thickness in metres × 25 kN/m³.</p><p><b>Slab capacity = (self-weight + SIDL + final live load) × strength fraction at slab age.</b></p><h2>Concrete strength development</h2>");
             html.Append(StrengthGraph(doc, loads)).Append(capacity).Append("</tbody></table><h2>Load passed down</h2>");
             foreach (var row in loads.Slabs.Skip(1).Where(r => !doc.Slabs[r.Index].IsRaft))
@@ -247,7 +272,23 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
                 html.Append($"<p><b>{H(doc.Slabs[row.Index].Name)}</b> · Demand {N(row.Demand)} kN/m², adopted capacity {N(row.Capacity)} kN/m². ");
                 html.Append(row.Transfer > 0 ? $"Excess {N(row.Transfer)} + 0.400 = <b>{N(row.DownwardLoad)} kN/m²</b> to {H(doc.Slabs[row.Index+1].Name)}.</p>" : "Capacity covers demand. Transfer stops.</p>");
             }
-            return html.Append("</section>").Append(elevations).Append(References(doc,loads)).ToString();
+            html.Append(InitialStrippingSection(doc)).Append("</section>").Append(elevations);
+            foreach (var row in loads.Slabs.Where(r => r.Index > 0 && r.Transfer > 0 && doc.Slabs[r.Index].PropId == BackproppingTower.Name))
+                html.Append(TowerSequence(doc.Slabs[row.Index],doc.Slabs[row.Index-1],doc.Curve));
+            return html.Append(References(doc,loads)).ToString();
+        }
+
+        private static string InitialStrippingSection(BackproppingDocument doc)
+        {
+            var html = new StringBuilder();
+            html.Append("<h2>Proposed initial stripping</h2>");
+            foreach (var slab in doc.Slabs.Where(s => !s.IsRaft))
+            {
+                var day = BackproppingCalculator.InitialStripping(slab, doc.Curve).ProposedDay;
+                string timing = day.HasValue ? $"Day {day.Value} after this slab’s pour" : "No day proposed — strength target exceeds curve";
+                html.Append($"<p><b>{H(slab.Name)}</b> · {H(timing)}</p>");
+            }
+            return html.ToString();
         }
 
         private static string StrengthGraph(BackproppingDocument doc, LoadResult loads)
@@ -263,7 +304,11 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
             var points = Enumerable.Range(0,29).Select(day => N(48+day*500.0/28)+","+N(149-1.2*BackproppingCalculator.Strength(day,curve)));
             svg.Append("<polyline fill='none' stroke='#126c78' stroke-width='3' points='").Append(string.Join(" ",points)).Append("'/>");
             foreach (double age in loads.Slabs.Skip(1).Where(r => !doc.Slabs[r.Index].IsRaft).Select(r => Math.Min(28,doc.Slabs[r.Index].AgeDays)).Distinct())
-                svg.Append($"<circle cx='{N(48+age*500/28)}' cy='{N(149-1.2*BackproppingCalculator.Strength(age,curve))}' r='4' fill='#126c78'/>");
+            {
+                string x = N(48+age*500/28);
+                string y = N(149-1.2*BackproppingCalculator.Strength(age,curve));
+                svg.Append($"<path d='M{x} {y}V149' stroke='#126c78' stroke-width='1.2' stroke-dasharray='5 4'/><circle cx='{x}' cy='{y}' r='4' fill='#126c78'/>");
+            }
             for (int day = 0; day <= 28; day += 4)
                 svg.Append($"<text x='{N(48+day*500.0/28)}' y='167' text-anchor='middle'>{day}</text>");
             return svg.Append("<text x='300' y='188' text-anchor='middle'>Concrete age (days) · strength capped at day 28</text></svg>").ToString();

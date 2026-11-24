@@ -29,12 +29,15 @@ check(folder / "section.raft.pdf", 3)
 
 with pymupdf.open(folder / "section.d3.pdf") as report:
     pages = [page.get_text() for page in report]
-    assert len(pages) == 6, [t[:80] for t in pages]
+    assert len(pages) == 7, [t[:80] for t in pages]
     for label in ("Test project", "DOC-001", "Test contractor", "Tower-supported slab pour", "Prepared by A", "Checked by B"):
         assert label in pages[0], label
-    for i, label in enumerate(("Load-transfer section","Typical tower layout","Slab capacity","D3 component capacity","D3 shoring towers"),1):
+    for i, label in enumerate(("Load-transfer section","Typical tower layout","Slab capacity","D3 tower assembly and capacity","Stripping and repropping sequence","D3 shoring towers"),1):
         assert label in pages[i], label
     assert "18.50 kN" in pages[2] and "35.0 kN" in pages[2] and "SAFE" in pages[2]
+    assert "Proposed initial stripping" in pages[3] and "after this slab" in pages[3]
+    assert "No inter-tower bracing" in pages[4]
+    assert "D3 removal after the upper pour" in pages[5]
     assert "Tower spacing" in pages[1] and "Eurex eco props" not in "".join(pages)
     for index, page in enumerate(report):
         assert page.rect.height > page.rect.width

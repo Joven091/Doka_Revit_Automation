@@ -10,6 +10,16 @@ internal static class Program
     private static SlabInput Slab(double age, double sidl=3, double live=3) => new SlabInput { Name="Level", ThicknessMm=200, FloorHeightBelowMm=3200, AgeDays=age, Sidl=sidl, FinalLiveLoad=live };
     private static void Main()
     {
+        var stripping = Slab(12,7,3);
+        stripping.ThicknessMm = 400;
+        var plan = BackproppingCalculator.InitialStripping(stripping, TemperatureCurve.A);
+        Equal(57.5, plan.TargetPercent); Equal(2.75, plan.EstimatedDays.Value); Equal(5, plan.ProposedDay.Value);
+        Equal(8, BackproppingCalculator.InitialStripping(stripping, TemperatureCurve.B).ProposedDay.Value);
+        Equal(11, BackproppingCalculator.InitialStripping(stripping, TemperatureCurve.C).ProposedDay.Value);
+        stripping.Sidl = 1; stripping.FinalLiveLoad = 0.5;
+        Equal(30, BackproppingCalculator.InitialStripping(stripping, TemperatureCurve.A).ProposedDay.Value);
+        stripping.Sidl = 0;
+        True(!BackproppingCalculator.InitialStripping(stripping, TemperatureCurve.A).ProposedDay.HasValue);
         var towerSlab=Slab(10);
         towerSlab.PropId=BackproppingTower.Name; towerSlab.FloorHeightBelowMm=4200;
         var d3=BackproppingCalculator.SupportSpacing(4.625,towerSlab,4000);

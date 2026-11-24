@@ -138,6 +138,7 @@ internal static class Program
    var towerReport=window.BuildReport();
    Assert(towerReport.Contains("18.50 kN per interior tower leg") && towerReport.Contains("4.200 m"));
    Assert(towerReport.Contains("35.0 kN") && towerReport.Contains("Typical tower layout"));
+   Assert(towerReport.Contains("stroke-dasharray='5 4'") && towerReport.Contains("Proposed initial stripping"));
    Assert(towerReport.Contains("DOC-001") && towerReport.Contains("Prepared by A") && towerReport.Contains("Checked by B"));
    if(arguments.Length>1) BackproppingPdf.Save(null,towerReport,System.IO.Path.GetFullPath(System.IO.Path.ChangeExtension(arguments[1],"d3.pdf")));
   }
