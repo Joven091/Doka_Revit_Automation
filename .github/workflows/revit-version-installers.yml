@@ -28,7 +28,7 @@ jobs:
         run: ./scripts/Ensure-SteelShapeTestBrowser.ps1
       - name: Build the Revit-specific bridge and matching Dashboard
         shell: pwsh
-        run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/live -Version 1.2.13 -RevitVersion ${{ matrix.revit }}
+        run: ./scripts/Build-DashboardLiveUpdate.ps1 -OutputDirectory artifacts/live -Version 1.2.14 -RevitVersion ${{ matrix.revit }}
       - name: Exercise backpropping loads and export the actual PDF
         shell: pwsh
         run: |
@@ -62,6 +62,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Slab UI test build failed' }
           & tests/Slab.Tests/bin/Release/net10.0-windows/MyRevitAddin.exe artifacts/evidence/slab-access/slab.png access
           if ($LASTEXITCODE -ne 0) { throw 'Slab UI, persistence and drawing regression failed' }
+      - name: Open both H20 diagrams from the Dokaflex schematic
+        shell: pwsh
+        run: |
+          dotnet build tools/SlabTester -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tester = Start-Process tools/SlabTester/bin/Release/net48/MyRevitAddin.exe -ArgumentList '--startup-check' -Wait -PassThru
+          if ($tester.ExitCode -ne 0) { Get-Content tools/SlabTester/bin/Release/net48/startup-error.txt; exit $tester.ExitCode }
       - name: Verify pours, additive imports and retained planner behavior on both runtimes
         shell: pwsh
         run: |
@@ -113,13 +120,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: Revit${{ matrix.revit }}-1.2.13-installer-and-update-files
+          name: Revit${{ matrix.revit }}-1.2.14-installer-and-update-files
           path: artifacts/company-files/
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Revit${{ matrix.revit }}-1.2.13-validation
+          name: Revit${{ matrix.revit }}-1.2.14-validation
           path: |
             artifacts/evidence/
             artifacts/installer/installer-compile.log
@@ -131,7 +138,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: Revit*-1.2.13-installer-and-update-files
+          pattern: Revit*-1.2.14-installer-and-update-files
           merge-multiple: true
           path: release
       - name: Verify both feeds and archive checksums
@@ -142,14 +149,14 @@ jobs:
           for year, folder in [(2024, pathlib.Path('.')), (2027, pathlib.Path('Revit2027'))]:
               for manifest, key in [('latest.json', 'installerFile'), ('dashboard-latest.json', 'archiveFile')]:
                   item = json.loads((folder / manifest).read_text(encoding='utf-8-sig'))
-                  assert item['revitVersion'] == year and item['version'] in ('1.2.13', '1.2.13.0')
+                  assert item['revitVersion'] == year and item['version'] in ('1.2.14', '1.2.14.0')
                   payload = folder / item[key]
                   assert payload.stat().st_size == item['sizeBytes']
                   with payload.open('rb') as stream:
                       assert hashlib.file_digest(stream, 'sha256').hexdigest() == item['sha256'].lower()
       - uses: actions/upload-artifact@v4
         with:
-          name: Doka-Dashboard-1.2.13-Revit-2024-and-2027
+          name: Doka-Dashboard-1.2.14-Revit-2024-and-2027
           path: release/
           compression-level: 0
           if-no-files-found: error

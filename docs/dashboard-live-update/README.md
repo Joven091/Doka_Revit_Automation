@@ -7,7 +7,7 @@ This development branch separates the existing Dashboard UI/calculations from a 
 ## Team flow
 
 1. Open Engineering Dashboard from Revit, then Check for updates.
-2. Click Update Dashboard for a published compatible release.
+2. If a Dashboard update is available, choose **Yes** to proceed or **No** to close. For a Revit integration update, use the arrow beside **Check for updates** on the launcher.
 3. The ZIP is copied locally and every payload file is verified. The current Dashboard stays available during the download.
 4. Working inputs, unsaved edits, source mappings, selected tool and project path are checkpointed. Calculations/Revit operations must finish first; unsupported open dialogs or uncommitted editor states refuse the update with a reason.
 5. Only the Dashboard restarts. A startup receipt is written after reconnection and restoration. The helper displays completion; D3/Top50 calculation outputs are regenerated with Optimize from the restored inputs.

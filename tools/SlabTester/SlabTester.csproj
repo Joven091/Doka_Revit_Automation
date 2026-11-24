@@ -14,19 +14,15 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
-    <PackageReference Include="OxyPlot.Core" Version="2.1.2" />
-    <PackageReference Include="OxyPlot.Wpf" Version="2.1.2" />
     <Compile Include="../../src/ViewModels/FlexCalculatorViewModel.cs" Link="ViewModels/FlexCalculatorViewModel.cs" />
     <Compile Include="../../src/ViewModels/FlexCalculatorViewModel.Access.cs" Link="ViewModels/FlexCalculatorViewModel.Access.cs" />
     <Compile Include="../../src/Models/SlabBeamAnalysis.cs" Link="Models/SlabBeamAnalysis.cs" />
-    <Compile Include="../../src/Models/SlabAccessPlots.cs" Link="Models/SlabAccessPlots.cs" />
     <Compile Include="../../src/Views/SlabAccessDiagram.cs" Link="Views/SlabAccessDiagram.cs" />
     <Compile Include="../../src/Models/PropDataHelper.cs" Link="Models/PropDataHelper.cs" />
     <Compile Include="../../src/Models/SlabLoadHelper.cs" Link="Models/SlabLoadHelper.cs" />
     <Compile Include="../../src/Models/FloorPropData.cs" Link="Models/FloorPropData.cs" />
     <Compile Include="../../src/Models/ContinuousBeamResponse.cs" Link="ContinuousBeamResponse.cs" />
     <Compile Include="../../src/Models/ContinuousSpanDeflection.cs" Link="Models/ContinuousSpanDeflection.cs" />
-    <Compile Include="../../src/Models/DiagramDataGenerator.cs" Link="Models/DiagramDataGenerator.cs" />
     <Compile Include="../../src/ViewModels/DiagramWindowViewModel.cs" Link="ViewModels/DiagramWindowViewModel.cs" />
     <Compile Include="../../src/ViewModels/DiagramRowItem.cs" Link="ViewModels/DiagramRowItem.cs" />
     <Compile Include="../../src/ViewModels/RelayCommand.cs" Link="ViewModels/RelayCommand.cs" />
@@ -39,4 +35,9 @@
     <Page Include="../../src/Views/DiagramWindow.xaml" Link="Views/DiagramWindow.xaml" />
     <Compile Include="../../src/Views/DiagramWindow.xaml.cs" Link="Views/DiagramWindow.xaml.cs" />
   </ItemGroup>
-<ItemGroup><Compile Include="../../src/Views/DashboardToolbar.cs" Link="Views/DashboardToolbar.cs"/></ItemGroup></Project>
+<ItemGroup><Compile Include="../../src/Views/DashboardToolbar.cs" Link="Views/DashboardToolbar.cs"/></ItemGroup><ItemGroup>
+  <Compile Include="../../src/Models/BeamPlotLoads.cs" />
+  <Compile Include="../../src/Views/MemberPlots.cs" />
+  <Compile Include="../../src/Views/MemberLoadingControls.cs" />
+</ItemGroup>
+</Project>

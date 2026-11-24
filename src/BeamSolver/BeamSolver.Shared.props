@@ -9,6 +9,7 @@
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/TowerStockPlanner.cs" />
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/TransferredSlabOptimizer.cs" />
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../ViewModels/BeamCalculatorViewModel.Transfer.cs" />
+    <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/BeamPlotLoads.cs" />
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/LoadedBeamAnalysis.cs" />
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../Models/TransferBeamNetwork.cs" />
     <BeamSolverSource Include="$(MSBuildThisFileDirectory)../ViewModels/BeamCalculatorViewModel.Network.cs" />

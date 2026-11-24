@@ -202,6 +202,7 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
 .level{grid-template-columns:37% 63%}.drawing{display:grid;grid-template-columns:19% 72% 9%;align-items:start}.level .drawing img{position:static;grid-column:2;grid-row:1;width:100%;height:auto}.drawing .tag{grid-row:1;grid-column:1;text-align:center;align-self:center;font-size:8pt}.drawing .arrow{display:block;position:static;font-size:20pt}.drawing .height{grid-column:3;grid-row:1;align-self:stretch;writing-mode:vertical-rl;text-align:center;border-left:1px solid #196373;color:#196373;font-size:8pt}
 .spacing td,.spacing th{overflow-wrap:normal;padding:1mm}.spacing td:last-child,.spacing th:last-child{white-space:nowrap}
 .cover .signoff div{border:0}
+.load-breakdown{break-inside:avoid-page}
 .loadpage.spacious h1{margin-bottom:9mm}.loadpage.spacious h2{margin-top:11mm}.loadpage.spacious p{margin:3mm 0}.loadpage.spacious td,.loadpage.spacious th{padding-top:3mm;padding-bottom:3mm}
 .tower .elevation{display:block;height:78mm}.sequence{overflow-wrap:anywhere}.sequence .timing{background:#e8eff1;padding:4mm;margin:6mm 0 9mm}.sequence .timing h2{margin:2mm 0 0;font-size:19pt}
 .sequence .step{display:grid;grid-template-columns:23% 1fr;column-gap:2%;border-top:1px solid #c8d6d9;padding:5mm 0;break-inside:avoid}
@@ -253,8 +254,8 @@ th{background:#e8eff1}td:first-child,th:first-child{text-align:left}tr{break-ins
                 string label = lower.IsRaft ? "Raft foundation · no backprop reaction reaches raft" : "Outside required support stack";
                 html.Append($"<div class='level'><div class='info'><b>{H(lower.Name)}</b><small>{label}</small></div><div class='drawing last'><img src='data:image/png;base64,{SectionImage(false,true)}'></div></div>");
             }
-            html.Append($"<h2>Load breakdown</h2><p>Active pour (kN/m²): {N(loads.Slabs[0].SelfWeight)} concrete + 0.500 formwork + 0.750 working + {N(loads.Heaping)} heaping = <b>{N(loads.PourLoad)}</b>.</p><p>All table values are in kN/m².</p>");
-            html.Append(breakdown).Append("</tbody></table><p>Positive excess passes down with a 0.400 kN/m² allowance per required backprop storey.</p>");
+            html.Append($"<section class='load-breakdown'><h2>Load breakdown</h2><p>Active pour (kN/m²): {N(loads.Slabs[0].SelfWeight)} concrete + 0.500 formwork + 0.750 working + {N(loads.Heaping)} heaping = <b>{N(loads.PourLoad)}</b>.</p><p>All table values are in kN/m².</p>");
+            html.Append(breakdown).Append("</tbody></table><p>Positive excess passes down with a 0.400 kN/m² allowance per required backprop storey.</p></section>");
             if (spacing.Length > 0)
             {
                 bool towers = layouts.Values.All(v=>v.Item3.Tower!=null);

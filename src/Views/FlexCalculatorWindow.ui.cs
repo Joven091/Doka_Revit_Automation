@@ -47,7 +47,7 @@ namespace EngineeringDashboard
             if (observedModel.UsesAccessAnalysis)
             {
                 DiagramCaption.Text = "Actual support counts and independent cantilevers are analyzed. Primary UDL = secondary reaction / secondary spacing.\n" +
-                    "The total access load includes deck weight. Slab/access, before-pour and omitted-access stability cases are checked.";
+                    "The total access load includes deck weight. All specified loads act together.";
                 return;
             }
             bool envelope = observedModel.PrimaryBeamCount == "5+" || observedModel.PropCount == "5+";
@@ -132,7 +132,7 @@ namespace EngineeringDashboard
                 results.Inputs.Add(CalculationFiles.Field("Slab and access checks", vm.AccessReport()));
                 return CalculationFiles.Report("Slab", record.Inputs, results.Inputs,
                     "Piecewise UDLs at the actual slab edges; independent end cantilevers; actual support counts. Total access load includes deck weight. " +
-                    "Slab/access and before-pour cases include conservative omission of access loads on either end for stability. " +
+                    "The check applies all specified slab and access loads together. " +
                     "Primary UDLs use the corresponding secondary reactions divided by secondary spacing. Strength, span and cantilever deflection including support rotation, uplift and individual prop loads are checked. " +
                     "The five/six-support full-load envelope is not used for partial or asymmetric loading.");
             }

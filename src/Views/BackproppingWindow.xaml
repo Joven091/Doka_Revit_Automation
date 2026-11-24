@@ -14,7 +14,7 @@
   <ContentControl x:Name="CalculatorToolbarHost" DockPanel.Dock="Top"/>
 
   <StackPanel DockPanel.Dock="Bottom">
-   <WrapPanel><Button x:Name="PdfReport" Content="Generate PDF report" Click="ExportReport_Click"/><Button x:Name="NewCalculation" Content="New calculation" Click="NewCalculation_Click"/></WrapPanel>
+   <WrapPanel><Button x:Name="PdfReport" Content="Generate PDF report" Click="ExportReport_Click"/></WrapPanel>
 
    <TextBlock x:Name="ErrorText" Foreground="#B42318" Margin="0,6" AutomationProperties.LiveSetting="Polite"/>
    <DockPanel><Button Content="Close" Click="Close_Click" DockPanel.Dock="Right"/><Button x:Name="CalculateButton" Content="Calculate spacing" Background="#F2CD24" FontWeight="Bold" Click="Calculate_Click" DockPanel.Dock="Right"/><TextBlock x:Name="ResultState" VerticalAlignment="Center"/></DockPanel>
@@ -26,6 +26,18 @@
      <StackPanel><TextBlock Text="Curing temperature — all slabs"/><ComboBox x:Name="Temperature" SelectionChanged="Temperature_Changed"><ComboBoxItem Content="A · ≥15°C"/><ComboBoxItem Content="B · ≥10°C"/><ComboBoxItem Content="C · ≥5°C"/></ComboBox></StackPanel>
      <StackPanel Grid.Column="1"><TextBlock Text="Project maximum spacing (mm) — optional"/><TextBox x:Name="ProjectMaximum" TextChanged="ProjectMaximum_Changed"/></StackPanel>
     </Grid>
+    <Expander x:Name="ReportDetailsPanel" Header="Report details" Margin="0,0,0,10">
+     <Grid Margin="8,4,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <StackPanel Grid.Row="0" Grid.Column="0"><TextBlock Text="Project"/><TextBox x:Name="ReportProject" AutomationProperties.Name="Project" MaxLength="180"/></StackPanel>
+      <StackPanel Grid.Row="0" Grid.Column="1"><TextBlock Text="Contractor"/><TextBox x:Name="ReportContractor" AutomationProperties.Name="Contractor" MaxLength="180"/></StackPanel>
+      <StackPanel Grid.Row="1" Grid.Column="0"><TextBlock Text="Report title"/><TextBox x:Name="ReportTitle" AutomationProperties.Name="Report title" MaxLength="180"/></StackPanel>
+      <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="Document no."/><TextBox x:Name="ReportDocumentNumber" AutomationProperties.Name="Document no." MaxLength="180"/></StackPanel>
+      <StackPanel Grid.Row="2" Grid.Column="0"><TextBlock Text="Author"/><TextBox x:Name="ReportAuthor" AutomationProperties.Name="Author" MaxLength="180"/></StackPanel>
+      <StackPanel Grid.Row="2" Grid.Column="1"><TextBlock Text="Checker"/><TextBox x:Name="ReportChecker" AutomationProperties.Name="Checker" MaxLength="180"/></StackPanel>
+     </Grid>
+    </Expander>
     <Expander Header="Calculation assumptions" Margin="0,0,0,10"><TextBlock Margin="8" Text="Repeated aligned slab zone. Square grid, rounded down to 25 mm. Concrete: 25 kN/m³. Main formwork: 0.50 kN/m². Working load: 0.75 kN/m². Heaping: 10% of concrete self-weight, min 0.75 / max 1.75 kN/m². Construction live load: 0.75 on the first supporting slab, zero below. Reprop weight: 0.40 kN/m² per required storey. Adopted slab capacity = strength factor × (self-weight + SIDL + final live load). Supplied prop capacities apply to restrained temporary reshoring with direct head/base bearing; prop extension is floor-to-floor height below minus upper slab thickness, assuming direct slab contact without packers. A blank maximum spacing gives capacity-based spacing only; slab support limits are not checked. This uniform-area calculation does not check slab punching, local bearing, stiffness-based load sharing or edge layouts."/></Expander>
     <Border x:Name="ProgressBorder" Background="#FFF6D6" Padding="10" Margin="0,0,0,10"><TextBlock x:Name="ProgressText" AutomationProperties.LiveSetting="Polite"/></Border>
     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="1.05*"/><ColumnDefinition Width="1*"/></Grid.ColumnDefinitions>

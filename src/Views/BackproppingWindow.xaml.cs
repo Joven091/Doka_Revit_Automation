@@ -33,9 +33,8 @@ namespace EngineeringDashboard
     }
     public partial class BackproppingWindow : Window
     {
-        private BackproppingReportDetails reportDetails = new BackproppingReportDetails();
         private readonly List<SlabInput> slabs = new List<SlabInput>();
-        private readonly Dictionary<int, StoreyControls> storeyControls = new Dictionary<int, StoreyControls>();
+        private readonly Dictionary<int, TextBox> storeyMaximums = new Dictionary<int, TextBox>();
         private readonly Dictionary<int, string> extensionDrafts = new Dictionary<int, string>();
         private readonly Dictionary<int, string> maximumDrafts = new Dictionary<int, string>();
         private sealed class SessionState
@@ -55,13 +54,13 @@ namespace EngineeringDashboard
         private bool draftDirty;
         private int editing = -1;
         private TemperatureCurve Curve => (TemperatureCurve)Math.Max(0, Temperature.SelectedIndex);
-        private sealed class StoreyControls { public ComboBox Prop; public TextBox Maximum; }
+
         private static readonly Brush Yellow = new SolidColorBrush(Color.FromRgb(255, 242, 191));
 
         public BackproppingWindow()
         {
             InitializeComponent();
-            CalculatorToolbarHost.Content=new DashboardToolbar(this,"Backpropping",()=>LoadCalculation_Click(null,null),()=>SaveCalculation_Click(null,null));
+            CalculatorToolbarHost.Content=new DashboardToolbar(this,"Backpropping",()=>LoadCalculation_Click(null,null),()=>SaveCalculation_Click(null,null),newCalculation:StartNewCalculation);
             updating = true; Temperature.SelectedIndex = 0; updating = false;
             ready = true; NewDraft(); Refresh();
             if(retained != null) RestoreSession(retained);
@@ -308,29 +307,77 @@ namespace EngineeringDashboard
 
         private void RenderStoreys(LoadResult loads)
         {
-            StoreyPanel.Children.Clear(); storeyControls.Clear();
+            StoreyPanel.Children.Clear(); storeyMaximums.Clear();
             foreach (var row in loads.Slabs.Where(r => r.Index > 0 && r.Transfer > 0 && r.Index < slabs.Count-1))
             {
                 int index = row.Index; var slab = slabs[index];
                 var group = new GroupBox { Header = slab.Name + " → " + slabs[index+1].Name, Padding = new Thickness(8), Margin = new Thickness(0,0,0,8) };
-                var panel = new StackPanel(); var grid = new Grid(); for (int c=0;c<2;c++) grid.ColumnDefinitions.Add(new ColumnDefinition());
-                var controls = new StoreyControls { Prop = new ComboBox { ItemsSource = BackproppingPropCatalog.All.Select(p=>p.Name).Concat(new[]{BackproppingTower.Name}), SelectedItem = slab.PropId },
-                    Maximum = new TextBox { Text = maximumDrafts.TryGetValue(index, out string max) ? max : slab.MaximumSpacingMm?.ToString(CultureInfo.CurrentCulture) ?? "" } };
-                storeyControls[index] = controls;
-                string[] labels = { "Reprop support system / model", "Maximum override (mm)" };
-                Control[] inputs = { controls.Prop, controls.Maximum };
-                for (int c=0;c<2;c++) { var field = new StackPanel(); field.Children.Add(Text(labels[c])); field.Children.Add(inputs[c]); Grid.SetColumn(field,c); grid.Children.Add(field); }
-                panel.Children.Add(grid);
+                var panel = new StackPanel();
+                var fields = new WrapPanel();
+                var system = new ComboBox { Name="SupportSystem", ItemsSource = new[] { "Props", BackproppingTower.Name },
+                    SelectedItem = slab.PropId == BackproppingTower.Name ? BackproppingTower.Name : "Props" };
+                var selected = BackproppingPropCatalog.All.FirstOrDefault(p => p.Name == slab.PropId);
+                var family = new ComboBox { Name="PropFamily", ItemsSource = BackproppingPropCatalog.All.Select(p => p.Family).Distinct().ToArray(),
+                    SelectedItem = selected?.Family };
+                var size = new ComboBox { Name="PropSize", DisplayMemberPath = nameof(BackproppingProp.Size) };
+                var maximum = new TextBox { Text = maximumDrafts.TryGetValue(index, out string max) ? max : slab.MaximumSpacingMm?.ToString(CultureInfo.CurrentCulture) ?? "" };
+                storeyMaximums[index] = maximum;
+                StackPanel Field(string label, Control input)
+                {
+                    var field = new StackPanel { MinWidth = 135 };
+                    field.Children.Add(Text(label));
+                    field.Children.Add(input);
+                    System.Windows.Automation.AutomationProperties.SetName(input, label);
+                    fields.Children.Add(field);
+                    return field;
+                }
+                Field("System", system);
+                var familyField = Field("Prop family", family);
+                var sizeField = Field("Prop size", size);
+                Field("Maximum override (mm)", maximum);
+                void SetSizes(BackproppingProp current)
+                {
+                    size.ItemsSource = BackproppingPropCatalog.All.Where(p => p.Family == (string)family.SelectedItem).ToArray();
+                    size.SelectedItem = current;
+                    size.IsEnabled = family.SelectedItem != null;
+                }
+                SetSizes(selected);
+                panel.Children.Add(fields);
                 var geometryHint = Text("");
                 Action updateHint = () => geometryHint.Text = slab.PropId == BackproppingTower.Name
                     ? $"D3 clear height: {slab.PropExtensionMm:0.##} mm · restrained heads · 1.50 m inter-frame spacing"
                     : $"Prop extension: {slab.PropExtensionMm:0.##} mm (automatic). Blank maximum uses the project limit.";
-                updateHint(); panel.Children.Add(geometryHint);
+                void ShowSystem()
+                {
+                    bool isTower = Equals(system.SelectedItem, BackproppingTower.Name);
+                    familyField.Visibility = sizeField.Visibility = isTower ? Visibility.Collapsed : Visibility.Visible;
+                    slab.PropId = isTower ? BackproppingTower.Name : (size.SelectedItem as BackproppingProp)?.Name;
+                    updateHint();
+                }
+                void SelectionChanged()
+                {
+                    ShowSystem();
+                    RenderSection(loads);
+                    InvalidateResults();
+                }
+                ShowSystem();
+                panel.Children.Add(geometryHint);
                 group.Content = panel; StoreyPanel.Children.Add(group);
-                controls.Prop.SelectionChanged += (a,b) => { slab.PropId = controls.Prop.SelectedItem as string; updateHint(); RenderSection(loads); InvalidateResults(); };
-                controls.Maximum.TextChanged += (a,b) => { maximumDrafts[index] = controls.Maximum.Text; InvalidateResults(); };
+                bool changingSizes = false;
+                system.SelectionChanged += (a,b) => SelectionChanged();
+                family.SelectionChanged += (a,b) =>
+                {
+                    var previous = size.SelectedItem as BackproppingProp;
+                    changingSizes = true;
+                    var sizes = BackproppingPropCatalog.All.Where(p => p.Family == (string)family.SelectedItem);
+                    SetSizes(sizes.FirstOrDefault(p => p.Size == previous?.Size) ?? sizes.FirstOrDefault());
+                    changingSizes = false;
+                    SelectionChanged();
+                };
+                size.SelectionChanged += (a,b) => { if (!changingSizes) SelectionChanged(); };
+                maximum.TextChanged += (a,b) => { maximumDrafts[index] = maximum.Text; InvalidateResults(); };
             }
-            if (storeyControls.Count == 0) StoreyPanel.Children.Add(Text(loads.Complete ? "No backpropping storey required." : "Add the next supporting slab to configure backpropping."));
+            if (storeyMaximums.Count == 0) StoreyPanel.Children.Add(Text(loads.Complete ? "No backpropping storey required." : "Add the next supporting slab to configure backpropping."));
         }
         private void UpdateLimitHints() { ResultState.Text = "Spacing limit changed — calculate spacing."; }
         private void RenderBreakdown(LoadResult loads)
@@ -354,11 +401,11 @@ namespace EngineeringDashboard
                 if (!loads.Complete) throw new ArgumentException("Add the next supporting slab before calculating final spacing.");
                 foreach (var row in loads.Slabs.Where(r => r.Index > 0 && r.Transfer > 0))
                 {
-                    var s = slabs[row.Index]; var controls = storeyControls[row.Index];
+                    var s = slabs[row.Index]; var maximumInput = storeyMaximums[row.Index];
                     var panel = new StackPanel(); panel.Children.Add(Text(s.Name + " → " + slabs[row.Index+1].Name, true));
                     try
                     {
-                        double? maximum = OptionalMaximum(controls.Maximum) ?? projectMax;
+                        double? maximum = OptionalMaximum(maximumInput) ?? projectMax;
                         var result = BackproppingCalculator.SupportSpacing(row.DownwardLoad, s, maximum);
                         panel.Children.Add(new TextBlock { Text = $"{result.SpacingMm:0} × {result.SpacingMm:0} mm", FontSize = 32, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap });
                         string member = result.Tower == null ? "prop" : "tower leg";
@@ -379,7 +426,7 @@ namespace EngineeringDashboard
             catch (ArgumentException ex) { ErrorText.Text = ex.Message; ResultState.Text = "Calculation incomplete."; }
         }
         private SessionState CaptureSession() => new SessionState {
-            Details=reportDetails, Slabs=slabs.Select(s=>s.Copy()).ToList(), Maximums=new Dictionary<int,string>(maximumDrafts),
+            Details=ReadReportDetails(), Slabs=slabs.Select(s=>s.Copy()).ToList(), Maximums=new Dictionary<int,string>(maximumDrafts),
             ProjectMaximum=ProjectMaximum.Text, Curve=Temperature.SelectedIndex, Editing=editing, Dirty=draftDirty,
             HadResults=ResultsPanel.Children.Count>0,
             Draft=new[]{FloorName.Text,Thickness.Text,FloorHeight.Text,Age.Text,Sidl.Text,LiveLoad.Text}, RaftDraft=Raft.IsChecked == true
@@ -390,7 +437,7 @@ namespace EngineeringDashboard
             maximumDrafts.Clear(); foreach(var pair in state.Maximums) maximumDrafts[pair.Key]=pair.Value;
             Temperature.SelectedIndex=state.Curve; ProjectMaximum.Text=state.ProjectMaximum;
             Raft.IsChecked=state.RaftDraft;
-            reportDetails=state.Details ?? new BackproppingReportDetails();
+            SetReportDetails(state.Details);
             editing=state.Editing; draftDirty=state.Dirty;
             TextBox[] boxes={FloorName,Thickness,FloorHeight,Age,Sidl,LiveLoad};
             for(int i=0;i<boxes.Length;i++) boxes[i].Text=state.Draft[i];
@@ -399,15 +446,15 @@ namespace EngineeringDashboard
         }
         internal void StartNewCalculation()
         {
-            slabs.Clear(); maximumDrafts.Clear(); extensionDrafts.Clear(); retained=null; reportDetails=new BackproppingReportDetails();
+            slabs.Clear(); maximumDrafts.Clear(); extensionDrafts.Clear(); retained=null; SetReportDetails(null);
             updating=true; Temperature.SelectedIndex=0; ProjectMaximum.Text=""; updating=false;
             ErrorText.Text=""; NewDraft(); Refresh(); InvalidateResults(); ResultState.Text="New calculation — enter the slab being cast.";
         }
-        private void NewCalculation_Click(object sender,RoutedEventArgs e) => StartNewCalculation();
+
         internal BackproppingDocument CaptureCalculation()
         {
             if(editing>=0 || draftDirty) throw new ArgumentException("Save or cancel the current slab entry before saving or exporting the calculation.");
-            var document=new BackproppingDocument { Version=3, Details=reportDetails, Curve=Curve, ProjectMaximumMm=OptionalMaximum(ProjectMaximum), Slabs=slabs.Select(s=>s.Copy()).ToList() };
+            var document=new BackproppingDocument { Version=3, Details=ReadReportDetails(), Curve=Curve, ProjectMaximumMm=OptionalMaximum(ProjectMaximum), Slabs=slabs.Select(s=>s.Copy()).ToList() };
             foreach(var pair in maximumDrafts)
                 if(pair.Key>=0 && pair.Key<document.Slabs.Count)
                     document.Slabs[pair.Key].MaximumSpacingMm=OptionalMaximum(new TextBox{Text=pair.Value});
@@ -431,7 +478,7 @@ namespace EngineeringDashboard
             ValidateDocument(document); // Preserve the current calculation if the file is invalid.
             updating=true; slabs.Clear(); slabs.AddRange(document.Slabs.Select(s=>s.Copy()));
             maximumDrafts.Clear(); extensionDrafts.Clear(); Temperature.SelectedIndex=(int)document.Curve;
-            reportDetails=document.Details ?? new BackproppingReportDetails();
+            SetReportDetails(document.Details);
             ProjectMaximum.Text=document.ProjectMaximumMm?.ToString(CultureInfo.CurrentCulture) ?? "";
             updating=false; ErrorText.Text=""; NewDraft(); Refresh(); InvalidateResults();
             ResultState.Text="Calculation loaded — calculate spacing to review results.";
@@ -471,9 +518,18 @@ namespace EngineeringDashboard
                 var document = CaptureCalculation();
                 var loads = BackproppingCalculator.CalculateLoads(document.Slabs, document.Curve);
                 if (!loads.Complete) throw new ArgumentException("Complete the supporting slab stack before exporting a report.");
-                var details = EditReportDetails();
-                if (details == null) return;
-                document.Details = reportDetails = details;
+                var missing = new[] { ReportProject, ReportContractor, ReportTitle, ReportAuthor, ReportChecker, ReportDocumentNumber }
+                    .FirstOrDefault(field => string.IsNullOrWhiteSpace(field.Text));
+                if (missing != null)
+                {
+                    ReportDetailsPanel.IsExpanded = true;
+                    ErrorText.Text = "Complete the report details before generating the PDF.";
+                    ReportDetailsPanel.UpdateLayout();
+                    missing.BringIntoView();
+                    missing.Focus();
+                    return;
+                }
+                ErrorText.Text = "";
                 var html = BackproppingPdf.Report(document, loads);
                 var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "PDF report (*.pdf)|*.pdf", DefaultExt = ".pdf", FileName = "Backpropping calculation.pdf" };
                 if (dialog.ShowDialog(this) == true)
@@ -481,31 +537,24 @@ namespace EngineeringDashboard
             });
         }
 
-        private BackproppingReportDetails EditReportDetails()
+        private BackproppingReportDetails ReadReportDetails() => new BackproppingReportDetails
         {
-            var window = new Window { Title="Report details", Owner=this, Width=460, SizeToContent=SizeToContent.Height, WindowStartupLocation=WindowStartupLocation.CenterOwner };
-            var panel = new StackPanel { Margin=new Thickness(18) };
-            var fields = new List<TextBox>();
-            var values = new[]{reportDetails.Project,reportDetails.Contractor,reportDetails.Title,reportDetails.Author,reportDetails.Checker,reportDetails.DocumentNumber};
-            foreach(string label in new[]{"Project","Contractor","Report title","Author","Checker","Document no."})
-            {
-                panel.Children.Add(Text(label));
-                var field=new TextBox { Text=values[fields.Count] ?? "", MaxLength=180, Margin=new Thickness(0,2,0,7) };
-                fields.Add(field); panel.Children.Add(field);
-            }
-            var buttons = new StackPanel { Orientation=Orientation.Horizontal, HorizontalAlignment=HorizontalAlignment.Right };
-            var cancel=new Button { Content="Cancel", IsCancel=true, Padding=new Thickness(12,5,12,5) };
-            var save=new Button { Content="Continue to PDF", IsDefault=true, Padding=cancel.Padding, Margin=new Thickness(6,0,0,0) };
-            save.Click+=(s,e)=>
-            {
-                var missing=fields.FirstOrDefault(field=>string.IsNullOrWhiteSpace(field.Text));
-                if(missing!=null) { MessageBox.Show(window,"Enter each report detail to continue.","Report details"); missing.Focus(); return; }
-                window.DialogResult=true;
-            };
-            buttons.Children.Add(cancel); buttons.Children.Add(save); panel.Children.Add(buttons);
-            window.Content=panel;
-            if(window.ShowDialog()!=true) return null;
-            return new BackproppingReportDetails { Project=fields[0].Text.Trim(),Contractor=fields[1].Text.Trim(),Title=fields[2].Text.Trim(),Author=fields[3].Text.Trim(),Checker=fields[4].Text.Trim(),DocumentNumber=fields[5].Text.Trim() };
+            Project = ReportProject.Text.Trim(),
+            Contractor = ReportContractor.Text.Trim(),
+            Title = ReportTitle.Text.Trim(),
+            Author = ReportAuthor.Text.Trim(),
+            Checker = ReportChecker.Text.Trim(),
+            DocumentNumber = ReportDocumentNumber.Text.Trim()
+        };
+
+        private void SetReportDetails(BackproppingReportDetails details)
+        {
+            ReportProject.Text = details?.Project ?? "";
+            ReportContractor.Text = details?.Contractor ?? "";
+            ReportTitle.Text = details?.Title ?? "";
+            ReportAuthor.Text = details?.Author ?? "";
+            ReportChecker.Text = details?.Checker ?? "";
+            ReportDocumentNumber.Text = details?.DocumentNumber ?? "";
         }
 
         internal string BuildReport()

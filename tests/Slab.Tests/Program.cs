@@ -9,7 +9,6 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using EngineeringDashboard;
-using MyRevitAddin.Models;
 class Program
 {
  static int checks;
@@ -83,12 +82,12 @@ class Program
   Check(cases.DiagramRows[7].CaseText.Contains("6 supports") && cases.DiagramRows[7].CaseText.Contains("Governing magnitude"),"six governs deflection within 5+");
   Check(cases.DiagramRows[7].MaxValueText.Contains("Maximum downward: 0.07 mm"),"downward deflection sign and units");
   Check(cases.DiagramRows[0].GeometryText.Contains("1000 mm"),"dimensions have units");
-  foreach(int j in new[]{1,2,3,5,6,7}) Check(cases.DiagramRows[j].ChartModel.Annotations.OfType<OxyPlot.Annotations.LineAnnotation>().Count(a=>a.Type==OxyPlot.Annotations.LineAnnotationType.Vertical)==(j<4?5:6),"support guides match case");
+  foreach(int j in new[]{1,2,3,5,6,7}) Check(cases.DiagramRows[j].Beam.Supports.Length==(j<4?5:6),"support guides match case");
   int accepted=0;
   foreach(int h in new[]{100,150,200,300,400,600})foreach(int lp in new[]{500,750,1000,1250,1500,2000})foreach(string n in new[]{"2","3","4","5+"})foreach(string limit in new[]{"L/500","L/350","L/270"}){
    v=new FlexCalculatorViewModel{SlabThickness=h,FloorHeight=h+2418,PropSpacing=lp,PropCount=n,DeflectionLimit=limit};
    if(!v.IsCalculationValid){Check(v.SuggestedPrimaryBeamSpacing==0,"invalid clears spacing");continue;}accepted++;Check(v.PrimaryDeflectionMm<=lp/double.Parse(limit.Substring(2))+1e-7,"sweep primary deflection");Check(v.SuggestedPrimaryBeamSpacing%25==0,"output grid");
-   var row=v.PrimaryDiagramViewModel.DiagramRows[3];var line=(OxyPlot.Series.LineSeries)row.ChartModel.Series[0];double a=v.PrimaryBeamCantilever/1000,last=a+(n=="5+"?4:int.Parse(n)-1)*lp/1000.0;double actual=line.Points.Where(p=>p.X>=a&&p.X<=last).Max(p=>Math.Abs(p.Y));Check(actual<=v.PrimaryDeflectionMm+1e-5,"diagram independently integrated span");
+   var row=v.PrimaryDiagramViewModel.DiagramRows[3];double actual=row.Beam.SpanDeflection*1000;Check(actual<=v.PrimaryDeflectionMm+1e-5,"diagram independently integrated span");
   }
   Console.WriteLine($"Sweep: 432 input combinations; {accepted} valid layouts.");
   RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;window=new FlexCalculatorWindow();var visualRoot=(FrameworkElement)window.Content;visualRoot.Measure(new Size(1040,860));visualRoot.Arrange(new Rect(0,0,1040,860));visualRoot.UpdateLayout();Pump();v=(FlexCalculatorViewModel)window.DataContext;var import=(Button)window.FindName("ImportButton");Check(import.IsEnabled,"initial import");
@@ -126,6 +125,14 @@ class Program
   var accessVisual=(SlabAccessDiagram)window.FindName("AccessDiagram");accessVisual.Measure(new Size(440,395));accessVisual.Arrange(new Rect(0,0,440,395));accessVisual.UpdateLayout();
   var accessImage=new RenderTargetBitmap(440,395,96,96,PixelFormats.Pbgra32);accessImage.Render(accessVisual);
   Check(accessVisual.DrawnAccessZones==2&&accessVisual.DrawnSupports==2,"actual access preview renders both zones and support locations");
+  foreach (string layer in new[] { "Primary H20", "Secondary H20" })
+  {
+   v.AccessPreviewBeam=layer;Pump();accessVisual.UpdateLayout();accessImage.Render(accessVisual);
+   bool primary = layer=="Primary H20";
+   Check(accessVisual.BeamAt(new Point(50,95))==primary,"section selects the displayed H20");
+   Check(accessVisual.BeamAt(new Point(26,80))==!primary,"section selects the crossing H20");
+   Check(accessVisual.BeamAt(new Point(50,60))==null,"slab face does not open a beam diagram");
+  }
   Enter("TotalAccessLoadKnM2","bad");Invalid(v,"access input conversion blocks calculation");v.PrimaryHasAccess=false;Pump();Check(v.IsCalculationValid,"disabled access text does not block ordinary slab");
   v.PrimaryHasAccess=true;Pump();Invalid(v,"reactivated bad access text blocks again");Enter("TotalAccessLoadKnM2","0.75");Check(v.IsCalculationValid,"repaired access load restores diagrams");
   string[] accessFields={"PrimaryRightCantilever","SecondaryRightCantilever","PrimaryHasAccess","SecondaryHasAccess","PrimaryAccessEnd","SecondaryAccessEnd","PrimaryAccessLeftMm","PrimaryAccessRightMm","SecondaryAccessLeftMm","SecondaryAccessRightMm","TotalAccessLoadKnM2","ExactPrimaryBeamCount","ExactPropCount"};

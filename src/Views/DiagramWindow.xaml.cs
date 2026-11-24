@@ -1,32 +1,45 @@
 using System;
-using System.ComponentModel;
+using System.Globalization;
+using System.Linq;
 using System.Windows;
-using OxyPlot;
+using System.Windows.Data;
+using EngineeringDashboard;
+using MyRevitAddin.ViewModels;
 
 namespace MyRevitAddin.Views
 {
-    public partial class DiagramWindow : Window, INotifyPropertyChanged
+    public partial class DiagramWindow : Window
     {
-        public string WindowTitle { get; set; }
+        public string WindowTitle { get => Title; set => Title = value; }
+        public DiagramWindow() { InitializeComponent(); }
+    }
 
-        public DiagramWindow()
+    public sealed class SlabPlotConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            InitializeComponent();
+            if (!(value is DiagramRowItem row)) return null;
+            var beam = row.Beam;
+            double length = beam.Length * 1000;
+            var supports = beam.Supports.Select(x => x * 1000).ToArray();
+            if (row.Index == 0)
+            {
+                var loads = beam.Loads.Select(q => new BeamDistributedLoad
+                    { StartMm = q.Start * 1000, EndMm = q.End * 1000, KnPerM = q.Load }).ToArray();
+                var plot = new TowerDiagramWindow.MemberLoadingPlot(length, supports, beam.Reactions, loads, Array.Empty<BeamPointLoad>());
+                return new MemberLoadingView(plot, supports, beam.Reactions, row.CaseText, null, band =>
+                {
+                    var zones = beam.Loads.Where(q => q.End * 1000 > band.StartMm && q.Start * 1000 < band.EndMm)
+                        .Select(q => q.IsAccess ? "Access" : "Slab").Distinct();
+                    return new LoadCalculation { Name = string.Join(" / ", zones) + " distributed load" };
+                });
+            }
+            var boundaries = beam.Loads.SelectMany(q => new[] { q.Start * 1000, q.End * 1000 }).ToArray();
+            return new TowerDiagramWindow.LoadedResponsePlot(length, supports, boundaries, row.Index - 1,
+                (int)beam.DeflectionDenominator, row.Index == 1 ? FlexCalculatorViewModel.MAX_H20_SHEAR_KN : FlexCalculatorViewModel.MAX_H20_MOMENT_KNM,
+                row.Magnitude, false, row.ResponseAt);
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected virtual void OnPropertyChanged(string propertyName)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-
-        protected override void OnClosing(CancelEventArgs e)
-        {
-            // Instead of closing and destroying, we can just hide it so we don't have to manage recreations
-            // Or we let it close and the caller manages instantiating a new one.
-            // Based on prompt "manage non-modal windows", it's usually cleaner to let them close
-            // and have the caller null out its reference.
-            base.OnClosing(e);
-        }
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
     }
 }

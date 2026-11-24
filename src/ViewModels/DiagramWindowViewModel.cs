@@ -1,103 +1,64 @@
 using System;
-using System.Collections.ObjectModel;
-using OxyPlot;
+using System.Collections.Generic;
+using System.Linq;
 using EngineeringDashboard;
-using MyRevitAddin.Models;
 
 namespace MyRevitAddin.ViewModels
 {
     public class DiagramWindowViewModel
     {
-        // The View will bind to this collection
-        public ObservableCollection<DiagramRowItem> DiagramRows { get; set; }
+        public List<DiagramRowItem> DiagramRows { get; } = new List<DiagramRowItem>();
 
         public static DiagramWindowViewModel ForAccess(SlabBeamAnalysis beam, string name, string loadCase)
         {
-            var result = new DiagramWindowViewModel(SlabAccessPlots.Generate(beam));
-            foreach (var row in result.DiagramRows)
+            var result = new DiagramWindowViewModel();
+            result.AddCase(beam, $"{name} · {loadCase} · {beam.Supports.Length} actual supports");
+            if (beam.Loads.Any(q => q.IsAccess))
             {
-                row.CaseText = name + " · " + loadCase + " · " + beam.Supports.Length + " actual supports";
-                row.GeometryText = $"Left cantilever {beam.LeftCantilever * 1000:0.##} mm · support spans {beam.Span * 1000:0.##} mm · right cantilever {beam.RightCantilever * 1000:0.##} mm. Dashed lines mark slab edges.";
-            }
-            result.DiagramRows[0].GeometryText += " Red: slab zone. Blue: access zone. Primary UDL = this primary's secondary reaction / secondary spacing.";
-            result.DiagramRows[3].GeometryText += " Negative = downward; positive = upward.";
-            return result;
-        }
-
-        public static DiagramWindowViewModel ForSelection(int selection, double span, double cantilever, double load, double ei, string name)
-        {
-            var five = ContinuousBeamResponse.Analyze(selection, span, cantilever, load, ei);
-            var six = selection == 5 ? ContinuousBeamResponse.Analyze(6, span, cantilever, load, ei) : five;
-            DiagramWindowViewModel result = null;
-            foreach (int count in selection == 5 ? new[] { 5, 6 } : new[] { selection })
-            {
-                var model = new DiagramWindowViewModel(DiagramDataGenerator.GeneratePlots(count, span, cantilever, cantilever, load, ei, name));
-                var current = count == 6 ? six : five;
-                double[] values = { current.Reaction, current.Shear, current.Moment, Math.Max(current.SpanDeflection, current.CantileverDeflection) };
-                double[] limits = { Math.Max(five.Reaction, six.Reaction), Math.Max(five.Shear, six.Shear), Math.Max(five.Moment, six.Moment), Math.Max(Math.Max(five.SpanDeflection, five.CantileverDeflection), Math.Max(six.SpanDeflection, six.CantileverDeflection)) };
-                for (int i = 0; i < model.DiagramRows.Count; i++)
-                {
-                    var row = model.DiagramRows[i];
-                    row.CaseText = name + " � " + (selection == 5 ? "5+ check � " : "") + count + " supports";
-                    if (selection == 5 && values[i] >= limits[i] - 1e-10 * Math.Max(1, limits[i]))
-                        row.CaseText += i == 0 ? " � Governing reaction" : " � Governing magnitude";
-                    row.GeometryText = i == 0
-                        ? $"Left overhang: {cantilever * 1000:0.##} mm � Equal spans: {span * 1000:0.##} mm � Right overhang: {cantilever * 1000:0.##} mm"
-                        : "Dashed vertical lines mark supports. Distance is measured from the left beam end.";
-                    if (i == 3) row.GeometryText += " Negative = downward; positive = upward.";
-                    row.ChartModel.Title = null;
-                }
-                if (result == null) result = model;
-                else foreach (var row in model.DiagramRows) result.DiagramRows.Add(row);
+                result.DiagramRows[0].GeometryText += "\n" + string.Join(" · ", beam.Loads.Select(q =>
+                    $"{(q.IsAccess ? "Access" : "Slab")} {q.Start * 1000:0.##}–{q.End * 1000:0.##} mm: {q.Load:0.###} kN/m"));
             }
             return result;
         }
 
-        public DiagramWindowViewModel(
-            (PlotModel load, PlotModel shear, PlotModel moment, PlotModel deflection,
-             double maxShear, double minShear,
-             double maxMoment, double minMoment,
-             double maxDeflection, double minDeflection) backendData)
+        public static DiagramWindowViewModel ForSelection(int selection, double span, double cantilever, double load,
+            double ei, string name, int denominator = 350)
         {
-            DiagramRows = new ObservableCollection<DiagramRowItem>
+            var result = new DiagramWindowViewModel();
+            var counts = selection == 5 ? new[] { 5, 6 } : new[] { selection };
+            var beams = counts.Select(count => SlabBeamAnalysis.Analyze(count, span, cantilever, cantilever,
+                new[] { new SlabBeamLoad { End = cantilever + (count - 1) * span + cantilever, Load = load } }, ei, denominator)).ToArray();
+            foreach (var beam in beams)
             {
-                // 0. Loading Diagram Data
-                new DiagramRowItem
+                var label = name + (selection == 5 ? " · 5+ check" : "") + $" · {beam.Supports.Length} supports";
+                result.AddCase(beam, label);
+            }
+            if (selection == 5)
+            {
+                foreach (var row in result.DiagramRows)
                 {
-                    Title = "Loading Diagram",
-                    ChartModel = backendData.load,
-                    MaxValueText = "", // No max/min text for loading diagram
-                    MinValueText = ""
-                },
-
-                // 1. Shear Data
-                new DiagramRowItem
-                {
-                    Title = "Shear Force (V)",
-                    ChartModel = backendData.shear,
-                    MaxValueText = $"Max: {Math.Round(backendData.maxShear, 2)} kN",
-                    MinValueText = $"Min: {Math.Round(backendData.minShear, 2)} kN"
-                },
-
-                // 2. Bending Moment Data
-                new DiagramRowItem
-                {
-                    Title = "Bending Moment (M)",
-                    ChartModel = backendData.moment,
-                    MaxValueText = $"Max: {Math.Round(backendData.maxMoment, 2)} kNm",
-                    MinValueText = $"Min: {Math.Round(backendData.minMoment, 2)} kNm"
-                },
-
-                // 3. Deflection Data
-                new DiagramRowItem
-                {
-                    Title = "Deflection",
-                    ChartModel = backendData.deflection,
-                    MaxValueText = $"Maximum downward: {Math.Max(0, -backendData.minDeflection):0.00} mm",
-                    MinValueText = $"Maximum upward: {Math.Max(0, backendData.maxDeflection):0.00} mm"
+                    double largest = result.DiagramRows.Where(r => r.Index == row.Index).Max(r => r.Magnitude);
+                    if (row.Magnitude >= largest - 1e-10 * Math.Max(1, largest))
+                        row.CaseText += row.Index == 0 ? " · Governing reaction" : " · Governing magnitude";
                 }
-            };
+            }
+            return result;
+        }
+
+        private void AddCase(SlabBeamAnalysis beam, string label)
+        {
+            string geometry = $"Left overhang {beam.LeftCantilever * 1000:0.##} mm · Support spans {beam.Span * 1000:0.##} mm · Right overhang {beam.RightCantilever * 1000:0.##} mm";
+            string[] titles = { "Loading diagram", "Shear force", "Bending moment", "Deflection" };
+            for (int index = 0; index < titles.Length; index++)
+            {
+                DiagramRows.Add(new DiagramRowItem
+                {
+                    Title = titles[index], CaseText = label, Beam = beam, Index = index,
+                    GeometryText = index == 0 ? geometry + ". Click a load or reaction for details."
+                        : "Distance from the left beam end. Dashed vertical lines mark supports. Red dashed lines show the permissible limits."
+                            + (index == 3 ? " Negative deflection is downward." : "")
+                });
+            }
         }
     }
 }
-

@@ -7,15 +7,14 @@ using System.Windows.Media;
 namespace EngineeringDashboard
 {
     /// <summary>Section and equivalent-UDL preview share the exact analyzed beam coordinates and slab edges.</summary>
-    public sealed class SlabAccessDiagram : FrameworkElement
+    public sealed class SlabAccessDiagram : H20Schematic
     {
-        private FlexCalculatorViewModel model;
         public int DrawnAccessZones { get; private set; }
         public int DrawnSupports { get; private set; }
-        public void SetModel(FlexCalculatorViewModel value) { model = value; InvalidateVisual(); }
+        public void SetModel(FlexCalculatorViewModel value) { model = value; ClearFaces(); InvalidateVisual(); }
         protected override void OnRender(DrawingContext dc)
         {
-            base.OnRender(dc); DrawnAccessZones = DrawnSupports = 0;
+            base.OnRender(dc); ClearFaces(); DrawnAccessZones = DrawnSupports = 0;
             var beam = model?.AccessPreviewAnalysis;
             if (beam == null || !model.IsCalculationValid || ActualWidth < 160 || ActualHeight < 180) return;
             double left = 24, right = ActualWidth - 24, width = right - left;
@@ -44,9 +43,16 @@ namespace EngineeringDashboard
             var slab = beam.Loads.Single(q => !q.IsAccess);
             dc.DrawRectangle(Brushes.LightSteelBlue, new Pen(Brushes.SlateGray, .6), new Rect(X(slab.Start), 39, X(slab.End) - X(slab.Start), 31));
             Text("Slab", (X(slab.Start) + X(slab.End)) / 2, 44, center: true);
+            bool primary = model.AccessPreviewBeam == "Primary H20";
             for (int i = 0; i <= 12; i++)
-                dc.DrawRectangle(Brushes.Goldenrod, new Pen(Brushes.DarkGoldenrod, .5), new Rect(left + (width - 7) * i / 12, 74, 7, 14));
-            dc.DrawRectangle(Brushes.Gold, new Pen(Brushes.DarkGoldenrod, 1), new Rect(left, 88, width, 14));
+            {
+                var crossSection = new Rect(left + (width - 7) * i / 12, 74, 7, 14);
+                dc.DrawRectangle(Brushes.Goldenrod, new Pen(Brushes.DarkGoldenrod, .5), crossSection);
+                AddFace(new RectangleGeometry(crossSection), !primary);
+            }
+            var member = new Rect(left, 88, width, 14);
+            dc.DrawRectangle(Brushes.Gold, new Pen(Brushes.DarkGoldenrod, 1), member);
+            AddFace(new RectangleGeometry(member), primary);
             foreach (double support in beam.Supports) { Triangle(X(support), 103); DrawnSupports++; }
             Text("Cantilevers: " + (beam.LeftCantilever * 1000).ToString("0.##") + " / " + (beam.RightCantilever * 1000).ToString("0.##") + " mm (support to beam end)", left, 125, size: 10);
             Text(model.AccessPreviewBeam == "Secondary H20" ? "Secondary loading — slab and access" : "Primary loading — equivalent UDL", left, 166, size: 13);

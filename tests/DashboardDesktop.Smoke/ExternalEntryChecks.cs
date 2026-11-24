@@ -20,7 +20,7 @@ internal static class ExternalEntryChecks
         {
             var dome=ByName(window,"Dome calculator — Beta — Locked");Check(!dome.Current.IsEnabled,"actual external process displays locked Dome card");
             updates.Set();var updateWindow=WaitWindow(process.Id,w=>w.Current.Name=="Engineering Dashboard updates");
-            Wait(()=>ByName(updateWindow,"Revit integration updates").Current.IsEnabled,"update page finishes checking local feed");
+            Wait(()=>ByName(updateWindow,"No Dashboard update is available.").Current.IsEnabled,"update page finishes checking local feed");
             Check(true,"Revit update event opens the desktop update page in an existing process");Close(updateWindow,process.Id);
             Invoke(ByName(window,"Beam calculator"));
             var beam=WaitWindow(process.Id,w=>w.Current.Name=="Beam Calculator");Invoke(ByName(beam,"Choose D3 Shoring System"));

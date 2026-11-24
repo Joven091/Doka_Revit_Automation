@@ -1,4 +1,4 @@
-# Slab access extensions — Dashboard 1.2.6
+# Dokaflex slab access extensions
 
 Dokaflex Support layout has independent left/right cantilevers for both H20 layers.
 Enable **Access beyond slab edge**, choose **Left**, **Right** or **Both**, and enter
@@ -25,15 +25,12 @@ in that zone. Slab and access reactions are kept paired by primary line; indepen
 maximum reactions must not be combined because that can hide uplift. Where both
 axes extend, the access bands form a union; their corner load is counted once.
 
-Search retains the 25 mm spacing grid and checks strength, span and overhang
-displacement, support contact and every individual prop reaction. Pouring and
-before-pour cases are checked. Before pouring, the existing formwork-only load
-remains inside the slab footprint. Conservative end-load omission cases check
-either access end independently, including both-end configurations. The total
-access input is not split into invented dead and live portions: omitting a side
-removes its stabilizing load as a conservative bound. The case selector exposes
-these distributions and the receiving primary line. Reported maximum prop load
-and checks cover all cases, not only the diagram currently selected.
+The calculator checks the fully loaded pour. Slab pressure acts over the slab
+footprint and the specified total access pressure acts on every enabled access
+zone at the same time. At each trial spacing on the 25 mm grid, the calculator
+checks strength, span and overhang displacement, support contact and each prop
+reaction. The diagrams show the primary line with the highest utilization across
+these checks. The report lists the loads and reactions for every receiving line.
 
 The section and red/blue equivalent-UDL diagram share the same slab-edge and
 support coordinates. Saved calculations and Dashboard restart checkpoints retain

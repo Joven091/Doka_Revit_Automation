@@ -5,8 +5,6 @@ using System.Threading;
 
 namespace EngineeringDashboard
 {
-    public sealed class BeamPointLoad { public double PositionMm, Kn; }
-    public sealed class BeamDistributedLoad { public double StartMm, EndMm, KnPerM; }
     /// <summary>Euler-Bernoulli analysis of free-ended stock, with arbitrary point and piecewise uniform loads.</summary>
     public sealed class LoadedBeamAnalysis
     {

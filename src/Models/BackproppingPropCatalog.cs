@@ -7,12 +7,17 @@ namespace EngineeringDashboard.Backpropping
     public sealed class BackproppingProp
     {
         public string Name { get; }
+        public string Family { get; }
+        public string Size { get; }
         public int MinimumMm { get; }
         public int MaximumMm { get; }
         private readonly double standardCapacity;
         private readonly Dictionary<int, double> endRows;
         public BackproppingProp(string name, int minimum, int maximum, double capacity, params double[] fromMaximum)
         {
+            int separator = name.LastIndexOf(' ');
+            Family = name.Substring(0, separator);
+            Size = name.Substring(separator + 1);
             Name = name; MinimumMm = minimum; MaximumMm = maximum; standardCapacity = capacity;
             endRows = new Dictionary<int, double>();
             for (int i = 0; i < fromMaximum.Length; i++) endRows[maximum - i * 100] = fromMaximum[i];

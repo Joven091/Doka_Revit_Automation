@@ -24,8 +24,20 @@ internal static class Program
                     if(typeof(Program).Assembly.GetReferencedAssemblies().Any(a=>a.Name.StartsWith("Revit",StringComparison.OrdinalIgnoreCase)))throw new InvalidOperationException("Standalone payload references Revit.");
                     var model=(FlexCalculatorViewModel)window.DataContext;if(!model.IsCalculationValid||!window.TryGetValidCalculation(out var current))throw new InvalidOperationException("Slab calculator defaults are invalid.");
                     double spacing=model.SuggestedPrimaryBeamSpacing;model.SlabThickness=400;if(!model.IsCalculationValid||model.SuggestedPrimaryBeamSpacing==spacing)throw new InvalidOperationException("Slab inputs did not recalculate.");
-                    model.ViewPrimaryBeamDiagramCommand.Execute(null);if(!app.Windows.OfType<DiagramWindow>().Any(w=>w.IsVisible))throw new InvalidOperationException("Actual primary diagrams did not open.");
-                    model.ViewSecondaryBeamDiagramCommand.Execute(null);if(app.Windows.OfType<DiagramWindow>().Count(w=>w.IsVisible)!=2)throw new InvalidOperationException("Actual secondary diagrams did not open.");
+                    var schematic = (SlabSupportDiagram)window.FindName("SupportDiagram");
+                    window.UpdateLayout();
+                    var opened = new System.Collections.Generic.HashSet<bool>();
+                    for (int y = 0; y < schematic.ActualHeight && opened.Count < 2; y += 2)
+                    for (int x = 0; x < schematic.ActualWidth && opened.Count < 2; x += 2)
+                    {
+                        var point = new Point(x, y);
+                        var primary = schematic.BeamAt(point);
+                        if (!primary.HasValue || !opened.Add(primary.Value)) continue;
+                        if (!schematic.OpenBeamAt(point) || !app.Windows.OfType<DiagramWindow>().Any(w =>
+                            w.IsVisible && w.DataContext == (primary.Value ? model.PrimaryDiagramViewModel : model.SecondaryDiagramViewModel)))
+                            throw new InvalidOperationException("Selecting the H20 did not open its diagrams.");
+                    }
+                    if (opened.Count != 2 || schematic.OpenBeamAt(new Point(0,0))) throw new InvalidOperationException("Incorrect H20 selection areas.");
                     model.SlabThickness=300;var record=window.CaptureCalculation();model.SlabThickness=350;window.RestoreCalculation(record);if(model.SlabThickness!=300)throw new InvalidOperationException("Slab input roundtrip failed.");
                     Console.WriteLine("PASS standalone slab starts, recalculates, opens both real diagram windows and roundtrips inputs without Revit.");window.Close();
                 }));
